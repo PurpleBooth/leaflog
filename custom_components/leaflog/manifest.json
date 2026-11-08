@@ -1,0 +1,13 @@
+{
+  "domain": "leaflog",
+  "name": "Leaflog",
+  "codeowners": ["@PurpleBooth"],
+  "config_flow": false,
+  "dependencies": [],
+  "documentation": "https://github.com/PurpleBooth/leaflog",
+  "integration_type": "service",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/PurpleBooth/leaflog/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}
