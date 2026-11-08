@@ -67,6 +67,24 @@ pub async fn put<T: Serialize, R: DeserializeOwned>(path: &str, body: &T) -> Res
     parse(response).await
 }
 
+/// `POST` a `FormData` (photo uploads) and expect an empty response.
+///
+/// # Errors
+///
+/// Returns an [`ApiFailure`] on transport errors or non-success
+/// statuses.
+///
+/// # Panics
+///
+/// Cannot panic: a `FormData` is always accepted as a body.
+pub async fn post_form(path: &str, form: &leptos::web_sys::FormData) -> Result<(), ApiFailure> {
+    let request = Request::post(path)
+        .body(form.clone())
+        .expect("form body is always valid");
+    check(request.send().await).await?;
+    Ok(())
+}
+
 /// `DELETE` a resource (expects 204).
 ///
 /// # Errors

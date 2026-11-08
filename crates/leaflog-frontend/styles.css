@@ -340,3 +340,64 @@ button.danger {
   padding-left: 1.1rem;
 }
 
+
+/* M3: grows */
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 48rem) {
+  .split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.card.slim {
+  padding: 0.5rem 0.9rem;
+}
+
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.gallery a {
+  display: grid;
+  gap: 0.2rem;
+  text-align: center;
+  text-decoration: none;
+}
+
+.gallery img {
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+}
+
+fieldset.tags {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin: 0.9rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.9rem;
+}
+
+fieldset.tags legend {
+  padding: 0 0.3rem;
+}

@@ -257,7 +257,7 @@ fn EquipmentForm(draft: RwSignal<EquipmentInput>) -> impl IntoView {
 
 /// Shows the error banner when set.
 #[component]
-fn ErrorIf(error: RwSignal<Option<String>>) -> impl IntoView {
+pub(crate) fn ErrorIf(error: RwSignal<Option<String>>) -> impl IntoView {
     move || {
         error.get().map(|message| {
             view! { <p class="error" role="alert">{message}</p> }

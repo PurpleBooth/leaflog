@@ -27,9 +27,11 @@
 
 pub mod api;
 mod equipment;
+mod grows;
 mod strains;
 
 use equipment::EquipmentPage;
+use grows::{GrowDetail, GrowsPage};
 use js_sys::{Reflect, global};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -70,6 +72,7 @@ pub fn App() -> impl IntoView {
                         <A href="/" exact=true>"Home"</A>
                         <A href="/equipment">"Equipment"</A>
                         <A href="/strains">"Strains"</A>
+                        <A href="/grows">"Grows"</A>
                     </nav>
                 </header>
                 <main id="main">
@@ -78,6 +81,8 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("/spike") view=Spike />
                         <Route path=path!("/equipment") view=EquipmentPage />
                         <Route path=path!("/strains") view=StrainsPage />
+                        <Route path=path!("/grows") view=GrowsPage />
+                        <Route path=path!("/grows/:id") view=GrowDetail />
                     </Routes>
                 </main>
             </div>
