@@ -15,6 +15,7 @@ use leptos_router::hooks::use_params_map;
 
 use crate::api;
 use crate::equipment::ErrorIf;
+use crate::gantt::GanttTimeline;
 use crate::live::LivePanel;
 
 /// The grows overview page.
@@ -288,6 +289,9 @@ pub fn GrowDetail() -> impl IntoView {
             }}
 
             <ErrorIf error />
+
+            <h3>"Forecast"</h3>
+            <GanttTimeline grow_id=grow_id() />
 
             <h3>"Quick add"</h3>
             <nav class="chips" aria-label="Quick add action">

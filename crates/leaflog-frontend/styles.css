@@ -435,3 +435,95 @@ fieldset.tags legend {
   font-size: 1.15rem;
   font-weight: 600;
 }
+
+/* M5: Gantt timeline */
+
+.gantt {
+  margin: 0.5rem 0 1rem;
+}
+
+.gantt-chart {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.5rem 0.5rem 7rem;
+  background: var(--surface);
+}
+
+.gantt-rows {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.gantt-row {
+  display: grid;
+  grid-template-columns: 6rem 1fr;
+  gap: 0.5rem;
+  align-items: center;
+  min-height: 1.6rem;
+}
+
+.gantt-phase-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+  text-align: right;
+}
+
+.gantt-track {
+  position: relative;
+  height: 1.4rem;
+}
+
+.gantt-range {
+  position: absolute;
+  top: 0.15rem;
+  bottom: 0.15rem;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color, #90a4ae) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color, #90a4ae) 35%, transparent);
+}
+
+.gantt-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 0.4rem;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color, #90a4ae) 55%, transparent);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.gantt-today {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 7rem;
+  width: 2px;
+  cursor: help;
+}
+
+.gantt-today-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  background: #e53935;
+}
+
+.gantt-today-label {
+  position: absolute;
+  top: -0.2rem;
+  left: 4px;
+  font-size: 0.65rem;
+  color: #e53935;
+  font-weight: 700;
+}

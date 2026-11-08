@@ -155,3 +155,33 @@ pub struct LiveEntity {
     /// Notable attributes.
     pub attributes: std::collections::BTreeMap<String, serde_json::Value>,
 }
+
+/// The forecast response (grow day timeline).
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct Forecast {
+    /// Days since the grow start (today marker).
+    pub today_day: i64,
+    /// Phase windows in chronological order.
+    pub windows: Vec<PhaseWindowData>,
+}
+
+/// One phase window as the API serializes it.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct PhaseWindowData {
+    /// Which phase.
+    pub phase: String,
+    /// Earliest start.
+    pub earliest_start: i64,
+    /// Likely start.
+    pub likely_start: i64,
+    /// Latest start.
+    pub latest_start: i64,
+    /// Earliest end.
+    pub earliest_end: i64,
+    /// Likely end.
+    pub likely_end: i64,
+    /// Latest end.
+    pub latest_end: i64,
+    /// True when pinned by a logged event.
+    pub actual_start: bool,
+}
