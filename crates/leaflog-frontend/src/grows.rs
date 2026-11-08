@@ -352,7 +352,7 @@ pub fn GrowDetail() -> impl IntoView {
                                             </div>
                                             <dl class="facts">
                         {entry.details.volume_ml.map(|volume| view! {
-                            <div><dt>"Volume"</dt><dd>{format!("{volume:.0} ml")}</dd></div>
+                            <div><dt>"Volume"</dt><dd>{leaflog_core::units::small_volume_both(volume)}</dd></div>
                         })}
                         {entry.details.input_ph.map(|ph| view! {
                             <div><dt>"pH in"</dt><dd>{format!("{ph:.1}")}</dd></div>
@@ -367,7 +367,7 @@ pub fn GrowDetail() -> impl IntoView {
                             <div><dt>"EC out"</dt><dd>{format!("{ec} µS/cm")}</dd></div>
                         })}
                         {entry.details.plant_height_cm.map(|height| view! {
-                            <div><dt>"Height"</dt><dd>{format!("{height:.0} cm")}</dd></div>
+                            <div><dt>"Height"</dt><dd>{leaflog_core::units::length_both(height)}</dd></div>
                         })}
                                             </dl>
                                             {entry.notes.clone().map(|notes| view! {

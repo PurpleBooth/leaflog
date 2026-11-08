@@ -120,7 +120,7 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
             <div class="tiles">
                 {move || {
                     let Some(e) = env.get() else { return Vec::<_>::new() };
-                    let temp_display = e.temperature_c.map_or_else(|| "—".to_owned(), |t| format!("{t:.1} °C / {:.1} °F", t * 9.0 / 5.0 + 32.0));
+                    let temp_display = e.temperature_c.map_or_else(|| "—".to_owned(), leaflog_core::units::temp_both);
                     let rh_display = e.humidity_pct.map_or_else(|| "—".to_owned(), |h| format!("{h:.0} %"));
                     let vpd_display = e.vpd_kpa.map_or_else(|| "—".to_owned(), |v| format!("{v:.2} kPa"));
                     let temp_class = e.temp_ok.map_or("", |ok| if ok { "tile-ok" } else { "tile-warn" });
@@ -152,7 +152,7 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                     view! {
                         <div class="card slim">
                             <h4>"Lamp height"</h4>
-                            <p>{format!("{:.0}–{:.0} in from canopy", advice.height.min_in, advice.height.max_in)}</p>
+                            <p>{format!("{:.0}–{:.0} in / {:.0}–{:.0} cm from canopy", advice.height.min_in, advice.height.max_in, leaflog_core::units::inches_to_cm(advice.height.min_in), leaflog_core::units::inches_to_cm(advice.height.max_in))}</p>
                             {advice.dim_pct.map(|d| view! { <p class="muted">"Dim to "{d}"%"</p> })}
                             <p class="muted small">{advice.why}</p>
                         </div>
