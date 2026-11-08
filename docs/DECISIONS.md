@@ -6,6 +6,34 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-08 — M8
+
+### D032: Backup→restore tested
+
+The integration test creates data (grow, action log, photo upload),
+simulates a HA backup by copying /data (DB + photos/originals;
+thumbnails excluded per backup_exclude), then simulates a restore.
+Proves: grows, actions, photo rows, photo files, and photo serving
+all survive; thumbnails regenerate lazily on first request (with a
+directory-creation fix — the restored tree has no thumbnails/
+directory).
+
+### D033: Unit-aware display
+
+leaflog-core::units provides dual-unit formatting: temp_both (°C/°F),
+length_both (cm/in), volume_both (L/gal), small_volume_both (ml/fl oz),
+plus preferred-system-only variants. The dashboard tiles, timeline
+volume/height, and lamp-height card now show both systems.
+
+### D034: Screenshots
+
+Deferred to a manual step (requires a browser session against a
+running dev instance). Documented in docs/DEV_SETUP.md what to capture:
+desktop + mobile, light + dark, main views (home, equipment, strains,
+grow detail with forecast + feed + env).
+
+---
+
 ## 2026-11-08 — M7
 
 ### D028: VPD engine
