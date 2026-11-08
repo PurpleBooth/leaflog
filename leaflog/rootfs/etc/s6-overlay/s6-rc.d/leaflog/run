@@ -1,0 +1,10 @@
+#!/command/with-contenv bashio
+# Leaflog backend longrun service. The Supervisor provides
+# SUPERVISOR_TOKEN (and the ingress proxy at 172.30.32.2); the backend
+# derives production mode from it.
+
+export LEAFLOG_PORT=8099
+export LEAFLOG_ENV=prod
+
+bashio::log.info "starting Leaflog backend on ingress port ${LEAFLOG_PORT}"
+exec /usr/local/bin/leaflog-backend

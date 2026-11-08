@@ -1,0 +1,13 @@
+# Keep the image build context lean; the frontend is rebuilt inside the
+# container so the embedded bundle always matches the shipped binary.
+.git
+.github
+.devbox
+target
+**/target
+**/dist
+**/.devbox
+data
+docs
+*.md
+!leaflog/*.md
