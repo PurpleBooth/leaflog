@@ -15,12 +15,13 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
+leaflog-core.workspace = true
 leptos = { version = "0.8", features = ["csr"] }
 leptos_router = "0.8"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
-gloo-net = "0.6"
+gloo-net = { version = "0.6", features = ["json"] }
 serde.workspace = true
 serde_json.workspace = true
 
