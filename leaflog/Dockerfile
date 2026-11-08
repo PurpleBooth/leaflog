@@ -14,12 +14,15 @@ ARG HA_BASE=ghcr.io/home-assistant/base:2026.11.0
 # ---------------------------------------------------------------------------
 FROM rust:1.99.1-alpine AS frontend-builder
 ARG TARGETARCH
-RUN case "$TARGETARCH" in \
+# curl (not busybox wget): GitHub release downloads redirect in ways
+# busybox wget mishandles.
+RUN apk add --no-cache curl \
+    && case "$TARGETARCH" in \
       amd64)   TRIPLET=x86_64-unknown-linux-musl  ;; \
       aarch64) TRIPLET=aarch64-unknown-linux-musl ;; \
       *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
-    esac; \
-    wget -qO- "https://github.com/trunk-rs/trunk/releases/download/v0.21.14/trunk-${TRIPLET}.tar.gz" \
+    esac \
+    && curl -fsSL "https://github.com/trunk-rs/trunk/releases/download/v0.21.14/trunk-${TRIPLET}.tar.gz" \
       | tar -xz -C /usr/local/bin && trunk --version
 RUN rustup target add wasm32-unknown-unknown
 WORKDIR /build
