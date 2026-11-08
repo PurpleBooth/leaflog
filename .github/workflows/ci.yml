@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  ci:
+    name: fmt, clippy (native + wasm), tests, WASM build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      # Reads rust-toolchain.toml (stable + clippy, rustfmt, wasm32).
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install just and trunk
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just@1.59.0,trunk@0.21.14
+
+      - name: Run the CI gate
+        run: just ci
