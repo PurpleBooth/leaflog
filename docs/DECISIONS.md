@@ -99,6 +99,14 @@ instead.
 (simple leaf mark, calm green) so the app installs with a sane look from
 M1. Final artwork is an M8 polish task.
 
+### D011: s6 user bundles deprecation notice
+
+The base image's s6-overlay logs a deprecation warning for defining the
+user bundle in `/etc/s6-overlay/s6-rc.d/user/contents.d` (our
+enablement file for the `leaflog` longrun service); upstream now prefers
+`/etc/s6-overlay/user-bundles.d`. Works fine on the pinned base
+(3.24-2026.11.0); migrate when a future base bump requires it.
+
 ### Lint-policy exceptions (`#[allow]` register)
 
 Every narrowly scoped exception to the mandatory lint block, each with a
