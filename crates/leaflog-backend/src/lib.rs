@@ -41,14 +41,20 @@
 )]
 #![allow(clippy::multiple_crate_versions)]
 
+pub mod api;
 pub mod app;
 pub mod assets;
+pub mod db;
 pub mod ingress;
+pub mod seed;
+pub mod store;
 
 use std::path::PathBuf;
 
 pub use app::{AppState, Mode, build_router};
 pub use assets::Assets;
+use axum::ServiceExt as _;
+pub use db::Db;
 
 /// Default TCP port; matches `ingress_port` in the HA app `config.yaml`.
 pub const DEFAULT_PORT: u16 = 8099;
@@ -134,6 +140,24 @@ impl Config {
             }
         }
     }
+
+    /// Path of the SQLite database: `LEAFLOG_DB_PATH` overrides;
+    /// otherwise `/data/leaflog.db` in production (the Supervisor maps
+    /// the add-on `data` volume there) and `data/leaflog.db` relative to
+    /// the working directory in development.
+    #[must_use]
+    pub fn db_path(&self) -> PathBuf {
+        std::env::var("LEAFLOG_DB_PATH")
+            .ok()
+            .filter(|path| !path.is_empty())
+            .map_or_else(
+                || match self.mode {
+                    Mode::Production => PathBuf::from("/data/leaflog.db"),
+                    Mode::Dev => PathBuf::from("data/leaflog.db"),
+                },
+                PathBuf::from,
+            )
+    }
 }
 
 /// Runs the backend server until shutdown (Ctrl-C or SIGTERM).
@@ -155,8 +179,16 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 /// fails.
 async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     let mode = config.mode;
-    let state = AppState::new(config.assets(), mode, config.dev_prefix.clone());
-    let app = build_router(state).into_make_service_with_connect_info::<std::net::SocketAddr>();
+    let db = Db::open(&config.db_path())?;
+    match seed::seed_strains_if_empty(&db).await {
+        Ok(seeded) if seeded > 0 => {
+            println!("Seeded {seeded} bundled strain records");
+        }
+        Ok(_) => {}
+        Err(error) => eprintln!("strain seeding skipped: {error}"),
+    }
+    let state = AppState::new(config.assets(), mode, config.dev_prefix.clone(), db);
+    let app = app::service(state).into_make_service_with_connect_info::<std::net::SocketAddr>();
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", config.port)).await?;
     println!(
         "Leaflog backend listening on 0.0.0.0:{} ({mode:?} mode)",

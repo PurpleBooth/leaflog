@@ -52,16 +52,24 @@ pub struct AppState {
     pub mode: Mode,
     /// Simulated ingress prefix (development only).
     pub dev_prefix: Option<String>,
+    /// SQLite database handle.
+    pub db: crate::db::Db,
 }
 
 impl AppState {
     /// Creates the shared state.
     #[must_use]
-    pub const fn new(assets: Assets, mode: Mode, dev_prefix: Option<String>) -> Self {
+    pub const fn new(
+        assets: Assets,
+        mode: Mode,
+        dev_prefix: Option<String>,
+        db: crate::db::Db,
+    ) -> Self {
         Self {
             assets,
             mode,
             dev_prefix,
+            db,
         }
     }
 }
@@ -76,17 +84,66 @@ pub fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/api/health", get(health))
         .route("/", get(index))
+        .merge(crate::api::router())
         .fallback(fallback)
-        .layer(middleware::from_fn_with_state(
-            state.clone(),
-            dev_prefix_strip,
-        ))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             supervisor_gate,
         ))
         .layer(axum::extract::DefaultBodyLimit::max(BODY_LIMIT_BYTES))
         .with_state(state)
+}
+
+/// Strips the dev prefix before routing.
+///
+/// A `Router::layer` middleware runs after Axum has already picked a
+/// route, which is too late to rewrite the path; this wrapper rewrites
+/// first. A no-op when no prefix is set; see `tests/ingress.rs`.
+#[derive(Debug, Clone)]
+pub struct DevPrefixService<S> {
+    inner: S,
+    prefix: Option<String>,
+}
+
+impl<S> tower::Service<axum::extract::Request> for DevPrefixService<S>
+where
+    S: tower::Service<
+            axum::extract::Request,
+            Response = axum::response::Response,
+            Error = std::convert::Infallible,
+        > + Clone
+        + Send
+        + 'static,
+    S::Future: Send,
+{
+    type Response = axum::response::Response;
+    type Error = std::convert::Infallible;
+    type Future = S::Future;
+
+    fn poll_ready(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, mut request: axum::extract::Request) -> Self::Future {
+        if let Some(prefix) = self.prefix.as_deref() {
+            strip_dev_prefix(&mut request, prefix);
+        }
+        self.inner.call(request)
+    }
+}
+
+/// The whole application as a serving-ready service with the dev-prefix
+/// rewriter applied.
+#[must_use]
+pub fn service(state: AppState) -> DevPrefixService<Router> {
+    let prefix = state.dev_prefix.clone();
+    DevPrefixService {
+        inner: build_router(state),
+        prefix,
+    }
 }
 
 /// `GET /api/health` — liveness and mode reporting.
@@ -218,47 +275,42 @@ const fn peer_allowed(mode: Mode, ip: IpAddr) -> bool {
     }
 }
 
-/// Development-only ingress simulator: strips the configured prefix
-/// (for example `/api/hassio_ingress/dev-42`) from request paths so a
-/// plain browser can play the role of the ingress proxy. A no-op in
-/// production, where the Supervisor's `X-Ingress-Path` header is used.
-// Extractors are taken by value because Axum requires it.
-#[allow(clippy::needless_pass_by_value)] // Axum middleware extractor contract; see docs/DECISIONS.md
-async fn dev_prefix_strip(
-    State(state): State<AppState>,
-    mut request: Request,
-    next: Next,
-) -> Response {
-    if let Some(prefix) = state.dev_prefix.as_deref() {
-        let path = request.uri().path();
-        let stripped = path
-            .strip_prefix(prefix)
-            .filter(|rest| rest.is_empty() || rest.starts_with('/'))
-            .map(|rest| {
-                if rest.is_empty() {
-                    "/".to_owned()
-                } else {
-                    rest.to_owned()
-                }
-            });
-        if let Some(new_path) = stripped {
-            let target = match request.uri().query() {
-                Some(query) => format!("{new_path}?{query}"),
-                None => new_path,
-            };
-            if let Ok(uri) = target.parse::<Uri>() {
-                *request.uri_mut() = uri;
+/// Development-only ingress simulator: rewrites a request whose path
+/// starts with the configured prefix (for example
+/// `/api/hassio_ingress/dev-42`) so a plain browser can play the role
+/// of the ingress proxy. A no-op for unmatched paths and in production,
+/// where the Supervisor strips the prefix before forwarding.
+fn strip_dev_prefix(request: &mut Request, prefix: &str) {
+    let path = request.uri().path();
+    let stripped = path
+        .strip_prefix(prefix)
+        .filter(|rest| rest.is_empty() || rest.starts_with('/'))
+        .map(|rest| {
+            if rest.is_empty() {
+                "/".to_owned()
+            } else {
+                rest.to_owned()
             }
+        });
+    if let Some(new_path) = stripped {
+        let target = match request.uri().query() {
+            Some(query) => format!("{new_path}?{query}"),
+            None => new_path,
+        };
+        if let Ok(uri) = target.parse::<Uri>() {
+            *request.uri_mut() = uri;
         }
     }
-    next.run(request).await
 }
 
 #[cfg(test)]
 mod tests {
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-    use super::{Mode, SUPERVISOR_INGRESS_IP, peer_allowed};
+    use axum::body::Body;
+    use axum::http::Request;
+
+    use super::{Mode, SUPERVISOR_INGRESS_IP, peer_allowed, strip_dev_prefix};
 
     #[test]
     fn production_allows_exactly_the_ingress_proxy() {
@@ -281,5 +333,34 @@ mod tests {
     fn development_allows_any_peer() {
         assert!(peer_allowed(Mode::Dev, IpAddr::V4(Ipv4Addr::LOCALHOST)));
         assert!(peer_allowed(Mode::Dev, SUPERVISOR_INGRESS_IP));
+    }
+
+    fn rewritten(path: &str, prefix: &str) -> String {
+        let mut request = Request::builder()
+            .uri(path)
+            .body(Body::empty())
+            .expect("static parts build a request");
+        strip_dev_prefix(&mut request, prefix);
+        request.uri().path().to_owned()
+    }
+
+    #[test]
+    fn prefix_rewrite_rules() {
+        let prefix = "/api/hassio_ingress/dev-42";
+        assert_eq!(rewritten(prefix, prefix), "/");
+        assert_eq!(rewritten(&format!("{prefix}/"), prefix), "/");
+        assert_eq!(
+            rewritten(&format!("{prefix}/api/strains"), prefix),
+            "/api/strains"
+        );
+        assert_eq!(
+            rewritten(&format!("{prefix}/pkg/app.css"), prefix),
+            "/pkg/app.css"
+        );
+        // A path that merely shares characters is left alone.
+        assert_eq!(
+            rewritten(&format!("{prefix}9/pkg/app.css"), prefix),
+            "/api/hassio_ingress/dev-429/pkg/app.css"
+        );
     }
 }

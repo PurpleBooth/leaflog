@@ -3,10 +3,12 @@
 //! rejects non-Supervisor addresses in production mode).
 
 use std::net::SocketAddr;
+
+use axum::ServiceExt as _;
 use std::path::Path;
 
 use axum::http::{StatusCode, header};
-use leaflog_backend::{AppState, Assets, Mode, build_router};
+use leaflog_backend::{AppState, Assets, Db, Mode};
 use serde_json::Value;
 
 /// The simulated ingress prefix used for dev-mode tests.
@@ -16,8 +18,10 @@ const DEV_PREFIX: &str = "/api/hassio_ingress/it-42";
 /// returns its base URL.
 async fn spawn_backend(mode: Mode, dev_prefix: Option<String>) -> String {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dist");
-    let state = AppState::new(Assets::Disk(fixture), mode, dev_prefix);
-    let app = build_router(state).into_make_service_with_connect_info::<SocketAddr>();
+    let db = Db::open_in_memory().unwrap();
+    let state = AppState::new(Assets::Disk(fixture), mode, dev_prefix, db);
+    let app =
+        leaflog_backend::app::service(state).into_make_service_with_connect_info::<SocketAddr>();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -215,6 +219,17 @@ async fn dev_prefix_simulation_strips_and_injects() {
         .unwrap();
     assert_eq!(deep.status(), StatusCode::OK);
     assert!(deep.text().await.unwrap().contains("__LEAFLOG_BASE__"));
+
+    // API routes must resolve through the prefix too (regression: the
+    // rewrite must happen before routing, not in a Router::layer).
+    let api = client
+        .get(format!("{base}{DEV_PREFIX}/api/health"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(api.status(), StatusCode::OK);
+    let body: serde_json::Value = api.json().await.unwrap();
+    assert_eq!(body["status"], "ok");
 
     // Assets resolve through the prefix.
     let css = client
