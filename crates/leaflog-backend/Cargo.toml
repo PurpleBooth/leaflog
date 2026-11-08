@@ -1,0 +1,33 @@
+[package]
+name = "leaflog-backend"
+description = "Leaflog backend: Axum server hosting the ingress-correct SPA, the JSON API, and the Home Assistant Supervisor link."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+publish = false
+
+[features]
+default = ["embed-assets"]
+# Embed the compiled frontend (`trunk build` output) into the binary.
+# Disable for development, where assets are served from disk instead so
+# `trunk watch` rebuilds are picked up without recompiling the backend.
+embed-assets = ["dep:include_dir"]
+
+[dependencies]
+leaflog-core.workspace = true
+axum.workspace = true
+tokio = { workspace = true, features = ["net", "signal", "fs"] }
+serde.workspace = true
+serde_json.workspace = true
+include_dir = { version = "0.7", optional = true }
+
+[dev-dependencies]
+axum.workspace = true
+tokio.workspace = true
+serde_json.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
