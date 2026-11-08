@@ -24,7 +24,9 @@ RUN apk add --no-cache curl \
       *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
     esac \
     && curl -fsSL "https://github.com/trunk-rs/trunk/releases/download/v0.21.14/trunk-${TRIPLET}.tar.gz" \
-      | tar -xz -C /usr/local/bin && trunk --version
+      | tar -xz -C /usr/local/bin && trunk --version \
+    && curl -fsSL "https://github.com/rustwasm/wasm-bindgen/releases/download/0.2.130/wasm-bindgen-0.2.130-${TRIPLET}.tar.gz" \
+      | tar -xz --strip-components=1 -C /usr/local/bin && wasm-bindgen --version
 RUN rustup target add wasm32-unknown-unknown
 WORKDIR /build
 COPY Cargo.toml Cargo.lock* rust-toolchain.toml ./

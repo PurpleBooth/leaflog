@@ -136,9 +136,11 @@ assets, deep links; manual deep-link/refresh under `just dev` confirmed.
 ### D009: Trunk `wasm-bindgen` handling, and no `wasm-opt`
 
 Trunk downloads a matching `wasm-bindgen` CLI automatically when none is
-on `PATH`. `devbox.json` therefore does not pin `wasm-bindgen-cli`; if a
-future Trunk release stops auto-fetching, add `wasm-bindgen-cli` to
-`devbox.json` and note it here.
+on `PATH` — this works locally, but **failed on the aarch64 CI builder**
+(the downloaded binary never materialized; the D009 fallback became
+necessary on first use). The image builder therefore installs a pinned
+`wasm-bindgen-cli` (0.2.130, matching the crate) next to Trunk;
+`devbox.json` still relies on Trunk's auto-fetch.
 
 `wasm-opt` is **not** run (no `data-wasm-opt` on the rust asset): the
 nixpkgs binaryen build rejects Rust's bulk-memory opcodes without
