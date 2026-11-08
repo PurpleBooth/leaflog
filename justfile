@@ -32,8 +32,17 @@ dev:
     LEAFLOG_STATIC_DIR={{static_dir}} \
     cargo run -p leaflog-backend --quiet --no-default-features
 
+# Check conventional commits (cocogitto; skip if not installed).
+cog-check:
+    #!/usr/bin/env bash
+    if command -v cog &>/dev/null; then
+        cog check
+    else
+        echo "cocogitto not installed; skipping conventional commit check"
+    fi
+
 # Everything CI checks: fmt, clippy (native + wasm), tests, WASM build.
-ci: fmt clippy clippy-wasm build-frontend test
+ci: cog-check fmt clippy clippy-wasm build-frontend test
 
 # Check formatting.
 fmt:

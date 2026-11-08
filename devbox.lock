@@ -1,6 +1,54 @@
 {
   "lockfile_version": "1",
   "packages": {
+    "cocogitto@6.2.0": {
+      "last_modified": "2025-03-11T17:52:14Z",
+      "resolved": "github:NixOS/nixpkgs/0d534853a55b5d02a4ababa1d71921ce8f0aee4c#cocogitto",
+      "source": "devbox-search",
+      "version": "6.2.0",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/70jhwhpn84lpx8wb0bw6kfih4l8p4522-cocogitto-6.2.0",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/70jhwhpn84lpx8wb0bw6kfih4l8p4522-cocogitto-6.2.0"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/czjwrgv4nkvgssxsz1rxfwvaf4ldmfx3-cocogitto-6.2.0",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/czjwrgv4nkvgssxsz1rxfwvaf4ldmfx3-cocogitto-6.2.0"
+        },
+        "x86_64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/hzmqaljr4x4ck14654y2hqj20fz7ar11-cocogitto-6.2.0",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/hzmqaljr4x4ck14654y2hqj20fz7ar11-cocogitto-6.2.0"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/150afqkrsj6g1yrj0p3rlnj5xi94biwj-cocogitto-6.2.0",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/150afqkrsj6g1yrj0p3rlnj5xi94biwj-cocogitto-6.2.0"
+        }
+      }
+    },
     "github:NixOS/nixpkgs/nixpkgs-unstable": {
       "last_modified": "2026-10-24T03:22:33Z",
       "resolved": "github:NixOS/nixpkgs/674a2028661e550a97400c1cc992b9cca9a668a1?lastModified=1792812153"

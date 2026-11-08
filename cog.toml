@@ -1,0 +1,27 @@
+# Cocogitto configuration (https://github.com/cocogitto/cocogitto)
+# Conventional-commit checks, changelog generation, and version bumps.
+
+from_latest_tag = true
+tag_prefix = "v"
+branch_whitelist = ["main"]
+
+[commit_types]
+feat = { changelog_title = "Features", bump = "minor" }
+fix = { changelog_title = "Bug Fixes", bump = "patch" }
+perf = { changelog_title = "Performance", bump = "patch" }
+refactor = { changelog_title = "Refactoring" }
+docs = { changelog_title = "Documentation" }
+test = { changelog_title = "Tests" }
+build = { changelog_title = "Build", bump = "patch" }
+ci = { changelog_title = "CI" }
+chore = { changelog_title = "Miscellaneous" }
+style = { changelog_title = "Style" }
+revert = { changelog_title = "Reverts", bump = "patch" }
+
+[changelog]
+path = "CHANGELOG.md"
+template = "default"
+
+[[changelog.authors]]
+signature = "Billie"
+username = "PurpleBooth"

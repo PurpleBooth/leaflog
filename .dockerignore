@@ -3,6 +3,10 @@
 .git
 .github
 .devbox
+custom_components
+hacs.json
+cog.toml
+CHANGELOG.md
 target
 **/target
 **/dist

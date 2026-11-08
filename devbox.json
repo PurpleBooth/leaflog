@@ -6,7 +6,8 @@
     "trunk@latest",
     "sqlite@latest",
     "pkg-config@latest",
-    "libiconv@latest"
+    "libiconv@latest",
+    "cocogitto@6.2.0"
   ],
   "shell": {
     "init_hook": [
