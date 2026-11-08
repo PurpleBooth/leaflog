@@ -15,6 +15,7 @@ use leptos_router::hooks::use_params_map;
 
 use crate::api;
 use crate::equipment::ErrorIf;
+use crate::live::LivePanel;
 
 /// The grows overview page.
 #[component]
@@ -387,6 +388,7 @@ pub fn GrowDetail() -> impl IntoView {
                 </div>
 
                 <div>
+                    <LivePanel grow_id=grow_id() />
                     <h3>"Plants"</h3>
                     <ul class="cards">
                         {move || {

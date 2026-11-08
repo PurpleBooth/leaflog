@@ -26,6 +26,7 @@ async fn spawn_with(db: Db) -> String {
         None,
         db,
         leaflog_backend::photos::PhotoStore::new(std::env::temp_dir()),
+        offline_bridge(),
     );
     let app =
         leaflog_backend::app::service(state).into_make_service_with_connect_info::<SocketAddr>();
@@ -392,4 +393,14 @@ async fn seeds_arrive_once_and_carry_provenance() {
         .expect("an autoflower is bundled");
     assert_eq!(auto["photoperiod"], "auto");
     assert_eq!(auto["auto_total_days_max"], 84);
+}
+
+/// A bridge pointed at an unroutable address: REST/WS fail fast and the
+/// app must still work (spec: works with HA unreachable).
+fn offline_bridge() -> std::sync::Arc<leaflog_backend::ha::HaBridge> {
+    std::sync::Arc::new(leaflog_backend::ha::HaBridge::spawn(
+        "http://127.0.0.1:1".to_owned(),
+        leaflog_backend::ha::SupervisorToken::new("test-token"),
+        leaflog_backend::Db::open_in_memory().unwrap(),
+    ))
 }

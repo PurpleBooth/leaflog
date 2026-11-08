@@ -22,6 +22,7 @@ async fn spawn() -> (String, PathBuf) {
         None,
         db,
         PhotoStore::new(photo_root.clone()),
+        offline_bridge(),
     );
     let service = app::service(state);
     let make = service.into_make_service_with_connect_info::<SocketAddr>();
@@ -420,4 +421,14 @@ async fn photo_upload_rejects_garbage() {
         .await
         .unwrap();
     assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+}
+
+/// A bridge pointed at an unroutable address: REST/WS fail fast and the
+/// app must still work (spec: works with HA unreachable).
+fn offline_bridge() -> std::sync::Arc<leaflog_backend::ha::HaBridge> {
+    std::sync::Arc::new(leaflog_backend::ha::HaBridge::spawn(
+        "http://127.0.0.1:1".to_owned(),
+        leaflog_backend::ha::SupervisorToken::new("test-token"),
+        leaflog_backend::Db::open_in_memory().unwrap(),
+    ))
 }

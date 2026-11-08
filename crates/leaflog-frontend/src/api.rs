@@ -135,3 +135,23 @@ async fn parse<T: DeserializeOwned>(response: Response) -> Result<T, ApiFailure>
         message: error.to_string(),
     })
 }
+
+/// The live-data snapshot shape.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct LiveData {
+    /// Whether the Supervisor WebSocket is connected.
+    pub connected: bool,
+    /// Entity states.
+    pub entities: std::collections::BTreeMap<String, LiveEntity>,
+}
+
+/// One live entity.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct LiveEntity {
+    /// Entity id.
+    pub entity_id: String,
+    /// Raw state.
+    pub state: String,
+    /// Notable attributes.
+    pub attributes: std::collections::BTreeMap<String, serde_json::Value>,
+}

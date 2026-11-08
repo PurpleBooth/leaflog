@@ -28,6 +28,7 @@
 pub mod api;
 mod equipment;
 mod grows;
+mod live;
 mod strains;
 
 use equipment::EquipmentPage;
