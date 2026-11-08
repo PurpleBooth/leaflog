@@ -26,6 +26,7 @@
 #![allow(clippy::multiple_crate_versions)]
 
 pub mod api;
+mod dashboard;
 mod equipment;
 mod feed;
 mod gantt;

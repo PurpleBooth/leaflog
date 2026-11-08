@@ -14,6 +14,7 @@ use leptos_router::components::A;
 use leptos_router::hooks::use_params_map;
 
 use crate::api;
+use crate::dashboard::EnvDashboard;
 use crate::equipment::ErrorIf;
 use crate::feed::FeedPanel;
 use crate::gantt::GanttTimeline;
@@ -293,6 +294,8 @@ pub fn GrowDetail() -> impl IntoView {
 
             <h3>"Forecast"</h3>
             <GanttTimeline grow_id=grow_id() />
+
+            <EnvDashboard grow_id=grow_id() />
 
             <h3>"Feed schedule"</h3>
             <FeedPanel grow_id=grow_id() />

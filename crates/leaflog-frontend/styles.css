@@ -593,3 +593,38 @@ fieldset.tags legend {
   border-radius: 2px;
   min-height: 1px;
 }
+
+/* M7: env dashboard */
+
+.env-dashboard {
+  margin: 0.5rem 0 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.tile-ok {
+  border-color: #4caf5066;
+}
+
+.tile-warn {
+  border-color: #ff980066;
+  background: #ff980011;
+}
+
+.tile-sub {
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+}
+
+.coach-tips {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.coach-tips li {
+  padding-left: 0.75rem;
+  border-left: 3px solid var(--accent);
+}
