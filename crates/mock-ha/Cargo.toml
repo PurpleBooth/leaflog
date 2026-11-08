@@ -1,0 +1,17 @@
+[package]
+name = "mock-ha"
+description = "Mock Home Assistant Supervisor for Leaflog development: fake REST API with canned sensor data."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+publish = false
+
+[dependencies]
+axum.workspace = true
+tokio = { workspace = true, features = ["net"] }
+serde_json.workspace = true
