@@ -1,0 +1,6 @@
+[build]
+target = "index.html"
+dist = "dist"
+# Relative public URL: no base path is ever baked into the build; the
+# backend injects <base href> at serve time from X-Ingress-Path.
+public_url = "./"
