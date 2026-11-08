@@ -6,6 +6,74 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-08 — M7
+
+### D028: VPD engine
+
+`vpd_kpa()` uses the Magnus/Tetens saturation-vapour-pressure
+approximation with a configurable leaf-temperature offset (default
+−2 °C). The `rh_window()` solver inverts the VPD formula to find
+the humidity range that keeps VPD in the phase band. Golden values
+against reference tables (6 temperature/RH combinations ±0.15 kPa);
+the leaf offset's effect is separately verified.
+
+### D029: Lamp-height advisor
+
+The spec §5.1 wattage-class table (220/330/420/750 W) with per-stage
+height ranges; `advise_lamp()` applies: dimming (50% dim = ~30%
+closer), hot-canopy rule (>85 °F → raise 2 in or dim to 80%),
+stretch (raise 2–4 in), stress tags (dim to 70–80% or raise), a
+10-in floor, and strain light-tolerance caution. Unit tests cover
+each rule independently plus the wattage table lookup.
+
+### D030: Strain-tolerance threshold shifts (spec §4.4, §13)
+
+`TempThresholds::shifted()` applies: heat tolerant +2 °F ceiling,
+heat sensitive −3 °F ceiling, cold tolerant −2 °F floor, cold
+sensitive +3 °F floor. Temperature *differences* convert without the
+32 °F offset (a delta of 2 °F = 1.11 °C, not −16.7 °C).
+
+### D031: Phase coach
+
+Per-phase tips with substrate awareness (soil wet–dry, coco daily
+fertigation with runoff, hydro reservoir logging), lights-state VPD
+guidance, flower-specific mould and stretch cautions, dry/cure
+instructions. Equipment suggestions match the user's inventory
+categories to the phase.
+
+---
+
+## 2026-11-08 — M6
+
+### D026: Feed fit — piecewise per phase, never uniform
+
+`fit_feed()` maps each template segment (seedling, veg, flower) onto
+the corresponding actual segment with linear interpolation of EC;
+ripen and flush are pinned to the end and never dropped. EC steps
+between consecutive fitted days clamp to `max_ec_step_us` (default
+200 µS/cm, configurable). Property tests: a 9-week-flower template
+fits 8 and 11 weeks with ripen/flush preserved and EC steps within
+clamps (spec §13); ripen/flush never drop across compressions from
+42 to 84 flower days.
+
+### D027: Substrate profiles and TDS scales
+
+Built-in soil/coco/hydro presets from spec §5.3 with pH ranges,
+watering styles, flush lengths, runoff check frequencies, and EC
+bands (contested — labeled as one-source in the provenance). The
+`TdsScale` enum (0.5/0.64/0.7) round-trips EC↔ppm within 1 µS/cm
+(tested for all three scales × 10 EC values). Substrate presets
+differ in pH, EC bands, flush, and watering style (tested — spec §13
+"substrate switch changes recommendations").
+
+### Lint-policy exceptions — M6 additions
+
+| Crate | Items | Lint | Reason |
+|---|---|---|---|
+| leaflog-core | module `feed` | `clippy::cast_possible_truncation`, `clippy::cast_sign_loss` | The module converts float interpolation results (EC) to integer µS/cm; the casts are inherent |
+
+---
+
 ## 2026-11-08 — M6
 
 ### D026: Feed fit — piecewise per phase, never uniform
