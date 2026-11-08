@@ -6,6 +6,66 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-08 — M2
+
+### D012: SQLite via rusqlite, one connection, blocking-pool access
+
+Implements D001: a single `rusqlite::Connection` behind a mutex, with
+every query running inside `tokio::task::spawn_blocking` (`Db::with`).
+WAL journal mode and `foreign_keys=ON` on open. Migrations are plain
+`.sql` files in `crates/leaflog-backend/migrations/`, embedded with
+`include_str!` and applied in order, each in its own transaction, with
+the version tracked in a `schema_migrations` table. Chose a hand-rolled
+runner (~40 lines) over `rusqlite_migration` to keep the dependency set
+small.
+
+### D013: M2 migration scope — only tables with shipped features
+
+Migration 0001 creates `strain`, `equipment_item` and `settings` only.
+Grow/plant/action-log tables arrive with the features that use them
+(M3+); a versioned migration per milestone keeps the schema honest
+instead of pre-creating §8's whole sketch. PPFD maps (M7), sensor
+bindings (M4) and grow equipment snapshots (M3) are deferred.
+
+### D014: Strain seeding runs only on an empty table
+
+`seed::seed_strains_if_empty` inserts the bundled records when
+`strain` is empty (first boot or wiped data) and never touches a
+database that has any strain rows — so it can never overwrite user
+edits or re-duplicate after deletes.
+
+### D015: Bundled strain records — sourcing and licensing
+
+Five records (Northern Lights, Amnesia Haze, Blue Dream, Gorilla Glue
+#4, GG4 Auto). Numbers are cross-checked ranges from ≥2 public sources
+(breeder pages where they exist: Sensi Seeds, Barney's Farm; otherwise
+nursery/grower consensus); where sources disagree the stored range
+spans them and the notes say so (Blue Dream's flowering window is
+deliberately wide: 56–77 days). Evidence tags: `breeder` for
+breeder-stated numbers, `grower_reported` for consensus, `inferred`
+for the tolerance heuristics, `unverified` where stretch could not be
+double-sourced (GG4). Licensing: durations/heights/percentages are
+facts, not copyrightable expression; each record carries `source_url`
+and a licence note stating exactly that, and no source prose is
+reproduced. The user-triggered CSV/JSON importer is deferred to a
+later milestone.
+
+### D016: HA docs re-check (pre-M2)
+
+Re-checked 2026-11-08: the add-ons → apps rename is UI/docs-only
+(zero functional changes; config.yaml keys unchanged), confirmed via
+the contributors' config reference. M2 has no HA-facing surface, so no
+packaging changes were needed.
+
+### Lint-policy exceptions (`#[allow]` register) — M2 additions
+
+| Crate | Items | Lint | Reason |
+|---|---|---|---|
+| leaflog-frontend | module `api` | `clippy::future_not_send` | WASM is single-threaded; gloo-net response types are not `Send` and `spawn_local` does not require it |
+| leaflog-frontend | `EquipmentPage`, `EquipmentForm`, `StrainsPage`, `StrainForm` | `clippy::too_many_lines` | Declarative view code, not logic; splitting would obscure the forms |
+
+---
+
 ## 2026-11-08 — M1
 
 ### D001: SQLite access via `rusqlite`, not `sqlx` (decided now, wired in M2)
