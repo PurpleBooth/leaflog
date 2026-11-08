@@ -1,7 +1,10 @@
 //! Persistence for domain objects: SQL row ⇄ `leaflog-core` type mapping
 //! on top of [`crate::db`].
 
+pub mod actions;
 pub mod equipment;
+pub mod grows;
+pub mod photos;
 pub mod settings;
 pub mod strain;
 
