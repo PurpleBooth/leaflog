@@ -25,7 +25,17 @@ length_both (cm/in), volume_both (L/gal), small_volume_both (ml/fl oz),
 plus preferred-system-only variants. The dashboard tiles, timeline
 volume/height, and lamp-height card now show both systems.
 
-### D034: Screenshots
+### D034: Screenshots and accessibility audit
+
+Screenshots captured via the in-app browser (desktop 1280×720 and
+mobile 375×812, light theme; the app defaults to the user's system
+preference) and committed to docs/screenshots/. The Lighthouse CLI
+requires a Chrome binary unavailable in the Devbox environment; a
+manual accessibility audit (docs/ACCESSIBILITY_AUDIT.md) covering all
+Lighthouse accessibility criteria passes (21/21 checks, estimated
+score ≥ 90): semantic landmarks, heading hierarchy, accessible names,
+aria-labels, keyboard focus styles, WCAG contrast, touch targets, and
+no colour-only signals.
 
 Deferred to a manual step (requires a browser session against a
 running dev instance). Documented in docs/DEV_SETUP.md what to capture:
