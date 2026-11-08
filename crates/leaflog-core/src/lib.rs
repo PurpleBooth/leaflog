@@ -26,6 +26,9 @@
 )]
 #![allow(clippy::multiple_crate_versions)]
 
+pub mod equipment;
+pub mod strain;
+
 /// A phase of a cannabis grow, in chronological order.
 ///
 /// The forecast engine (milestone M5) derives start/end dates for each
