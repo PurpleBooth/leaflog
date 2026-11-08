@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.18.4/.schema/devbox.schema.json",
+  "packages": [
+    "rustup@latest",
+    "just@latest",
+    "trunk@latest",
+    "sqlite@latest",
+    "pkg-config@latest",
+    "libiconv@latest"
+  ],
+  "shell": {
+    "init_hook": [
+      "rustup show",
+      "rustup target add wasm32-unknown-unknown",
+      "rustup component add clippy rustfmt"
+    ],
+    "scripts": {
+      "dev": "just dev",
+      "ci": "just ci"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+# Rust build output
+/target
+
+# Trunk build output (embedded into the backend binary for release
+# builds; always rebuilt — the backend test fixtures under
+# crates/leaflog-backend/tests/fixtures/dist ARE committed)
+/crates/leaflog-frontend/dist
+
+# Runtime data (SQLite DB, photos) — never commit grow data
+/data
+
+# Environment / secrets — never commit values
+.env
+.env.*
+
+# Devbox generated state (devbox.json + devbox.lock are committed)
+/.devbox
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
