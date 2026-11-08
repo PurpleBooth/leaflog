@@ -527,3 +527,69 @@ fieldset.tags legend {
   color: #e53935;
   font-weight: 700;
 }
+
+/* M6: feed schedule */
+
+.feed-panel {
+  margin: 0.5rem 0 1rem;
+}
+
+.feed-toolbar {
+  display: flex;
+  gap: 0.75rem;
+  align-items: end;
+  margin-bottom: 0.75rem;
+}
+
+.feed-diff {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1fr) minmax(0, 3fr);
+  gap: 1rem;
+}
+
+@media (max-width: 48rem) {
+  .feed-diff {
+    grid-template-columns: 1fr;
+  }
+}
+
+.feed-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.feed-list li {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  gap: 0.5rem;
+}
+
+.feed-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.3rem;
+  background: var(--surface);
+  overflow-x: auto;
+}
+
+.feed-bar-container {
+  flex: 1 0 4px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 100%;
+  min-width: 4px;
+}
+
+.feed-bar {
+  border-radius: 2px;
+  min-height: 1px;
+}

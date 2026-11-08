@@ -27,6 +27,7 @@
 
 pub mod api;
 mod equipment;
+mod feed;
 mod gantt;
 mod grows;
 mod live;
