@@ -30,6 +30,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod actions;
 pub mod equipment;
+pub mod feed;
 pub mod forecast;
 pub mod grows;
 pub mod strain;
