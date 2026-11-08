@@ -6,6 +6,43 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-08 — M5
+
+### D024: Phase forecast — sequential chain with reality compression
+
+`forecast()` is a pure function over `ForecastInput` (photoperiod,
+planned veg weeks, strain flower days, auto total, sourced default
+ranges, and `Actuals` with flip/harvest/trichome days). The likely
+chain builds sequentially (germ 3–10 → seedling 14–21 → veg [grower
+weeks or auto age 28] → flower [strain days override] → dry 7–14 →
+cure 14–30); each window carries earliest/likely/latest start+end.
+When an actual event (an early flip, an early harvest) contradicts the
+chain, **reality wins**: the historical phases before the actual
+compress proportionally (forward compression pass), because their
+predicted lengths no longer matter — the event is already logged.
+Property tests sweep veg weeks × flower ranges × pinned actuals ×
+auto totals asserting contiguity and ordering; golden tests pin the
+exact expected days for Northern Lights (photoperiod, 4 veg weeks)
+and GG4 Auto (70–84 days from seed).
+
+### D025: Gantt rendering
+
+The frontend renders the phase windows as a horizontal Gantt with
+per-phase botanical accent colors, a light band for the
+earliest/latest range, a solid bar for the likely window (✓ when
+pinned by an actual), and a red today marker positioned by the grow
+day count from `/api/grows/{id}/forecast`.
+
+### Lint-policy exceptions (`#[allow]` register) — M5 additions
+
+| Crate | Items | Lint | Reason |
+|---|---|---|---|
+| leaflog-frontend | module `gantt` | `clippy::cast_precision_loss` | Day counts are < 1000; i64→f64 for percentage layout cannot lose meaningful precision |
+| leaflog-frontend | component `GanttTimeline` | `clippy::needless_pass_by_value` | Leptos component prop contract |
+| leaflog-core | fn `add` | `clippy::too_many_arguments` | Phase-window builder takes (windows, phase, start, 3 lens, 2 flags); grouping would obscure |
+
+---
+
 ## 2026-11-08 — M4
 
 ### D020: Supervisor link — one bridge, offline-tolerant
