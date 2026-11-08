@@ -1,7 +1,9 @@
 {
   "domain": "leaflog",
   "name": "Leaflog",
-  "codeowners": ["@PurpleBooth"],
+  "codeowners": [
+    "@PurpleBooth"
+  ],
   "config_flow": false,
   "dependencies": [],
   "documentation": "https://github.com/PurpleBooth/leaflog",
