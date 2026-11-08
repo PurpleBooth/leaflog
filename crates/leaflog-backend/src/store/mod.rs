@@ -3,6 +3,7 @@
 
 pub mod actions;
 pub mod equipment;
+pub mod feeds;
 pub mod grows;
 pub mod photos;
 pub mod sensors;
