@@ -6,6 +6,59 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-08 — M4
+
+### D020: Supervisor link — one bridge, offline-tolerant
+
+`HaBridge` owns the Supervisor connection: REST (`/core/api/states`,
+`/core/api/history/period/...` with `filter_entity_id` +
+`minimal_response`) called directly; a background task keeps a
+WebSocket to `/core/websocket` subscribed via `subscribe_entities`
+(filtered to the union of every grow's bindings — a binding change
+restarts the socket with the new set), republishing state through a
+`tokio::sync::watch` channel. The SSE `/api/live` endpoint emits the
+current snapshot then one event per change; the frontend polls every
+5 s (simpler than SSE in WASM; the stream exists for later). The
+bridge is offline-tolerant: every endpoint works with the Supervisor
+unreachable, and the socket reconnects with exponential backoff
+(1,2,4,...60 s — unit-tested) plus a 30 s ping heartbeat. Reconnect
+after a server drop is integration-tested against the mock.
+
+### D021: Token hygiene
+
+The Supervisor token lives in a redacted-Debug newtype
+(`SupervisorToken`), is sent only as a Bearer header to the Supervisor,
+and never appears in any response or log — asserted by an integration
+test that exercises every HA endpoint (including the SSE stream) and
+greps for the literal token.
+
+### D022: Auto-capture and auto-log
+
+Bound sensors (temperature, humidity, CO2, soil moisture, light,
+reservoir pH/EC) snapshot into each new log entry's `sensor_snapshot`
+rows; light-entity transitions (`light.*`) auto-log as `lights`
+entries with the `auto_log_ha_events` setting as opt-out (default on).
+Phase/day derivation in the auto-log path matches the action API.
+
+### D023: Mock Supervisor — real WS protocol (closes D006)
+
+`mock-ha` is now a lib+bin split: the library exposes the app for
+in-process tests (backend dev-dependency), the binary for `just dev`.
+The WebSocket speaks the real HA protocol (auth_required → auth with
+token → auth_ok → subscribe_entities result → initial `+` state batch
+→ 2 s tick events), the REST history endpoint returns
+`minimal_response`-shaped series, and `GET /core/api/states` lists the
+fake room. HA docs re-check 2026-11-08: apps rename remains
+UI/docs-only; no config changes needed for M4.
+
+### Lint-policy exceptions (`#[allow]` register) — M4 additions
+
+| Crate | Items | Lint | Reason |
+|---|---|---|---|
+| (none new) | | | |
+
+---
+
 ## 2026-11-08 — M3
 
 ### D017: Photo pipeline — re-encode strip, top-level trees
