@@ -34,6 +34,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/settings", get(get_settings).put(put_settings))
         .merge(crate::api_grows::router())
         .merge(crate::api_ha::router())
+        .merge(crate::api_feeds::router())
 }
 
 /// An API failure mapped to an HTTP status and a JSON error body.
