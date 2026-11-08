@@ -42,6 +42,7 @@
 #![allow(clippy::multiple_crate_versions)]
 
 pub mod api;
+pub mod api_env;
 pub mod api_feeds;
 pub mod api_grows;
 pub mod api_ha;
