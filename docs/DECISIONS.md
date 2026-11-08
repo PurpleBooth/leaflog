@@ -6,6 +6,44 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-08 — M3
+
+### D017: Photo pipeline — re-encode strip, top-level trees
+
+EXIF/GPS stripping is done by decoding to pixels and re-encoding a
+clean JPEG (quality 95): whatever metadata the input carried cannot
+survive. EXIF `DateTimeOriginal` is read *before* the strip and kept
+as the capture time (spec §4.3); everything else is dropped.
+Thumbnails are 512-px lossless WebP (the `image` crate's built-in
+encoder). `originals/<grow>/` and `thumbnails/<grow>/` are top-level
+so the app's `backup_exclude: photos/thumbnails` entry covers every
+grow at once; missing thumbnails regenerate lazily on first request
+(backup restores skip them by design).
+
+### D018: EXIF timestamps are stored as naive UTC
+
+`DateTimeOriginal` carries no timezone (camera-local time). It is
+stored verbatim with a `Z` suffix. A timezone setting can correct
+this later; re-basing stored timestamps would then be a migration.
+
+### D019: M3 phase/day derivation is deliberately naive
+
+Phase for a log entry derives from the grow start, the earliest
+logged `Flip`, and any `Harvest` (seedling ≤ day 14 → vegetative →
+flower after flip → drying after harvest; germination folded into
+seedling). The M5 forecast engine replaces this — the derivation
+lives in `leaflog-core` (`actions::derive_phase`) so the swap is
+one function. HA docs re-check 2026-11-08: M3 touches no HA-facing
+surface; no changes needed.
+
+### Lint-policy exceptions (`#[allow]` register) — M3 additions
+
+| Crate | Items | Lint | Reason |
+|---|---|---|---|
+| leaflog-frontend | `grows::clamp_int` | `clippy::cast_sign_loss`, `clippy::cast_possible_truncation` | One unavoidable f64→i64 form-input conversion, clamped and rounded before the cast |
+
+---
+
 ## 2026-11-08 — M2
 
 ### D012: SQLite via rusqlite, one connection, blocking-pool access
