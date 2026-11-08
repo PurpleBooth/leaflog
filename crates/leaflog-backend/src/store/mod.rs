@@ -5,6 +5,7 @@ pub mod actions;
 pub mod equipment;
 pub mod grows;
 pub mod photos;
+pub mod sensors;
 pub mod settings;
 pub mod strain;
 
