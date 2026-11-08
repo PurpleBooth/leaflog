@@ -42,10 +42,12 @@
 #![allow(clippy::multiple_crate_versions)]
 
 pub mod api;
+pub mod api_grows;
 pub mod app;
 pub mod assets;
 pub mod db;
 pub mod ingress;
+pub mod photos;
 pub mod seed;
 pub mod store;
 
@@ -141,6 +143,23 @@ impl Config {
         }
     }
 
+    /// Root of the photo store: `LEAFLOG_PHOTOS_DIR` overrides;
+    /// otherwise `/data/photos` in production and `data/photos` in
+    /// development.
+    #[must_use]
+    pub fn photos_dir(&self) -> PathBuf {
+        std::env::var("LEAFLOG_PHOTOS_DIR")
+            .ok()
+            .filter(|path| !path.is_empty())
+            .map_or_else(
+                || match self.mode {
+                    Mode::Production => PathBuf::from("/data/photos"),
+                    Mode::Dev => PathBuf::from("data/photos"),
+                },
+                PathBuf::from,
+            )
+    }
+
     /// Path of the SQLite database: `LEAFLOG_DB_PATH` overrides;
     /// otherwise `/data/leaflog.db` in production (the Supervisor maps
     /// the add-on `data` volume there) and `data/leaflog.db` relative to
@@ -187,7 +206,8 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         Ok(_) => {}
         Err(error) => eprintln!("strain seeding skipped: {error}"),
     }
-    let state = AppState::new(config.assets(), mode, config.dev_prefix.clone(), db);
+    let photos = crate::photos::PhotoStore::new(config.photos_dir());
+    let state = AppState::new(config.assets(), mode, config.dev_prefix.clone(), db, photos);
     let app = app::service(state).into_make_service_with_connect_info::<std::net::SocketAddr>();
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", config.port)).await?;
     println!(

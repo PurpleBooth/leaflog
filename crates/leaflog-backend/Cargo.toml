@@ -20,19 +20,21 @@ embed-assets = ["dep:include_dir"]
 
 [dependencies]
 leaflog-core.workspace = true
-axum.workspace = true
+axum = { workspace = true, features = ["multipart"] }
 tokio = { workspace = true, features = ["net", "signal", "fs"] }
 serde.workspace = true
 serde_json.workspace = true
 include_dir = { version = "0.7", optional = true }
 tower = "0.5"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+kamadak-exif = "0.5"
 rusqlite = { version = "0.37", features = ["bundled"] }
 ulid = "1"
-time = { version = "0.3", features = ["formatting", "parsing"] }
+time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
 thiserror = "2"
 
 [dev-dependencies]
-axum.workspace = true
+axum = { workspace = true, features = ["multipart"] }
 tokio.workspace = true
 serde_json.workspace = true
-reqwest = { version = "0.12", default-features = false, features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart"] }

@@ -54,6 +54,8 @@ pub struct AppState {
     pub dev_prefix: Option<String>,
     /// SQLite database handle.
     pub db: crate::db::Db,
+    /// On-disk photo store.
+    pub photos: crate::photos::PhotoStore,
 }
 
 impl AppState {
@@ -64,12 +66,14 @@ impl AppState {
         mode: Mode,
         dev_prefix: Option<String>,
         db: crate::db::Db,
+        photos: crate::photos::PhotoStore,
     ) -> Self {
         Self {
             assets,
             mode,
             dev_prefix,
             db,
+            photos,
         }
     }
 }
