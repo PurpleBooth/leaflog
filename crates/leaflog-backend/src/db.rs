@@ -22,6 +22,10 @@ static MIGRATIONS: &[&str] = &[
         env!("CARGO_MANIFEST_DIR"),
         "/migrations/0002_grows_actions_photos.sql"
     )),
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/migrations/0003_sensors.sql"
+    )),
 ];
 
 /// A storage-layer error.
@@ -179,11 +183,11 @@ mod tests {
     async fn in_memory_database_migrates_to_version_1() -> Result<(), StoreError> {
         let db = Db::open_in_memory()?;
         db.with(|conn| -> Result<(), StoreError> {
-            assert_eq!(Db::version(conn)?, 2);
+            assert_eq!(Db::version(conn)?, 3);
             let applied = conn.query_row("SELECT COUNT(*) FROM schema_migrations", [], |r| {
                 r.get::<_, i64>(0)
             })?;
-            assert_eq!(applied, 2);
+            assert_eq!(applied, 3);
             Ok(())
         })
         .await
@@ -195,7 +199,7 @@ mod tests {
         let path = dir.join("nested").join("leaflog.db");
         let db = Db::open(&path)?;
         db.with(|conn| -> Result<(), StoreError> {
-            assert_eq!(Db::version(conn)?, 2);
+            assert_eq!(Db::version(conn)?, 3);
             Ok(())
         })
         .await?;
@@ -210,7 +214,7 @@ mod tests {
         db.with(|conn| -> Result<(), StoreError> { Ok(super::migrate(conn)?) })
             .await?;
         db.with(|conn| -> Result<(), StoreError> {
-            assert_eq!(Db::version(conn)?, 2);
+            assert_eq!(Db::version(conn)?, 3);
             Ok(())
         })
         .await
