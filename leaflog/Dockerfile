@@ -53,6 +53,7 @@ RUN --mount=type=cache,target=/build/target \
 # Stage 3: the app image.
 # ---------------------------------------------------------------------------
 FROM ${HA_BASE} AS app
-# rootfs overlay (s6 longrun service) is copied from the build context.
-COPY rootfs/ /
+# The build context is the repository root; the s6-overlay rootfs
+# (longrun service) is copied from the app folder.
+COPY leaflog/rootfs/ /
 COPY --from=backend-builder /leaflog-backend /usr/local/bin/leaflog-backend
