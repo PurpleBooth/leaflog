@@ -35,6 +35,7 @@ pub mod feed;
 pub mod forecast;
 pub mod grows;
 pub mod strain;
+pub mod units;
 
 /// A phase of a cannabis grow, in chronological order.
 ///
