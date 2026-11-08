@@ -25,6 +25,11 @@ tokio = { workspace = true, features = ["net", "signal", "fs"] }
 serde.workspace = true
 serde_json.workspace = true
 include_dir = { version = "0.7", optional = true }
+tower = "0.5"
+rusqlite = { version = "0.37", features = ["bundled"] }
+ulid = "1"
+time = { version = "0.3", features = ["formatting", "parsing"] }
+thiserror = "2"
 
 [dev-dependencies]
 axum.workspace = true
