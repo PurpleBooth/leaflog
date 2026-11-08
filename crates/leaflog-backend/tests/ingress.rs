@@ -19,7 +19,13 @@ const DEV_PREFIX: &str = "/api/hassio_ingress/it-42";
 async fn spawn_backend(mode: Mode, dev_prefix: Option<String>) -> String {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dist");
     let db = Db::open_in_memory().unwrap();
-    let state = AppState::new(Assets::Disk(fixture), mode, dev_prefix, db);
+    let state = AppState::new(
+        Assets::Disk(fixture),
+        mode,
+        dev_prefix,
+        db,
+        leaflog_backend::photos::PhotoStore::new(std::env::temp_dir()),
+    );
     let app =
         leaflog_backend::app::service(state).into_make_service_with_connect_info::<SocketAddr>();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

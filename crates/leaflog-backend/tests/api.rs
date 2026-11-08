@@ -20,7 +20,13 @@ async fn spawn_api() -> String {
 /// test seeding).
 async fn spawn_with(db: Db) -> String {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dist");
-    let state = AppState::new(Assets::Disk(fixture), Mode::Dev, None, db);
+    let state = AppState::new(
+        Assets::Disk(fixture),
+        Mode::Dev,
+        None,
+        db,
+        leaflog_backend::photos::PhotoStore::new(std::env::temp_dir()),
+    );
     let app =
         leaflog_backend::app::service(state).into_make_service_with_connect_info::<SocketAddr>();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
