@@ -50,6 +50,7 @@ pub fn router() -> Router<AppState> {
             "/api/grows/{id}/photos",
             get(list_photos).post(upload_photo),
         )
+        .route("/api/grows/{id}/forecast", get(get_forecast))
         .route("/api/photos/{id}", axum::routing::delete(delete_photo))
         .route("/api/photos/{id}/original", get(photo_original))
         .route("/api/photos/{id}/thumbnail", get(photo_thumbnail))
@@ -306,6 +307,49 @@ async fn delete_action(
         .with(move |conn| store::actions::delete(conn, &id))
         .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// The forecast response: windows + the grow's day count.
+#[derive(Debug, serde::Serialize)]
+pub struct ForecastResponse {
+    /// Days since the grow start (today marker for the UI).
+    pub today_day: u16,
+    /// Phase windows in chronological order.
+    pub windows: Vec<leaflog_core::forecast::PhaseWindow>,
+}
+
+// Extractors are taken by value because Axum requires it.
+#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
+async fn get_forecast(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<ForecastResponse>, ApiError> {
+    let response = state
+        .db
+        .with(move |conn| -> Result<ForecastResponse, ApiError> {
+            let grow = store::grows::get(conn, &id)?;
+            let strain = grow
+                .strain_id
+                .as_deref()
+                .and_then(|strain_id| store::strain::get(conn, strain_id).ok());
+            let flip = store::actions::first_event_day(conn, &id, ActionType::Flip, u16::MAX)?;
+            let harvest =
+                store::actions::first_event_day(conn, &id, ActionType::Harvest, u16::MAX)?;
+            let trichome =
+                store::actions::first_event_day(conn, &id, ActionType::TrichomeCheck, u16::MAX)?;
+            let actuals = leaflog_core::forecast::Actuals {
+                flip_day: flip.map(i64::from),
+                harvest_day: harvest.map(i64::from),
+                trichome_check_day: trichome.map(i64::from),
+                germinated: false,
+            };
+            let input = leaflog_core::forecast::input_for(strain.as_ref(), None, actuals);
+            let windows = leaflog_core::forecast::forecast(&input);
+            let today_day = day_number(&grow.started_on, &now_rfc3339())?;
+            Ok(ForecastResponse { today_day, windows })
+        })
+        .await?;
+    Ok(Json(response))
 }
 
 // Extractors are taken by value because Axum requires it.
