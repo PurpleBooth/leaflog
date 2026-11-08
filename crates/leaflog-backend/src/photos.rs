@@ -175,6 +175,9 @@ impl PhotoStore {
         if path.exists() {
             return Ok(std::fs::read(path)?);
         }
+        // Regenerate: ensure the thumbnails directory exists (it may be
+        // missing after a backup restore).
+        std::fs::create_dir_all(self.thumbnails_dir(grow_id))?;
         let original_name = format!("{}.jpg", name.strip_suffix(".webp").unwrap_or(name));
         let bytes = self.read_original(grow_id, &original_name)?;
         let image = decode(&bytes)?;
