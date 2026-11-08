@@ -56,6 +56,8 @@ pub struct AppState {
     pub db: crate::db::Db,
     /// On-disk photo store.
     pub photos: crate::photos::PhotoStore,
+    /// Home Assistant bridge (live data, Supervisor REST).
+    pub ha: std::sync::Arc<crate::ha::HaBridge>,
 }
 
 impl AppState {
@@ -67,6 +69,7 @@ impl AppState {
         dev_prefix: Option<String>,
         db: crate::db::Db,
         photos: crate::photos::PhotoStore,
+        ha: std::sync::Arc<crate::ha::HaBridge>,
     ) -> Self {
         Self {
             assets,
@@ -74,6 +77,7 @@ impl AppState {
             dev_prefix,
             db,
             photos,
+            ha,
         }
     }
 }

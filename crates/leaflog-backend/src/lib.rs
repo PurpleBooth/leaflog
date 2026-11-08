@@ -43,9 +43,11 @@
 
 pub mod api;
 pub mod api_grows;
+pub mod api_ha;
 pub mod app;
 pub mod assets;
 pub mod db;
+pub mod ha;
 pub mod ingress;
 pub mod photos;
 pub mod seed;
@@ -160,6 +162,27 @@ impl Config {
             )
     }
 
+    /// Supervisor base URL: `LEAFLOG_SUPERVISOR_URL` overrides;
+    /// otherwise `http://supervisor` in production and the local mock
+    /// (`http://127.0.0.1:8098`) in development.
+    #[must_use]
+    pub fn supervisor_url(&self) -> String {
+        std::env::var("LEAFLOG_SUPERVISOR_URL")
+            .ok()
+            .filter(|url| !url.is_empty())
+            .unwrap_or_else(|| match self.mode {
+                Mode::Production => "http://supervisor".to_owned(),
+                Mode::Dev => "http://127.0.0.1:8098".to_owned(),
+            })
+    }
+
+    /// The Supervisor token (dev default is a harmless placeholder).
+    #[must_use]
+    pub fn supervisor_token(&self) -> ha::SupervisorToken {
+        let token = std::env::var("SUPERVISOR_TOKEN").unwrap_or_else(|_| "dev-token".to_owned());
+        ha::SupervisorToken::new(&token)
+    }
+
     /// Path of the SQLite database: `LEAFLOG_DB_PATH` overrides;
     /// otherwise `/data/leaflog.db` in production (the Supervisor maps
     /// the add-on `data` volume there) and `data/leaflog.db` relative to
@@ -207,7 +230,23 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         Err(error) => eprintln!("strain seeding skipped: {error}"),
     }
     let photos = crate::photos::PhotoStore::new(config.photos_dir());
-    let state = AppState::new(config.assets(), mode, config.dev_prefix.clone(), db, photos);
+    let ha_bridge = std::sync::Arc::new(ha::HaBridge::spawn(
+        config.supervisor_url(),
+        config.supervisor_token(),
+        db.clone(),
+    ));
+    // Track exactly what any grow has bound.
+    if let Ok(entities) = db.with(crate::store::sensors::all_bound_entities).await {
+        ha_bridge.track_entities(entities);
+    }
+    let state = AppState::new(
+        config.assets(),
+        mode,
+        config.dev_prefix.clone(),
+        db,
+        photos,
+        ha_bridge,
+    );
     let app = app::service(state).into_make_service_with_connect_info::<std::net::SocketAddr>();
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", config.port)).await?;
     println!(

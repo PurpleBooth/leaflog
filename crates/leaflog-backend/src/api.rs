@@ -33,6 +33,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/strains/{id}/clone", post(clone_strain))
         .route("/api/settings", get(get_settings).put(put_settings))
         .merge(crate::api_grows::router())
+        .merge(crate::api_ha::router())
 }
 
 /// An API failure mapped to an HTTP status and a JSON error body.

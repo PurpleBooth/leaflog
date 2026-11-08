@@ -228,6 +228,7 @@ async fn create_action(
     Json(input): Json<ActionInput>,
 ) -> Result<(StatusCode, Json<leaflog_core::grows::ActionEntry>), ApiError> {
     validate_action(&input)?;
+    let grow_id_for_capture = id.clone();
     let entry = state
         .db
         .with(move |conn| -> Result<_, ApiError> {
@@ -248,6 +249,8 @@ async fn create_action(
             Ok(entry)
         })
         .await?;
+    // Auto-capture bound sensors (spec 4.2); never blocks the entry.
+    crate::api_ha::capture_into(&state, &grow_id_for_capture, &entry.id).await;
     Ok((StatusCode::CREATED, Json(entry)))
 }
 
