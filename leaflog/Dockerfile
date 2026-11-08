@@ -5,8 +5,9 @@
 # needs no musl targets (spec §7 / docs/DECISIONS.md D007).
 
 ARG TARGETARCH
-# Pinned Home Assistant Alpine base — never `latest` (spec §7).
-ARG HA_BASE=ghcr.io/home-assistant/base:2026.11.0
+# Pinned Home Assistant Alpine base — never `latest` (spec §7). Tag
+# scheme is <alpine>-<yyyy.mm.n>; resolved from ghcr.io on 2026-11-08.
+ARG HA_BASE=ghcr.io/home-assistant/base:3.24-2026.11.0
 
 # ---------------------------------------------------------------------------
 # Stage 1: build the frontend (Trunk, relative public URL).

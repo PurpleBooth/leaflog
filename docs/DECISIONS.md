@@ -59,7 +59,10 @@ deferred to M4 when the real Supervisor client lands.
 Per spec: no musl targets in the Devbox environment. The Dockerfile builds
 each architecture natively (per-arch GitHub runners upstream, plain Podman
 locally) using a Rust Alpine builder image; the final stage is the pinned
-`ghcr.io/home-assistant/base:<tag>`.
+base image. Note the GHCR tag scheme: `<alpine>-<yyyy.mm.n>` (for example
+`3.24-2026.11.0`) — the docker-base *GitHub release* numbers (for example
+`2026.11.0`) are **not** image tags. Resolved from `ghcr.io/v2` on
+2026-11-08; never `latest`.
 
 ### D008: Leptos ingress spike outcome
 
