@@ -29,6 +29,7 @@
 use serde::{Deserialize, Serialize};
 
 pub mod actions;
+pub mod env;
 pub mod equipment;
 pub mod feed;
 pub mod forecast;
