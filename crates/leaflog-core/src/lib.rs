@@ -26,7 +26,11 @@
 )]
 #![allow(clippy::multiple_crate_versions)]
 
+use serde::{Deserialize, Serialize};
+
+pub mod actions;
 pub mod equipment;
+pub mod grows;
 pub mod strain;
 
 /// A phase of a cannabis grow, in chronological order.
@@ -35,7 +39,8 @@ pub mod strain;
 /// phase; the phase coach and recommendation engines key off the current
 /// phase. `Harvest` is modelled as a logged *event* that ends the
 /// [`Phase::Flower`] phase, not as a phase of its own.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Phase {
     /// Seed meets water (or paper towel) until the taproot shows.
     Germination,
