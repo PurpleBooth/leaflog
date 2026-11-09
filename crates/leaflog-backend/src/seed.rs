@@ -1,13 +1,16 @@
-//! Bundled strain seed data (spec §4.4).
+//! Bundled strain and equipment seed data (spec §4.1, §4.4).
 //!
 //! The curated records in `seeds/strains.json` carry a source URL, a
 //! licence note and per-field evidence tags; per the seed-data
-//! discipline, numbers are ranges wherever sources disagree. Seeding
-//! runs only when the strain table is empty (first boot or a wiped
-//! database) — it never overwrites user data.
+//! discipline, numbers are ranges wherever sources disagree.
+//! `seeds/equipment.json` holds a predefined starter inventory
+//! (product facts only, no personal purchase details — the repo is
+//! public). Seeding runs only when the corresponding table is empty
+//! (first boot or a wiped database) — it never overwrites user data.
 
 use std::collections::BTreeMap;
 
+use leaflog_core::equipment::EquipmentInput;
 use leaflog_core::strain::{EvidenceTag, StrainInput};
 use serde::Deserialize;
 
@@ -16,6 +19,9 @@ use crate::store;
 
 /// The bundled seed records.
 const SEED: &str = include_str!("seeds/strains.json");
+
+/// The bundled predefined equipment records.
+const EQUIPMENT_SEED: &str = include_str!("seeds/equipment.json");
 
 /// One bundled record: an editable payload plus provenance.
 #[derive(Debug, Deserialize)]
@@ -76,6 +82,30 @@ pub async fn seed_strains_if_empty(db: &Db) -> Result<u32, SeedError> {
         })
         .await?;
     Ok(inserted)
+}
+
+/// Inserts the bundled predefined equipment when the table is empty;
+/// returns how many rows were inserted.
+///
+/// # Errors
+///
+/// Returns a [`SeedError`] when the seed file cannot be parsed or the
+/// inserts fail.
+pub async fn seed_equipment_if_empty(db: &Db) -> Result<u32, SeedError> {
+    let existing = db.with(store::equipment::count).await?;
+    if existing > 0 {
+        return Ok(0);
+    }
+    let seeds: Vec<EquipmentInput> = serde_json::from_str(EQUIPMENT_SEED)?;
+    db.with(move |conn| -> Result<u32, SeedError> {
+        let mut inserted = 0_u32;
+        for input in &seeds {
+            store::equipment::create(conn, input)?;
+            inserted += 1;
+        }
+        Ok(inserted)
+    })
+    .await
 }
 
 /// Seeds substrate profiles and generic feed templates (only into
@@ -223,7 +253,7 @@ fn generic_template_rows(
 
 #[cfg(test)]
 mod tests {
-    use super::{SEED, SeedError, seed_strains_if_empty};
+    use super::{EQUIPMENT_SEED, SEED, SeedError, seed_equipment_if_empty, seed_strains_if_empty};
     use crate::db::Db;
 
     #[tokio::test]
@@ -236,6 +266,35 @@ mod tests {
         assert!(first >= 4, "first boot seeds the bundled records");
         let second = seed_strains_if_empty(&db).await?;
         assert_eq!(second, 0, "second run must not duplicate seeds");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn equipment_seed_file_is_valid_and_seeds_once() -> Result<(), SeedError> {
+        let parsed: serde_json::Value = serde_json::from_str(EQUIPMENT_SEED)?;
+        assert!(parsed.as_array().is_some_and(|a| !a.is_empty()));
+
+        let db = Db::open_in_memory()?;
+        let first = seed_equipment_if_empty(&db).await?;
+        assert!(first >= 1, "first boot seeds the predefined equipment");
+        let second = seed_equipment_if_empty(&db).await?;
+        assert_eq!(second, 0, "second run must not duplicate seeds");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn seeded_equipment_has_no_personal_purchase_details() -> Result<(), SeedError> {
+        let db = Db::open_in_memory()?;
+        seed_equipment_if_empty(&db).await?;
+        let items = db
+            .with(|conn| crate::store::equipment::list(conn, None))
+            .await?;
+        assert!(items.iter().all(|item| {
+            item.purchase_date.is_none()
+                && item.purchase_price.is_none()
+                && item.currency.is_none()
+                && item.real_watts.is_none()
+        }));
         Ok(())
     }
 

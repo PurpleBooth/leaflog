@@ -231,6 +231,13 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         Ok(_) => {}
         Err(error) => eprintln!("strain seeding skipped: {error}"),
     }
+    match seed::seed_equipment_if_empty(&db).await {
+        Ok(seeded) if seeded > 0 => {
+            println!("Seeded {seeded} predefined equipment items");
+        }
+        Ok(_) => {}
+        Err(error) => eprintln!("equipment seeding skipped: {error}"),
+    }
     let photos = crate::photos::PhotoStore::new(config.photos_dir());
     let ha_bridge = std::sync::Arc::new(ha::HaBridge::spawn(
         config.supervisor_url(),

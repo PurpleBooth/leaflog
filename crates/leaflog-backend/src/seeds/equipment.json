@@ -1,0 +1,233 @@
+[
+  {
+    "name": "Grow tent 60x60x180",
+    "category": "tent_room",
+    "brand_model": "Spider Farmer 60x60x180 cm",
+    "real_watts": null,
+    "dimmable": false,
+    "purchase_date": null,
+    "purchase_price": null,
+    "currency": null,
+    "notes": "Reflective mylar indoor tent with observation window and removable floor tray; sized for one small LED fixture."
+  },
+  {
+    "name": "SE1500 LED grow light",
+    "category": "light",
+    "brand_model": "Spider Farmer 2026 SE1500",
+    "real_watts": null,
+    "dimmable": true,
+    "purchase_date": null,
+    "purchase_price": null,
+    "currency": null,
+    "notes": "Dimmable full-spectrum LED for 60x60-70x70 cm tents, smart-app control. 150 W nameplate - measure the wall draw and record it in real watts."
+  },
+  {
+    "name": "Carbon filter 100 mm",
+    "category": "carbon_filter",
+    "brand_model": "Spider Farmer 4\"/100 mm",
+    "real_watts": null,
+    "dimmable": false,
+    "purchase_date": null,
+    "purchase_price": null,
+    "currency": null,
+    "notes": "Australian activated-carbon odour filter for a 100 mm pipe fan."
+  },
+  {
+    "name": "Carbon filter 150 mm",
+    "category": "carbon_filter",
+    "brand_model": "Spider Farmer 6\"/150 mm",
+    "real_watts": null,
+    "dimmable": false,
+    "purchase_date": null,
+    "purchase_price": null,
+    "currency": null,
+    "notes": "Larger Australian activated-carbon odour filter; pairs with a 150-to-100 mm reducer when the ducting runs at 100 mm."
+  },
+  {
+    "name": "AeroStream H05 humidifier",
+    "category": "humidifier",
+    "brand_model": "VIVOSUN H05 5 L",
+    "real_watts": null,
+    "dimmable": false,
+    "purchase_date": null,
+    "purchase_price": null,
+    "currency": null,
+    "notes": "Smart ultrasonic top-fill plant humidifier (24 dB, 360-degree mist) designed for grow tents."
+  },
+  {
+    "name": "E6 clip fan 150 mm",
+    "category": "fan",
+    "brand_model": "VIVOSUN E6",
+    "real_watts": null,
+    "dimmable": false,
+    "purchase_date": null,
+    "purchase_price": null,
+    "currency": null,
+    "notes": "Oscillating clip-on circulation fan, 150 mm head, 10 speed levels."
+  },
+  {
+    "name": "5-in-1 pH/EC meter",
+    "category": "meter",
+    "brand_model": "Generic pH/TDS/EC/salinity/thermometer",
+    "real_watts": null,
+    "dimmable": false,
+    "purchase_date": null,
+    "purchase_price": null,
+    "currency": null,
+    "notes": "LCD pen meter with automatic temperature compensation. Calibrate with 4.00/6.86/9.18 buffer powder before trusting readings."
+  },
+  {
+    "name": "Fabric pots 20 L (x5)",
+    "category": "pots_media",
+    "brand_model": "HG Power Plant Bag 20 L",
+    "real_watts": null,
+    "dimmable": false,
+    "purchase_date": null,
+    "purchase_price": null,
+    "currency": null,
+    "notes": "Five 20 L non-woven fabric pots, 30x30 cm, with plant wire."
+  },
+  {
+    "name": "Royal Mix 50 L substrate",
+    "category": "pots_media",
+    "brand_model": "Plagron Royal Mix",
+    "real_watts": null,
+    "dimmable": false,
+    "purchase_date": null,
+    "purchase_price": null,
+    "currency": null,
+    "notes": "Pre-fertilised soil mix; treat as hot soil - feed lightly at first."
+  },
+  {
+    "name": "Duct silencer 100 mm",
+    "category": "misc",
+    "brand_model": "Weedness Vents 100 mm / 60 cm",
+    "real_watts": null,
+    "dimmable": false,
+    "purchase_date": null,
+    "purchase_price": null,
+    "currency": null,
+    "notes": "Insulated soundproof silencer for exhaust/pipe-fan ducting."
+  },
+  {
+    "name": "Ventilation ducting set 100 mm",
+    "category": "misc",
+    "brand_model": "Hon&Guan / Repa Market / Leryati",
+    "real_watts": null,
+    "dimmable": false,
+    "purchase_date": null,
+    "purchase_price": null,
+    "currency": null,
+    "notes": "Rubber couplings, 150-to-100 mm reducer, galvanised connector, two 90-degree bends and hose clamps for a 100 mm extract run."
+  },
+  {
+    "name": "Trim tray set",
+    "category": "misc",
+    "brand_model": "Ayolofei",
+    "real_watts": null,
+    "dimmable": false,
+    "purchase_date": null,
+    "purchase_price": null,
+    "currency": null,
+    "notes": "Trimming tray with 150-micron stainless mesh, two trim scissors, brush and magnifier card."
+  },
+  {
+    "name": "Humidity packs 62% (x8)",
+    "category": "misc",
+    "brand_model": "Integra Boost 62, 8 x 8 g",
+    "real_watts": null,
+    "dimmable": false,
+    "purchase_date": null,
+    "purchase_price": null,
+    "currency": null,
+    "notes": "Two-way humidity control for curing jars; replace when the indicator changes."
+  },
+  {
+    "name": "CalMag 1 L",
+    "category": "misc",
+    "brand_model": "BioBizz CalMag",
+    "real_watts": null,
+    "dimmable": false,
+    "purchase_date": null,
+    "purchase_price": null,
+    "currency": null,
+    "notes": "Calcium-magnesium additive for soft water or coco grows."
+  },
+  {
+    "name": "Top-Max 500 ml",
+    "category": "misc",
+    "brand_model": "BioBizz Top-Max",
+    "real_watts": null,
+    "dimmable": false,
+    "purchase_date": null,
+    "purchase_price": null,
+    "currency": null,
+    "notes": "Organic flowering stimulant (liquid molasses-based bloom booster)."
+  },
+  {
+    "name": "Calmag Up 1 L",
+    "category": "misc",
+    "brand_model": "UP NUTRIENTS Calmag Up",
+    "real_watts": null,
+    "dimmable": false,
+    "purchase_date": null,
+    "purchase_price": null,
+    "currency": null,
+    "notes": "Organic calcium-magnesium fertiliser for growth and flowering."
+  },
+  {
+    "name": "Mycorrhiza 200 g",
+    "category": "misc",
+    "brand_model": "RootMax",
+    "real_watts": null,
+    "dimmable": false,
+    "purchase_date": null,
+    "purchase_price": null,
+    "currency": null,
+    "notes": "Root inoculant powder; dust on roots or transplant holes."
+  },
+  {
+    "name": "Yellow sticky traps (x40)",
+    "category": "misc",
+    "brand_model": "Generic Gelbtafeln",
+    "real_watts": null,
+    "dimmable": false,
+    "purchase_date": null,
+    "purchase_price": null,
+    "currency": null,
+    "notes": "Sticky traps for fungus gnats, aphids, whitefly and leafminers."
+  },
+  {
+    "name": "Air purifier",
+    "category": "misc",
+    "brand_model": "Levoit Core 300S",
+    "real_watts": null,
+    "dimmable": false,
+    "purchase_date": null,
+    "purchase_price": null,
+    "currency": null,
+    "notes": "Room air purifier; the activated-carbon stage doubles as odour support outside the tent. Replacement filter: Core 300-RF 3-in-1 HEPA/carbon."
+  },
+  {
+    "name": "pH calibration buffers (x15)",
+    "category": "misc",
+    "brand_model": "Generic 4.00 / 6.86 / 9.18",
+    "real_watts": null,
+    "dimmable": false,
+    "purchase_date": null,
+    "purchase_price": null,
+    "currency": null,
+    "notes": "Buffer powder sachets for two- or three-point pH meter calibration."
+  },
+  {
+    "name": "Dosing syringes and pipettes",
+    "category": "misc",
+    "brand_model": "Momina Krepost / generic",
+    "real_watts": null,
+    "dimmable": false,
+    "purchase_date": null,
+    "purchase_price": null,
+    "currency": null,
+    "notes": "5 ml syringes and disposable pipettes for measuring feed additives."
+  }
+]

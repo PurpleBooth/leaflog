@@ -50,6 +50,15 @@ pub fn create(conn: &Connection, input: &EquipmentInput) -> Result<EquipmentItem
     Ok(item)
 }
 
+/// Counts all equipment rows.
+///
+/// # Errors
+///
+/// Returns a [`crate::db::StoreError`] on SQLite failures.
+pub fn count(conn: &Connection) -> Result<i64, StoreError> {
+    Ok(conn.query_row("SELECT COUNT(*) FROM equipment_item", [], |r| r.get(0))?)
+}
+
 /// Lists equipment, optionally filtered by category, ordered by name.
 ///
 /// # Errors

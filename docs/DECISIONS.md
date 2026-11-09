@@ -487,6 +487,19 @@ enablement file for the `leaflog` longrun service); upstream now prefers
 `/etc/s6-overlay/user-bundles.d`. Works fine on the pinned base
 (3.24-2026.11.0); migrate when a future base bump requires it.
 
+### D012: predefined equipment seed data, no personal purchase details
+
+`seeds/equipment.json` ships a starter inventory (a 60x60 tent setup:
+Spider Farmer tent/light/filters, VIVOSUN humidifier/clip fan, meters,
+pots, substrate, feeds and curing kit) seeded into an empty
+`equipment_item` table by `seed_equipment_if_empty`, mirroring the
+strain seeding. The repo is public (GitHub + HACS), so the bundled
+records carry product facts only — no purchase dates, prices, order
+references or other personal history; those live solely in the user's
+own database. The five Dutch Passion strains added to
+`seeds/strains.json` follow the same rule: breeder-published facts with
+per-field evidence tags, sources cited per the seed-data discipline.
+
 ### Lint-policy exceptions (`#[allow]` register)
 
 Every narrowly scoped exception to the mandatory lint block, each with a
