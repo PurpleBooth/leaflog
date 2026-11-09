@@ -309,6 +309,71 @@ async fn action_accepts_datetime_local_occurred_at() {
         .unwrap_or_else(|error| panic!("stored occurred_at {stored:?} is not RFC 3339: {error}"));
 }
 
+/// Re-typing an entry to `flip` via `PUT /api/actions/{id}` must
+/// re-derive the phase with the incoming change: `create_action`
+/// treats the entry being written as already counting (a flip entry is
+/// itself "flower"), so editing an entry into a flip on the same day
+/// must do the same — the stored phase may not silently stay at the
+/// pre-flip value.
+#[tokio::test]
+async fn update_retyping_to_flip_rederives_phase() {
+    let (base, _root) = spawn().await;
+    let client = reqwest::Client::new();
+
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&grow_payload("Retype run"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let id = grow["id"].as_str().unwrap().to_owned();
+
+    // Day 39 note: vegetative, no flip in the log.
+    let note: Value = client
+        .post(format!("{base}/api/grows/{id}/actions"))
+        .json(&action_payload("note", "2026-11-09T10:00:00Z"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let action_id = note["id"].as_str().unwrap().to_owned();
+
+    // Re-type the same entry into a flip, same occurred_at.
+    let response = client
+        .put(format!("{base}/api/actions/{action_id}"))
+        .json(&action_payload("flip", "2026-11-09T10:00:00Z"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+
+    let entries: Vec<Value> = client
+        .get(format!("{base}/api/grows/{id}/actions"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let updated = entries
+        .iter()
+        .find(|entry| entry["id"] == json!(action_id))
+        .expect("updated entry still listed");
+    assert_eq!(
+        updated["action_type"], "flip",
+        "sanity: the re-type itself persisted"
+    );
+    assert_eq!(
+        updated["phase"], "flower",
+        "the flip being written must count for its own entry, as create_action does"
+    );
+}
+
 #[tokio::test]
 async fn photo_upload_strips_exif_and_serves() {
     let (base, root) = spawn().await;

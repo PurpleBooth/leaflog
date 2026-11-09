@@ -284,9 +284,18 @@ async fn update_action(
             let existing = store::actions::get(conn, &id)?;
             let grow = store::grows::get(conn, &existing.grow_id)?;
             let day = day_number(&grow.started_on, &input.occurred_at)?;
-            let flip = store::actions::first_event_day(conn, &grow.id, ActionType::Flip, day)?;
-            let harvested =
-                store::actions::first_event_day(conn, &grow.id, ActionType::Harvest, day)?
+            // The entry being written counts as happening on its own
+            // day, as in `create_action`: `first_event_day` still sees
+            // the row's old stored type/day, so an incoming flip or
+            // harvest must be special-cased or it cannot affect the
+            // re-derived phase.
+            let flip = if input.action_type == ActionType::Flip {
+                Some(day)
+            } else {
+                store::actions::first_event_day(conn, &grow.id, ActionType::Flip, day)?
+            };
+            let harvested = input.action_type == ActionType::Harvest
+                || store::actions::first_event_day(conn, &grow.id, ActionType::Harvest, day)?
                     .is_some();
             let phase = leaflog_core::actions::derive_phase(day, flip, harvested);
             store::actions::update(conn, &id, &input, phase, day).map_err(ApiError::from)
