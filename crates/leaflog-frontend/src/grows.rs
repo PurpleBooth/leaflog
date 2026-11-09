@@ -588,18 +588,30 @@ fn empty_grow() -> GrowInput {
     }
 }
 
-/// A blank action draft, timestamped now (local time, close enough for
-/// a pre-filled form the user can adjust).
+/// A blank action draft, timestamped now (UTC) in the shape a
+/// `datetime-local` input accepts.
 fn empty_action() -> ActionInput {
     ActionInput {
         plant_ids: Vec::new(),
-        occurred_at: js_sys::Date::new_0()
-            .to_iso_string()
-            .as_string()
-            .unwrap_or_default(),
+        occurred_at: datetime_local_now(),
         action_type: ActionType::Note,
         details: ActionDetails::default(),
         notes: None,
         appearance_tags: Vec::new(),
     }
+}
+
+/// `Date::toISOString()` yields `YYYY-MM-DDTHH:MM:SS.sssZ`; a
+/// `datetime-local` input's sanitization rejects the seconds and
+/// offset tail, leaving the field empty (`required` then blocks
+/// submit). The value it accepts is the `YYYY-MM-DDTHH:MM` prefix;
+/// the backend normalizes it back to RFC 3339 UTC on save.
+fn datetime_local_now() -> String {
+    js_sys::Date::new_0()
+        .to_iso_string()
+        .as_string()
+        .unwrap_or_default()
+        .get(..16)
+        .unwrap_or_default()
+        .to_owned()
 }

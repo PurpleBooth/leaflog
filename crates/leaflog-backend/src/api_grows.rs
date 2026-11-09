@@ -226,9 +226,9 @@ async fn list_actions(
 async fn create_action(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    Json(input): Json<ActionInput>,
+    Json(mut input): Json<ActionInput>,
 ) -> Result<(StatusCode, Json<leaflog_core::grows::ActionEntry>), ApiError> {
-    validate_action(&input)?;
+    validate_action(&mut input)?;
     let grow_id_for_capture = id.clone();
     let entry = state
         .db
@@ -275,9 +275,9 @@ async fn get_action(
 async fn update_action(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    Json(input): Json<ActionInput>,
+    Json(mut input): Json<ActionInput>,
 ) -> Result<Json<leaflog_core::grows::ActionEntry>, ApiError> {
-    validate_action(&input)?;
+    validate_action(&mut input)?;
     let entry = state
         .db
         .with(move |conn| -> Result<_, ApiError> {
@@ -593,13 +593,30 @@ fn validate_grow(input: &GrowInput) -> Result<(), ApiError> {
     Ok(())
 }
 
-/// Shared action validation.
-fn validate_action(input: &ActionInput) -> Result<(), ApiError> {
-    if time::OffsetDateTime::parse(&input.occurred_at, &Rfc3339).is_err() {
-        return Err(ApiError::BadRequest(
-            "occurred_at must be RFC 3339".to_owned(),
-        ));
+/// Rewrites an offset-less `datetime-local` timestamp (what
+/// `<input type="datetime-local">` yields: `YYYY-MM-DDTHH:MM[:SS]`,
+/// no UTC offset) to RFC 3339 UTC; values already in RFC 3339 pass
+/// through unchanged.
+fn normalize_occurred_at(occurred_at: &str) -> Result<String, ApiError> {
+    if time::OffsetDateTime::parse(occurred_at, &Rfc3339).is_ok() {
+        return Ok(occurred_at.to_owned());
     }
+    let with_seconds = format_description!("[year]-[month]-[day]T[hour]:[minute]:[second]");
+    let without_seconds = format_description!("[year]-[month]-[day]T[hour]:[minute]");
+    let moment = time::PrimitiveDateTime::parse(occurred_at, &with_seconds)
+        .or_else(|_| time::PrimitiveDateTime::parse(occurred_at, &without_seconds))
+        .map_err(|_| ApiError::BadRequest("occurred_at must be RFC 3339".to_owned()))?
+        .assume_utc();
+    Ok(moment
+        .format(&Rfc3339)
+        .expect("RFC 3339 formatting of a UTC instant cannot fail"))
+}
+
+/// Shared action validation; first rewrites an offset-less
+/// `datetime-local` timestamp in place to RFC 3339 UTC (see
+/// [`normalize_occurred_at`]) so the stored value round-trips.
+fn validate_action(input: &mut ActionInput) -> Result<(), ApiError> {
+    input.occurred_at = normalize_occurred_at(&input.occurred_at)?;
     if input
         .details
         .input_ph

@@ -500,6 +500,18 @@ own database. The five Dutch Passion strains added to
 `seeds/strains.json` follow the same rule: breeder-published facts with
 per-field evidence tags, sources cited per the seed-data discipline.
 
+### D013: offset-less action timestamps read as UTC
+
+The quick-add form's `<input type="datetime-local">` yields
+`YYYY-MM-DDTHH:MM` (seconds and UTC offset absent), and its
+sanitization rejects a pre-filled `Date.toISOString()` value outright.
+`validate_action` (api_grows.rs) therefore normalizes such values to
+RFC 3339 **UTC** before validation — `assume_utc`, not server-local —
+because the field is labelled "(UTC)" in the UI and `Date.toISOString()`
+(which supplies the prefill) is UTC. RFC 3339 input with an explicit
+offset passes through unchanged. The frontend prefill keeps the
+`YYYY-MM-DDTHH:MM` prefix of `toISOString()` so the field renders it.
+
 ### Lint-policy exceptions (`#[allow]` register)
 
 Every narrowly scoped exception to the mandatory lint block, each with a

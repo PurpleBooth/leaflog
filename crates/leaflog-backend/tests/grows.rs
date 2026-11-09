@@ -273,6 +273,42 @@ async fn action_log_derives_phase_and_day() {
     assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
 }
 
+/// A `datetime-local` input yields `YYYY-MM-DDTHH:MM` with no seconds
+/// and no UTC offset; the backend must normalize that to RFC 3339 UTC
+/// so a quick-add action round-trips instead of failing validation.
+#[tokio::test]
+async fn action_accepts_datetime_local_occurred_at() {
+    let (base, _root) = spawn().await;
+    let client = reqwest::Client::new();
+
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&grow_payload("Quick-add run"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let id = grow["id"].as_str().unwrap().to_owned();
+
+    let response = client
+        .post(format!("{base}/api/grows/{id}/actions"))
+        .json(&action_payload("water", "2026-11-09T14:30"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        response.status(),
+        reqwest::StatusCode::CREATED,
+        "datetime-local occurred_at (no seconds, no offset) must be accepted"
+    );
+    let entry: Value = response.json().await.unwrap();
+    let stored = entry["occurred_at"].as_str().unwrap().to_owned();
+    time::OffsetDateTime::parse(&stored, &time::format_description::well_known::Rfc3339)
+        .unwrap_or_else(|error| panic!("stored occurred_at {stored:?} is not RFC 3339: {error}"));
+}
+
 #[tokio::test]
 async fn photo_upload_strips_exif_and_serves() {
     let (base, root) = spawn().await;
