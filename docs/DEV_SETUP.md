@@ -27,7 +27,7 @@ devbox shell          # installs/pins the toolchain on first run
 ```
 
 `devbox.json` pins: `rustup` (toolchain via `rust-toolchain.toml`),
-`just`, `trunk`, `binaryen`, `sqlite`, `pkg-config`, `libiconv`. The
+`just`, `trunk`, `sqlite`, `pkg-config`, `libiconv`, `cocogitto`. The
 init hook adds the `wasm32-unknown-unknown` target and clippy/rustfmt.
 
 ## Daily commands
@@ -47,5 +47,5 @@ at a real Supervisor:
 2. Inside HA, the Supervisor injects `SUPERVISOR_TOKEN`; there is nothing
    to configure.
 3. For a local backend against a real HA instance, set
-   `SUPERVISOR_TOKEN` and `SUPERVISOR_URL` in the environment (never
-   commit values — `.env` is git-ignored).
+   `LEAFLOG_ENV=dev`, `SUPERVISOR_TOKEN` and `LEAFLOG_SUPERVISOR_URL`
+   in the environment (never commit values — `.env` is git-ignored).

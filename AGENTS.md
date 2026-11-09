@@ -27,7 +27,7 @@ Empty repo, pre-M1. Build order: M1 skeleton + packaging + ingress spike → M2 
 - **Privacy**: no sharing/social/public URLs. Strip EXIF/GPS from uploaded photos.
 - **Units**: store SI internally; display per HA unit system and locale (°C/°F, in/cm, gal/L).
   EC is canonical in µS/cm; TDS (ppm) is always derived via the user's meter scale
-  (0.5 / 0.64 / 0.7) and labeled.
+  (0.5 / 0.64 / 0.7) and labelled.
 - `panel_admin: true`. Grow data is private.
 
 ## Architecture

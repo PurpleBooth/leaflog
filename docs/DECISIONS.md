@@ -79,8 +79,8 @@ aria-labels, keyboard focus styles, WCAG contrast, touch targets, and
 no colour-only signals.
 
 Deferred to a manual step (requires a browser session against a
-running dev instance). Documented in docs/DEV_SETUP.md what to capture:
-desktop + mobile, light + dark, main views (home, equipment, strains,
+running dev instance): desktop + mobile, light + dark, main views
+(home, equipment, strains,
 grow detail with forecast + feed + env).
 
 ---
@@ -139,38 +139,7 @@ clamps (spec §13); ripen/flush never drop across compressions from
 
 Built-in soil/coco/hydro presets from spec §5.3 with pH ranges,
 watering styles, flush lengths, runoff check frequencies, and EC
-bands (contested — labeled as one-source in the provenance). The
-`TdsScale` enum (0.5/0.64/0.7) round-trips EC↔ppm within 1 µS/cm
-(tested for all three scales × 10 EC values). Substrate presets
-differ in pH, EC bands, flush, and watering style (tested — spec §13
-"substrate switch changes recommendations").
-
-### Lint-policy exceptions — M6 additions
-
-| Crate | Items | Lint | Reason |
-|---|---|---|---|
-| leaflog-core | module `feed` | `clippy::cast_possible_truncation`, `clippy::cast_sign_loss` | The module converts float interpolation results (EC) to integer µS/cm; the casts are inherent |
-
----
-
-## 2026-11-08 — M6
-
-### D026: Feed fit — piecewise per phase, never uniform
-
-`fit_feed()` maps each template segment (seedling, veg, flower) onto
-the corresponding actual segment with linear interpolation of EC;
-ripen and flush are pinned to the end and never dropped. EC steps
-between consecutive fitted days clamp to `max_ec_step_us` (default
-200 µS/cm, configurable). Property tests: a 9-week-flower template
-fits 8 and 11 weeks with ripen/flush preserved and EC steps within
-clamps (spec §13); ripen/flush never drop across compressions from
-42 to 84 flower days.
-
-### D027: Substrate profiles and TDS scales
-
-Built-in soil/coco/hydro presets from spec §5.3 with pH ranges,
-watering styles, flush lengths, runoff check frequencies, and EC
-bands (contested — labeled as one-source in the provenance). The
+bands (contested — labelled as one-source in the provenance). The
 `TdsScale` enum (0.5/0.64/0.7) round-trips EC↔ppm within 1 µS/cm
 (tested for all three scales × 10 EC values). Substrate presets
 differ in pH, EC bands, flush, and watering style (tested — spec §13
@@ -206,7 +175,7 @@ and GG4 Auto (70–84 days from seed).
 ### D025: Gantt rendering
 
 The frontend renders the phase windows as a horizontal Gantt with
-per-phase botanical accent colors, a light band for the
+per-phase botanical accent colours, a light band for the
 earliest/latest range, a solid bar for the likely window (✓ when
 pinned by an actual), and a red today marker positioned by the grow
 day count from `/api/grows/{id}/forecast`.

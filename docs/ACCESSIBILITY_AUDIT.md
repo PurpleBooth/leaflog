@@ -8,7 +8,7 @@ checks below map 1:1 to Lighthouse's accessibility category.
 ## Result: PASS (estimated ≥ 90/100)
 
 All applicable checks pass; the two "manual" items (contrast on
-non-standard color pairs) pass by design of the botanical palette.
+non-standard colour pairs) pass by design of the botanical palette.
 
 ## Checks
 

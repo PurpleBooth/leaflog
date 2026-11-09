@@ -111,7 +111,7 @@ Two structural facts drive most of the analysis:
 
 Cultivation data is the product's core secret. Legality varies (the
 owner is in Germany, where up to three plants per adult are permitted
-but must be secured from third parties and minors, `SPEC.md` §11), and
+but must be secured from third parties and minors, `SPEC.md` §9), and
 the realistic harms are stigma, employment and custody consequences,
 and targeted burglary, not only embarrassment. Every path below is
 rated for disclosure impact **high** or above unless noted.
@@ -182,7 +182,7 @@ Two harms run in opposite directions: a child finding the diary is a
 disclosure event (TM1), and a child (or anyone) with reach into the
 panel can also destroy (TM4). German law additionally requires
 cultivation to be secured against access by third parties, especially
-minors (`SPEC.md` §11); the app's plant-count and securing reminders
+minors (`SPEC.md` §9); the app's plant-count and securing reminders
 are informational only and default off outside DE, per the spec.
 
 | # | Path | Status | Detail |
