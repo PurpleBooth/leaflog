@@ -207,21 +207,49 @@ impl PhotoStore {
     }
 }
 
-/// Joins non-empty path components.
+/// Marker substituted for an unusable path segment. It can never
+/// collide with a stored file or grow directory (grow ids and file
+/// names are server-generated ULIDs) and keeps every operation inside
+/// its intended directory.
+const INVALID_NAME: &str = "invalid";
+
+/// True when `segment` is usable as exactly one path component: not
+/// empty, not `.` and free of `..` (traversal), and free of `/` and `\`
+/// (so neither an interior subdirectory nor an absolute form).
+fn is_safe_component(segment: &str) -> bool {
+    !segment.is_empty()
+        && segment != "."
+        && !segment.contains("..")
+        && !segment.contains(['/', '\\'])
+}
+
+/// Builds `root/<kind>[/<grow_id>]`; an empty `grow_id` means the kind's
+/// top level.
+///
+/// A `grow_id` that is not one safe segment (see [`is_safe_component`])
+/// is replaced by [`INVALID_NAME`], so the result always resolves
+/// directly under `root/<kind>` and never traverses out of it — even
+/// if a caller passes an unchecked id to [`PhotoStore::remove_grow`].
 fn joined(root: &Path, kind: &str, grow_id: &str) -> PathBuf {
     if grow_id.is_empty() {
         root.join(kind)
-    } else {
+    } else if is_safe_component(grow_id) {
         root.join(kind).join(grow_id)
+    } else {
+        root.join(kind).join(INVALID_NAME)
     }
 }
 
-/// Joins a file name, refusing traversal (`..`, absolute names).
+/// Joins a file name, refusing traversal and interior separators: a
+/// name that is not one safe segment (see [`is_safe_component`])
+/// resolves to `<dir>/INVALID_NAME`, an in-root dead end that is never
+/// a subdirectory and never outside `dir`.
 fn safe_join(dir: &Path, name: &str) -> PathBuf {
-    if name.contains("..") || name.starts_with('/') {
-        return dir.join("invalid");
+    if is_safe_component(name) {
+        dir.join(name)
+    } else {
+        dir.join(INVALID_NAME)
     }
-    dir.join(name)
 }
 
 /// Decodes and auto-orients an uploaded image.
@@ -268,7 +296,7 @@ fn exif_timestamp(bytes: &[u8]) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{PhotoStore, exif_timestamp};
+    use super::{PhotoStore, exif_timestamp, joined, safe_join};
 
     /// A tiny valid JPEG (8x8) with a well-formed EXIF APP1 segment
     /// carrying `DateTimeOriginal`, built with the exif crate's own writer.
@@ -426,6 +454,41 @@ mod tests {
             .unwrap_err();
         assert!(error.to_string().contains("unsupported"));
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn path_builders_reject_traversal_and_interior_separators() {
+        let root = std::path::Path::new("/data/photos");
+
+        // A malicious grow id must not escape the kind directory.
+        let grow_dir = joined(root, "originals", "../evil");
+        assert!(
+            !grow_dir
+                .components()
+                .any(|component| matches!(component, std::path::Component::ParentDir)),
+            "joined must not build a ParentDir into the path, got {grow_dir:?}"
+        );
+        let intended = root.join("originals");
+        assert_eq!(
+            grow_dir.parent(),
+            Some(intended.as_path()),
+            "joined must stay directly under originals/, got {grow_dir:?}"
+        );
+
+        // A file name with an interior separator must not resolve into a
+        // subdirectory.
+        let file = safe_join(root, "a/b.jpg");
+        assert!(
+            !file
+                .components()
+                .any(|component| matches!(component, std::path::Component::ParentDir)),
+            "safe_join must not build a ParentDir into the path, got {file:?}"
+        );
+        assert_eq!(
+            file.parent(),
+            Some(root),
+            "safe_join must stay directly under its directory, got {file:?}"
+        );
     }
 
     /// True when the bytes carry an Exif APP1 marker.
