@@ -393,8 +393,9 @@ where
     if tracked.is_empty() {
         return true;
     }
+    let command_id = *next_id;
     let command = json!({
-        "id": *next_id,
+        "id": command_id,
         "type": "subscribe_entities",
         "entity_ids": tracked,
     });
@@ -406,9 +407,21 @@ where
     {
         return false;
     }
-    // The success result mirrors our command id; anything else (an
-    // error result) ends this connection.
-    matches!(socket.next().await, Some(Ok(Message::Text(text))) if text.contains("\"result\":true") || text.contains("success"))
+    // Only a `result` for our command id with `success == true` counts
+    // as subscribed. An error result (for example a bound entity id
+    // that no longer exists) fails, ending this connection so the
+    // reconnect path with backoff runs instead of idling on a dead
+    // subscription.
+    match socket.next().await {
+        Some(Ok(Message::Text(text))) => {
+            let Ok(value) = serde_json::from_str::<Value>(text.as_str()) else {
+                return false;
+            };
+            value.get("id").and_then(Value::as_u64) == Some(command_id)
+                && value.get("success").and_then(Value::as_bool) == Some(true)
+        }
+        _ => false,
+    }
 }
 
 /// Applies one `subscribe_entities` event to the live map (compact

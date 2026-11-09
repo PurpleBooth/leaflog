@@ -5,9 +5,14 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use axum::ServiceExt as _;
+use axum::extract::State;
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::response::Response;
+use futures_util::{SinkExt as _, StreamExt as _};
 use leaflog_backend::ha::{HaBridge, SupervisorToken};
 use leaflog_backend::{AppState, Assets, Db, Mode, app};
 use serde_json::{Value, json};
@@ -424,4 +429,114 @@ async fn bridge_reconnects_after_the_socket_drops() {
         axum::serve(listener, router).await.unwrap();
     });
     wait_connected(&bridge).await;
+}
+
+/// A scripted Supervisor socket: the auth handshake succeeds, but
+/// `subscribe_entities` is answered with an error result (as the real
+/// Supervisor does for, say, a bound entity id that no longer exists).
+/// The connection stays open afterwards, so a bridge that treats the
+/// failed subscription as live has nothing to fall back on.
+async fn rejecting_subscribe_socket(socket: WebSocket, replied: Arc<AtomicUsize>) {
+    let (mut sender, mut receiver) = socket.split();
+    if sender
+        .send(Message::text(
+            json!({ "type": "auth_required" }).to_string(),
+        ))
+        .await
+        .is_err()
+    {
+        return;
+    }
+    let Some(Ok(message)) = receiver.next().await else {
+        return;
+    };
+    if !message
+        .into_text()
+        .unwrap_or_default()
+        .contains("access_token")
+    {
+        return;
+    }
+    if sender
+        .send(Message::text(
+            json!({ "type": "auth_ok", "ha_version": "2026.11.0" }).to_string(),
+        ))
+        .await
+        .is_err()
+    {
+        return;
+    }
+    // Every connection (the bridge retries with backoff) gets the same
+    // rejection; other commands (pings) are ignored.
+    while let Some(Ok(message)) = receiver.next().await {
+        let Ok(text) = message.into_text() else {
+            continue;
+        };
+        let Ok(value) = serde_json::from_str::<Value>(&text) else {
+            continue;
+        };
+        if value["type"].as_str() == Some("subscribe_entities") {
+            let error = json!({
+                "id": value["id"], "type": "result", "success": false,
+                "error": { "code": "entity_not_found", "message": "entity no longer exists" }
+            });
+            if sender.send(Message::text(error.to_string())).await.is_err() {
+                break;
+            }
+            replied.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+}
+
+/// The WS route handing each connection to the scripted socket.
+// Extractors are taken by value because Axum requires it.
+async fn rejecting_websocket(
+    State(replied): State<Arc<AtomicUsize>>,
+    upgrade: WebSocketUpgrade,
+) -> Response {
+    upgrade.on_upgrade(move |socket| rejecting_subscribe_socket(socket, replied))
+}
+
+#[tokio::test]
+async fn failed_subscribe_entities_result_leaves_bridge_disconnected() {
+    let replied = Arc::new(AtomicUsize::new(0));
+    let router = axum::Router::new()
+        .route("/core/websocket", axum::routing::get(rejecting_websocket))
+        .with_state(replied.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+
+    let bridge = HaBridge::spawn(
+        format!("http://{addr}"),
+        SupervisorToken::new(SECRET),
+        Db::open_in_memory().unwrap(),
+    );
+    bridge.track_entities(vec!["sensor.grow_temperature".to_owned()]);
+
+    // Wait until the scripted Supervisor really answered the failed
+    // subscription, so a "disconnected" verdict cannot come from the
+    // handshake never having run.
+    for _ in 0..40 {
+        if replied.load(Ordering::SeqCst) > 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    assert!(
+        replied.load(Ordering::SeqCst) > 0,
+        "scripted supervisor never saw a subscribe_entities command"
+    );
+
+    // A rejected subscription is not live data: the bridge must report
+    // itself disconnected for the whole window.
+    for _ in 0..20 {
+        assert!(
+            !bridge.live_now().connected,
+            "bridge reported connected although subscribe_entities failed"
+        );
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
 }
