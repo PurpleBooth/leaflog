@@ -183,12 +183,18 @@ impl HaBridge {
         let from = (time::OffsetDateTime::now_utc() - time::Duration::hours(i64::from(hours)))
             .format(&Rfc3339)
             .unwrap_or_default();
-        let url = format!(
-            "{}/core/api/history/period/{from}?filter_entity_id={entity_id}&minimal_response",
-            self.rest_base()
-        );
+        // `entity_id` is user-controlled (a bound entity id): never
+        // format! it into the query, where `&`/`#`/`%` would reshape or
+        // extend the request sent with the admin Bearer token —
+        // `.query()` percent-encodes instead.
+        let url = format!("{}/core/api/history/period/{from}", self.rest_base());
         let response = reqwest::Client::new()
             .get(&url)
+            .query(&[
+                ("filter_entity_id", entity_id),
+                // Flag parameter: an empty value is how the API expects it.
+                ("minimal_response", ""),
+            ])
             .bearer_auth(self.inner.token.0.as_ref())
             .send()
             .await

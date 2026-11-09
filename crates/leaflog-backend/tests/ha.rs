@@ -332,6 +332,54 @@ async fn token_never_appears_in_responses_or_logs() {
 }
 
 #[tokio::test]
+async fn history_percent_encodes_entity_id_in_supervisor_url() {
+    // A capturing stand-in Supervisor: record the raw request target of
+    // every request it sees and answer history with an empty array.
+    let captured: Arc<StdMutex<Vec<String>>> = Arc::new(StdMutex::new(Vec::new()));
+    let recorder = captured.clone();
+    let router = axum::Router::new().fallback(move |uri: axum::http::Uri| {
+        let recorder = recorder.clone();
+        async move {
+            recorder.lock().expect("capture lock").push(uri.to_string());
+            axum::Json(json!([]))
+        }
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+
+    let bridge = HaBridge::spawn(
+        format!("http://{addr}"),
+        SupervisorToken::new(SECRET),
+        Db::open_in_memory().unwrap(),
+    );
+    // An entity id whose `&`/`=` would, unencoded, flip minimal_response
+    // off and append an extra query param to the admin-token request.
+    bridge
+        .history("sensor.x&minimal_response=false&evil=1", 1)
+        .await
+        .expect("history call against the capturing supervisor");
+
+    let target = captured
+        .lock()
+        .expect("capture lock")
+        .iter()
+        .find(|target| target.contains("history/period"))
+        .cloned()
+        .expect("supervisor saw no history request");
+    assert!(
+        target.contains("%26"),
+        "entity_id ampersands must be percent-encoded in the supervisor URL: {target}"
+    );
+    assert!(
+        !target.contains("&minimal_response=false") && !target.contains("&evil=1"),
+        "raw `&` from entity_id reshaped the supervisor query: {target}"
+    );
+}
+
+#[tokio::test]
 async fn bridge_reconnects_after_the_socket_drops() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
