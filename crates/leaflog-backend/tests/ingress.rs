@@ -182,6 +182,126 @@ async fn assets_are_served_with_content_types() {
     assert_eq!(css.text().await.unwrap(), "body { color: green; }\n");
 }
 
+/// Extracts the exact content of every inline `<script>` (no `src`
+/// attribute) in `html` — an independent re-derivation of how browsers
+/// hash inline scripts (byte-for-byte, no whitespace trimming;
+/// verified in Chromium 152), so the test cross-checks the
+/// implementation instead of calling it.
+fn inline_script_contents(html: &str) -> Vec<String> {
+    let mut contents = Vec::new();
+    let mut rest = html;
+    while let Some((_, after_open)) = rest.split_once("<script") {
+        let (attributes, after_attributes) = after_open.split_once('>').unwrap_or((after_open, ""));
+        let Some((body, tail)) = after_attributes.split_once("</script>") else {
+            break;
+        };
+        if !attributes
+            .split_ascii_whitespace()
+            .any(|token| token.starts_with("src") || token.starts_with("SRC"))
+        {
+            contents.push(body.to_owned());
+        }
+        rest = tail;
+    }
+    contents
+}
+
+#[tokio::test]
+async fn csp_allows_every_inline_script_in_the_served_html() {
+    let base = spawn_backend(Mode::Dev, None).await;
+    let response = reqwest::Client::new()
+        .get(format!("{base}/"))
+        .header("X-Ingress-Path", "/api/hassio_ingress/abc123")
+        .send()
+        .await
+        .unwrap();
+    let csp = response
+        .headers()
+        .get(header::CONTENT_SECURITY_POLICY)
+        .expect("index response carries a CSP")
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let html = response.text().await.unwrap();
+
+    // The fixture reproduces the real Trunk 0.21 output shape: the
+    // wasm-bindgen bootstrap is an INLINE module script (no src) whose
+    // text names per-build hashed files. Together with the injected
+    // base script the page carries exactly two inline scripts, and the
+    // CSP must carry one matching hash for each — otherwise the SPA
+    // never boots (blank panel; see docs/DECISIONS.md D040).
+    let inline = inline_script_contents(&html);
+    assert_eq!(
+        inline.len(),
+        2,
+        "fixture must serve the Trunk bootstrap plus the injected base script"
+    );
+    assert!(
+        inline.iter().any(|script| script.contains("wasmBindings")),
+        "the Trunk-shaped bootstrap must be part of the served page"
+    );
+
+    use base64::Engine as _;
+    use sha2::Digest as _;
+    let engine = base64::engine::general_purpose::STANDARD;
+    for script in &inline {
+        let hash = engine.encode(sha2::Sha256::digest(script.as_bytes()));
+        assert!(
+            csp.contains(&format!("'sha256-{hash}'")),
+            "CSP must allow the inline script {script:?} by hash; policy: {csp}"
+        );
+    }
+
+    let script_src = csp
+        .split(';')
+        .find(|directive| directive.trim().starts_with("script-src"))
+        .expect("script-src directive present");
+    assert!(
+        !script_src.contains("'unsafe-inline'"),
+        "script-src must never allow unsafe-inline: {csp}"
+    );
+}
+
+#[tokio::test]
+async fn responses_carry_nosniff_security_header() {
+    let base = spawn_backend(Mode::Dev, None).await;
+    let client = reqwest::Client::new();
+
+    // The ingress-injected SPA entry point must not be content-sniffable.
+    let index = client
+        .get(format!("{base}/"))
+        .header("X-Ingress-Path", "/api/hassio_ingress/abc123")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(index.status(), StatusCode::OK);
+    assert_eq!(
+        index
+            .headers()
+            .get("x-content-type-options")
+            .map(|value| value.to_str().unwrap()),
+        Some("nosniff"),
+        "index response must carry X-Content-Type-Options: nosniff"
+    );
+
+    // Static assets served by the fallback handler equally must not be
+    // content-sniffable (photo/asset responses are the sniffing target).
+    let asset = client
+        .get(format!("{base}/pkg/app.css"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(asset.status(), StatusCode::OK);
+    assert_eq!(
+        asset
+            .headers()
+            .get("x-content-type-options")
+            .map(|value| value.to_str().unwrap()),
+        Some("nosniff"),
+        "asset response must carry X-Content-Type-Options: nosniff"
+    );
+}
+
 #[tokio::test]
 async fn unknown_api_path_is_plain_404() {
     let base = spawn_backend(Mode::Dev, None).await;

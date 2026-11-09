@@ -5,7 +5,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use axum::extract::{ConnectInfo, Request, State};
 use axum::http::header::HeaderMap;
-use axum::http::{Method, StatusCode, Uri};
+use axum::http::{HeaderValue, Method, StatusCode, Uri};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
@@ -13,7 +13,7 @@ use axum::{Json, Router};
 use serde::Serialize;
 
 use crate::assets::{Assets, content_type};
-use crate::ingress::{IngressPath, render_index};
+use crate::ingress::{IngressPath, content_security_policy, render_index};
 
 /// The single fixed remote address Home Assistant's ingress proxy
 /// connects from. In production mode it is the only accepted peer.
@@ -98,6 +98,8 @@ pub fn build_router(state: AppState) -> Router {
             state.clone(),
             supervisor_gate,
         ))
+        // Outside the gate so gate rejections (403) are covered too.
+        .layer(middleware::from_fn(security_headers))
         .layer(axum::extract::DefaultBodyLimit::max(BODY_LIMIT_BYTES))
         .with_state(state)
 }
@@ -225,7 +227,16 @@ async fn serve_index(state: &AppState, headers: &HeaderMap) -> Response {
         },
         |template| {
             let base = resolve_base(state, headers);
-            Html(render_index(&template, &base)).into_response()
+            let mut response = Html(render_index(&template, &base)).into_response();
+            // The CSP hashes the template's inline scripts (the Trunk
+            // bootstrap) as well as the injected base script, so it
+            // must be built from the same template that was rendered.
+            let csp = HeaderValue::from_str(&content_security_policy(&base, &template))
+                .expect("CSP is ASCII by construction");
+            response
+                .headers_mut()
+                .insert(axum::http::header::CONTENT_SECURITY_POLICY, csp);
+            response
         },
     )
 }
@@ -244,6 +255,23 @@ fn resolve_base(state: &AppState, headers: &HeaderMap) -> IngressPath {
         return IngressPath::new(Some(prefix));
     }
     from_header
+}
+
+/// Security-header middleware: every response — API JSON, photos,
+/// assets, the SPA shell, gate rejections, and error paths alike —
+/// carries `X-Content-Type-Options: nosniff`, so a browser never
+/// content-sniffs photo or asset bytes into an executable type. The app
+/// lives on HA's origin (docs/THREAT-MODEL.md §2), where a sniffing
+/// mismatch would be amplified well beyond Leaflog's own panel.
+// Extractors are taken by value because Axum requires it.
+#[allow(clippy::needless_pass_by_value)] // Axum middleware extractor contract; see docs/DECISIONS.md
+async fn security_headers(request: Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    response.headers_mut().insert(
+        axum::http::header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    response
 }
 
 /// Production connection gate: outside development, only Home

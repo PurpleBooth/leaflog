@@ -1058,6 +1058,7 @@ name = "leaflog-backend"
 version = "0.2.0"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "futures-util",
  "image",
  "include_dir",
@@ -1068,6 +1069,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror 2.0.21",
  "time",
  "tokio",

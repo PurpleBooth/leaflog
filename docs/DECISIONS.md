@@ -26,6 +26,63 @@ leaves nothing. Verified by `failed_multi_part_upload_stores_nothing`
 (tests/grows.rs): 400 → zero rows, zero files, retry stores exactly
 one.
 
+### D040: `nosniff` on every response, hash-pinned CSP on the SPA shell
+
+Serving findings (backlog `add-nosniff-and-csp-headers`): no response
+carried a single security header. Two changes, both deliberately
+scoped:
+
+1. **`X-Content-Type-Options: nosniff`** via an Axum middleware
+   (`security_headers` in `app.rs`) layered *outside* the Supervisor
+   gate, so every response — API JSON, photo bytes, assets, the SPA
+   shell, 403/404/405 paths — carries it. The browser never
+   content-sniffs a photo or asset response into an executable type.
+2. **`Content-Security-Policy`** on the served `index.html`
+   (`ingress::content_security_policy`), bounding the SPA if any XSS
+   ever reaches the DOM — worth doing because the app lives on HA's
+   origin, where Leaflog XSS is HA XSS (THREAT-MODEL §2.2).
+
+The CSP shape is dictated by what the Trunk-built Leptos SPA actually
+loads (all same-origin, per the ingress rules): `script-src 'self'` for
+the bundle, `'wasm-unsafe-eval'` because Chromium gates wasm
+compilation on script-src and Leptos CSR *is* wasm,
+`style-src 'self' 'unsafe-inline'` for the linked stylesheet plus the
+inline styles Leptos emits, `'self'` for img/connect/form-action,
+`object-src 'none'`, `base-uri 'self'` (the injected `<base href>` is a
+same-origin path). Inline scripts are allowed by **per-response
+`'sha256-…'` hashes of the exact script texts**, never
+`'unsafe-inline'`: one hash for the `window.__LEAFLOG_BASE__` global
+injected at serve time (computed where the base is known, from the same
+builder that renders the script — `ingress.rs` keeps one source of
+truth, unit tests pin the digest) and one hash per inline `<script>`
+found in the *served template*. That second group exists because Trunk
+0.21 emits its wasm-bindgen bootstrap (`import init … window.wasmBindings
+= bindings …`) **inline** into `index.html`, and its text names
+per-build hashed files — no hash baked into the policy could survive a
+rebuild. The first version of this change hashed only the injected
+base script, so the CSP silently blocked the bootstrap and the SPA
+never booted (blank panel, `#app` empty, in production and `just dev`
+alike); the tests could not see it because the fixture used an
+external `<script src>`. Fix: hashes are computed from the actual
+template at serve time (staying correct on every rebuild), the test
+fixture now reproduces the real Trunk inline-bootstrap shape, and
+`csp_allows_every_inline_script_in_the_served_html` (tests/ingress.rs)
+re-derives the hash rule over every inline script in the served HTML
+and demands a matching hash for each. That rule is **exact bytes, no
+whitespace normalization**: browsers hash inline scripts
+byte-for-byte between the tags (verified experimentally in Chromium
+152 — a padded script whose trimmed hash is listed stays blocked —
+and per MDN), so a CSP3-style "strip leading/trailing whitespace"
+hash silently re-breaks the app; a real-browser click-through is the
+only check that catches this class. `'unsafe-inline'` would have
+neutralized the
+CSP's entire point. `frame-ancestors` is
+deliberately omitted: HA's ingress panel frames the app from the HA
+page (same origin), and remote-UI proxy setups must not be bricked by
+guesswork — revisit with a real ingress click-through if it is ever
+wanted. Costs `sha2` + `base64` (RustCrypto/standard, dev-only
+compile-time cost). Not an R-item: R2 is Cache-Control, separate.
+
 ### D039: release version-sync hardening (path-only internal deps)
 
 Cutting v0.2.0 exposed two latent release-pipeline bugs. (1) The
@@ -539,7 +596,7 @@ once per crate.
 | Crate | Items | Lint | Reason |
 |---|---|---|---|
 | leaflog-backend | `ingress::IngressPath` | `clippy::module_name_repetitions` | The domain name (`IngressPath`) is the right name; the module is `ingress` |
-| leaflog-backend | `app.rs` handlers `health`, `index`, `fallback` and middlewares `supervisor_gate`, `dev_prefix_strip` | `clippy::needless_pass_by_value` | Axum handlers/middlewares must take extractors (`State`, `HeaderMap`, `Request`) by value |
+| leaflog-backend | `app.rs` handlers `health`, `index`, `fallback` and middlewares `supervisor_gate`, `security_headers`, `dev_prefix_strip` | `clippy::needless_pass_by_value` | Axum handlers/middlewares must take extractors (`State`, `HeaderMap`, `Request`) by value |
 | leaflog-backend | `app.rs` handler `health` | `clippy::unused_async` | Axum handlers must be `async fn` even when they never await |
 | mock-ha | handlers `root`, `ping`, `states` | `clippy::unused_async` | Same Axum contract as above |
 | leaflog-frontend | component `App` | `clippy::must_use_candidate` | The Leptos `#[component]` macro drops a hand-written `#[must_use]`, so the lint fires on the generated function |
