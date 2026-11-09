@@ -2,6 +2,24 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.3.0 - 2026-11-10
+#### Features
+- (**backend**) seed predefined equipment and extra strains on empty DB - (d8cd4f4) - billie.codes
+#### Bug Fixes
+- (**backend**) add nosniff and a hash-pinned CSP to served responses - (bae8103) - billie.codes
+- (**backend**) reject traversal and interior separators in photo path builders - (e139c7e) - billie.codes
+- (**backend**) wrap multi-statement store mutations in transactions - (e7b9434) - billie.codes
+- (**backend**) treat a failed subscribe_entities result as disconnected - (01b3d3e) - billie.codes
+- (**backend**) percent-encode entity_id in the Supervisor history URL - (34962e3) - billie.codes
+- (**backend**) store every uploaded photo part, all-or-nothing - (e980bf1) - billie.codes
+- (**backend**) re-derive phase from the incoming action on update - (f922bc5) - billie.codes
+- (**backend**) accept datetime-local action timestamps as UTC - (621dbca) - billie.codes
+- (**ci**) harden release version-sync and drop unused dispatch input - (47f7943) - billie.codes
+#### Miscellaneous
+- add gitleaks to dev env - (bb87315) - billie.codes
+
+- - -
+
 ## v0.2.0 - 2026-11-09
 #### Features
 - (**hacs**) HACS compatibility via companion integration - (d6397e4) - billie.codes
