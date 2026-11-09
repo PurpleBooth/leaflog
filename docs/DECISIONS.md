@@ -8,6 +8,20 @@ here. Date format: YYYY-MM-DD.
 
 ## 2026-11-09 — post-M8
 
+### D037: gitleaks secret scan in CI
+
+A manual full-history sweep (all 61 commits and refs: token formats,
+credential-named files, entropy strings, URL-embedded credentials, CI
+workflows) found no committed secrets; the only near-miss is the
+clearly-fake test fixture token in `crates/leaflog-backend/tests/ha.rs`.
+To keep a public repository that way, CI gains a dedicated `secrets`
+job (ci.yml): gitleaks 8.30.1, full clone (`fetch-depth: 0`),
+`gitleaks git --verbose --redact .` — `--redact` so a real finding
+never echoes the secret into public CI logs. `just ci` mirrors it via a
+skip-if-not-installed `gitleaks` recipe (same pattern as `cog-check`);
+the authoritative scan is the CI job, which also runs for releases
+through the `workflow_call` reuse of ci.yml.
+
 ### D035: Threat model documented
 
 docs/THREAT-MODEL.md expands the owner's five seed threats (disclosure

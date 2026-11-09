@@ -41,8 +41,17 @@ cog-check:
         echo "cocogitto not installed; skipping conventional commit check"
     fi
 
-# Everything CI checks: fmt, clippy (native + wasm), tests, WASM build.
-ci: cog-check fmt clippy clippy-wasm build-frontend test
+# Scan full git history for committed secrets (gitleaks; skip if not installed).
+gitleaks:
+    #!/usr/bin/env bash
+    if command -v gitleaks &>/dev/null; then
+        gitleaks git --verbose --redact .
+    else
+        echo "gitleaks not installed; skipping secret scan"
+    fi
+
+# Everything CI checks: fmt, clippy (native + wasm), tests, WASM build, commits, secrets.
+ci: cog-check fmt clippy clippy-wasm build-frontend test gitleaks
 
 # Check formatting.
 fmt:
