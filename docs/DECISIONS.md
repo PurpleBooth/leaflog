@@ -6,6 +6,33 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-09 — post-M8
+
+### D035: Threat model documented
+
+docs/THREAT-MODEL.md expands the owner's five seed threats (disclosure
+of cultivation, platform abuse, data manipulation harming plants,
+data destruction, access by minors/household members) plus
+encryption-at-rest and a STRIDE/web/supply-chain sweep, grounded in
+code references. Top open items (R1-R9): image decode dimension cap,
+`Cache-Control: no-store` on photo originals, `source_url` scheme
+validation (hard prerequisite for strain import), hash-pinned build
+tools, user-facing hardening notes, photo quota, `cargo audit`,
+soft-delete/confirmation for cascade deletes, image signing.
+
+### D036: Encryption at rest — deferred, guidance instead
+
+App-level encryption (SQLCipher, encrypted photos) evaluated and
+deferred: a key in add-on options/env sits on the same host disk as
+the ciphertext, so it resists none of the realistic adversaries
+(host root, SSH-granting add-ons, whole-machine theft) while adding
+key-loss destruction risk. The effective controls are user-side and
+must be documented (R5): HA passphrase-encrypted backups (backups
+travel further than the host), full-disk encryption on x86 hosts,
+restraint with host-path add-ons.
+
+---
+
 ## 2026-11-08 — M8
 
 ### D032: Backup→restore tested

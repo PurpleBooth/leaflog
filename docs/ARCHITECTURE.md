@@ -2,7 +2,8 @@
 
 This file records the structural decisions behind Leaflog. One-off choices
 live in [`DECISIONS.md`](DECISIONS.md); the product spec is
-[`SPEC.md`](SPEC.md).
+[`SPEC.md`](SPEC.md); the threat model is
+[`THREAT-MODEL.md`](THREAT-MODEL.md).
 
 ## Crate graph
 
