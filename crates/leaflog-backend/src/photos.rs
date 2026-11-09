@@ -101,11 +101,11 @@ impl PhotoStore {
     pub fn store(&self, grow_id: &str, bytes: &[u8]) -> Result<StoredPhoto, PhotoError> {
         self.ensure_dirs(grow_id)?;
         let captured_at = exif_timestamp(bytes);
-        let image = decode(bytes)?;
-
-        // Re-encoding through the plain pixel buffer guarantees no
-        // EXIF/GPS or other metadata survives, whatever the input was.
-        let rgb = image.to_rgb8();
+        // Normalize every input (RGBA/grayscale/…) to plain 8-bit RGB up
+        // front: the re-encode through the pixel buffer guarantees no
+        // EXIF/GPS or other metadata survives, whatever the input was,
+        // and every later step works on one known color type.
+        let rgb = decode(bytes)?.to_rgb8();
         let mut original = Vec::new();
         let mut encoder =
             image::codecs::jpeg::JpegEncoder::new_with_quality(&mut original, ORIGINAL_QUALITY);
@@ -123,7 +123,7 @@ impl PhotoStore {
         std::fs::write(self.original_path(grow_id, &original_name), &original)?;
 
         let thumbnail_name = format!("{id}.webp");
-        self.write_thumbnail(&image, grow_id, &thumbnail_name)?;
+        self.write_thumbnail(&rgb, grow_id, &thumbnail_name)?;
 
         Ok(StoredPhoto {
             bytes_stored: original.len() as u64,
@@ -133,19 +133,19 @@ impl PhotoStore {
         })
     }
 
-    /// Writes the 512-px WebP thumbnail for an image.
+    /// Writes the 512-px WebP thumbnail for an RGB image.
     fn write_thumbnail(
         &self,
-        image: &DynamicImage,
+        image: &image::RgbImage,
         grow_id: &str,
         name: &str,
     ) -> Result<(), PhotoError> {
-        let thumb = image.thumbnail(THUMBNAIL_EDGE, THUMBNAIL_EDGE);
+        let thumb = image::imageops::thumbnail(image, THUMBNAIL_EDGE, THUMBNAIL_EDGE);
         let mut out = Vec::new();
         let encoder = image::codecs::webp::WebPEncoder::new_lossless(&mut out);
         encoder
             .write_image(
-                thumb.as_rgb8().expect("thumbnail keeps rgb8").as_raw(),
+                thumb.as_raw(),
                 thumb.width(),
                 thumb.height(),
                 image::ExtendedColorType::Rgb8,
@@ -180,8 +180,8 @@ impl PhotoStore {
         std::fs::create_dir_all(self.thumbnails_dir(grow_id))?;
         let original_name = format!("{}.jpg", name.strip_suffix(".webp").unwrap_or(name));
         let bytes = self.read_original(grow_id, &original_name)?;
-        let image = decode(&bytes)?;
-        self.write_thumbnail(&image, grow_id, name)?;
+        let rgb = decode(&bytes)?.to_rgb8();
+        self.write_thumbnail(&rgb, grow_id, name)?;
         Ok(std::fs::read(path)?)
     }
 
@@ -361,6 +361,54 @@ mod tests {
             .expect("thumbnail regenerates on demand");
         assert_eq!(&thumb[..4], b"RIFF");
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn stores_rgba_png_and_grayscale_jpeg_without_panic() {
+        for (label, bytes) in [
+            ("rgba-png", png_with_alpha()),
+            ("gray-jpeg", grayscale_jpeg()),
+        ] {
+            let dir = std::env::temp_dir()
+                .join(format!("leaflog-photos-{}-{label}", crate::db::new_id()));
+            let store = PhotoStore::new(dir.clone());
+            let stored = store
+                .store("grow1", &bytes)
+                .unwrap_or_else(|error| panic!("{label} must store, got {error}"));
+            let original = store.read_original("grow1", &stored.original_name).unwrap();
+            assert!(!contains_exif(&original), "{label}: EXIF must be stripped");
+            let thumb = store
+                .read_thumbnail("grow1", &stored.thumbnail_name)
+                .unwrap();
+            assert_eq!(&thumb[..4], b"RIFF", "{label}: WebP thumbnail");
+            std::fs::remove_dir_all(&dir).ok();
+        }
+    }
+
+    /// An 8-bit RGBA PNG (decodes to `ImageRgba8`).
+    fn png_with_alpha() -> Vec<u8> {
+        use image::ImageEncoder as _;
+        let img = image::DynamicImage::new_rgba8(8, 8);
+        let mut out = Vec::new();
+        image::codecs::png::PngEncoder::new(&mut out)
+            .write_image(
+                img.to_rgba8().as_raw(),
+                8,
+                8,
+                image::ExtendedColorType::Rgba8,
+            )
+            .expect("encoding cannot fail");
+        out
+    }
+
+    /// An 8-bit grayscale JPEG (decodes to `ImageLuma8`).
+    fn grayscale_jpeg() -> Vec<u8> {
+        let img = image::DynamicImage::new_luma8(8, 8);
+        let mut out = Vec::new();
+        image::codecs::jpeg::JpegEncoder::new(&mut out)
+            .encode(img.to_luma8().as_raw(), 8, 8, image::ExtendedColorType::L8)
+            .expect("encoding cannot fail");
+        out
     }
 
     #[test]
