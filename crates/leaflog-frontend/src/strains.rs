@@ -11,6 +11,7 @@ use leptos::task::spawn_local;
 use leptos_router::components::A;
 
 use crate::api;
+use crate::route_href;
 
 /// The strains page.
 #[component]
@@ -193,7 +194,7 @@ pub fn StrainsPage() -> impl IntoView {
                 <p class="empty">"No strains yet — add one, or clone a bundled record as your phenotype."</p>
             </Show>
 
-            <p><A href="/">"Back to home"</A></p>
+            <p><A href=route_href("/")>"Back to home"</A></p>
         </section>
     }
 }

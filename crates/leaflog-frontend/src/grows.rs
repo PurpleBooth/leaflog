@@ -19,6 +19,7 @@ use crate::equipment::ErrorIf;
 use crate::feed::FeedPanel;
 use crate::gantt::GanttTimeline;
 use crate::live::LivePanel;
+use crate::route_href;
 
 /// The grows overview page.
 #[component]
@@ -146,7 +147,7 @@ pub fn GrowsPage() -> impl IntoView {
                             view! {
                                 <li class="card">
                                     <div class="card-title">
-                                        <A href=format!("/grows/{}", grow.id)>
+                                        <A href=route_href(&format!("/grows/{}", grow.id))>
                                             <strong>{grow.name.clone()}</strong>
                                         </A>
                                         <span class="badge">{grow.status.label()}</span>
@@ -162,7 +163,7 @@ pub fn GrowsPage() -> impl IntoView {
             <Show when=move || grows.get().is_empty() && error.get().is_none()>
                 <p class="empty">"No grows yet — start your first one."</p>
             </Show>
-            <p><A href="/">"Back to home"</A></p>
+            <p><A href=route_href("/")>"Back to home"</A></p>
         </section>
     }
 }
@@ -447,7 +448,7 @@ pub fn GrowDetail() -> impl IntoView {
                 </div>
             </div>
 
-            <p><A href="/grows">"All grows"</A></p>
+            <p><A href=route_href("/grows")>"All grows"</A></p>
         </section>
     }
 }

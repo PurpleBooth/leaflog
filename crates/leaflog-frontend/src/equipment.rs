@@ -7,6 +7,7 @@ use leptos::task::spawn_local;
 use leptos_router::components::A;
 
 use crate::api;
+use crate::route_href;
 
 /// The equipment inventory page.
 #[component]
@@ -165,7 +166,7 @@ pub fn EquipmentPage() -> impl IntoView {
                 <p class="empty">"Nothing here yet — add your light, tent, fan, meters…"</p>
             </Show>
 
-            <p><A href="/">"Back to home"</A></p>
+            <p><A href=route_href("/")>"Back to home"</A></p>
         </section>
     }
 }

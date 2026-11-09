@@ -8,6 +8,26 @@ here. Date format: YYYY-MM-DD.
 
 ## 2026-11-09 — post-M8
 
+### D038: in-app links carry the ingress base (`route_href`)
+
+Under real HA ingress every nav link 404'd: `leptos_router` 0.8 renders
+`<A href>` values that start with `/` verbatim (`use_resolved_path`
+prepends the router base only to relative hrefs), and a path-absolute
+href also ignores the document's `<base href>` (the leading slash
+replaces the base path). Nav anchors therefore resolved to the bare
+origin (`/equipment`), the router's click interceptor declined them
+(path not under the router base), and the browser did a full page load
+onto a Home Assistant core route — HA's 404, never Leaflog's. The
+homepage alone worked because it is the URL HA loads into the panel
+iframe, never a clicked link. `just dev` masked all of this:
+`DevPrefixService` serves the SPA shell for unprefixed paths too, so a
+link that dropped the prefix still rendered. Fix: `route_href()` in
+`leaflog-frontend` prepends the runtime base (`window.__LEAFLOG_BASE__`)
+to every route path; all `<A>` hrefs go through it. Verified by a
+click-through and deep links under a simulated ingress prefix
+(`just dev`). Rule: in-app `<A>` hrefs must never start with a bare
+`/` — always `route_href("/…")`.
+
 ### D037: gitleaks secret scan in CI
 
 A manual full-history sweep (all 61 commits and refs: token formats,

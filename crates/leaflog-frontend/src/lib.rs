@@ -55,6 +55,28 @@ pub fn ingress_base() -> String {
         .unwrap_or_default()
 }
 
+/// Builds an in-app `<A href>` under the runtime ingress base.
+///
+/// `leptos_router` 0.8 renders hrefs that already start with `/`
+/// verbatim (its `use_resolved_path` prepends the router base only to
+/// relative hrefs), and a path-absolute href ignores the document's
+/// `<base href>` too — the leading slash replaces the base path. Under
+/// ingress both effects send nav links to the bare origin path, where
+/// Home Assistant (not this app) answers 404. Prepending the base keeps
+/// the anchor inside the ingress prefix; the router strips the base
+/// again when matching. No-op when the app is served at the root.
+///
+/// `path` must be a route path starting with `/` (before the base).
+#[must_use]
+pub fn route_href(path: &str) -> String {
+    let base = ingress_base();
+    if base.is_empty() {
+        path.to_owned()
+    } else {
+        format!("{base}{path}")
+    }
+}
+
 /// Module entry: mounts the app (called by `wasm-bindgen` on load).
 #[wasm_bindgen(start)]
 pub fn start_app() {
@@ -73,10 +95,10 @@ pub fn App() -> impl IntoView {
                     <span class="brand" aria-hidden="true">"🌿"</span>
                     <h1>"Leaflog"</h1>
                     <nav class="mainnav" aria-label="Main">
-                        <A href="/" exact=true>"Home"</A>
-                        <A href="/equipment">"Equipment"</A>
-                        <A href="/strains">"Strains"</A>
-                        <A href="/grows">"Grows"</A>
+                        <A href=route_href("/") exact=true>"Home"</A>
+                        <A href=route_href("/equipment")>"Equipment"</A>
+                        <A href=route_href("/strains")>"Strains"</A>
+                        <A href=route_href("/grows")>"Grows"</A>
                     </nav>
                 </header>
                 <main id="main">
@@ -126,8 +148,8 @@ fn Home() -> impl IntoView {
                      arrives with each milestone."
                 </p>
                 <ul class="links">
-                    <li><A href="/equipment">"Equipment inventory"</A></li>
-                    <li><A href="/strains">"Strain database"</A></li>
+                    <li><A href=route_href("/equipment")>"Equipment inventory"</A></li>
+                    <li><A href=route_href("/strains")>"Strain database"</A></li>
                 </ul>
                 <h3>"Backend health"</h3>
                 <pre aria-live="polite">{move || health.get()}</pre>
@@ -145,7 +167,7 @@ fn Spike() -> impl IntoView {
             <h2>"Ingress spike"</h2>
             <p>"This deep link was served by the SPA under runtime base:"</p>
             <p><code>{ingress_base()}</code></p>
-            <p><A href="/">"Back to home"</A></p>
+            <p><A href=route_href("/")>"Back to home"</A></p>
         </section>
     }
 }
