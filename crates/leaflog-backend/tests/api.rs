@@ -395,6 +395,75 @@ async fn seeds_arrive_once_and_carry_provenance() {
     assert_eq!(auto["auto_total_days_max"], 84);
 }
 
+#[tokio::test]
+async fn sensors_replace_is_atomic_when_an_insert_fails() {
+    use std::collections::BTreeMap;
+
+    use leaflog_backend::db::StoreError;
+    use leaflog_backend::store::grows;
+    use leaflog_backend::store::sensors::{BindingsInput, list, replace};
+    use leaflog_core::grows::{GrowInput, GrowStatus};
+
+    let db = Db::open_in_memory().unwrap();
+
+    // A grow with two live bindings.
+    let (grow_id, seeded) = db
+        .with(
+            |conn| -> Result<(String, BTreeMap<String, String>), StoreError> {
+                let grow = grows::create(
+                    conn,
+                    &GrowInput {
+                        name: "Closet run".to_owned(),
+                        strain_id: None,
+                        substrate: "soil".to_owned(),
+                        started_on: "2026-10-01".to_owned(),
+                        status: GrowStatus::Active,
+                        notes: None,
+                    },
+                )?;
+                let input = BindingsInput {
+                    bindings: BTreeMap::from([
+                        ("temperature".to_owned(), "sensor.grow_temp".to_owned()),
+                        ("humidity".to_owned(), "sensor.grow_hum".to_owned()),
+                    ]),
+                };
+                replace(conn, &grow.id, &input)?;
+                Ok((grow.id, input.bindings))
+            },
+        )
+        .await
+        .unwrap();
+
+    // Make every INSERT into sensor_binding abort mid-replacement, then
+    // remove the trigger again so later reads are unaffected.
+    let trigger_grow_id = grow_id.clone();
+    let replace_failed = db
+        .with(move |conn| -> Result<bool, StoreError> {
+            conn.execute_batch(
+                "CREATE TRIGGER abort_binding BEFORE INSERT ON sensor_binding
+                 BEGIN SELECT RAISE(ABORT, 'boom'); END",
+            )?;
+            let result = replace(
+                conn,
+                &trigger_grow_id,
+                &BindingsInput {
+                    bindings: BTreeMap::from([("co2".to_owned(), "sensor.grow_co2".to_owned())]),
+                },
+            );
+            conn.execute_batch("DROP TRIGGER abort_binding")?;
+            Ok(result.is_err())
+        })
+        .await
+        .unwrap();
+    assert!(replace_failed, "replace must fail while INSERTs abort");
+
+    // The failed replacement must not have destroyed the previous
+    // bindings: the DELETE inside `replace` has to roll back with the
+    // aborted INSERT.
+    let survivors = db.with(move |conn| list(conn, &grow_id)).await.unwrap();
+    assert_eq!(survivors, seeded);
+}
+
 /// A bridge pointed at an unroutable address: REST/WS fail fast and the
 /// app must still work (spec: works with HA unreachable).
 fn offline_bridge() -> std::sync::Arc<leaflog_backend::ha::HaBridge> {

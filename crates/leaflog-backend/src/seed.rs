@@ -69,15 +69,19 @@ pub async fn seed_strains_if_empty(db: &Db) -> Result<u32, SeedError> {
 
     let inserted = db
         .with(move |conn| -> Result<u32, SeedError> {
+            // One transaction per pass: a partial seed must not persist,
+            // or the count>0 guard above would make it permanent.
+            let tx = conn.unchecked_transaction().map_err(StoreError::from)?;
             let mut inserted = 0_u32;
             for seed in &seeds {
                 let mut strain = store::strain::from_input(&seed.input);
                 strain.evidence = seed.evidence.clone();
                 strain.source_url = Some(seed.source_url.clone());
                 strain.source_licence = Some(seed.source_licence.clone());
-                store::strain::create(conn, &strain)?;
+                store::strain::create(&tx, &strain)?;
                 inserted += 1;
             }
+            tx.commit().map_err(StoreError::from)?;
             Ok(inserted)
         })
         .await?;
@@ -98,11 +102,15 @@ pub async fn seed_equipment_if_empty(db: &Db) -> Result<u32, SeedError> {
     }
     let seeds: Vec<EquipmentInput> = serde_json::from_str(EQUIPMENT_SEED)?;
     db.with(move |conn| -> Result<u32, SeedError> {
+        // One transaction per pass: a partial seed must not persist, or
+        // the count>0 guard above would make it permanent.
+        let tx = conn.unchecked_transaction().map_err(StoreError::from)?;
         let mut inserted = 0_u32;
         for input in &seeds {
-            store::equipment::create(conn, input)?;
+            store::equipment::create(&tx, input)?;
             inserted += 1;
         }
+        tx.commit().map_err(StoreError::from)?;
         Ok(inserted)
     })
     .await
@@ -116,9 +124,11 @@ async fn seed_feeds(db: &Db) -> Result<(), SeedError> {
     if profiles == 0 {
         let presets = leaflog_core::feed::substrate_presets();
         db.with(move |conn| -> Result<(), crate::db::StoreError> {
+            let tx = conn.unchecked_transaction()?;
             for profile in &presets {
-                store::feeds::upsert_profile(conn, profile)?;
+                store::feeds::upsert_profile(&tx, profile)?;
             }
+            tx.commit()?;
             Ok(())
         })
         .await?;
@@ -150,7 +160,8 @@ async fn seed_feeds(db: &Db) -> Result<(), SeedError> {
                 updated_at: crate::db::now_rfc3339(),
             };
             db.with(move |conn| -> Result<(), crate::db::StoreError> {
-                conn.execute(
+                let tx = conn.unchecked_transaction()?;
+                tx.execute(
                     "INSERT INTO feed_template (id, name, substrate, source, is_builtin, created_at, updated_at)
                      VALUES (?1, ?2, ?3, ?4, 1, ?5, ?6)",
                     rusqlite::params![
@@ -163,7 +174,7 @@ async fn seed_feeds(db: &Db) -> Result<(), SeedError> {
                     ],
                 )?;
                 for row in &template.rows {
-                    conn.execute(
+                    tx.execute(
                         "INSERT INTO feed_template_row (id, template_id, phase, day_offset, ec_target_us, ph_min, ph_max)
                          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                         rusqlite::params![
@@ -177,6 +188,7 @@ async fn seed_feeds(db: &Db) -> Result<(), SeedError> {
                         ],
                     )?;
                 }
+                tx.commit()?;
                 Ok(())
             })
             .await?;

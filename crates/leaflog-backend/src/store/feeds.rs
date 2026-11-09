@@ -95,12 +95,16 @@ pub fn fit_and_store(
     let template_timeline = timeline_from_rows(&template.rows);
     let result = fit_feed(&template.rows, template_timeline, actual, config);
 
-    conn.execute(
+    // One transaction: a failed INSERT must roll back the DELETE so the
+    // grow keeps its previously stored plan (D012 single-connection
+    // design, hence `unchecked_transaction` on the shared `&Connection`).
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
         "DELETE FROM feed_plan_day WHERE grow_id = ?1",
         params![grow_id],
     )?;
     for day in &result.days {
-        conn.execute(
+        tx.execute(
             "INSERT INTO feed_plan_day (id, grow_id, grow_day, phase, ec_target_us, ph_min, ph_max, protected, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
@@ -116,6 +120,7 @@ pub fn fit_and_store(
             ],
         )?;
     }
+    tx.commit()?;
     Ok(result)
 }
 

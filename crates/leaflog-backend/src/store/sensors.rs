@@ -40,17 +40,22 @@ pub fn replace(conn: &Connection, grow_id: &str, input: &BindingsInput) -> Resul
             )));
         }
     }
-    conn.execute(
+    // One transaction: a failed INSERT must roll back the DELETE so the
+    // grow keeps its previous bindings (D012 single-connection design,
+    // hence `unchecked_transaction` on the shared `&Connection`).
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
         "DELETE FROM sensor_binding WHERE grow_id = ?1",
         params![grow_id],
     )?;
     for (role, entity_id) in &input.bindings {
-        conn.execute(
+        tx.execute(
             "INSERT INTO sensor_binding (grow_id, role, entity_id, updated_at)
              VALUES (?1, ?2, ?3, ?4)",
             params![grow_id, role, entity_id, now_rfc3339()],
         )?;
     }
+    tx.commit()?;
     Ok(())
 }
 
