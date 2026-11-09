@@ -234,7 +234,13 @@ pub fn fit_feed(
     }
 
     // --- Ripen + flush: pinned to the end, never dropped ---
-    let ripen_flush_start = actual_total - actual.flush_days - 1;
+    // Flush occupies the last `flush_days` days; `flush_days` is part of
+    // `actual_total`, so this subtraction never underflows. The ripen
+    // marker takes the day just before the flush and replaces any
+    // interpolated day there — the store enforces UNIQUE
+    // (grow_id, grow_day), and ripen, the last feed before flush, is
+    // the value that day must carry.
+    let flush_start = actual_total - actual.flush_days;
     let ripen_rows: Vec<&FeedRow> = rows
         .iter()
         .filter(|row| row.phase == FeedPhase::Ripen)
@@ -244,10 +250,14 @@ pub fn fit_feed(
         .filter(|row| row.phase == FeedPhase::Flush)
         .collect();
 
-    // One ripen day at the start of the tail (if the template has one).
-    if let Some(ripen) = ripen_rows.first() {
+    // One ripen day at the start of the tail (if the template has one
+    // and a day exists before the flush).
+    if let (Some(ripen), Some(ripen_day)) = (ripen_rows.first(), flush_start.checked_sub(1)) {
+        // Segment grow-day ranges are disjoint, so this drops at most
+        // the one interpolated day colliding with the ripen slot.
+        days.retain(|day| day.grow_day != ripen_day);
         days.push(FeedPlanDay {
-            grow_day: ripen_flush_start,
+            grow_day: ripen_day,
             phase: FeedPhase::Ripen,
             ec_target_us: ripen.ec_target_us,
             ph_min: ripen.ph_min,
@@ -259,7 +269,7 @@ pub fn fit_feed(
     if let Some(flush) = flush_rows.first() {
         for day in 0..actual.flush_days {
             days.push(FeedPlanDay {
-                grow_day: ripen_flush_start + 1 + day,
+                grow_day: flush_start + day,
                 phase: FeedPhase::Flush,
                 ec_target_us: flush.ec_target_us,
                 ph_min: flush.ph_min,
@@ -795,5 +805,72 @@ mod tests {
         let json = serde_json::to_string(&presets).expect("serializes");
         let back: Vec<SubstrateProfile> = serde_json::from_str(&json).expect("deserializes");
         assert_eq!(presets, back);
+    }
+
+    /// Every fitted day must occupy a distinct grow day: the store has
+    /// `UNIQUE (grow_id, grow_day)`, so a duplicate day (the ripen
+    /// marker colliding with the last interpolated segment day) fails
+    /// the whole fit insert.
+    #[test]
+    fn fitted_days_never_share_a_grow_day() {
+        for actual in [
+            ActualTimeline {
+                seedling_days: 7,
+                veg_days: 21,
+                flower_days: 63,
+                flush_days: 7,
+            },
+            ActualTimeline {
+                seedling_days: 0,
+                veg_days: 21,
+                flower_days: 63,
+                flush_days: 0,
+            },
+            ActualTimeline {
+                seedling_days: 7,
+                veg_days: 0,
+                flower_days: 40,
+                flush_days: 10,
+            },
+            ActualTimeline {
+                seedling_days: 0,
+                veg_days: 0,
+                flower_days: 0,
+                flush_days: 14,
+            },
+        ] {
+            let (rows, template) = nine_week_template();
+            let result = fit_feed(&rows, template, actual, FitConfig::default());
+            let mut days: Vec<u16> = result.days.iter().map(|day| day.grow_day).collect();
+            let total = days.len();
+            days.sort_unstable();
+            days.dedup();
+            assert_eq!(
+                days.len(),
+                total,
+                "fitted days must be unique for actual timeline {actual:?}"
+            );
+        }
+    }
+
+    /// Degenerate timelines (every segment zero) must not underflow or
+    /// panic; the fit simply yields at most the protected tail.
+    #[test]
+    fn degenerate_timeline_does_not_underflow() {
+        let (rows, template) = nine_week_template();
+        let result = fit_feed(
+            &rows,
+            template,
+            ActualTimeline {
+                seedling_days: 0,
+                veg_days: 0,
+                flower_days: 0,
+                flush_days: 0,
+            },
+            FitConfig::default(),
+        );
+        for day in result.days {
+            assert!(day.grow_day < result.actual_total_days.max(1));
+        }
     }
 }
