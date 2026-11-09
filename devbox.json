@@ -7,7 +7,8 @@
     "sqlite@latest",
     "pkg-config@latest",
     "libiconv@latest",
-    "cocogitto@6.2.0"
+    "cocogitto@6.2.0",
+    "gitleaks@latest"
   ],
   "shell": {
     "init_hook": [
@@ -17,7 +18,7 @@
     ],
     "scripts": {
       "dev": "just dev",
-      "ci": "just ci"
+      "ci":  "just ci"
     }
   }
 }
