@@ -1,16 +1,17 @@
 # Leaflog documentation
 
-## What it does (today)
+## What it does
 
-Leaflog currently ships its skeleton: the app installs, appears as the
-**Leaflog** sidebar tab (admins only), and serves its frontend through
-Home Assistant ingress under `/api/hassio_ingress/<token>/` with all
-relative URLs, so deep links and refreshes work. The start page reports
-the runtime ingress base and the backend health payload.
+Leaflog installs, appears as the **Leaflog** sidebar tab (admins
+only), and serves its frontend through Home Assistant ingress under
+`/api/hassio_ingress/<token>/` with all relative URLs, so deep links
+and refreshes work.
 
-The grow-diary features (equipment, strains, action and photo log,
-forecast, feeding schedules, environment coaching) arrive with the
-milestones tracked in the [repository](https://github.com/PurpleBooth/leaflog).
+The shipped grow diary covers equipment inventory, strains, an action
+and photo log with automatic HA sensor capture, a phase forecast,
+feeding schedules fitted to the plant's real timeline, and environment
+coaching: VPD, lamp height, substrate-aware pH/EC/TDS guidance and
+strain-aware coaching.
 
 ## Configuration
 
@@ -29,8 +30,8 @@ Backups keep your database and photos.
 - The app never calls the cloud; imports are user-triggered only.
 - Uploaded photos are stripped of EXIF/GPS metadata.
 - The Supervisor token never reaches the browser and is never logged.
-- Service calls to Home Assistant are read-only unless you explicitly
-  opt in (that switch arrives with the equipment features).
+- All Supervisor calls are read-only. The app makes no service calls,
+  and no opt-in switch exists yet.
 
 ## Troubleshooting
 

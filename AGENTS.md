@@ -8,9 +8,10 @@ for features, seed data, and acceptance criteria (research snapshot 2026-11-08).
 
 ## Status
 
-Empty repo, pre-M1. Build order: M1 skeleton + packaging + ingress spike → M2 DB/equipment/strains
-→ M3 action+photo log → M4 HA live data → M5 forecast → M6 feed fit → M7 VPD/lamp/coach/dashboard
-→ M8 hardening. Commit lint-clean at each milestone.
+v0.1.0 released (tagged 2026-11-08); M1-M8 complete, all docs/SPEC.md
+§13 acceptance criteria verified. Post-release hardening: keep commits
+lint-clean; open items R1-R9 in docs/THREAT-MODEL.md, one-off choices
+in docs/DECISIONS.md.
 
 ## Non-negotiables (violating these breaks the product)
 
