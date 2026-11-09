@@ -18,7 +18,7 @@ keywords = ["home-assistant", "grow", "diary", "rust"]
 categories = ["web-programming", "science"]
 
 [workspace.dependencies]
-leaflog-core = { path = "crates/leaflog-core", version = "0.2.0" }
+leaflog-core = { path = "crates/leaflog-core" }
 axum = "0.8"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 serde = { version = "1", features = ["derive"] }

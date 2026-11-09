@@ -1,7 +1,13 @@
 # Release pipeline: on a v* tag, run the full CI gate, generate a
 # changelog with cocogitto, create a GitHub Release, and publish the
-# multi-arch image. The tag is created by `cog bump --auto` locally
-# or by the release workflow dispatch.
+# multi-arch image. Releases are cut by pushing a v* tag: create it
+# locally with the version commit (`cog bump --auto`; when cocogitto's
+# own signing fails, finish its commit + tag with git) and sync the
+# version files first (leaflog/config.yaml, workspace Cargo.toml,
+# Cargo.lock, custom_components/leaflog/manifest.json). A dispatch
+# re-runs the release for whatever version leaflog/config.yaml
+# declares — a recovery hatch for a broken release, not a bumper; the
+# former `bump` input was never honoured (D039).
 
 name: Release
 
@@ -9,11 +15,6 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      bump:
-        description: "Version bump type (auto, major, minor, patch)"
-        required: false
-        default: "auto"
 
 permissions:
   contents: write
@@ -79,7 +80,9 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           # Update config.yaml version
           sed -i "s/^version: .*/version: \"$VERSION\"/" leaflog/config.yaml
-          # Update Cargo.toml workspace version
+          # Update Cargo.toml workspace version. Only [workspace.package]
+          # `version` sits at a line start; internal deps are path-only
+          # so no version pin can go stale here (D039).
           sed -i "s/^version = .*/version = \"$VERSION\"/" Cargo.toml
           # Update manifest.json
           python3 -c "
@@ -91,11 +94,15 @@ jobs:
               json.dump(m, f, indent=2)
               f.write('\n')
           "
+          # Cargo.lock records each member's version; keep it in step
+          # so the commit builds cleanly even under --locked. -w limits
+          # the update to workspace members, never registry deps.
+          cargo update --workspace
           # Commit if changed
           if ! git diff --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add leaflog/config.yaml Cargo.toml custom_components/
+            git add leaflog/config.yaml Cargo.toml Cargo.lock custom_components/
             git commit -m "chore(release): bump version to $VERSION"
             git push origin HEAD:main
           fi

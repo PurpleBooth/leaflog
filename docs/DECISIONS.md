@@ -8,6 +8,29 @@ here. Date format: YYYY-MM-DD.
 
 ## 2026-11-09 — post-M8
 
+### D039: release version-sync hardening (path-only internal deps)
+
+Cutting v0.2.0 exposed two latent release-pipeline bugs. (1) The
+Release workflow's version sync rewrites only `[workspace.package]`
+version in the root `Cargo.toml`; the `[workspace.dependencies]` pin
+`leaflog-core = { version = "0.x" }` went stale on any real bump and
+broke every cargo invocation ("failed to select a version"). It never
+fired for v0.1.0 only because the version did not change. Fix: the
+internal dependency is now **path-only** — nothing is published to a
+registry, so no pin exists to go stale — and the sync step also runs
+`cargo update --workspace` (workspace members only) and commits
+`Cargo.lock`. (2) The workflow_dispatch `bump` input was declared but
+never read; a dispatch would silently re-release whatever
+`leaflog/config.yaml` says. Fix: the input is removed and dispatch is
+documented as a re-release hatch; the release path is a pushed `v*`
+tag created locally (the version commit + tag via `cog bump --auto`,
+or by hand with `git` when cocogitto's own SSH signing cannot reach
+the 1Password key — its `chore(version)` message is `cog`'s own
+convention). Also: sync the version files *before* tagging so the
+tagged image carries the right `config.yaml` version (the v0.1.0 tag
+pointed at a pre-sync commit, so that image's add-on version was
+stale).
+
 ### D038: in-app links carry the ingress base (`route_href`)
 
 Under real HA ingress every nav link 404'd: `leptos_router` 0.8 renders
