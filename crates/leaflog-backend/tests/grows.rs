@@ -524,6 +524,166 @@ async fn photo_upload_rejects_garbage() {
     assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
 }
 
+/// A plain tiny JPEG (no EXIF) filled with one colour; size and fill
+/// vary between calls so the bytes on disk are distinct.
+fn plain_jpeg(width: u32, height: u32, fill: [u8; 3]) -> Vec<u8> {
+    let img = image::RgbImage::from_pixel(width, height, image::Rgb(fill));
+    let mut bytes = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new(&mut bytes)
+        .encode(img.as_raw(), width, height, image::ExtendedColorType::Rgb8)
+        .expect("encoding cannot fail");
+    bytes
+}
+
+#[tokio::test]
+async fn photo_upload_stores_every_file_part() {
+    let (base, _root) = spawn().await;
+    let client = reqwest::Client::new();
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&grow_payload("Multi-photo run"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let id = grow["id"].as_str().unwrap().to_owned();
+
+    // One multipart POST carrying two "file" parts, exactly as the
+    // frontend appends every selected photo under the same field name.
+    let form = reqwest::multipart::Form::new()
+        .part(
+            "file",
+            reqwest::multipart::Part::bytes(plain_jpeg(16, 16, [200, 30, 30]))
+                .file_name("first.jpg")
+                .mime_str("image/jpeg")
+                .unwrap(),
+        )
+        .part(
+            "file",
+            reqwest::multipart::Part::bytes(plain_jpeg(24, 16, [30, 30, 200]))
+                .file_name("second.jpg")
+                .mime_str("image/jpeg")
+                .unwrap(),
+        );
+    let response = client
+        .post(format!("{base}/api/grows/{id}/photos"))
+        .multipart(form)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::CREATED);
+
+    // Every uploaded part must be stored: two rows, each with its own
+    // file on disk.
+    let rows: Vec<Value> = client
+        .get(format!("{base}/api/grows/{id}/photos"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 2, "one row per uploaded file part");
+    let names: Vec<&str> = rows
+        .iter()
+        .map(|row| row["original_name"].as_str().unwrap())
+        .collect();
+    assert_ne!(names[0], names[1], "each part stored as its own file");
+}
+
+#[tokio::test]
+async fn failed_multi_part_upload_stores_nothing() {
+    let (base, root) = spawn().await;
+    let client = reqwest::Client::new();
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&grow_payload("Partial-failure run"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let id = grow["id"].as_str().unwrap().to_owned();
+
+    // First part valid, second part corrupt — exactly what a multi-file
+    // selection with one broken image produces. The whole request must
+    // fail and leave neither rows nor files behind, or a retry would
+    // duplicate the first photo (there is no idempotency key).
+    let form = reqwest::multipart::Form::new()
+        .part(
+            "file",
+            reqwest::multipart::Part::bytes(plain_jpeg(16, 16, [90, 90, 30]))
+                .file_name("good.jpg")
+                .mime_str("image/jpeg")
+                .unwrap(),
+        )
+        .part(
+            "file",
+            reqwest::multipart::Part::bytes(b"not an image at all")
+                .file_name("bad.jpg")
+                .mime_str("image/jpeg")
+                .unwrap(),
+        );
+    let response = client
+        .post(format!("{base}/api/grows/{id}/photos"))
+        .multipart(form)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+
+    let rows: Vec<Value> = client
+        .get(format!("{base}/api/grows/{id}/photos"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(
+        rows.is_empty(),
+        "a failed multi-part upload must not persist earlier parts: {rows:?}"
+    );
+
+    // Nothing on disk either: no originals, no thumbnails.
+    for kind in ["originals", "thumbnails"] {
+        let dir = root.join(kind).join(&id);
+        let empty = std::fs::read_dir(&dir)
+            .map(|entries| entries.count() == 0)
+            .unwrap_or(true);
+        assert!(empty, "{kind} must hold no files after the failure");
+    }
+
+    // The user fixes the selection and retries with the good photo
+    // only: exactly one row, no duplicate of the first attempt.
+    let form = reqwest::multipart::Form::new().part(
+        "file",
+        reqwest::multipart::Part::bytes(plain_jpeg(16, 16, [90, 90, 30]))
+            .file_name("good.jpg")
+            .mime_str("image/jpeg")
+            .unwrap(),
+    );
+    let response = client
+        .post(format!("{base}/api/grows/{id}/photos"))
+        .multipart(form)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::CREATED);
+    let rows: Vec<Value> = client
+        .get(format!("{base}/api/grows/{id}/photos"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 1, "the retry must not duplicate the photo");
+}
+
 /// A bridge pointed at an unroutable address: REST/WS fail fast and the
 /// app must still work (spec: works with HA unreachable).
 fn offline_bridge() -> std::sync::Arc<leaflog_backend::ha::HaBridge> {

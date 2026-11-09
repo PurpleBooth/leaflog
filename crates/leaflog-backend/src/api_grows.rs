@@ -15,6 +15,7 @@ use time::macros::format_description;
 
 use crate::api::ApiError;
 use crate::app::AppState;
+use crate::db::StoreError;
 use crate::db::now_rfc3339;
 use crate::store::{self, StoreOrNotFound};
 
@@ -384,7 +385,7 @@ async fn upload_photo(
     Path(id): Path<String>,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<leaflog_core::grows::Photo>), ApiError> {
-    let mut file: Option<Vec<u8>> = None;
+    let mut files: Vec<Vec<u8>> = Vec::new();
     let mut plant_id: Option<String> = None;
     let mut action_log_id: Option<String> = None;
     let mut tags: Vec<String> = Vec::new();
@@ -399,7 +400,13 @@ async fn upload_photo(
                     .bytes()
                     .await
                     .map_err(|error| ApiError::BadRequest(error.to_string()))?;
-                file = Some(bytes.to_vec());
+                if bytes.len() > MAX_PHOTO_BYTES {
+                    return Err(ApiError::BadRequest(format!(
+                        "photo exceeds {} MiB",
+                        MAX_PHOTO_BYTES / (1024 * 1024)
+                    )));
+                }
+                files.push(bytes.to_vec());
             }
             Some("plant_id") => {
                 plant_id = non_empty_field(field).await;
@@ -420,13 +427,10 @@ async fn upload_photo(
             _ => {}
         }
     }
-    let bytes =
-        file.ok_or_else(|| ApiError::BadRequest("multipart field 'file' is required".to_owned()))?;
-    if bytes.len() > MAX_PHOTO_BYTES {
-        return Err(ApiError::BadRequest(format!(
-            "photo exceeds {} MiB",
-            MAX_PHOTO_BYTES / (1024 * 1024)
-        )));
+    if files.is_empty() {
+        return Err(ApiError::BadRequest(
+            "multipart field 'file' is required".to_owned(),
+        ));
     }
 
     let photos = state.photos.clone();
@@ -434,31 +438,73 @@ async fn upload_photo(
         .db
         .with(move |conn| -> Result<_, ApiError> {
             let grow = store::grows::get(conn, &id)?;
-            // Blocking image work inside the DB task keeps one
-            // transaction-ish flow; the connection lock is not held
-            // across the pipeline (store() is pure CPU + file I/O).
-            let stored = photos
-                .store(&id, &bytes)
-                .map_err(|error| ApiError::BadRequest(error.to_string()))?;
-            let captured_at = stored.captured_at.clone().unwrap_or_else(now_rfc3339);
-            let day = day_number(&grow.started_on, &captured_at)?;
-            let flip = store::actions::first_event_day(conn, &id, ActionType::Flip, day)?;
-            let harvested =
-                store::actions::first_event_day(conn, &id, ActionType::Harvest, day)?.is_some();
-            let phase = leaflog_core::actions::derive_phase(day, flip, harvested);
-            let new = store::photos::NewPhoto {
-                grow_id: id.clone(),
-                plant_id,
-                action_log_id,
-                captured_at,
-                grow_day: day,
-                phase: Some(phase),
-                tags,
-                original_name: stored.original_name,
-                thumbnail_name: Some(stored.thumbnail_name),
-                bytes_stored: stored.bytes_stored,
-            };
-            store::photos::create(conn, &new).map_err(ApiError::from)
+            // One row per uploaded part: the frontend appends every
+            // selected photo under the same "file" field name, so each
+            // part gets its own store() + row. The last created row is
+            // returned, matching the previous single-file response.
+            //
+            // The whole request is all-or-nothing: the file pipeline
+            // runs for every part *before* any row exists, all rows go
+            // in through one transaction, and any failure removes the
+            // files of every part written so far. A failed request
+            // therefore leaves nothing behind — a client retry (there
+            // is no idempotency key) must never duplicate photos.
+            let mut stored: Vec<_> = Vec::with_capacity(files.len());
+            let outcome = (|| -> Result<leaflog_core::grows::Photo, ApiError> {
+                for bytes in &files {
+                    // Blocking image work inside the DB task keeps one
+                    // flow; store() is pure CPU + file I/O.
+                    stored.push(
+                        photos
+                            .store(&id, bytes)
+                            .map_err(|error| ApiError::BadRequest(error.to_string()))?,
+                    );
+                }
+                // One transaction for every row (D012 single-connection
+                // design, hence `unchecked_transaction` on the shared
+                // `&Connection`): a failed INSERT rolls back the earlier
+                // parts' rows too.
+                let tx = conn
+                    .unchecked_transaction()
+                    .map_err(StoreError::from)
+                    .map_err(ApiError::from)?;
+                let mut last = None;
+                for part in &stored {
+                    let captured_at = part.captured_at.clone().unwrap_or_else(now_rfc3339);
+                    let day = day_number(&grow.started_on, &captured_at)?;
+                    let flip = store::actions::first_event_day(conn, &id, ActionType::Flip, day)?;
+                    let harvested =
+                        store::actions::first_event_day(conn, &id, ActionType::Harvest, day)?
+                            .is_some();
+                    let phase = leaflog_core::actions::derive_phase(day, flip, harvested);
+                    let new = store::photos::NewPhoto {
+                        grow_id: id.clone(),
+                        plant_id: plant_id.clone(),
+                        action_log_id: action_log_id.clone(),
+                        captured_at,
+                        grow_day: day,
+                        phase: Some(phase),
+                        tags: tags.clone(),
+                        original_name: part.original_name.clone(),
+                        thumbnail_name: Some(part.thumbnail_name.clone()),
+                        bytes_stored: part.bytes_stored,
+                    };
+                    last = Some(store::photos::create(&tx, &new).map_err(ApiError::from)?);
+                }
+                tx.commit()
+                    .map_err(StoreError::from)
+                    .map_err(ApiError::from)?;
+                Ok(last.expect("files is non-empty (checked above)"))
+            })();
+            if let Err(error) = outcome {
+                // Rows are already gone (single transaction); remove the
+                // files of every part that reached the disk.
+                for part in &stored {
+                    photos.remove(&id, &part.original_name, Some(&part.thumbnail_name));
+                }
+                return Err(error);
+            }
+            outcome
         })
         .await?;
     Ok((StatusCode::CREATED, Json(photo)))

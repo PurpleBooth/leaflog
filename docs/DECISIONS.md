@@ -8,6 +8,24 @@ here. Date format: YYYY-MM-DD.
 
 ## 2026-11-09 — post-M8
 
+### D041: multi-part photo upload is all-or-nothing
+
+The frontend appends every selected photo under one `file` field, and
+the upload handler answers with one row per part. Storing per part as
+the loop went meant a failure on part k (one corrupt image in a
+multi-file selection, a full disk mid-request) left parts 1..k-1
+persisted as rows *and* files while the request returned an error —
+and a retry (there is no idempotency key) duplicated them. Same
+partial-state class the sensors/feeds/seed transactions already fix.
+`upload_photo` (api_grows.rs) now runs the file pipeline for **every**
+part before any row exists, inserts all rows through one
+`unchecked_transaction`, and on any failure removes the files of every
+part that reached the disk; `PhotoStore::store` equally removes its
+own original when the thumbnail write fails, so a failed `store`
+leaves nothing. Verified by `failed_multi_part_upload_stores_nothing`
+(tests/grows.rs): 400 → zero rows, zero files, retry stores exactly
+one.
+
 ### D039: release version-sync hardening (path-only internal deps)
 
 Cutting v0.2.0 exposed two latent release-pipeline bugs. (1) The

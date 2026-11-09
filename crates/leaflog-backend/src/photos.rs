@@ -93,7 +93,9 @@ impl PhotoStore {
     }
 
     /// Strips metadata, writes the original and a WebP thumbnail, and
-    /// returns the storage facts.
+    /// returns the storage facts. All-or-nothing at the file level: if
+    /// the thumbnail cannot be written, the already-written original is
+    /// removed again, so a failed `store` leaves no files behind.
     ///
     /// # Errors
     ///
@@ -123,7 +125,11 @@ impl PhotoStore {
         std::fs::write(self.original_path(grow_id, &original_name), &original)?;
 
         let thumbnail_name = format!("{id}.webp");
-        self.write_thumbnail(&rgb, grow_id, &thumbnail_name)?;
+        if let Err(error) = self.write_thumbnail(&rgb, grow_id, &thumbnail_name) {
+            // Never leave a half-written pair behind.
+            let _ = std::fs::remove_file(self.original_path(grow_id, &original_name));
+            return Err(error);
+        }
 
         Ok(StoredPhoto {
             bytes_stored: original.len() as u64,
