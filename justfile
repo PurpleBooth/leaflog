@@ -175,19 +175,29 @@ lint-prose:
     done < <(find crates -type f -name '*.rs' | sort)
     vale "$tmp/comments" || status=1
     # UI strings: prose-looking string literals from the frontend.
-    # Keep literals that contain whitespace (labels, sentences); drop
-    # Leptos attribute fragments (" aria-label="), strings that are
-    # pure format specs/separators, and {…} placeholders. Each string
-    # is closed with a period and separated by a blank line so the
-    # sentence cap judges each label on its own.
+    # Keep literals with at least three plain alphabetic words (real
+    # labels and sentences); drop Leptos attribute fragments
+    # (" aria-label="), format-spec/separator-only strings, {…}
+    # placeholders, and Tailwind utility-class lists (their hyphen/
+    # slash/colon tokens are not prose words). Each string is closed
+    # with a period and separated by a blank line so the sentence cap
+    # judges each label on its own.
     while IFS= read -r f; do
         out="$tmp/ui/${f}.txt"
         mkdir -p "$(dirname "$out")"
         grep -hoE '"[^"]*[[:space:]][^"]*"' "$f" \
             | sed -E 's/^"//; s/"$//; s/[{][^}]*[}]/#/g' \
             | grep -vE '^[[:space:]]*[a-z0-9-]+=$' \
-            | grep -E '[[:alpha:]]{2,}' \
-            | awk '{ if ($0 !~ /[.!?:]$/) print $0 "."; else print; print "" }' \
+            | awk '{
+                words = 0
+                for (i = 1; i <= NF; i++)
+                    if ($i ~ /^[A-Za-z][A-Za-z]+$/ && length($i) >= 2) words++
+                if (words >= 3) {
+                    if ($0 !~ /[.!?:]$/) print $0 "."
+                    else print
+                    print ""
+                }
+              }' \
             > "$out" || true
     done < <(find crates/leaflog-frontend/src -type f -name '*.rs' | sort)
     vale "$tmp/ui" || status=1
