@@ -5,10 +5,11 @@ Build **Leaflog**, a self-hosted grow diary packaged as a **Home Assistant app (
 
 "Done" means a user can:
 1. Install Leaflog from a local app repository (amd64 + aarch64) and open it from the HA sidebar.
-2. Create a grow from a strain, substrate and equipment list, and see predicted dates for every phase.
-3. Log actions and photos, with HA sensor data attached automatically.
-4. See live "in range / out of range" feedback and **phase-, substrate- and strain-aware recommendations** for pH, EC/TDS, temperature, humidity, VPD, lamp height and equipment setup.
-5. Follow a feeding schedule that is stretched or shrunk to that plant's real timeline.
+2. On first start, run a short onboarding wizard: log equipment basics, create a grow space, pick a strain, add plants (§4.12).
+3. Create a grow from a strain, substrate and equipment list, and see predicted dates for every phase.
+4. Log actions and photos, with HA sensor data attached automatically.
+5. See live "in range / out of range" feedback and **phase-, substrate- and strain-aware recommendations** for pH, EC/TDS, temperature, humidity, VPD, lamp height and equipment setup.
+6. Follow a feeding schedule that is stretched or shrunk to that plant's real timeline.
 All checks in §13 must pass, with evidence.
 
 ## 2. Non-negotiables
@@ -28,6 +29,7 @@ All checks in §13 must pass, with evidence.
 
 ## 3. Architecture (record decisions in `docs/ARCHITECTURE.md`)
 - **Backend:** Axum + Tokio + SQLite (sqlx or rusqlite) in `/data`, with versioned migrations.
+- **Migrations are first-class tooling, not a hand-maintained list.** Files in `crates/leaflog-backend/migrations/` are discovered automatically (adding a file is the whole workflow); each applies in its own transaction; the applied history is checksum-verified against the embedded set, and a divergent or out-of-order history refuses to start. The backend binary gains a `migrate` subcommand (apply, status) for standalone runs while boot-time apply stays the normal path, and `just migrate new <name>` / `just migrate status` (plus a dev-only `redo`) wrap it for development. Use a maintained runner crate (`rusqlite_migration` is the leading candidate given rusqlite); log the pick in `docs/DECISIONS.md`. No external CLI in the app image.
 - **Shared crate** (`leaflog-core`): domain types plus the pure-Rust engines (forecast, feed-fit, VPD, lamp-height, recommendations). It's unit-testable and used by both backend and frontend.
 - **Frontend: Leptos, CSR mode, built with Trunk** (WASM SPA served by Axum). Use the latest stable 0.8.x. Re-evaluate 0.9 when it goes final (0.9.0-rc1 was released 2026-10-31). Do not use SSR/hydration: the ingress path is dynamic, and plain CSR plus a runtime-injected base is the least fragile setup.
   - **M1 spike (time-box it):** prove that the router base can be set at runtime from the injected ingress path, that all asset URLs are relative, and that deep links and refresh work under an arbitrary prefix.
@@ -44,11 +46,15 @@ All checks in §13 must pass, with evidence.
 
 ## 4. Features
 
-### 4.1 Equipment inventory
-- Categories: light, tent/room, fan, carbon filter, humidifier, dehumidifier, heater/AC, pots/media, pumps/reservoir, meters (pH, EC/TDS, PPFD/PAR), sensors, controllers, misc.
-- Fields: name, brand/model, **real wall wattage** (not the marketing "equivalent"), dimmable (Y/N), PPFD map (optional, see 4.7), purchase date/price, notes, photos.
-- Optional **HA entity binding** per item (e.g. `light.*`, power sensor, dimmer `number.*`).
-- Per-grow **assignment** that snapshots what was used, so later edits don't rewrite history.
+### 4.1 Equipment catalogue and grow spaces
+- The equipment **catalogue** covers durable hardware only — **lights, tents/rooms, fans (incl. carbon filters) and sensors**. Consumables and instruments aren't catalogued: nutrient products live in feed templates (§4.6), pH/EC/TDS readings are action-log fields (§4.2), media and pots are notes.
+- The catalogue follows the strain-database pattern: bundled presets (product facts only) plus user-added entries. **Bundled presets are read-only** — edit and delete are rejected by the API, the UI marks them with a preset badge, and "clone" copies a preset into an editable user entry. Presets ship for lights, tents and fans only, never sensors.
+- **Sensors are populated from Home Assistant.** A sensor item is created by picking an HA entity in an entity picker (`GET /api/states`, filtered by device class); v1 supports **temperature** and **humidity**. The entity is the item's identity, and a space's temperature + humidity items are offered as the default env bindings for grows in it (per-grow overrides stay, §4.9). With HA unreachable the picker defers — skip now, pick later — and nothing else blocks.
+- Fields: name, brand/model, **real wall wattage** (not the marketing "equivalent"), dimmable (Y/N), PPFD map (lights only, optional, see 4.7), purchase date/price, notes, photos.
+- Spaces *reference* catalogue entries — there is no per-item instance layer: a shared item (a clip fan carried between tents) may appear in several spaces, and two identical lights are two entries.
+- A **grow space** is a named physical setup (for example a tent): optional interior dimensions (SI cm), notes, and a set of catalogue references. Grows run inside a space (optional); deleting a space keeps its grows. The space's most powerful light with a known wattage feeds the §4.7 advisor.
+- Optional **HA entity binding** per item (e.g. `light.*`, power sensor, dimmer `number.*`); for sensor items the bound entity is the item itself (above).
+- Future: a per-grow snapshot of the space's equipment ("what was used"), so later catalogue edits don't rewrite history (supersedes the earlier `grow_equipment` idea).
 - Energy estimate (watts × runtime) using bound power/energy sensors where available.
 
 ### 4.2 Action log
@@ -81,7 +87,7 @@ All checks in §13 must pass, with evidence.
   - Sativa/Haze/African/Afghan/Hawaiian lineages tend to be **more** heat-tolerant, but can be shocked by cold.
   - There are exceptions (e.g. some stout indica or auto cultivars are reported heat-tolerant).
 - Tolerance shifts the *alert thresholds*, not the species rules. Default shifts (editable): tolerant +2 °F ceiling, sensitive −3 °F ceiling. These are heuristics, so label them as such.
-- Users can add, edit and clone a strain as "my phenotype". Per-grow actual results can be written back (flower days achieved, max stretch, what temps it tolerated).
+- Users can add their own strains and clone any strain (bundled or own) as an editable "my phenotype" copy. **Bundled strains are read-only** — preset badge, edit/delete rejected, clone-to-modify — the same contract as bundled equipment (§4.1). Per-grow actual results (flower days achieved, max stretch, what temps it tolerated) can be written back to user-owned strains only.
 
 ### 4.5 Phase forecast
 - Phases: germination → seedling → veg → (flip) → flower → harvest → dry → cure.
@@ -114,6 +120,7 @@ Output: **recommended height range, dim %, target PPFD, DLI** (PPFD × hours × 
   - Never recommend below the fixture's minimum distance (default floor 10–12 in for dimmable LEDs).
   - On "bleaching / taco / crispy" tags, suggest +2–4 in or dim to 70–80%, then re-check after about a week.
 - Prefer "set distance by stage, then fine-tune with the dimmer".
+- When the grow has a space, the advising fixture is the most powerful light in that space with a known real wattage (plus whether any light is dimmable); otherwise a 330 W-class default applies (D021).
 - Always show the units, say that the numbers are starting points, and recommend a PAR meter or a PPFD-meter log entry to calibrate.
 - If a dimmer entity is bound **and** service calls are opted in, offer a one-tap "apply" with confirmation. Otherwise advise only.
 
@@ -129,13 +136,27 @@ Substrates: soil, coco, hydro (DWC/RDWC), plus user-defined (e.g. peat soilless,
 - Watering/feeding entries compare input vs runoff pH/EC and flag drift (§5.3).
 
 ### 4.10 Phase coach (suggested equipment setup)
-A rules card per phase that lists targets, live status, and **recommended equipment categories matched to the user's own inventory first** (e.g. "You own a 150 W dehumidifier: use it in late flower"). Presets are stored as editable data, each with a short "why" and a source note.
+A rules card per phase that lists targets, live status, and **recommended equipment matched to the user's own inventory first** (e.g. "Your 6 in inline fan: raise its speed in late flower for airflow and mould control"). Recommendations may name gear outside the four catalogue categories (a humidifier, a dehumidifier) as advice to acquire — such items are never catalogue entries (§4.1). Presets are stored as editable data, each with a short "why" and a source note.
 
 ### 4.11 Dashboard
 Per grow: phase and day count, next milestone, today's feed target, lamp-height card, live sensor tiles, latest photo, last N log entries, and line charts (temp, RH, VPD, soil moisture, pH/EC/TDS) with log events overlaid as markers.
 
+### 4.12 Onboarding wizard
+- A slick first-run flow for a fresh install: when there are no grow spaces, no grows and no prior dismissal, the app opens a mobile-friendly wizard that ends with a first grow running. Every step can be skipped, progress persists across restarts, and the empty-state "set up" card restarts it.
+- Steps, in order:
+  1. **Equipment basics** — pick bundled presets (light, tent, fans), add own entries or both; bind HA sensors, temperature + humidity at minimum (picker per §4.1; deferred when HA is unreachable).
+  2. **Grow space** — name it, optional dimensions; created from the equipment just picked.
+  3. **Strain** — pick a bundled strain, an existing own strain, or add a new one.
+  4. **Plants** — name and count the plants; finishing creates a grow inside the space (germination defaults to today, editable) and lands on its dashboard.
+- The wizard gates nothing: every screen stays reachable, and dismissing it leaves the normal empty dashboard.
+
+### 4.13 Seedbank
+- A basic log of owned seeds, per batch: strain (linked to the strain database), quantity, acquired from (bank / breeder / own harvest), acquisition date, storage method (default cool/dark/dry per §5.4), notes.
+- Batches list **oldest first** within a strain (use the oldest seeds first) and show the §5.4 viability window, with a "past prime" badge once it has passed.
+- Starting plants from a batch (onboarding step 4 or normal grow creation) may link to it and decrement the count; manual edits always win. Informational only — no reminders beyond the badge.
+
 ## 5. Grow Science Pack (seed data, editable, each row carries a source label)
-**Rule:** the sources below disagree in places. Store ranges, never single magic numbers. Show "sources vary" where they do. Every preset is user-editable, with a "reset to default" button. Re-check each number against at least two sources before committing it. If you can't, mark it `unverified`.
+**Rule:** the sources below disagree in places. Store ranges, never single magic numbers. Show "sources vary" where they do. Every preset is user-editable, with a "reset to default" button. Re-check each number against at least two sources before committing it. If you can't, mark it `unverified`. (User-editability applies to the numeric grow-science presets; bundled catalogue records — equipment and strains — are read-only, see §4.1 and §4.4.)
 
 ### 5.1 Light & heat
 | Stage | Generic LED height | Target PPFD |
@@ -191,6 +212,18 @@ Wattage class at full power (starting point):
 - **These are contested.** Another source gives only ~600–800 ppm for soil flowering, and growers commonly say published feed charts run high. Default the active preset to the **lower half** of each band. Make it very clear these are starting points and that product-label dosing for the user's own nutrients is what counts.
 - Runoff-vs-input guidance (editable): runoff a few hundred ppm above input is normal in coco. If runoff is far above input (e.g. ≥1000 ppm), suggest a flush. Runoff below input suggests the plant is feeding hard.
 
+### 5.4 Seed viability (seedbank windows)
+Ranges from acquisition date, by storage method — sources disagree, so re-check against at least two before encoding and mark anything unresolved `unverified`:
+| Storage | Full-viability window (typical) |
+|---|---|
+| Room temperature, dark drawer | ~6–12 months, then germination declines noticeably |
+| Cool, dark, dry cupboard (default) | ~1–3 years |
+| Refrigerated, airtight (~4–8 °C) | ~5 years; reports up to ~10 |
+| Frozen, dried, airtight | 10+ years reported |
+
+- The window counts from acquisition (bank packing date when known, else purchase/receipt date). Past the window means *falling germination odds*, not an expiry: old batches get a "past prime" hint and a germination-test reminder, never a hard block.
+- Storage conditions dominate; seed type barely moves the window. Don't encode per-strain viability numbers without sources.
+
 ## 6. UX / visual design
 - Dark and light themes following `prefers-color-scheme`, with a manual override. Optional best-effort match to the HA theme.
 - Calm botanical palette, cards, generous spacing, rounded corners, subtle motion, good empty states and skeletons. Phase accents (seedling green → flower purple/amber → cure warm brown).
@@ -207,7 +240,7 @@ Wattage class at full power (starting point):
 - Re-check the HA developer docs before each milestone. Naming and behaviour are changing ("add-ons" are now "apps").
 
 ## 8. Data model (starting point, refine)
-`strain`, `equipment_item`, `fixture_ppfd_map`, `grow`, `plant`, `grow_equipment`, `substrate_profile`, `phase_plan`, `phase_event_actual`, `action_log`, `photo`, `log_attachment`, `sensor_binding`, `sensor_snapshot`, `feed_template`, `feed_template_row`, `feed_plan_day`, `preset_env`, `preset_light`, `preset_substrate`, `alert_rule`, `settings`, `schema_migrations`. ULIDs, UTC timestamps, SI units internally.
+`strain` (+ `is_builtin`), `equipment_item` (+ `source`, `is_builtin`; sensor items carry their HA entity), `seed_batch`, `fixture_ppfd_map`, `grow` (+ `grow_space_id`), `plant`, `grow_space`, `grow_space_equipment`, `substrate_profile`, `phase_plan`, `phase_event_actual`, `action_log`, `photo`, `log_attachment`, `sensor_binding`, `sensor_snapshot`, `feed_template`, `feed_template_row`, `feed_plan_day`, `preset_env`, `preset_light`, `preset_substrate`, `alert_rule`, `settings`, `schema_migrations`. ULIDs, UTC timestamps, SI units internally. Spaces reference catalogue entries (many-to-many `grow_space_equipment`); the planned `grow_equipment` snapshot is superseded by spaces for now (see 4.1). Onboarding dismissal is a `settings` flag.
 
 ## 9. Compliance (built-in, informational)
 The owner is in Germany. Private home cultivation is limited to **3 plants per adult** and must be **secured against access by third parties, especially minors**. Passing harvested cannabis to third parties is not allowed.
@@ -269,7 +302,7 @@ Rules for living with it:
 - `just dev` runs the backend against a **mock HA** (an Axum app that speaks the WebSocket protocol and replays fake sensor data) plus `trunk serve`. It also simulates ingress (random path prefix and `X-Ingress-Path`). Document how to test against a real HA.
 
 ## 12. Milestones (commit at each, lint-clean)
-M1 skeleton + packaging + ingress "hello" tab + Leptos runtime-base spike → M2 DB, equipment, strains → M3 action log + photo log → M4 HA live data + history → M5 forecast + timeline → M6 feed fit + substrate profiles → M7 VPD/env engine, lamp advisor, phase coach, dashboard polish → M8 hardening, docs, CI, screenshots.
+M1 skeleton + packaging + ingress "hello" tab + Leptos runtime-base spike → M2 DB, equipment, strains → M3 action log + photo log → M4 HA live data + history → M5 forecast + timeline → M6 feed fit + substrate profiles → M7 VPD/env engine, lamp advisor, phase coach, dashboard polish → M8 hardening, docs, CI, screenshots → M9 catalogue trim, HA sensor items, read-only presets, migration tooling → M10 onboarding wizard + seedbank.
 
 ## 13. Acceptance criteria (show evidence for each)
 - [ ] `just ci`: fmt, clippy with the §10 lint block and `-D warnings` (native + wasm), unit and integration tests, WASM build.
@@ -288,6 +321,11 @@ M1 skeleton + packaging + ingress "hello" tab + Leptos runtime-base spike → M2
 - [ ] Image builds for amd64 and aarch64 and installs as a local app. Sidebar tab shows the configured icon and title.
 - [ ] Backup → restore keeps DB and photos.
 - [ ] Screenshots committed. Lighthouse accessibility ≥ 90 on main views.
+- [ ] Bundled equipment and strains reject edit and delete at the API (tested) and carry a preset badge in the UI; clone-to-edit yields a user entry.
+- [ ] Sensor items come only from the HA entity picker (temperature + humidity device classes); with HA unreachable the step defers instead of blocking.
+- [ ] Onboarding: on a fresh database the wizard appears and equipment → space → strain → plants produces a grow on the dashboard; skip and resume both behave (tested).
+- [ ] Seedbank: oldest-first ordering, §5.4 window shown, linked plant starts decrement the count (tested).
+- [ ] Migration tooling: `just migrate new/status` and the `migrate` subcommand work; boot applies pending files and refuses a divergent or out-of-order history (tested).
 
 ## 14. Working agreements
 - Cite a source for every default number in the preset files. Where sources disagree, store the range and mark it.

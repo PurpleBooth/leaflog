@@ -8,6 +8,73 @@ here. Date format: YYYY-MM-DD.
 
 ## 2026-11-10 — post-M8
 
+### D045: Spec amendment — trimmed catalogue, HA sensors, read-only presets, onboarding, seedbank, migration tooling
+
+Product decisions recorded in SPEC.md (§4.1, §4.4, §4.12, §4.13, §5.4,
+§13; milestones M9/M10) for the post-v0.3 roadmap. Two of them amend
+D043, whose implementation is in flight:
+
+- The equipment catalogue shrinks to durable hardware: lights,
+  tents/rooms, fans (incl. carbon filters) and sensors. Consumables and
+  instruments leave the catalogue — nutrients already live in feed
+  templates, pH/EC/TDS readings in action-log fields. The bundled
+  21-item seed set is trimmed to lights/tents/fans accordingly.
+- Sensor items are never bundled: each is created from an HA entity
+  (temperature + humidity device classes for now), replacing the
+  hygrometer-style hardware presets.
+- **Bundled equipment and strains become immutable** (preset badge,
+  edit/delete rejected, clone-to-edit). This reverses D043's "builtins
+  are deletable" and the flag being merely cosmetic; the API must
+  enforce it. The §5 "presets are user-editable" rule is clarified to
+  cover only the numeric grow-science presets.
+- New features added to the spec: a first-run onboarding wizard
+  (equipment → space → strain → plants), a seedbank log with §5.4
+  viability windows and oldest-first use, and first-class migration
+  tooling (automatically discovered files, checksum-verified history,
+  a `migrate`
+  subcommand and `just migrate` recipes; a maintained runner —
+  `rusqlite_migration` preferred — replaces the hand-rolled embedded
+  array in `db.rs`).
+
+### D044: Grow spaces — grows live inside a space
+
+`grow_space` (name, optional interior W/D/H in centimetres, notes) sits
+above grows: `grow.grow_space_id` is a nullable FK with
+`ON DELETE SET NULL` (the `strain_id` pattern), so grows may run
+outside any space and deleting a space keeps its grows. Spaces relate
+to the equipment catalogue by reference (D043). Sensor bindings stay
+per-grow — moving them up to the space is deferred until a real need
+shows up. The lamp advisor (`GET /api/grows/{id}/lamp`) now takes the
+most powerful light with a known real wattage from the grow's space
+(and whether any light is dimmable); the previous hard-coded 330 W /
+dimmable default remains the fallback when there is no space, no
+light, or no wattage. Space dimensions are stored in cm and displayed
+as-is (per-unit-system display is deferred; only lamp heights are
+inch-based today, in the advisor output).
+
+### D043: Equipment entries are catalogue templates with bundled defaults
+
+`equipment_item` is the equipment catalogue (the strain-database
+pattern), not a per-grow inventory. The seeder stamps fresh seeds with
+`is_builtin = 1` plus a `source` provenance note (the feed-template
+pattern — per-record URLs are not worth re-researching for product
+facts). Rows already present in upgraded databases stay unflagged:
+the flag is cosmetic (a "bundled" badge; builtins are deletable, like
+bundled strains). API-created items are always user entries, and
+updates preserve both flags. Spaces reference entries many-to-many
+(`grow_space_equipment`): a shared item (a meter carried between
+tents) may sit in several spaces, and two identical lights are two
+entries — chosen over per-space instances for simplicity (fewer
+entities, fewer forms). The spec's per-grow equipment snapshot
+(`grow_equipment`) is deferred until a history-preserving need shows
+up.
+
+### Lint-policy exceptions (`#[allow]` register) — grow spaces
+
+| Crate | Items | Lint | Reason |
+|---|---|---|---|
+| leaflog-backend | `api_env::space_light` | `clippy::cast_possible_truncation`, `clippy::cast_sign_loss` | One f64→u32 fixture-wattage conversion, rounded and clamped to the u32 range before the cast |
+
 ### D042: CHANGELOG.md is cocogitto output, regenerated in CI
 
 The committed changelog had drifted from what cocogitto produces: the
