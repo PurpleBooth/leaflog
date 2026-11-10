@@ -1101,7 +1101,7 @@ checksum = "a4933f3f57a8e9d9da04db23fb153356ecaf00cbd14aee46279c33dc80925c37"
 
 [[package]]
 name = "leaflog-backend"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -1127,7 +1127,7 @@ dependencies = [
 
 [[package]]
 name = "leaflog-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "jiff",
  "serde",
@@ -1136,7 +1136,7 @@ dependencies = [
 
 [[package]]
 name = "leaflog-frontend"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "gloo-net",
  "js-sys",
@@ -1427,7 +1427,7 @@ dependencies = [
 
 [[package]]
 name = "mock-ha"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "axum",
  "futures-util",
