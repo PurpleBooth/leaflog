@@ -29,6 +29,38 @@ jobs:
       - name: Run the CI gate
         run: just ci
 
+  # Prose gate (D065): markdown, Rust comments and UI strings must not
+  # contain LLM-sounding vocabulary or wall-of-text sentences. `just
+  # ci` runs the recipe too, but skips it when vale is absent — this
+  # job installs vale so the gate is actually enforced.
+  prose:
+    name: vale (prose lint)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install just
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just@1.59.0
+
+      - name: Install vale
+        env:
+          # Keep in sync with devbox.json's vale@3 (devbox.lock pins
+          # the exact version).
+          VALE_VERSION: "3.26.0"
+        run: |
+          curl -sSL "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz" -o /tmp/vale.tar.gz
+          tar -xzf /tmp/vale.tar.gz -C /tmp
+          cp /tmp/vale /usr/local/bin/vale
+          chmod +x /usr/local/bin/vale
+          vale --version
+
+      - name: Lint prose
+        run: just lint-prose
+
   # Full-history secret scan. The repository is public; nothing secret
   # may ever land in any commit (see docs/THREAT-MODEL.md, supply chain).
   secrets:

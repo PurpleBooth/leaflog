@@ -55,7 +55,7 @@ All checks in §13 must pass, with evidence.
 - **Bundled data across app upgrades:** every bundled record (equipment presets, strains) carries a stable ID from its source dataset. On upgrade the app inserts bundled rows that are new and never modifies or deletes existing ones; user entries and clones of bundled records are never touched. A corrected bundled record ships as a new revision (new stable ID) with the old row left in place, so clones keep working; removing a bundled row entirely requires an explicit, documented migration.
 - **Sensors are populated from Home Assistant.** A sensor item is created by picking an HA entity in an entity picker (`GET /api/states`, filtered by device class); v1 supports **temperature** and **humidity**. The entity is the item's identity, and a space's temperature + humidity items are offered as the default env bindings for grows in it (per-grow overrides stay, §4.9). With HA unreachable the picker defers — skip now, pick later — and nothing else blocks.
 - Fields: name, brand/model, **real wall wattage** (not the marketing "equivalent"), dimmable (Y/N), PPFD map (lights only, optional, see 4.7), purchase date/price, notes, photos.
-- Spaces *reference* catalogue entries — there is no per-item instance layer: a shared item (a clip fan carried between tents) may appear in several spaces, and two identical lights are two entries.
+- Spaces *reference* catalogue entries — there is no per-item instance layer: a shared item (a clip fan carried between tents) may appear in more than one space, and two identical lights are two entries.
 - A **grow space** is a named physical setup (for example a tent): optional interior dimensions (SI cm), notes, and a set of catalogue references. Grows run inside a space (optional); deleting a space keeps its grows. The space's most powerful light with a known wattage feeds the §4.7 advisor.
 - Optional **HA entity binding** per item (e.g. `light.*`, power sensor, dimmer `number.*`); for sensor items the bound entity is the item itself (above).
 - **Entity drift:** HA entity IDs change (renames, re-added devices). A binding whose entity is unavailable shows a status chip and a **rebind** affordance instead of silently reading stale or missing data. Alerts that depend on a dead binding degrade to an explicit "no data" state — never "in range" (§4.9).
@@ -82,7 +82,7 @@ All checks in §13 must pass, with evidence.
 
 ### 4.4 Strain database
 - Seeded from a small curated JSON in the repo, plus a user-triggered CSV/JSON importer. Store source and licence per record. Check licences before bundling anything. Many public datasets lack cultivation parameters.
-- Fields: name, breeder, photoperiod/auto, feminized/regular, genetics (indica/sativa/hybrid % and landrace ancestry tags), **flower days (min/max)**, expected stretch factor, typical veg weeks, height class, auto total days from seed, yield notes, terpene/effect notes, **heat tolerance**, **cold tolerance**, **light tolerance**, user rating and notes, and an evidence tag per field (`breeder`, `grower-reported`, `inferred`).
+- Fields: name, breeder, photoperiod/auto, feminized/regular, genetics (indica/sativa/hybrid % and landrace ancestry tags), **flower days (min/max)**, expected stretch factor, typical veg weeks, height class, auto total days from seed. Also yield notes, terpene/effect notes, **heat tolerance**, **cold tolerance**, **light tolerance**, user rating and notes, and an evidence tag per field (`breeder`, `grower-reported`, `inferred`).
 - **Strain → recommendation modifiers.** Strain data adjusts:
   - the forecast (flower length, stretch, auto timing);
   - the temperature ceiling/floor alerts (heat/cold tolerance);
@@ -91,7 +91,7 @@ All checks in §13 must pass, with evidence.
 - Heat/cold tolerance is a 3-level field (`sensitive`/`average`/`tolerant`). Default it from lineage when the user hasn't set it, and always show it as "inferred". Heuristics:
   - Autoflowers, short bushy broad-leaf indica-leaning plants and cold-climate lineages tend to be **more** heat-sensitive.
   - Sativa/Haze/African/Afghan/Hawaiian lineages tend to be **more** heat-tolerant, but can be shocked by cold.
-  - There are exceptions (e.g. some stout indica or auto cultivars are reported heat-tolerant).
+  - Exceptions exist — some stout indica or auto cultivars are reported heat-tolerant.
 - Tolerance shifts the *alert thresholds*, not the species rules. Default shifts (editable): tolerant +2 °F ceiling, sensitive −3 °F ceiling. These are heuristics, so label them as such.
 - Users can add their own strains and clone any strain (bundled or own) as an editable "my phenotype" copy. **Bundled strains are read-only** — preset badge, edit/delete rejected, clone-to-modify — the same contract as bundled equipment (§4.1). Per-grow actual results (flower days achieved, max stretch, what temps it tolerated, achieved yield per §4.14) can be written back to user-owned strains only. Bundled strains follow the §4.1 upgrade rule.
 
@@ -99,7 +99,7 @@ All checks in §13 must pass, with evidence.
 - Phases: germination → seedling → veg → (flip) → flower → harvest → dry → cure.
 - Inputs: start date, strain, planned veg weeks (photoperiod) or auto age, overrides.
 - Output per phase: start/end plus **earliest / likely / latest** window.
-- Seed defaults (editable, sourced): germination 3–10 days, seedling 2–3 weeks, veg 3–8+ weeks (grower-chosen), flower 8–11 weeks (strain value wins; indica-leaning ~8–9, sativa-leaning at the top of the range or beyond), stretch weeks 1–3 adds about 50–100% height, dry ~7–14 days (until stem snap), cure ≥14 days (ideally ~30), autos start flowering ~3–5 weeks from seed and finish ~9–11 weeks from seed (some up to 13).
+- Seed defaults (editable, sourced): germination 3–10 days, seedling 2–3 weeks, veg 3–8+ weeks (grower-chosen), flower 8–11 weeks (strain value wins; indica-leaning ~8–9, sativa-leaning at the top of the range or beyond). Stretch weeks 1–3 add about 50–100% height. Dry ~7–14 days (until stem snap), cure ≥14 days (ideally ~30). Autos start flowering ~3–5 weeks from seed and finish ~9–11 weeks from seed (some up to 13).
 - Re-forecast from reality: logged events replace predictions. A "trichome check" entry nudges the harvest window.
 - Gantt timeline with a "today" marker. Export phase dates to an `.ics` file or an HA calendar.
 
@@ -229,7 +229,7 @@ Wattage class at full power (starting point):
   - Soil: seedling 100–200, early veg 300–500, late veg 600–900, early flower 800–1100, peak flower 1000–1400, late flower 700–1000, flush 0–50.
   - Coco: 250–350, 500–700, 800–1100, 1000–1300, 1200–1600, 900–1100, 0–50.
   - Hydro: 200–300, 400–600, 700–1000, 900–1200, 1100–1500, 800–1000, 0–50.
-- **These are contested.** Another source gives only ~600–800 ppm for soil flowering, and growers commonly say published feed charts run high. Default the active preset to the **lower half** of each band. Make it very clear these are starting points and that product-label dosing for the user's own nutrients is what counts.
+- **These are contested.** Another source gives only ~600–800 ppm for soil flowering, and growers commonly say published feed charts run high. Default the active preset to the **lower half** of each band. Make explicit that these are starting points and that product-label dosing for the user's own nutrients is what counts.
 - Runoff-vs-input guidance (editable): runoff a few hundred ppm above input is normal in coco. If runoff is far above input (e.g. ≥1000 ppm), suggest a flush. Runoff below input suggests the plant is feeding hard.
 
 ### 5.4 Seed viability (seedbank windows)
@@ -323,7 +323,20 @@ Rules for living with it:
 - `just dev` runs the backend against a **mock HA** (an Axum app that speaks the WebSocket protocol and replays fake sensor data) plus `trunk serve`. It also simulates ingress (random path prefix and `X-Ingress-Path`). Document how to test against a real HA.
 
 ## 12. Milestones (commit at each, lint-clean)
-M1 skeleton + packaging + ingress "hello" tab + Leptos runtime-base spike → M2 DB, equipment, strains → M3 action log + photo log → M4 HA live data + history → M5 forecast + timeline → M6 feed fit + substrate profiles → M7 VPD/env engine, lamp advisor, phase coach, dashboard polish → M8 hardening, docs, CI, screenshots → M9 catalogue trim, HA sensor items, read-only presets and bundled-data upgrade rules, migration tooling → M10 onboarding wizard + seedbank → M11 harvest & yield, germination logging, cross-grow history/analytics, per-plant views, start-next-run → M12 snapshot retention, entity-drift rebinding, env-alert HA routing, EN+DE localisation. (`cargo deny` joins CI immediately, not gated on M12.)
+- M1 — skeleton + packaging + ingress "hello" tab + Leptos runtime-base spike
+- M2 — DB, equipment, strains
+- M3 — action log + photo log
+- M4 — HA live data + history
+- M5 — forecast + timeline
+- M6 — feed fit + substrate profiles
+- M7 — VPD/env engine, lamp advisor, phase coach, dashboard polish
+- M8 — hardening, docs, CI, screenshots
+- M9 — catalogue trim, HA sensor items, read-only presets and bundled-data upgrade rules, migration tooling
+- M10 — onboarding wizard + seedbank
+- M11 — harvest & yield, germination logging, cross-grow history/analytics, per-plant views, start-next-run
+- M12 — snapshot retention, entity-drift rebinding, env-alert HA routing, EN+DE localisation
+
+(`cargo deny` joins CI immediately, not gated on M12.)
 
 ## 13. Acceptance criteria (show evidence for each)
 - [ ] `just ci`: fmt, clippy with the §10 lint block and `-D warnings` (native + wasm), unit and integration tests, WASM build.

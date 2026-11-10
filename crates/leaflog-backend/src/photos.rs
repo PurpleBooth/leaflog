@@ -298,7 +298,7 @@ fn exif_timestamp(bytes: &[u8]) -> Option<String> {
 mod tests {
     use super::{PhotoStore, exif_timestamp, joined, safe_join};
 
-    /// A tiny valid JPEG (8x8) with a well-formed EXIF APP1 segment
+    /// A minimal valid JPEG (8x8) with a well-formed EXIF APP1 segment
     /// carrying `DateTimeOriginal`, built with the exif crate's own writer.
     fn jpeg_with_exif() -> Vec<u8> {
         let img = image::DynamicImage::new_rgb8(8, 8);

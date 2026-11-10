@@ -368,8 +368,8 @@ async fn dev_prefix_simulation_strips_and_injects() {
 
     // A path that merely shares characters with the prefix is not
     // stripped. Unstripped, it is an unknown /api/... path (ingress
-    // prefixes live under /api/), so it must 404 — and crucially must
-    // not serve the asset it almost-names.
+    // prefixes live under /api/), so it must 404 — and it must not
+    // serve the asset it almost-names.
     let sibling = client
         .get(format!("{base}{DEV_PREFIX}9/pkg/app.css"))
         .send()

@@ -145,7 +145,7 @@ not be usable to attack third parties.
 
 ## 7. TM3: Manipulation of data to harm plants
 
-Leaflog advises; it has no actuators. There is no `call_service`
+Leaflog advises; it has no actuators. No `call_service` exists
 anywhere in the codebase (verified by search), and AGENTS.md gates any
 future actuation behind an explicit opt-in setting. That is the single
 most important structural mitigation in this category: the worst a
@@ -168,7 +168,7 @@ places, `/data` and HA backups.
 
 | # | Path | Status | Detail |
 |---|---|---|---|
-| 4.1 | Accidental or hostile deletion via the API | Open | `DELETE /api/grows/{id}` cascades to plants, actions, photos and the photo directory tree (`photos.rs:198` uses `remove_dir_all`). There is no soft delete, no undo window, and no confirmation dialog in the frontend (verified: no `confirm()` anywhere). One misclick or one hostile tab can erase a grow. Recommendation R8 |
+| 4.1 | Accidental or hostile deletion via the API | Open | `DELETE /api/grows/{id}` cascades to plants, actions, photos and the photo directory tree (`photos.rs:198` uses `remove_dir_all`). No soft delete, no undo window, and no confirmation dialog in the frontend (verified: no `confirm()` anywhere). One misclick or one hostile tab can erase a grow. Recommendation R8 |
 | 4.2 | App uninstall or data wipe | Mitigated by HA flow | Removing the app deletes `/data`; HA prompts for a backup first. Restore is integration-tested end to end, including lazy thumbnail regeneration (D032, `tests/backup.rs`) |
 | 4.3 | Ransomware or host compromise encrypting `/data` and the backups | Open (user side) | Nothing app-level resists root. The mitigations are encrypted, geographically separate backups (TM6, R5) |
 | 4.4 | Disk exhaustion | Open | Each upload is capped at 25 MiB (body limit 32 MiB, `api_grows.rs:22`) but total photo growth is unbounded; the 2 GiB `photo_warn_bytes` threshold is advisory only. A full disk risks failed writes and WAL corruption. Recommendation R6 |
@@ -209,9 +209,9 @@ co-tenant add-on the owner has granted host-path access (SSH add-ons,
 file managers) or host root, all of which read `/data` in plaintext.
 
 App-level encryption (SQLCipher for the DB, encrypted photo files) was
-evaluated and **deferred** (D036): a key stored in add-on options or
+evaluated and **deferred** (D036). A key stored in add-on options or
 environment sits on the same disk as the ciphertext, and the
-Supervisor writes options to the host filesystem, so encryption would
+Supervisor writes options to the host filesystem. Encryption would
 not resist the realistic adversaries (host root, SSH add-on, physical
 theft of the whole machine). It would add key-loss data-destruction
 risk (TM4) in exchange for protection against a narrow partial-disk
@@ -254,7 +254,7 @@ the categories above.
 | DoS | Image decompression bomb (unbounded decode) | Open | R1, see 4.6 |
 | DoS | Disk exhaustion | Open | R6, see 4.4 |
 | Elevation of privilege | No app accounts, no cookies, no secrets in the browser; the WASM bundle holds nothing but UI | Mitigated (nothing to elevate) | frontend verified |
-| XSS | Framework escaping, zero `inner_html`, escaped base injection; URL scheme gap on `source_url` | Mostly mitigated | R3, see 2.2 |
+| XSS | Framework escaping, zero `inner_html`, escaped base injection; URL scheme gap on `source_url` | Mitigated except the URL scheme gap | R3, see 2.2 |
 | CSRF | Unguessable path token + JSON/multipart bodies + no app cookies | Mitigated | see 2.3 |
 | SSRF | Fixed Supervisor URL from env only | Mitigated | see 2.4 |
 | Clickjacking / framing | Not applicable: HA ingress panels render in HA's own iframe by design | n/a | §2 |

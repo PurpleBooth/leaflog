@@ -124,8 +124,77 @@ deny:
         echo "cargo-deny not installed; run inside devbox: devbox run -- just deny"
     fi
 
-# Everything CI checks: fmt, clippy (native + wasm), tests, WASM build, commits, secrets, deps.
-ci: cog-check fmt clippy clippy-wasm build-frontend test gitleaks deny
+# Prose gate (vale; skip if not installed): markdown, Rust comments
+# and UI strings must not contain LLM-sounding vocabulary or
+# wall-of-text sentences (D065). Changelogs and the licence are not
+# prose and are not linted.
+lint-prose:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v vale &>/dev/null; then
+        echo "vale not installed; run inside devbox: devbox run -- just lint-prose"
+        exit 0
+    fi
+    status=0
+    vale README.md AGENTS.md docs leaflog/README.md leaflog/DOCS.md || status=1
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    # Rust comments: strip //, ///, //! and join consecutive comment
+    # lines into paragraphs so the sentence cap sees sentences wrapped
+    # across lines. Rustdoc headings (# Panics) and list items start
+    # their own paragraph, mirroring how rustdoc renders them; each
+    # paragraph is closed with a period (comment fragments rarely end
+    # with one) and separated by a blank line — vale's text format
+    # runs sentences across paragraphs until it meets real
+    # punctuation. One .txt per source file keeps vale's output
+    # addressing real file names.
+    while IFS= read -r f; do
+        out="$tmp/comments/${f}.txt"
+        mkdir -p "$(dirname "$out")"
+        awk '
+            function flush() {
+                if (buf != "") {
+                    if (buf !~ /[.!?:]$/) buf = buf "."
+                    print buf; print ""; buf = ""
+                }
+            }
+            /^[[:space:]]*\/\/[!\/]?/ {
+                line = $0
+                sub(/^[[:space:]]*\/\/[!\/]?[[:space:]]?/, "", line)
+                if (line ~ /^[[:space:]]*(#|[[:space:]]*-)[[:space:]]/) {
+                    flush()
+                    print line "."; print ""   # heading/bullet: own paragraph
+                    next
+                }
+                buf = buf (buf == "" ? "" : " ") line
+                next
+            }
+            { flush() }
+            END { flush() }
+        ' "$f" > "$out"
+    done < <(find crates -type f -name '*.rs' | sort)
+    vale "$tmp/comments" || status=1
+    # UI strings: prose-looking string literals from the frontend.
+    # Keep literals that contain whitespace (labels, sentences); drop
+    # Leptos attribute fragments (" aria-label="), strings that are
+    # pure format specs/separators, and {…} placeholders. Each string
+    # is closed with a period and separated by a blank line so the
+    # sentence cap judges each label on its own.
+    while IFS= read -r f; do
+        out="$tmp/ui/${f}.txt"
+        mkdir -p "$(dirname "$out")"
+        grep -hoE '"[^"]*[[:space:]][^"]*"' "$f" \
+            | sed -E 's/^"//; s/"$//; s/[{][^}]*[}]/#/g' \
+            | grep -vE '^[[:space:]]*[a-z0-9-]+=$' \
+            | grep -E '[[:alpha:]]{2,}' \
+            | awk '{ if ($0 !~ /[.!?:]$/) print $0 "."; else print; print "" }' \
+            > "$out" || true
+    done < <(find crates/leaflog-frontend/src -type f -name '*.rs' | sort)
+    vale "$tmp/ui" || status=1
+    exit "$status"
+
+# Everything CI checks: fmt, clippy (native + wasm), tests, WASM build, commits, secrets, deps, prose.
+ci: cog-check fmt clippy clippy-wasm build-frontend test gitleaks deny lint-prose
 
 # Check formatting.
 fmt:

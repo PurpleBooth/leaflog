@@ -1,0 +1,12 @@
+# Language-complexity gate (D065): no sentence may run past 50
+# words. Long sentences are the visible half of LLM-sounding prose
+# ("walls of text"). 50 is a wall, not a style preference — the
+# existing corpus sits densely below it, so anything over is either
+# a genuine wall or new filler. `scope: sentence` + a word-counting
+# token is the standard vale idiom for sentence length.
+extends: occurrence
+message: "Sentence runs past 50 words — split it."
+level: warning
+scope: sentence
+max: 50
+token: '\b[A-Za-z]+\b'

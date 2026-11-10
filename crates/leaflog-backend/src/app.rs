@@ -317,8 +317,8 @@ async fn security_headers(request: Request, next: Next) -> Response {
 }
 
 /// Production connection gate: outside development, only Home
-/// Assistant's ingress proxy address may talk to this server. There is
-/// no login screen because HA has already authenticated the user.
+/// Assistant's ingress proxy address may talk to this server. No
+/// login screen exists: HA has already authenticated the user.
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum middleware extractor contract; see docs/DECISIONS.md
 async fn supervisor_gate(

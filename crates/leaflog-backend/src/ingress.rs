@@ -127,11 +127,10 @@ fn base_script_tag(base: &IngressPath) -> String {
 ///   one for the inline script [`render_index`] injects, plus one for
 ///   every inline `<script>` in `template`. Trunk (0.21.x) emits its
 ///   wasm-bindgen bootstrap *inline* into `index.html`, and its text
-///   names per-build hashed files, so no baked-in hash can cover it —
-///   the hashes are computed from the actual template at serve time,
-///   which stays correct on every rebuild. There is deliberately
-///   **no** `'unsafe-inline'`: the hashes pin our scripts and only
-///   ours.
+///   names per-build hashed files, so no baked-in hash can cover it.
+///   The hashes are computed from the actual template at serve time,
+///   which stays correct on every rebuild. Deliberately **no**
+///   `'unsafe-inline'`: the hashes pin our scripts and only ours.
 /// - `style-src 'self' 'unsafe-inline'` — the linked stylesheet plus
 ///   the inline styles Leptos emits (element `style` attributes and
 ///   dynamic `<style>` elements).
@@ -424,7 +423,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
     #[test]
     fn inline_script_extraction_rules() {
         // External scripts (src) are excluded; inline contents are
-        // returned byte-exact (no trimming); several scripts are all
+        // returned byte-exact (no trimming); all inline scripts are
         // collected.
         let html = "<script src=\"./a.js\"></script>\
                     <script>  one();  </script>\
