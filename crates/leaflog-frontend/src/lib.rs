@@ -32,6 +32,7 @@ mod feed;
 mod gantt;
 mod grows;
 mod live;
+mod onboarding;
 mod seedbank;
 mod spaces;
 mod strains;
@@ -43,6 +44,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::components::{A, Route, Router, Routes};
 use leptos_router::path;
+use onboarding::OnboardingWizard;
 use seedbank::SeedbankPage;
 use spaces::{SpaceDetail, SpacesPage};
 use strains::StrainsPage;
@@ -149,6 +151,7 @@ fn Home() -> impl IntoView {
     });
     view! {
         <section class="page">
+            <OnboardingWizard />
             <div class="card">
                 <h2>"Grow diary, at home in Home Assistant"</h2>
                 <p>

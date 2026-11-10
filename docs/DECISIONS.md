@@ -8,6 +8,28 @@ here. Date format: YYYY-MM-DD.
 
 ## 2026-11-10 — post-M8
 
+### D054: Onboarding wizard — state-derived, dismissal as a settings flag
+
+Implements the onboarding half of M10 (spec §4.12, §13):
+
+- **State is derived, not stored**: `GET /api/onboarding` reports
+  `show_wizard = no spaces && no grows && !dismissed`. Progress
+  "persists across restarts" for free — the wizard reappears exactly
+  while there is nothing to show, and its steps pre-fill from whatever
+  already exists. Dismissal is the `onboarding_dismissed` settings
+  flag; the empty-state "set up" card clears it to restart the wizard.
+- **The wizard gates nothing**: every screen stays reachable; each
+  step has an explicit skip; finishing with everything skipped only
+  dismisses. Step 1 picks bundled presets (own gear and HA sensors
+  link out to the equipment page — the wizard waits, it does not
+  clone those forms); step 2 names the space built from the picks;
+  step 3 picks a strain (or skips); step 4 creates the grow — plants
+  named by prefix, germination defaulting to today, optional seed
+  batch link — and navigates to its dashboard.
+- The acceptance test drives the wizard's exact call sequence against
+  a seeded, otherwise-fresh database and checks the appear → run →
+  never-again transitions plus dismissal and restart.
+
 ### D053: Seedbank — batches, §5.4 windows in core, oldest-first, link-decrement
 
 Implements the seedbank half of M10 (spec §4.13, §13):

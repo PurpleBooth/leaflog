@@ -1402,3 +1402,144 @@ async fn linked_plant_starts_decrement_the_batch() {
     assert_eq!(survived["name"], "Euforia run");
     assert_eq!(survived["seed_batch_id"], Value::Null);
 }
+
+#[tokio::test]
+async fn onboarding_wizard_appears_runs_and_stays_dismissable() {
+    // Fresh install: no spaces, no grows, no dismissal — the wizard
+    // shows (spec §4.12). The catalogue carries the bundled presets a
+    // fresh boot seeds.
+    let db = Db::open_in_memory().unwrap();
+    leaflog_backend::seed::seed_strains(&db).await.unwrap();
+    leaflog_backend::seed::seed_equipment(&db).await.unwrap();
+    let base = spawn_with(db).await;
+    let client = reqwest::Client::new();
+    let fresh: Value = client
+        .get(format!("{base}/api/onboarding"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(fresh["show_wizard"], true);
+
+    // Dismissal hides it (the settings flag is the dismissal), and the
+    // empty-state restart clears the flag again.
+    client
+        .put(format!("{base}/api/settings"))
+        .json(&json!({ "onboarding_dismissed": true }))
+        .send()
+        .await
+        .unwrap();
+    let dismissed: Value = client
+        .get(format!("{base}/api/onboarding"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(dismissed["show_wizard"], false);
+    assert_eq!(dismissed["dismissed"], true);
+    client
+        .put(format!("{base}/api/settings"))
+        .json(&json!({ "onboarding_dismissed": false }))
+        .send()
+        .await
+        .unwrap();
+    let restarted: Value = client
+        .get(format!("{base}/api/onboarding"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(restarted["show_wizard"], true, "the restart card works");
+
+    // The wizard's own call sequence, exactly as the frontend drives
+    // it: equipment → space → strain → plants → grow.
+    let equipment: Vec<Value> = client
+        .get(format!("{base}/api/equipment"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let tent = equipment
+        .iter()
+        .find(|item| item["category"] == "tent_room")
+        .expect("a bundled tent is picked in step 1")["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let space: Value = client
+        .post(format!("{base}/api/spaces"))
+        .json(&sample_space("The tent"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let space_id = space["id"].as_str().unwrap().to_owned();
+    client
+        .post(format!("{base}/api/spaces/{space_id}/equipment/{tent}"))
+        .send()
+        .await
+        .unwrap();
+
+    let strains: Vec<Value> = client
+        .get(format!("{base}/api/strains"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    // The wizard offers the bundled records; step 3 may also be skipped
+    // entirely (a grow without a strain is valid).
+    let strain_id = strains[0]["id"].as_str().unwrap().to_owned();
+
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&json!({
+            "name": "First run",
+            "strain_id": strain_id,
+            "grow_space_id": space_id,
+            "seed_batch_id": null,
+            "substrate": "soil",
+            "started_on": "2026-11-10",
+            "status": "active",
+            "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let grow_id = grow["id"].as_str().unwrap().to_owned();
+    for name in ["Plant 1", "Plant 2"] {
+        client
+            .post(format!("{base}/api/grows/{grow_id}/plants"))
+            .json(&json!({ "name": name }))
+            .send()
+            .await
+            .unwrap();
+    }
+
+    // A grow exists: the wizard never shows again, dismissal or not.
+    let done: Value = client
+        .get(format!("{base}/api/onboarding"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(done["show_wizard"], false);
+    assert_eq!(done["has_grows"], true);
+    assert_eq!(done["has_spaces"], true);
+}

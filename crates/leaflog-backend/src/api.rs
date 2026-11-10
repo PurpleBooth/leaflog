@@ -33,6 +33,7 @@ pub fn router() -> Router<AppState> {
         )
         .route("/api/strains/{id}/clone", post(clone_strain))
         .route("/api/settings", get(get_settings).put(put_settings))
+        .route("/api/onboarding", get(onboarding_state))
         .merge(crate::api_grows::router())
         .merge(crate::api_ha::router())
         .merge(crate::api_feeds::router())
@@ -345,6 +346,36 @@ async fn put_settings(
         })
         .await?;
     Ok(Json(settings))
+}
+
+/// `GET /api/onboarding` — the first-run wizard state (spec §4.12):
+/// the wizard shows while there are no grow spaces, no grows and no
+/// prior dismissal. Dismissal and restart are the
+/// `onboarding_dismissed` settings flag (`PUT /api/settings`).
+// Extractors are taken by value because Axum requires it.
+#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
+#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
+async fn onboarding_state(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
+    let report = state
+        .db
+        .with(|conn| -> Result<Value, StoreError> {
+            let spaces = store::spaces::list(conn)?.len();
+            let grows = store::grows::list(conn)?.len();
+            let equipment = store::equipment::list(conn, None)?.len();
+            let dismissed = matches!(
+                store::settings::get(conn, "onboarding_dismissed"),
+                Ok(Value::Bool(true))
+            );
+            Ok(json!({
+                "show_wizard": spaces == 0 && grows == 0 && !dismissed,
+                "dismissed": dismissed,
+                "has_spaces": spaces > 0,
+                "has_grows": grows > 0,
+                "has_equipment": equipment > 0,
+            }))
+        })
+        .await?;
+    Ok(Json(report))
 }
 
 /// Query parameters of `GET /api/equipment`.
