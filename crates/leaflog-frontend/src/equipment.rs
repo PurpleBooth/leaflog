@@ -8,6 +8,7 @@ use leptos::task::spawn_local;
 use leptos_router::components::A;
 
 use crate::api;
+use crate::non_empty;
 use crate::route_href;
 
 /// The equipment inventory page.
@@ -407,11 +408,6 @@ pub(crate) fn ErrorIf(error: RwSignal<Option<String>>) -> impl IntoView {
             view! { <p class="error" role="alert">{message}</p> }
         })
     }
-}
-
-/// Empty strings become `None` (API nulls).
-fn non_empty(value: String) -> Option<String> {
-    (!value.trim().is_empty()).then_some(value)
 }
 
 /// A blank equipment draft (a light, the most common first entry).

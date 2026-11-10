@@ -8,6 +8,33 @@ here. Date format: YYYY-MM-DD.
 
 ## 2026-11-10 — post-M8
 
+### D053: Seedbank — batches, §5.4 windows in core, oldest-first, link-decrement
+
+Implements the seedbank half of M10 (spec §4.13, §13):
+
+- **`leaflog-core::seedbank`** owns the viability math: storage
+  methods with the §5.4 window table as sourced preset ranges
+  (6–12 / 12–36 / 60–120 / 120+ months, each row carrying the
+  "spec §5.4 table (research snapshot 2026-11-08); sources disagree"
+  label), whole-calendar-month ageing (a mid-month acquisition is one
+  month old only after its day-of-month passes; signed arithmetic —
+  the bare month difference underflows across year boundaries), and
+  past-prime = age beyond the window's upper bound. Frozen is
+  open-ended (`120, None`): "10+ years reported" never earns a
+  past-prime badge. Past prime is a hint, never a block (§5.4).
+- **API** (`/api/seed-batches`): CRUD with the viability window
+  computed per response (`SeedBatchView` lives in core, shared by
+  frontend). Listing orders oldest acquisition first within each
+  strain (use the oldest seeds first), unlinked batches trailing.
+- **The plant-start link**: `grow.seed_batch_id` (nullable FK, ON
+  DELETE SET NULL — the strain_id pattern). Adding a plant to a linked
+  grow decrements the batch count (clamped at zero, never raised);
+  manual edits always win, so the decrement simply continues from the
+  edited value. Deleting a batch keeps its grows running, unlinked.
+- **UI**: a Seedbank tab listing batches with storage, window, age and
+  the past-prime badge, plus a create/edit form (strain picker,
+  storage defaulting to the §5.4 cool/dark/dry).
+
 ### D052: Sensor items are picked HA entities
 
 Implements the HA-sensor half of D045 (spec §4.1, §13): a sensor item

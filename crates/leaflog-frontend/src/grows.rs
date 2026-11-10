@@ -652,6 +652,7 @@ fn empty_grow() -> GrowInput {
         name: String::new(),
         strain_id: None,
         grow_space_id: None,
+        seed_batch_id: None,
         substrate: "soil".to_owned(),
         started_on: String::new(),
         status: GrowStatus::default(),

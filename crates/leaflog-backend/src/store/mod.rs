@@ -6,6 +6,7 @@ pub mod equipment;
 pub mod feeds;
 pub mod grows;
 pub mod photos;
+pub mod seedbank;
 pub mod sensors;
 pub mod settings;
 pub mod spaces;

@@ -45,6 +45,10 @@ pub struct Grow {
     /// Grow-space ULID (nullable: grows may run outside any space, and
     /// deleting a space keeps its grows).
     pub grow_space_id: Option<String>,
+    /// Seed batch the plants came from (spec §4.13); nullable and
+    /// `None` when absent JSON parses (payloads predate the link).
+    #[serde(default)]
+    pub seed_batch_id: Option<String>,
     /// Substrate label: one of [`SUBSTRATES`] or a user-defined name.
     pub substrate: String,
     /// Seed/clone start date, `YYYY-MM-DD`. Day numbers count from here.
@@ -68,6 +72,11 @@ pub struct GrowInput {
     pub strain_id: Option<String>,
     /// Grow-space ULID.
     pub grow_space_id: Option<String>,
+    /// Seed batch the plants came from (spec §4.13): linked plant
+    /// starts decrement the batch count. Absent JSON parses as `None`
+    /// (payloads predate the link).
+    #[serde(default)]
+    pub seed_batch_id: Option<String>,
     /// Substrate label.
     pub substrate: String,
     /// Seed/clone start date, `YYYY-MM-DD`.

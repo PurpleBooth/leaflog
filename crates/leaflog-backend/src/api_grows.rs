@@ -92,6 +92,15 @@ async fn create_grow(
             })
             .await?;
     }
+    if let Some(seed_batch_id) = &input.seed_batch_id {
+        state
+            .db
+            .with({
+                let seed_batch_id = seed_batch_id.clone();
+                move |conn| store::seedbank::get(conn, &seed_batch_id)
+            })
+            .await?;
+    }
     let grow = state
         .db
         .with(move |conn| store::grows::create(conn, &input))
@@ -128,6 +137,15 @@ async fn update_grow(
             .with({
                 let grow_space_id = grow_space_id.clone();
                 move |conn| store::spaces::get(conn, &grow_space_id)
+            })
+            .await?;
+    }
+    if let Some(seed_batch_id) = &input.seed_batch_id {
+        state
+            .db
+            .with({
+                let seed_batch_id = seed_batch_id.clone();
+                move |conn| store::seedbank::get(conn, &seed_batch_id)
             })
             .await?;
     }
@@ -186,7 +204,14 @@ async fn create_plant(
         .db
         .with(move |conn| -> Result<_, StoreOrNotFound> {
             store::grows::get(conn, &id)?;
-            store::grows::create_plant(conn, &id, &input).map_err(StoreOrNotFound::from)
+            let plant = store::grows::create_plant(conn, &id, &input)?;
+            // Starting a plant from a linked batch decrements the count
+            // (spec §4.13); manual edits always win, and the decrement
+            // clamps at zero.
+            if let Ok(Some(batch_id)) = store::seedbank::batch_of_grow(conn, &id) {
+                store::seedbank::decrement(conn, &batch_id, 1)?;
+            }
+            Ok(plant)
         })
         .await?;
     Ok((StatusCode::CREATED, Json(plant)))

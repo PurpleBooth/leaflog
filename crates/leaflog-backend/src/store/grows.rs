@@ -20,19 +20,21 @@ pub fn create(conn: &Connection, input: &GrowInput) -> Result<Grow, StoreError> 
         name: input.name.clone(),
         strain_id: input.strain_id.clone(),
         grow_space_id: input.grow_space_id.clone(),
+        seed_batch_id: input.seed_batch_id.clone(),
         substrate: input.substrate.clone(),
         started_on: input.started_on.clone(),
         status: input.status,
         notes: input.notes.clone(),
     };
     conn.execute(
-        "INSERT INTO grow (id, name, strain_id, grow_space_id, substrate, started_on, status, notes, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        "INSERT INTO grow (id, name, strain_id, grow_space_id, seed_batch_id, substrate, started_on, status, notes, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         params![
             grow.id,
             grow.name,
             grow.strain_id,
             grow.grow_space_id,
+            grow.seed_batch_id,
             grow.substrate,
             grow.started_on,
             grow.status.label(),
@@ -97,19 +99,21 @@ pub fn update(conn: &Connection, id: &str, input: &GrowInput) -> Result<Grow, St
     updated.name.clone_from(&input.name);
     updated.strain_id.clone_from(&input.strain_id);
     updated.grow_space_id.clone_from(&input.grow_space_id);
+    updated.seed_batch_id.clone_from(&input.seed_batch_id);
     updated.substrate.clone_from(&input.substrate);
     updated.started_on.clone_from(&input.started_on);
     updated.status = input.status;
     updated.notes.clone_from(&input.notes);
     conn.execute(
-        "UPDATE grow SET name = ?2, strain_id = ?3, grow_space_id = ?4, substrate = ?5,
-             started_on = ?6, status = ?7, notes = ?8, updated_at = ?9
+        "UPDATE grow SET name = ?2, strain_id = ?3, grow_space_id = ?4, seed_batch_id = ?5,
+             substrate = ?6, started_on = ?7, status = ?8, notes = ?9, updated_at = ?10
          WHERE id = ?1",
         params![
             updated.id,
             updated.name,
             updated.strain_id,
             updated.grow_space_id,
+            updated.seed_batch_id,
             updated.substrate,
             updated.started_on,
             updated.status.label(),
@@ -197,6 +201,7 @@ fn map_grow(row: &rusqlite::Row<'_>) -> Result<Grow, rusqlite::Error> {
         name: row.get("name")?,
         strain_id: row.get("strain_id")?,
         grow_space_id: row.get("grow_space_id")?,
+        seed_batch_id: row.get("seed_batch_id")?,
         substrate: row.get("substrate")?,
         started_on: row.get("started_on")?,
         status: if status == "archived" {
