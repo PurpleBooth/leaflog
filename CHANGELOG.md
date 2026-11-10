@@ -2,6 +2,35 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.4.0 - 2026-11-10
+#### CI
+- **(changelog)** generate CHANGELOG.md with cocogitto in CI - (fed0dea) - billie.codes
+- **(deny)** cargo-deny gate for advisories and licences (D047) - (780f227) - billie.codes
+#### Documentation
+- spec roadmap M11/M12 - harvest, yield, cross-grow history, EN+DE (D046) - (99589e6) - billie.codes
+- equipment catalogue and grow spaces (D043, D044) - (3392731) - billie.codes
+#### Features
+- **(api)** bundled equipment and strains are read-only (D050) - (7908e41) - billie.codes
+- **(backend)** stable bundled ids with insert-only upgrades (D051) - (19d5307) - billie.codes
+- **(backend)** refinery migrations with checksum-verified history (D048) - (f9fc855) - billie.codes
+- **(backend)** grow spaces with equipment references and space-aware lamp advice - (25e5251) - billie.codes
+- **(core)** trim equipment catalogue to four categories (D049) - (3042669) - billie.codes
+- **(core)** grow-space domain types and equipment catalogue flags - (b015b74) - billie.codes
+- **(frontend)** spaces tab, space picker and bundled badges - (e417e1e) - billie.codes
+- environment alerts route to HA notifications (D060) - (e7b02af) - billie.codes
+- canonical timezone with local calendar grow days (D059) - (eb0108f) - billie.codes
+- snapshot retention and entity-drift status (D058) - (bf335b2) - billie.codes
+- cross-grow history, per-plant views and start-next-run (D057) - (3299aea) - billie.codes
+- germination-test log with observed rate (D056) - (1c0912f) - billie.codes
+- harvest weights, yield summary and strain write-back (D055) - (07f2068) - billie.codes
+- first-run onboarding wizard with derived state (D054) - (049c3f3) - billie.codes
+- seedbank with viability windows and batch-linked grows (D053) - (003caed) - billie.codes
+- sensor items are picked Home Assistant entities (D052) - (a312fa8) - billie.codes
+#### Miscellaneous
+- **(version)** 0.4.0 - (741a2cb) - billie.codes
+
+- - -
+
 ## v0.3.0 - 2026-11-10
 #### Bug Fixes
 - **(backend)** add nosniff and a hash-pinned CSP to served responses - (bae8103) - billie.codes
