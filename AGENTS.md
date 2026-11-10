@@ -118,6 +118,10 @@ Automation lives in a `justfile` (or `xtask` crate) — no bash-only scripts.
 
 ## Working agreements
 
+- **No vendoring**: manage third-party code as real dependencies (crates.io / git), not
+  copies in the repo. Vendoring is not preferred — avoid it, and remove existing vendored
+  code when a proper dependency can replace it. Log any unavoidable exception (and its
+  removal plan) in `docs/DECISIONS.md`. Bundled seed data is data, not vendored code.
 - Pick the simplest option when ambiguous, log it in `docs/DECISIONS.md`, keep going.
   Ask only about blocking choices.
 - Re-check the HA developer docs before each milestone ("add-ons" are now "apps"; naming is
