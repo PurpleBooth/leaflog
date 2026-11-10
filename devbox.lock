@@ -493,6 +493,44 @@
           "store_path": "/nix/store/sly3xlbjky67y41zhk2pb39rz9njxfz4-trunk-0.21.14"
         }
       }
+    },
+    "vale@3": {
+      "last_modified": "2026-11-06T15:06:19Z",
+      "resolved": "github:NixOS/nixpkgs/4fe25e12eb9f4c744966dd3de5a05246cf098601#vale",
+      "source": "devbox-search",
+      "version": "3.26.0",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/gmcvn932053yqndjdnfq5amxzhy52q8d-vale-3.26.0",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/gmcvn932053yqndjdnfq5amxzhy52q8d-vale-3.26.0"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/1q3rxqd4zd3wsbb783kmpkicfhb8acvj-vale-3.26.0",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/1q3rxqd4zd3wsbb783kmpkicfhb8acvj-vale-3.26.0"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/g7dzwgbh5lrh555qqmk68xpmnhdjpf9v-vale-3.26.0",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/g7dzwgbh5lrh555qqmk68xpmnhdjpf9v-vale-3.26.0"
+        }
+      }
     }
   }
 }

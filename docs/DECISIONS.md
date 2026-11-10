@@ -6,6 +6,55 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-11 — prose gate
+
+### D065: Vale prose gate — LLM-tell vocabulary, 50-word sentence cap, curated write-good
+
+`just lint-prose` (in the `just ci` chain, enforced by a dedicated
+CI job) runs [vale](https://vale.sh) over every piece of prose in the
+repo: all markdown (changelogs and the licence are generated or legal
+text, not prose), all Rust comments, and the frontend's UI strings.
+The goal is narrow: the repo must not grow LLM-sounding text —
+telltale vocabulary or walls of text. Two style packages, curated:
+
+- **`Prose`** (repo-owned, `.vale/styles/Prose/`): an existence rule
+  with a surgical LLM-tell word list (`delve`, `seamlessly`,
+  `plethora`, `in conclusion`, `it's worth noting`, …) at error
+  level, and the language-complexity gate — no sentence past 50
+  words (`occurrence` rule, `scope: sentence`, warning). The word
+  list deliberately omits domain words: `harness` (test harness),
+  `unlock` (LUKS), `elevate` (lamp height), `elevation` (STRIDE).
+- **`write-good`** (vendored verbatim from
+  [errata-ai/write-good](https://github.com/errata-ai/write-good),
+  MIT — license text in its README): the standard grammar lints.
+  Calibrated against the existing corpus, data-driven: E-Prime off
+  (be-verbs are the right voice for describing state), Passive and
+  TooWordy demoted to suggestion (380 legitimate "is stored"-style
+  passives; TooWordy's business-prose list collides with the domain
+  — "minimum"/"maximum" presets, "purchase" equipment log,
+  "equivalent" EC↔TDS). `Cliches`, `So`, `ThereIs`, `Weasel` and
+  `Illusions` gate as warnings/errors. **Vendoring exception** (the
+  no-vendoring rule, AGENTS.md): vale styles have no dependency
+  mechanism — `vale sync` fetches the latest release zip unpinned,
+  which would make the gate drift. Removal plan: re-sync from
+  upstream and re-pin when vale gains version-pinned packages.
+
+The 50-word cap was calibrated, not assumed: 30 words flagged 175
+existing sentences, 50 flagged 20 — all fixed in this change as
+genuine walls. Baseline cleanup also fixed every weasel word and
+`There is` opener the gate surfaced.
+
+Extraction (bash inside the recipe, per the no-scripts rule):
+comments strip `//`, `///`, `//!` and join consecutive lines into
+paragraphs; rustdoc headings and list items start their own
+paragraph; every paragraph gets terminal punctuation and a blank
+line (vale's plain-text format runs sentences across paragraphs
+until it meets a period). UI strings are frontend string literals
+that contain whitespace, minus Leptos attribute fragments and
+pure format-spec strings. The registry's `AiTells` package was
+considered and skipped: the repo-owned list is smaller and
+domain-aware.
+
 ## 2026-11-10 — post-M8
 
 ### D062: Home Assistant serves `leaflog/CHANGELOG.md`; version headings are bare `## <version>`
@@ -208,10 +257,10 @@ Implements the onboarding half of M10 (spec §4.12, §13):
   flag; the empty-state "set up" card clears it to restart the wizard.
 - **The wizard gates nothing**: every screen stays reachable; each
   step has an explicit skip; finishing with everything skipped only
-  dismisses. Step 1 picks bundled presets (own gear and HA sensors
+  dismisses. Step 1 picks bundled presets; own gear and HA sensors
   link out to the equipment page — the wizard waits, it does not
-  clone those forms); step 2 names the space built from the picks;
-  step 3 picks a strain (or skips); step 4 creates the grow — plants
+  clone those forms. Step 2 names the space built from the picks.
+  Step 3 picks a strain (or skips). Step 4 creates the grow — plants
   named by prefix, germination defaulting to today, optional seed
   batch link — and navigates to its dashboard.
 - The acceptance test drives the wizard's exact call sequence against
@@ -222,16 +271,17 @@ Implements the onboarding half of M10 (spec §4.12, §13):
 
 Implements the seedbank half of M10 (spec §4.13, §13):
 
-- **`leaflog-core::seedbank`** owns the viability math: storage
-  methods with the §5.4 window table as sourced preset ranges
-  (6–12 / 12–36 / 60–120 / 120+ months, each row carrying the
-  "spec §5.4 table (research snapshot 2026-11-08); sources disagree"
-  label), whole-calendar-month ageing (a mid-month acquisition is one
-  month old only after its day-of-month passes; signed arithmetic —
-  the bare month difference underflows across year boundaries), and
-  past-prime = age beyond the window's upper bound. Frozen is
-  open-ended (`120, None`): "10+ years reported" never earns a
-  past-prime badge. Past prime is a hint, never a block (§5.4).
+- **`leaflog-core::seedbank`** owns the viability math. Storage
+  methods carry the §5.4 window table as sourced preset ranges
+  (6–12 / 12–36 / 60–120 / 120+ months, each row labelled
+  "spec §5.4 table (research snapshot 2026-11-08); sources
+  disagree"). Ageing runs in whole calendar months: a mid-month
+  acquisition is one month old only after its day-of-month passes.
+  The arithmetic is signed — the bare month difference underflows
+  across year boundaries. Past-prime = age beyond the window's upper
+  bound; frozen is open-ended (`120, None`): "10+ years reported"
+  never earns a past-prime badge. Past prime is a hint, never a
+  block (§5.4).
 - **API** (`/api/seed-batches`): CRUD with the viability window
   computed per response (`SeedBatchView` lives in core, shared by
   frontend). Listing orders oldest acquisition first within each
@@ -273,10 +323,10 @@ item's identity.
 ### D051: Bundled-data upgrade rule — stable ids, insert-new-only seeding
 
 Implements the §4.1 upgrade rule (spec §13 "bundled-data upgrade"
-criterion): every bundled record carries a stable id from its source
-dataset (`seed-equip-<slug>`, `seed-strain-<slug>`), upgrades insert
-bundled rows that are new and never modify or delete existing ones,
-user entries and clones are never touched, corrections ship as new
+criterion). Every bundled record carries a stable id from its source
+dataset (`seed-equip-<slug>`, `seed-strain-<slug>`). Upgrades insert
+bundled rows that are new and never modify or delete existing ones;
+user entries and clones are never touched. Corrections ship as new
 revisions, and removals require an explicit migration (V6 did that).
 
 - **V8 adopts pre-stable-id databases.** Existing databases were seeded
@@ -450,12 +500,12 @@ Post-v0.3 roadmap additions recorded in SPEC.md (§1, §2, §4.1, §4.2,
 - **Longevity (M12, one part amends M9):** the bundled-data upgrade
   rule — stable IDs, insert-new-only on upgrade, corrections ship as
   new revisions, user clones never touched — folds into M9's
-  read-only-preset work; sensor-snapshot retention pruning (default
+  read-only-preset work. Sensor-snapshot retention pruning (default
   24 months, ≤1/hour after, first/last-of-day and excursion rows
-  kept); entity-drift rebinding with "no data" degradation for
-  dependent alerts; env-alert HA notification routing under the
-  existing §4.2 opt-in; and a bootstrap-only options schema
-  (in-app settings win, options are initial seeds).
+  kept). Entity-drift rebinding with "no data" degradation for
+  dependent alerts. Env-alert HA notification routing under the
+  existing §4.2 opt-in. A bootstrap-only options schema: in-app
+  settings win, options are initial seeds.
 - **Localisation EN+DE (M12):** `leptos_i18n` 0.6 (the line targeting
   Leptos 0.8, needs ≥ 0.8.15; re-check at the 0.9 upgrade), language
   follows the browser with a manual override, CI gate on missing
@@ -489,13 +539,12 @@ D043, whose implementation is in flight:
   enforce it. The §5 "presets are user-editable" rule is clarified to
   cover only the numeric grow-science presets.
 - New features added to the spec: a first-run onboarding wizard
-  (equipment → space → strain → plants), a seedbank log with §5.4
-  viability windows and oldest-first use, and first-class migration
-  tooling (automatically discovered files, checksum-verified history,
-  a `migrate`
-  subcommand and `just migrate` recipes; a maintained runner —
-  `rusqlite_migration` preferred — replaces the hand-rolled embedded
-  array in `db.rs`).
+  (equipment → space → strain → plants) and a seedbank log with §5.4
+  viability windows and oldest-first use. First-class migration
+  tooling: automatically discovered files, checksum-verified history,
+  a `migrate` subcommand and `just migrate` recipes. A maintained
+  runner — `rusqlite_migration` preferred — replaces the hand-rolled
+  embedded array in `db.rs`.
 
 ### D044: Grow spaces — grows live inside a space
 
@@ -524,8 +573,8 @@ the flag is cosmetic (a "bundled" badge; builtins are deletable, like
 bundled strains). API-created items are always user entries, and
 updates preserve both flags. Spaces reference entries many-to-many
 (`grow_space_equipment`): a shared item (a meter carried between
-tents) may sit in several spaces, and two identical lights are two
-entries — chosen over per-space instances for simplicity (fewer
+tents) may sit in more than one space, and two identical lights are
+two entries — chosen over per-space instances for simplicity (fewer
 entities, fewer forms). The spec's per-grow equipment snapshot
 (`grow_equipment`) is deferred until a history-preserving need shows
 up.
@@ -538,10 +587,10 @@ up.
 
 ### D042: CHANGELOG.md is cocogitto output, regenerated in CI
 
-The committed changelog had drifted from what cocogitto produces: the
-v0.1.0 section was missing entirely (cocogitto's `cog bump` only
-*prepends* a new section into the existing file — history before the
-file first existed is never backfilled), release dates showed bump-day
+The committed changelog had drifted from what cocogitto produces. The
+v0.1.0 section was missing entirely — cocogitto's `cog bump` only
+*prepends* a new section into the existing file, so history before the
+file first existed is never backfilled. Release dates showed bump-day
 instead of tag-day, and scope styling matched the host's cargo-installed
 cog 7.0.0 while devbox/CI pin 6.2.0. Nothing verified the file, so it
 could equally have been edited by hand.
@@ -607,36 +656,38 @@ scoped:
    origin, where Leaflog XSS is HA XSS (THREAT-MODEL §2.2).
 
 The CSP shape is dictated by what the Trunk-built Leptos SPA actually
-loads (all same-origin, per the ingress rules): `script-src 'self'` for
-the bundle, `'wasm-unsafe-eval'` because Chromium gates wasm
-compilation on script-src and Leptos CSR *is* wasm,
-`style-src 'self' 'unsafe-inline'` for the linked stylesheet plus the
-inline styles Leptos emits, `'self'` for img/connect/form-action,
-`object-src 'none'`, `base-uri 'self'` (the injected `<base href>` is a
-same-origin path). Inline scripts are allowed by **per-response
-`'sha256-…'` hashes of the exact script texts**, never
-`'unsafe-inline'`: one hash for the `window.__LEAFLOG_BASE__` global
-injected at serve time (computed where the base is known, from the same
-builder that renders the script — `ingress.rs` keeps one source of
-truth, unit tests pin the digest) and one hash per inline `<script>`
-found in the *served template*. That second group exists because Trunk
-0.21 emits its wasm-bindgen bootstrap (`import init … window.wasmBindings
-= bindings …`) **inline** into `index.html`, and its text names
-per-build hashed files — no hash baked into the policy could survive a
+loads (all same-origin, per the ingress rules). `script-src 'self'`
+for the bundle, plus `'wasm-unsafe-eval'` because Chromium gates wasm
+compilation on script-src and Leptos CSR *is* wasm.
+`style-src 'self' 'unsafe-inline'` covers the linked stylesheet and
+the inline styles Leptos emits. Directives beyond that: `'self'` for
+img/connect/form-action, `object-src 'none'`, `base-uri 'self'` (the
+injected `<base href>` is a same-origin path). Inline scripts are
+allowed by **per-response `'sha256-…'` hashes of the exact script
+texts**, never `'unsafe-inline'`. One hash covers the
+`window.__LEAFLOG_BASE__` global injected at serve time, computed
+where the base is known, from the same builder that renders the
+script — `ingress.rs` keeps one source of truth and unit tests pin
+the digest. A second hash covers each inline `<script>` found in
+the served template. That group exists because Trunk 0.21 emits
+its wasm-bindgen bootstrap **inline** into `index.html`, as
+`import init … window.wasmBindings = bindings …`. The bootstrap
+text names per-build hashed files, so no hash baked into the
+policy could survive a
 rebuild. The first version of this change hashed only the injected
 base script, so the CSP silently blocked the bootstrap and the SPA
 never booted (blank panel, `#app` empty, in production and `just dev`
-alike); the tests could not see it because the fixture used an
+alike). The tests could not see it because the fixture used an
 external `<script src>`. Fix: hashes are computed from the actual
-template at serve time (staying correct on every rebuild), the test
-fixture now reproduces the real Trunk inline-bootstrap shape, and
+template at serve time, staying correct on every rebuild. The test
+fixture now reproduces the real Trunk inline-bootstrap shape.
 `csp_allows_every_inline_script_in_the_served_html` (tests/ingress.rs)
 re-derives the hash rule over every inline script in the served HTML
 and demands a matching hash for each. That rule is **exact bytes, no
 whitespace normalization**: browsers hash inline scripts
-byte-for-byte between the tags (verified experimentally in Chromium
+byte-for-byte between the tags. Verified experimentally in Chromium
 152 — a padded script whose trimmed hash is listed stays blocked —
-and per MDN), so a CSP3-style "strip leading/trailing whitespace"
+and per MDN. A CSP3-style "strip leading/trailing whitespace"
 hash silently re-breaks the app; a real-browser click-through is the
 only check that catches this class. `'unsafe-inline'` would have
 neutralized the
@@ -695,7 +746,7 @@ click-through and deep links under a simulated ingress prefix
 A manual full-history sweep (all 61 commits and refs: token formats,
 credential-named files, entropy strings, URL-embedded credentials, CI
 workflows) found no committed secrets; the only near-miss is the
-clearly-fake test fixture token in `crates/leaflog-backend/tests/ha.rs`.
+dummy test fixture token in `crates/leaflog-backend/tests/ha.rs`.
 To keep a public repository that way, CI gains a dedicated `secrets`
 job (ci.yml): gitleaks 8.30.1, full clone (`fetch-depth: 0`),
 `gitleaks git --verbose --redact .` — `--redact` so a real finding
@@ -1154,7 +1205,7 @@ offset passes through unchanged. The frontend prefill keeps the
 ### Lint-policy exceptions (`#[allow]` register)
 
 Every narrowly scoped exception to the mandatory lint block, each with a
-one-line reason at the site. Patterns shared by several items are listed
+one-line reason at the site. Patterns shared by more than one item are listed
 once per crate.
 
 | Crate | Items | Lint | Reason |

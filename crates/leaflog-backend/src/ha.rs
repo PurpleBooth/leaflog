@@ -1,7 +1,7 @@
 //! The Home Assistant Supervisor link (spec §3, M4).
 //!
 //! One [`HaBridge`] owns the connection: REST calls go straight to
-//! `http://supervisor/core/api/...` with the Bearer token, while a
+//! `http://supervisor/core/api/...` with the Bearer token. A
 //! background task keeps a WebSocket to `ws://supervisor/core/websocket`
 //! subscribed to the bound entities (`subscribe_entities`, filtered),
 //! republishing state through a `tokio::sync::watch` channel that the

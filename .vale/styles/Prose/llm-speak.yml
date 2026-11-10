@@ -1,0 +1,63 @@
+# LLM-tell vocabulary (D065). Deliberately surgical: a word is only
+# listed when it has no legitimate meaning in this repo's domain
+# (grow science, Rust, Home Assistant, STRIDE threat modelling).
+# Conspicuously absent: "harness" (test harness), "unlock" (LUKS
+# remote unlock), "elevate" (lamp height is a real feature),
+# "elevation" (STRIDE), "robust" (normal engineering word).
+extends: existence
+message: "Reword '%s' — filler vocabulary, not information."
+link: https://github.com/PurpleBooth/leaflog/blob/main/docs/DECISIONS.md
+level: error
+ignorecase: true
+tokens:
+  # chat-tell verbs and their inflections
+  - delve
+  - delves
+  - delved
+  - delving
+  - leverage
+  - leverages
+  - leveraged
+  - leveraging
+  - utilize
+  - utilizes
+  - utilized
+  - utilizing
+  - supercharge
+  - supercharges
+  - revolutionize
+  - revolutionizes
+  - revolutionized
+  # chat-tell adverbs and adjectives
+  - seamlessly
+  - seamless
+  - meticulously
+  - crucially
+  - pivotal
+  - paramount
+  - holistic
+  - holistically
+  - comprehensive
+  - comprehensively
+  - vibrant
+  # chat-tell nouns
+  - plethora
+  - myriad
+  - tapestry
+  # chat-tell phrases
+  - in conclusion
+  - to conclude
+  - to summarize
+  - in summary
+  - it's worth noting
+  - it is worth noting
+  - as an AI
+  - testament to
+  - game-changer
+  - game changer
+  - cutting-edge
+  - state-of-the-art
+  - in the realm of
+  - navigate the landscape
+  - ever-evolving
+  - fast-paced world

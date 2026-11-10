@@ -90,7 +90,9 @@ Every crate root (`lib.rs`/`main.rs`) starts with its `//!` crate doc, then this
 Automation lives in a `justfile` (or `xtask` crate) — no bash-only scripts.
 - `just dev` — backend against mock HA + `trunk serve`; simulates ingress (random path
   prefix + `X-Ingress-Path`).
-- `just ci` — fmt, clippy (native + wasm, `-D warnings`), unit/integration tests, WASM build.
+- `just ci` — fmt, clippy (native + wasm, `-D warnings`), unit/integration tests, WASM build,
+  prose lint (`just lint-prose`, vale: no LLM-sounding vocabulary or wall-of-text sentences in
+  markdown, Rust comments or UI strings; config in `.vale.ini`, D065).
 
 ## Dev environment
 

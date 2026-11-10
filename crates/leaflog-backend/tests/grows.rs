@@ -310,10 +310,10 @@ async fn action_accepts_datetime_local_occurred_at() {
 }
 
 /// Re-typing an entry to `flip` via `PUT /api/actions/{id}` must
-/// re-derive the phase with the incoming change: `create_action`
+/// re-derive the phase with the incoming change. `create_action`
 /// treats the entry being written as already counting (a flip entry is
-/// itself "flower"), so editing an entry into a flip on the same day
-/// must do the same — the stored phase may not silently stay at the
+/// itself "flower"); editing an entry into a flip on the same day
+/// must do the same. The stored phase may not silently stay at the
 /// pre-flip value.
 #[tokio::test]
 async fn update_retyping_to_flip_rederives_phase() {
@@ -524,7 +524,7 @@ async fn photo_upload_rejects_garbage() {
     assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
 }
 
-/// A plain tiny JPEG (no EXIF) filled with one colour; size and fill
+/// A plain minimal JPEG (no EXIF) filled with one colour; size and fill
 /// vary between calls so the bytes on disk are distinct.
 fn plain_jpeg(width: u32, height: u32, fill: [u8; 3]) -> Vec<u8> {
     let img = image::RgbImage::from_pixel(width, height, image::Rgb(fill));
