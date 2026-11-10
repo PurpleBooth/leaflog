@@ -77,6 +77,7 @@ async fn grow_env(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<EnvSnapshot>, ApiError> {
+    let tz = crate::app::canonical_timezone(&state).await;
     let live = state.ha.live_now();
     let response = state
         .db
@@ -100,19 +101,10 @@ async fn grow_env(
                 leaflog_core::actions::ActionType::Harvest,
                 u16::MAX,
             )?;
-            let today = {
-                let start = time::Date::parse(
-                    &grow.started_on,
-                    &time::macros::format_description!("[year]-[month]-[day]"),
-                )
-                .map_err(|e| ApiError::BadRequest(e.to_string()))?;
-                u16::try_from(
-                    (time::OffsetDateTime::now_utc().date() - start)
-                        .whole_days()
-                        .max(0),
-                )
-                .unwrap_or(0)
-            };
+            // Local calendar days in the canonical zone (spec §2);
+            // UTC math is the fallback for unknown zones.
+            let today = crate::app::day_number_in(&grow.started_on, &crate::db::now_rfc3339(), &tz)
+                .unwrap_or(0);
             let phase = leaflog_core::actions::derive_phase(today, flip, harvest.is_some());
 
             // Temperature and humidity from the bound sensors, with
@@ -184,6 +176,7 @@ async fn grow_lamp(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<LampAdvice>, ApiError> {
+    let tz = crate::app::canonical_timezone(&state).await;
     let live = state.ha.live_now();
     let advice = state
         .db
@@ -207,19 +200,10 @@ async fn grow_lamp(
                 leaflog_core::actions::ActionType::Harvest,
                 u16::MAX,
             )?;
-            let today = {
-                let start = time::Date::parse(
-                    &grow.started_on,
-                    &time::macros::format_description!("[year]-[month]-[day]"),
-                )
-                .map_err(|e| ApiError::BadRequest(e.to_string()))?;
-                u16::try_from(
-                    (time::OffsetDateTime::now_utc().date() - start)
-                        .whole_days()
-                        .max(0),
-                )
-                .unwrap_or(0)
-            };
+            // Local calendar days in the canonical zone (spec §2);
+            // UTC math is the fallback for unknown zones.
+            let today = crate::app::day_number_in(&grow.started_on, &crate::db::now_rfc3339(), &tz)
+                .unwrap_or(0);
             let phase = leaflog_core::actions::derive_phase(today, flip, harvest.is_some());
 
             // Canopy temp from the bound temperature sensor.
@@ -310,6 +294,7 @@ async fn grow_coach(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<CoachResponse>, ApiError> {
+    let tz = crate::app::canonical_timezone(&state).await;
     let response = state
         .db
         .with(move |conn| -> Result<CoachResponse, ApiError> {
@@ -327,19 +312,10 @@ async fn grow_coach(
                 leaflog_core::actions::ActionType::Harvest,
                 u16::MAX,
             )?;
-            let today = {
-                let start = time::Date::parse(
-                    &grow.started_on,
-                    &time::macros::format_description!("[year]-[month]-[day]"),
-                )
-                .map_err(|e| ApiError::BadRequest(e.to_string()))?;
-                u16::try_from(
-                    (time::OffsetDateTime::now_utc().date() - start)
-                        .whole_days()
-                        .max(0),
-                )
-                .unwrap_or(0)
-            };
+            // Local calendar days in the canonical zone (spec §2);
+            // UTC math is the fallback for unknown zones.
+            let today = crate::app::day_number_in(&grow.started_on, &crate::db::now_rfc3339(), &tz)
+                .unwrap_or(0);
             let phase = leaflog_core::actions::derive_phase(today, flip, harvest.is_some());
 
             let tips = coach_tips(phase, &grow.substrate, true);

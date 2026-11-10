@@ -15,6 +15,8 @@ use time::macros::format_description;
 
 use crate::api::ApiError;
 use crate::app::AppState;
+use crate::app::canonical_timezone;
+use crate::app::day_number_in;
 use crate::db::StoreError;
 use crate::db::now_rfc3339;
 use crate::store::{self, StoreOrNotFound};
@@ -320,12 +322,16 @@ async fn create_action(
     Json(mut input): Json<ActionInput>,
 ) -> Result<(StatusCode, Json<leaflog_core::grows::ActionEntry>), ApiError> {
     validate_action(&mut input)?;
+    let tz = canonical_timezone(&state).await;
     let grow_id_for_capture = id.clone();
     let entry = state
         .db
         .with(move |conn| -> Result<_, ApiError> {
             let grow = store::grows::get(conn, &id)?;
-            let day = day_number(&grow.started_on, &input.occurred_at)?;
+            let day =
+                day_number_in(&grow.started_on, &input.occurred_at, &tz).ok_or_else(|| {
+                    ApiError::BadRequest("invalid occurred_at or started_on date".to_owned())
+                })?;
             // The entry being created counts as happening on its own
             // day: a flip entry is already "flower".
             let flip = if input.action_type == ActionType::Flip {
@@ -369,12 +375,16 @@ async fn update_action(
     Json(mut input): Json<ActionInput>,
 ) -> Result<Json<leaflog_core::grows::ActionEntry>, ApiError> {
     validate_action(&mut input)?;
+    let tz = canonical_timezone(&state).await;
     let entry = state
         .db
         .with(move |conn| -> Result<_, ApiError> {
             let existing = store::actions::get(conn, &id)?;
             let grow = store::grows::get(conn, &existing.grow_id)?;
-            let day = day_number(&grow.started_on, &input.occurred_at)?;
+            let day =
+                day_number_in(&grow.started_on, &input.occurred_at, &tz).ok_or_else(|| {
+                    ApiError::BadRequest("invalid occurred_at or started_on date".to_owned())
+                })?;
             // The entry being written counts as happening on its own
             // day, as in `create_action`: `first_event_day` still sees
             // the row's old stored type/day, so an incoming flip or
@@ -424,6 +434,7 @@ async fn get_forecast(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<ForecastResponse>, ApiError> {
+    let tz = canonical_timezone(&state).await;
     let response = state
         .db
         .with(move |conn| -> Result<ForecastResponse, ApiError> {
@@ -445,7 +456,8 @@ async fn get_forecast(
             };
             let input = leaflog_core::forecast::input_for(strain.as_ref(), None, actuals);
             let windows = leaflog_core::forecast::forecast(&input);
-            let today_day = day_number(&grow.started_on, &now_rfc3339())?;
+            let today_day = day_number_in(&grow.started_on, &crate::db::now_rfc3339(), &tz)
+                .ok_or_else(|| ApiError::BadRequest("invalid started_on date".to_owned()))?;
             Ok(ForecastResponse { today_day, windows })
         })
         .await?;
@@ -558,6 +570,7 @@ async fn upload_photo(
     Path(id): Path<String>,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<leaflog_core::grows::Photo>), ApiError> {
+    let tz = canonical_timezone(&state).await;
     let mut files: Vec<Vec<u8>> = Vec::new();
     let mut plant_id: Option<String> = None;
     let mut action_log_id: Option<String> = None;
@@ -644,7 +657,8 @@ async fn upload_photo(
                 let mut last = None;
                 for part in &stored {
                     let captured_at = part.captured_at.clone().unwrap_or_else(now_rfc3339);
-                    let day = day_number(&grow.started_on, &captured_at)?;
+                    let day = day_number_in(&grow.started_on, &captured_at, &tz)
+                        .ok_or_else(|| ApiError::BadRequest("invalid capture date".to_owned()))?;
                     let flip = store::actions::first_event_day(conn, &id, ActionType::Flip, day)?;
                     let harvested =
                         store::actions::first_event_day(conn, &id, ActionType::Harvest, day)?
@@ -789,17 +803,6 @@ async fn non_empty_field(field: axum::extract::multipart::Field<'_>) -> Option<S
     let text = field.text().await.ok()?;
     let trimmed = text.trim().to_owned();
     (!trimmed.is_empty()).then_some(trimmed)
-}
-
-/// Days between a grow start (`YYYY-MM-DD`) and an RFC 3339 instant.
-fn day_number(started_on: &str, occurred_at: &str) -> Result<u16, ApiError> {
-    let date_format = format_description!("[year]-[month]-[day]");
-    let start = time::Date::parse(started_on, &date_format)
-        .map_err(|error| ApiError::BadRequest(format!("invalid grow start date: {error}")))?;
-    let moment = time::OffsetDateTime::parse(occurred_at, &Rfc3339)
-        .map_err(|error| ApiError::BadRequest(format!("invalid timestamp: {error}")))?;
-    let days = (moment.date() - start).whole_days();
-    u16::try_from(days.max(0)).map_err(|_| ApiError::BadRequest("grow day out of range".to_owned()))
 }
 
 /// Shared grow validation.

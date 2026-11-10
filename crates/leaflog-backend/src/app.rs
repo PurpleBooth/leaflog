@@ -82,6 +82,48 @@ impl AppState {
     }
 }
 
+/// The canonical timezone for display and grow-day numbering (spec
+/// §2): the `display_timezone` settings override wins, then Home
+/// Assistant's config zone, then UTC.
+pub async fn canonical_timezone(state: &AppState) -> String {
+    let configured = state
+        .db
+        .with(|conn| -> Result<Option<String>, crate::db::StoreError> {
+            Ok(crate::store::settings::get(conn, "display_timezone")
+                .ok()
+                .and_then(|value| value.as_str().map(str::to_owned)))
+        })
+        .await
+        .ok()
+        .flatten();
+    configured
+        .or_else(|| state.ha.cached_timezone())
+        .unwrap_or_else(|| leaflog_core::tz::UTC.to_owned())
+}
+
+/// The grow day of a UTC instant in `tz` (local calendar days,
+/// DST-safe), falling back to UTC date math when the zone does not
+/// resolve. Invalid dates return `None` (the caller's 400).
+#[must_use]
+pub fn day_number_in(started_on: &str, occurred_at: &str, tz: &str) -> Option<u16> {
+    leaflog_core::tz::day_number_local(started_on, occurred_at, tz)
+        .or_else(|| day_number_utc(started_on, occurred_at))
+}
+
+/// Plain UTC date math — the pre-canonical behaviour and the fallback
+/// for unknown zones.
+fn day_number_utc(started_on: &str, occurred_at: &str) -> Option<u16> {
+    let start = time::Date::parse(
+        started_on,
+        &time::macros::format_description!("[year]-[month]-[day]"),
+    )
+    .ok()?;
+    let occurred =
+        time::OffsetDateTime::parse(occurred_at, &time::format_description::well_known::Rfc3339)
+            .ok()?;
+    u16::try_from((occurred.date() - start).whole_days().max(0)).ok()
+}
+
 /// Assembles the application router.
 ///
 /// Routes are mounted at the root: Home Assistant's ingress proxy

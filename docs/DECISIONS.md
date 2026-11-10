@@ -8,6 +8,32 @@ here. Date format: YYYY-MM-DD.
 
 ## 2026-11-10 — post-M8
 
+### D059: Canonical timezone — HA's zone, local calendar days
+
+Implements the §2 timezone canon (spec §13 "Timezone" criterion):
+
+- **`jiff` 0.2** provides the IANA database embedded in the binary —
+  the HA image has no system tzdata to read, and HA reports zones by
+  name (`Europe/Berlin`).
+- **`leaflog-core::tz`**: `day_number_local` counts whole local
+  calendar days between the grow's start date and a UTC instant's
+  local date in the zone; unknown zones return `None` rather than
+  guessing (callers fall back to UTC math). Golden tests pin the
+  2026-03-29 EU spring-forward and 2026-10-25 fall-back (the
+  naive-UTC answers differ — day 3 vs 2 and day 5 vs 4). A
+  `QuietHours` wall-clock window helper (midnight-wrapping,
+  half-open) lands with it for the alert routing that consumes it.
+- **Canonical resolution**: the `display_timezone` settings override
+  wins, then the zone from the documented `GET /core/api/config`
+  (fetched by the bridge on every (re)connect into a watch channel;
+  unreachable HA keeps the last known zone), then UTC. mock-HA serves
+  the config route with `Europe/Berlin`.
+- **Every day-math site is converted**: action logging and updates,
+  snapshot capture, forecast today, env/lamp/coach phase derivation,
+  and the auto-log path. The end-to-end test logs an entry at
+  23:30Z that is 00:30 the next local day in Berlin and asserts
+  grow day 1, not the UTC day 0.
+
 ### D058: Snapshot retention and entity-drift status
 
 First M12 pieces (spec §4.2, §4.1, §13):

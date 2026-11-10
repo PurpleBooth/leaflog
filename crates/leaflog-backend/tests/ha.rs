@@ -594,3 +594,63 @@ async fn entity_picker_filters_by_device_class() {
     assert!(ids(&all).contains(&"light.grow_led".to_owned()));
     assert!(ids(&all).contains(&"sensor.grow_soil_moisture".to_owned()));
 }
+
+#[tokio::test]
+async fn grow_days_count_local_calendar_days_in_the_ha_timezone() {
+    let (mock_url, _mock) = spawn_mock().await;
+    let (base, _db, bridge) = spawn_api(&mock_url).await;
+    let client = reqwest::Client::new();
+
+    // The bridge refreshes the canonical zone from
+    // GET /core/api/config on connect; the mock serves Europe/Berlin.
+    let mut waited = 0_u32;
+    while bridge.cached_timezone().as_deref() != Some("Europe/Berlin") {
+        assert!(waited < 100, "timezone never arrived from the mock");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        waited += 1;
+    }
+
+    // A grow started 2026-11-10 with an entry at 23:30Z — 00:30 local
+    // on the 11th in Berlin, but still the 10th in UTC. The local
+    // calendar day wins (spec §2): grow day 1, not 0.
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&json!({
+            "name": "TZ run",
+            "strain_id": null,
+            "grow_space_id": null,
+            "seed_batch_id": null,
+            "feed_template_id": null,
+            "substrate": "soil",
+            "started_on": "2026-11-10",
+            "status": "active",
+            "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let entry: Value = client
+        .post(format!(
+            "{}/api/grows/{}/actions",
+            base,
+            grow["id"].as_str().unwrap()
+        ))
+        .json(&json!({
+            "plant_ids": [],
+            "occurred_at": "2026-11-10T23:30:00Z",
+            "action_type": "water",
+            "details": {},
+            "notes": null,
+            "appearance_tags": [],
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(entry["grow_day"], 1, "Berlin local day, not the UTC day 0");
+}

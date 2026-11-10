@@ -38,6 +38,7 @@ pub mod history;
 pub mod seedbank;
 pub mod spaces;
 pub mod strain;
+pub mod tz;
 pub mod units;
 
 /// A phase of a cannabis grow, in chronological order.

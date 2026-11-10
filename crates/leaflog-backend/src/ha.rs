@@ -106,6 +106,7 @@ struct BridgeInner {
     base_url: String,
     token: SupervisorToken,
     live_rx: watch::Receiver<LiveData>,
+    timezone_rx: watch::Receiver<Option<String>>,
 }
 
 /// Commands from the API layer to the socket task.
@@ -121,18 +122,38 @@ impl HaBridge {
     #[must_use]
     pub fn spawn(base_url: String, token: SupervisorToken, db: Db) -> Self {
         let (live_tx, live_rx) = watch::channel(LiveData::offline());
+        let (timezone_tx, timezone_rx) = watch::channel(None);
         let (updates_tx, updates_rx) = mpsc::unbounded_channel();
         let ws_base = base_url.trim_end_matches('/').replacen("http", "ws", 1);
+        let rest_base = base_url.trim_end_matches('/').to_owned();
         let handle_token = token.clone();
-        tokio::spawn(socket_task(ws_base, token, live_tx, updates_rx, db));
+        tokio::spawn(socket_task(
+            ws_base,
+            token,
+            live_tx,
+            updates_rx,
+            db,
+            rest_base,
+            timezone_tx,
+        ));
         Self {
             inner: Arc::new(BridgeInner {
                 base_url,
                 token: handle_token,
                 live_rx,
+                timezone_rx,
             }),
             updates_tx,
         }
+    }
+
+    /// The Home Assistant timezone (IANA name) from the documented
+    /// `GET /core/api/config`, refreshed with every reconnect; `None`
+    /// until fetched or when HA is unreachable (callers fall back to
+    /// the settings override, then UTC).
+    #[must_use]
+    pub fn cached_timezone(&self) -> Option<String> {
+        self.inner.timezone_rx.borrow().clone()
     }
 
     /// A receiver of live-data snapshots (for the SSE endpoint).
@@ -246,6 +267,8 @@ async fn socket_task(
     live_tx: watch::Sender<LiveData>,
     mut updates: mpsc::UnboundedReceiver<Update>,
     db: Db,
+    rest_base: String,
+    timezone_tx: watch::Sender<Option<String>>,
 ) {
     let url = format!("{ws_base}/core/websocket");
     let mut tracked: Vec<String> = Vec::new();
@@ -255,13 +278,54 @@ async fn socket_task(
         while let Ok(Update::Entities(entities)) = updates.try_recv() {
             tracked = entities;
         }
-        match run_socket(&url, &token, &live_tx, &tracked, &mut updates, &db).await {
+        // Refresh the canonical timezone (spec §2) on every
+        // (re)connect; unreachable HA keeps the last known value.
+        refresh_timezone(&rest_base, &token, &timezone_tx).await;
+        let timezone = timezone_tx.borrow().clone();
+        match run_socket(
+            &url,
+            &token,
+            &live_tx,
+            &tracked,
+            &mut updates,
+            &db,
+            timezone,
+        )
+        .await
+        {
             SocketOutcome::Restart(next_tracked) => {
                 tracked = next_tracked;
                 attempt = attempt.saturating_add(1);
                 tokio::time::sleep(backoff_for(attempt)).await;
             }
         }
+    }
+}
+
+/// Fetches `GET /core/api/config` and publishes its `timezone` (the
+/// documented field, spec §2) to the bridge's watch channel. Failures
+/// leave the previous value untouched — unreachable HA keeps the last
+/// known zone.
+async fn refresh_timezone(
+    rest_base: &str,
+    token: &SupervisorToken,
+    timezone_tx: &watch::Sender<Option<String>>,
+) {
+    let url = format!("{rest_base}/core/api/config");
+    let fetched = reqwest::Client::new()
+        .get(&url)
+        .bearer_auth(token.0.as_ref())
+        .send()
+        .await
+        .and_then(reqwest::Response::error_for_status);
+    let fetched = match fetched {
+        Ok(response) => HaBridge::json_response::<serde_json::Value>(response).await,
+        Err(error) => Err(HaError::Unreachable(error.to_string())),
+    };
+    if let Ok(config) = fetched
+        && let Some(zone) = config["timezone"].as_str()
+    {
+        let _ = timezone_tx.send(Some(zone.to_owned()));
     }
 }
 
@@ -281,6 +345,7 @@ async fn run_socket(
     tracked: &[String],
     updates: &mut mpsc::UnboundedReceiver<Update>,
     db: &Db,
+    timezone: Option<String>,
 ) -> SocketOutcome {
     let mut tracked = tracked.to_vec();
     let stream = tokio_tungstenite::connect_async(url).await;
@@ -337,10 +402,11 @@ async fn run_socket(
                         let changed = apply_event(text.as_str(), live_tx);
                         for (entity_id, new_state) in changed {
                             if entity_id.starts_with("light.") {
-                                                tokio::spawn(auto_log_light_change(
+                                tokio::spawn(auto_log_light_change(
                                     db.clone(),
                                     entity_id,
                                     new_state,
+                                    timezone.clone(),
                                 ));
                             }
                         }
@@ -500,7 +566,12 @@ fn merge_attrs(target: &mut BTreeMap<String, Value>, update: &Value) {
 /// The auto-log path: given a state diff for a light entity, write a
 /// `lights` log entry for each grow bound to it (spec §4.2), unless the
 /// `auto_log_ha_events` setting is off.
-async fn auto_log_light_change(db: Db, entity_id: String, new_state: String) {
+async fn auto_log_light_change(
+    db: Db,
+    entity_id: String,
+    new_state: String,
+    timezone: Option<String>,
+) {
     let result = db
         .with(move |conn| -> Result<(), crate::db::StoreError> {
             let entity = entity_id.as_str();
@@ -518,7 +589,13 @@ async fn auto_log_light_change(db: Db, entity_id: String, new_state: String) {
                     continue;
                 };
                 let occurred_at = crate::db::now_rfc3339();
-                let day = day_from(&grow.started_on, &occurred_at).unwrap_or(0);
+                // Local calendar days in the canonical zone (spec §2);
+                // UTC math when no zone is known.
+                let day = timezone
+                    .as_deref()
+                    .and_then(|tz| crate::app::day_number_in(&grow.started_on, &occurred_at, tz))
+                    .or_else(|| day_from(&grow.started_on, &occurred_at))
+                    .unwrap_or(0);
                 let flip = crate::store::actions::first_event_day(
                     conn,
                     &grow_id,

@@ -153,6 +153,7 @@ pub fn app(state: MockState) -> Router {
         .route("/", get(root))
         .route("/core/api/", get(ping))
         .route("/core/api/states", get(states))
+        .route("/core/api/config", get(config))
         .route("/core/api/history/period/{from}", get(history))
         .route("/core/websocket", get(websocket))
         .with_state(state)
@@ -183,6 +184,19 @@ async fn root() -> Json<Value> {
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn ping() -> Json<Value> {
     json!({ "message": "API running." }).into()
+}
+
+// Extractors are taken by value because Axum requires it.
+#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
+#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
+async fn config() -> Json<Value> {
+    // The documented config surface Leaflog reads (spec §2): the
+    // canonical timezone for display and grow-day numbering.
+    json!({
+        "timezone": "Europe/Berlin",
+        "unit_system": { "temperature": "°C", "length": "mm", "volume": "L" },
+    })
+    .into()
 }
 
 // Extractors are taken by value because Axum requires it.
