@@ -27,6 +27,10 @@ pub fn router() -> Router<AppState> {
 /// The environment snapshot for a grow.
 #[derive(Debug, Clone, Serialize)]
 pub struct EnvSnapshot {
+    /// Per-binding drift status (spec §4.1): a binding whose entity is
+    /// unavailable is reported here so the UI shows a chip and the
+    /// rebind affordance instead of silently missing data.
+    pub bindings: Vec<BindingStatus>,
     /// Air temperature, °C (from bound sensor; None when offline).
     pub temperature_c: Option<f64>,
     /// Relative humidity, %.
@@ -45,6 +49,26 @@ pub struct EnvSnapshot {
     pub temp_ok: Option<bool>,
     /// Whether the VPD is in range.
     pub vpd_ok: Option<bool>,
+}
+
+/// One bound entity's drift status.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct BindingStatus {
+    /// Binding role (`temperature`, `humidity`, ...).
+    pub role: String,
+    /// The bound HA entity id.
+    pub entity_id: String,
+    /// Whether the entity currently reports a usable value. A dead or
+    /// renamed entity (HA sends `unavailable`/`unknown`) is `false`,
+    /// and everything downstream degrades to "no data" — never "in
+    /// range".
+    pub available: bool,
+}
+
+/// An entity counts as available when it is tracked and its state is
+/// neither HA's `unavailable` nor `unknown`.
+fn entity_available(entity: Option<&crate::ha::LiveEntity>) -> bool {
+    entity.is_some_and(|live| live.state != "unavailable" && live.state != "unknown")
 }
 
 // Extractors are taken by value because Axum requires it.
@@ -91,10 +115,19 @@ async fn grow_env(
             };
             let phase = leaflog_core::actions::derive_phase(today, flip, harvest.is_some());
 
-            // Temperature and humidity from the bound sensors.
+            // Temperature and humidity from the bound sensors, with
+            // each binding's drift status beside them (spec §4.1).
             let bindings = store::sensors::list(conn, &id)?;
             let temp_entity = bindings.get("temperature");
             let humidity_entity = bindings.get("humidity");
+            let drift = bindings
+                .iter()
+                .map(|(role, entity_id)| BindingStatus {
+                    role: role.clone(),
+                    entity_id: entity_id.clone(),
+                    available: entity_available(live.entities.get(entity_id)),
+                })
+                .collect::<Vec<_>>();
             let temperature_c = temp_entity
                 .and_then(|e| live.entities.get(e))
                 .and_then(|e| e.state.parse::<f64>().ok());
@@ -129,6 +162,7 @@ async fn grow_env(
             let vpd_ok = vpd.map(|v| v >= band.0 && v <= band.1);
 
             Ok(EnvSnapshot {
+                bindings: drift,
                 temperature_c,
                 humidity_pct,
                 vpd_kpa: vpd,
@@ -336,4 +370,28 @@ async fn grow_coach(
         })
         .await?;
     Ok(Json(response))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::entity_available;
+    use crate::ha::LiveEntity;
+    use std::collections::BTreeMap;
+
+    fn live(state: &str) -> LiveEntity {
+        LiveEntity {
+            entity_id: "sensor.grow_temperature".to_owned(),
+            state: state.to_owned(),
+            attributes: BTreeMap::new(),
+        }
+    }
+
+    #[test]
+    fn ha_dead_states_are_unavailable() {
+        let reporting = live("24.3");
+        assert!(entity_available(Some(&reporting)));
+        assert!(!entity_available(Some(&live("unavailable"))));
+        assert!(!entity_available(Some(&live("unknown"))));
+        assert!(!entity_available(None), "an untracked entity is no data");
+    }
 }

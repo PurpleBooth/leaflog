@@ -2080,3 +2080,91 @@ async fn history_accuracy_on_a_golden_grow_and_next_run_by_reference() {
         .unwrap();
     assert_eq!(spaces_after.len(), 1, "the space is reused, not copied");
 }
+
+#[tokio::test]
+async fn unavailable_bound_entities_render_no_data_and_can_rebind() {
+    // The bridge is offline: nothing is tracked, so every bound entity
+    // is unavailable. The snapshot must say so per binding and degrade
+    // to no-data — never "in range" (spec §4.1/§4.9).
+    let base = spawn_api().await;
+    let client = reqwest::Client::new();
+
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&json!({
+            "name": "Drift run",
+            "strain_id": null,
+            "grow_space_id": null,
+            "seed_batch_id": null,
+            "feed_template_id": null,
+            "substrate": "soil",
+            "started_on": "2026-10-01",
+            "status": "active",
+            "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let grow_id = grow["id"].as_str().unwrap().to_owned();
+    client
+        .put(format!("{base}/api/grows/{grow_id}/bindings"))
+        .json(&json!({
+            "bindings": {
+                "temperature": "sensor.gone_temp",
+                "humidity": "sensor.gone_hum",
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    let env: Value = client
+        .get(format!("{base}/api/grows/{grow_id}/env"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let bindings = env["bindings"].as_array().unwrap();
+    assert_eq!(
+        bindings.len(),
+        2,
+        "each binding reports its drift: {bindings:?}"
+    );
+    assert!(
+        bindings
+            .iter()
+            .all(|binding| binding["available"] == json!(false))
+    );
+    assert_eq!(env["temperature_c"], Value::Null, "no data, not zero");
+    assert_eq!(env["temp_ok"], Value::Null, "never 'in range' without data");
+    assert_eq!(env["vpd_ok"], Value::Null);
+
+    // Rebinding is the fix: point the roles at different entities and
+    // the snapshot follows (still no data offline, but the binding
+    // moved — the affordance works end to end).
+    client
+        .put(format!("{base}/api/grows/{grow_id}/bindings"))
+        .json(&json!({
+            "bindings": { "temperature": "sensor.new_temp" }
+        }))
+        .send()
+        .await
+        .unwrap();
+    let env: Value = client
+        .get(format!("{base}/api/grows/{grow_id}/env"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let bindings = env["bindings"].as_array().unwrap();
+    assert_eq!(bindings.len(), 1, "the humidity role was released");
+    assert_eq!(bindings[0]["entity_id"], "sensor.new_temp");
+    assert_eq!(bindings[0]["available"], false, "still offline");
+}

@@ -6,9 +6,22 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::Deserialize;
 
+/// One binding's drift status.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct BindingStatus {
+    /// Binding role.
+    pub role: String,
+    /// Bound entity id.
+    pub entity_id: String,
+    /// Whether the entity currently reports data.
+    pub available: bool,
+}
+
 /// The env snapshot from /api/grows/{id}/env.
 #[derive(Debug, Clone, Deserialize)]
 pub struct EnvSnapshot {
+    /// Per-binding drift status (spec §4.1).
+    pub bindings: Vec<BindingStatus>,
     /// Air temperature, °C.
     pub temperature_c: Option<f64>,
     /// Relative humidity, %.
@@ -116,6 +129,39 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
     view! {
         <div class="env-dashboard">
             <ErrorIf error />
+
+            // Entity drift (spec §4.1): a dead binding shows a chip
+            // and points at the entity-bindings editor below — never a
+            // silent "in range".
+            {move || {
+                let dead = env
+                    .get()
+                    .map(|e| {
+                        e.bindings
+                            .into_iter()
+                            .filter(|binding| !binding.available)
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                (dead.is_empty()).then(move || {
+                    view! {
+                        <p class="error" role="status">
+                            "No data: "
+                            {dead
+                                .into_iter()
+                                .map(|binding| {
+                                    view! {
+                                        <span class="badge">
+                                            {format!("{} ({})", binding.role, binding.entity_id)}
+                                        </span>
+                                    }
+                                })
+                                .collect::<Vec<_>>()}
+                            " — rebind it in Entity bindings below."
+                        </p>
+                    }
+                })
+            }}
 
             <div class="tiles">
                 {move || {

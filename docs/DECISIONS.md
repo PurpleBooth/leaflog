@@ -8,6 +8,30 @@ here. Date format: YYYY-MM-DD.
 
 ## 2026-11-10 — post-M8
 
+### D058: Snapshot retention and entity-drift status
+
+First M12 pieces (spec §4.2, §4.1, §13):
+
+- **Retention**: `store::retention::prune` thins `sensor_snapshot`
+  rows captured before the cutoff to at most one per (entity, hour)
+  — the earliest — always keeping each entity-day's first and last
+  row and every excursion-linked row (a snapshot attached to an
+  auto-logged entry, matched by the `auto:` notes marker). Rows
+  inside the window are untouched. The window is the
+  `snapshot_retention_months` setting (default 24; 31-day months — a
+  retention horizon is a coarse thing). A task in `serve` runs it at
+  startup and weekly (`MissedTickBehavior::Delay`, so a sleeping box
+  does not fire a burst).
+- **Entity drift**: `GET /api/grows/{id}/env` reports per-binding
+  `BindingStatus` — available means tracked and not HA's
+  `unavailable`/`unknown`. The dashboard shows a "No data … rebind in
+  Entity bindings" chip for dead bindings; values and range verdicts
+  were already `Option`-shaped and degrade to null — never "in
+  range". Rebinding is the existing bindings editor
+  (`live.rs::EntityBindings`). Env-alert HA notification routing
+  (§4.9) deliberately waits: it needs a persistent evaluation loop
+  and is not one of the §13 gates.
+
 ### D057: Cross-grow history — plan-based accuracy, aggregates, next-run
 
 The §4.15 section, computed read-only over existing tables:

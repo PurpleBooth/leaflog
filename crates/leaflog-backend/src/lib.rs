@@ -218,6 +218,12 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     tokio::runtime::Runtime::new()?.block_on(serve(config))
 }
 
+/// Seven days, in the only unit std's `Duration` constructors speak
+/// on stable.
+const fn weeks(count: u64) -> std::time::Duration {
+    std::time::Duration::from_secs(count * 7 * 24 * 60 * 60)
+}
+
 /// Runs the `migrate` subcommand (spec §3).
 ///
 /// `apply` applies pending migrations to the configured database
@@ -301,6 +307,35 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         }
         Ok(_) => {}
         Err(error) => eprintln!("equipment seeding skipped: {error}"),
+    }
+    // Snapshot retention (spec §4.2): prune at startup and weekly.
+    {
+        let retention_db = db.clone();
+        tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(weeks(1));
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                ticker.tick().await;
+                let pruned = retention_db
+                    .with(|conn| -> Result<u64, crate::db::StoreError> {
+                        let months = crate::store::retention::retention_months(conn)?;
+                        // A retention window is a coarse horizon, not a
+                        // calendar promise: 31-day months.
+                        let cutoff = time::OffsetDateTime::now_utc()
+                            - time::Duration::seconds(i64::from(months) * 31 * 24 * 60 * 60);
+                        let cutoff = cutoff
+                            .format(&time::format_description::well_known::Rfc3339)
+                            .unwrap_or_default();
+                        crate::store::retention::prune(conn, &cutoff)
+                    })
+                    .await;
+                match pruned {
+                    Ok(0) => {}
+                    Ok(count) => println!("Pruned {count} old sensor snapshots"),
+                    Err(error) => eprintln!("snapshot retention skipped: {error}"),
+                }
+            }
+        });
     }
     let photos = crate::photos::PhotoStore::new(config.photos_dir());
     let ha_bridge = std::sync::Arc::new(ha::HaBridge::spawn(
