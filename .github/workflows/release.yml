@@ -5,9 +5,9 @@
 # own signing fails, finish its commit + tag with git) and sync the
 # version files first (leaflog/config.yaml, workspace Cargo.toml,
 # Cargo.lock, custom_components/leaflog/manifest.json). The pipeline
-# then rewrites CHANGELOG.md wholesale from `cog changelog` (D042) and
-# commits it with the version sync, so the file is always cocogitto
-# output regardless of local tooling. A dispatch re-runs the release
+# then rewrites both changelogs wholesale via `just changelog` (D042,
+# D062) and commits them with the version sync, so they are always
+# generated output regardless of local tooling. A dispatch re-runs the release
 # for whatever version leaflog/config.yaml declares — a recovery hatch
 # for a broken release, not a bumper; the former `bump` input was
 # never honoured (D039).
@@ -78,9 +78,9 @@ jobs:
           # Released history up to this tag only: no Unreleased section,
           # even on a dispatch re-run where main has moved past the tag.
           cog changelog --template default "${ROOT}..v${VERSION}" > /tmp/changelog.md
-          # Rewrite CHANGELOG.md wholesale from cocogitto via the same
-          # recipe used locally (D042), so bump-time drift never survives
-          # a release. Committed by the version-sync step below.
+          # Rewrite both changelogs wholesale from cocogitto via the same
+          # recipe used locally (D042, D062), so bump-time drift never
+          # survives a release. Committed by the version-sync step below.
           just changelog
           # Write the release body to a multiline output
           EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
@@ -115,7 +115,7 @@ jobs:
           if ! git diff --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add leaflog/config.yaml Cargo.toml Cargo.lock custom_components/ CHANGELOG.md
+            git add leaflog/config.yaml Cargo.toml Cargo.lock custom_components/ CHANGELOG.md leaflog/CHANGELOG.md
             git commit -m "chore(release): bump version to $VERSION"
             git push origin HEAD:main
           fi

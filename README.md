@@ -53,7 +53,9 @@ Both `amd64` and `aarch64` images are published to
 
 Commits follow the [Conventional Commits](https://www.conventionalcommits.org/)
 specification; [cocogitto](https://github.com/cocogitto/cocogitto) enforces
-them (`cog check`) and generates the changelog on release.
+them (`cog check`) and generates the changelogs on release — the root
+`CHANGELOG.md` for GitHub and `leaflog/CHANGELOG.md`, which Home
+Assistant serves as the in-app changelog.
 
 ```sh
 devbox shell
@@ -66,7 +68,7 @@ just ci           # full gate: fmt, clippy, tests, WASM build
 1. Merge all changes to `main` (conventional commits enforced on PRs)
 2. Tag a release: `cog bump --auto` (or manually `git tag vX.Y.Z`)
 3. Push the tag — the Release workflow runs the full CI, generates
-   the changelog, creates a GitHub Release, and publishes the
+   the changelogs, creates a GitHub Release, and publishes the
    multi-arch image
 
 ## License

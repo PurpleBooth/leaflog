@@ -1,7 +1,8 @@
 # PR validation: conventional-commit format check via cocogitto, plus a
-# guard that CHANGELOG.md, when touched, matches cocogitto output (D042).
-# Runs on every pull request; blocks merge on non-conventional commits
-# and hand-maintained changelogs.
+# guard that the changelogs, when touched, match `just changelog` output
+# (D042, D062) and that the HA-facing one keeps sliceable version
+# headings. Runs on every pull request; blocks merge on non-conventional
+# commits and hand-maintained changelogs.
 
 name: PR Check
 
@@ -35,19 +36,50 @@ jobs:
           curl -sSL "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar -xz -C /usr/local/bin just
           just --version
 
-      - name: CHANGELOG.md must be cocogitto output
+      - name: Changelogs must be `just changelog` output, HA-sliceable
         run: |
-          # Only inspect the file when the PR touches it (D042).
-          if ! git diff --name-only "${{ github.event.pull_request.base.sha }}...HEAD" -- CHANGELOG.md | grep -q .; then
-            exit 0
+          # Only inspect the files when the PR touches either (D042, D062).
+          if git diff --name-only "${{ github.event.pull_request.base.sha }}...HEAD" -- CHANGELOG.md leaflog/CHANGELOG.md | grep -q .; then
+            # Regenerate; a clean diff means the committed files are
+            # exactly recipe output. Any residue is a hand edit.
+            just changelog
+            if ! git diff --exit-code -- CHANGELOG.md leaflog/CHANGELOG.md; then
+              echo "::error::CHANGELOG.md or leaflog/CHANGELOG.md differs from 'just changelog' output. Both files are generated at release time (D042, D062) — run 'just changelog' instead of editing them."
+              exit 1
+            fi
           fi
-          # Regenerate; a clean diff means the committed file is exactly
-          # cocogitto output. Any residue is a hand edit.
-          just changelog
-          if ! git diff --exit-code -- CHANGELOG.md; then
-            echo "::error::CHANGELOG.md differs from cocogitto output. The file is generated at release time (D042) — run 'just changelog' instead of editing it."
-            exit 1
-          fi
+          # Home Assistant serves leaflog/CHANGELOG.md verbatim from the
+          # app directory and slices release notes on headings that are
+          # exactly "## <version>" (hassio update.py, async_release_notes;
+          # D062). Checked on every PR so a cocogitto template change
+          # cannot silently undo the heading rewrite in the recipe.
+          python3 - <<'EOF'
+          import pathlib
+          import re
+
+          text = pathlib.Path("leaflog/CHANGELOG.md").read_text()
+          config = pathlib.Path("leaflog/config.yaml").read_text()
+          version = re.search(r'^version: "(.+)"$', config, re.M).group(1)
+
+          headings = re.findall(r"^## (.+)$", text, re.M)
+          bad = [h for h in headings if not re.fullmatch(r"\d+\.\d+\.\d+", h)]
+          assert bad == [], f"non-bare version headings (Home Assistant cannot slice): {bad}"
+          assert headings[0] == version, f"top heading {headings[0]!r} != config.yaml version {version!r}"
+
+          i = headings.index(version)
+          installed = headings[i + 1] if i + 1 < len(headings) else None
+          if installed is not None:
+              pattern = re.compile(
+                  rf"^#* {re.escape(version)}\n"
+                  rf"(?:^(?!#* {re.escape(installed)}).*\n)*",
+                  re.MULTILINE,
+              )
+              match = pattern.search(text)
+              assert match, "HA release-notes regex matched nothing"
+              assert f"## {installed}" not in match.group(0), "slice bled past the incoming version's section"
+
+          print(f"changelog headings OK (top: ## {version})")
+          EOF
 
       - name: Check conventional commits
         run: cog check --from-branch-format "origin/{branch}"

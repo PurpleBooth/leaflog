@@ -8,6 +8,38 @@ here. Date format: YYYY-MM-DD.
 
 ## 2026-11-10 — post-M8
 
+### D062: Home Assistant serves `leaflog/CHANGELOG.md`; version headings are bare `## <version>`
+
+The HA update dialog kept showing the 0.1.0 changelog for every
+update. Two stacked causes:
+
+- Supervisor does not read git tags or GitHub releases for the
+  changelog — it serves `<addon-dir>/CHANGELOG.md` verbatim from its
+  shallow clone of the repository's **default branch**
+  (`supervisor/apps/model.py::path_changelog`). All release tooling
+  maintained only the repo-root `CHANGELOG.md` (D042), which Supervisor
+  ignores for a subdirectory app; `leaflog/CHANGELOG.md` had been frozen
+  at its hand-written 0.1.0 content since the initial packaging commit.
+- HA Core then slices that file per version in
+  `hassio/update.py::async_release_notes`: a heading must be exactly
+  `#* <version>` (e.g. `## 0.4.0` — the string from
+  `leaflog/config.yaml`, no `v` prefix, date, or brackets) or Core
+  falls back to the whole file. Cocogitto's `## vX.Y.Z - date`
+  headings can never match.
+
+`just changelog` now writes both files from one `cog changelog` run:
+the root file stays cocogitto output verbatim (D042 unchanged);
+`leaflog/CHANGELOG.md` is the HA-facing artifact with headings
+rewritten (`## X.Y.Z` plus a `_Released date._` line) by a `sed` step
+in the recipe — chosen over a cocogitto custom template because CI
+pins cog 6.2.0 and the transform is verifiable locally. The release
+workflow commits both files with the version sync, and pr-check
+regenerates and diffs both, asserts every version heading is bare
+semver with the top one equal to `config.yaml`'s version, and
+simulates Core's slice regex — so a future cocogitto template change
+cannot silently re-break it. Because Supervisor reads the default
+branch only, the fix went live on merge + store reload; no image
+re-release was needed.
 ### D061: Form submit handlers call `prevent_default` themselves — `on:submit:prevent` is not a Leptos modifier
 
 Every form used `on:submit:prevent=save` — but `leptos_macro` 0.8 only
@@ -29,6 +61,7 @@ body of `POST /api/spaces/{id}/equipment/{id}` and always failed,
 swallowed by `let _ =`) to `api::post_action`, and the per-plant POST
 failures now surface in the wizard's error line instead of being
 dropped silently.
+||||||| parent of ee68fe8 (ci(changelog): serve an HA-sliceable app changelog (D061))
 
 ### D060: Environment alerts route to Home Assistant, gated three ways
 
