@@ -5,6 +5,8 @@
 use std::path::PathBuf;
 
 use leaflog_backend::db::{self, Db, StoreError};
+use leaflog_backend::store;
+use leaflog_core::equipment::EquipmentCategory;
 use refinery::Target;
 use rusqlite::Connection;
 
@@ -267,4 +269,92 @@ async fn partially_adopted_history_is_completed() {
     })
     .await
     .expect("leftover check");
+}
+
+/// V6 (catalogue trim): carbon filters fold into `fan`, the sixteen
+/// bundled rows whose categories left the catalogue are removed (with
+/// space references cascading), and user rows in retired categories are
+/// parked in the legacy `misc` bucket where they keep deserializing.
+#[tokio::test]
+async fn catalogue_trim_recategorizes_prunes_and_parks() {
+    let temp = TempDb::new("trim");
+    let path = temp.path();
+    {
+        let mut conn = Connection::open(&path).expect("open at V5");
+        conn.pragma_update(None, "foreign_keys", "ON")
+            .expect("pragmas");
+        db::embedded::migrations::runner()
+            .set_target(Target::Version(5))
+            .run(&mut conn)
+            .expect("apply through V5");
+        conn.execute_batch(
+            "INSERT INTO equipment_item
+                 (id, name, category, brand_model, real_watts, dimmable,
+                  purchase_date, purchase_price, currency, notes,
+                  source, is_builtin, created_at, updated_at)
+             VALUES
+                 ('e-filter', 'Carbon filter 100 mm', 'carbon_filter', NULL, NULL, 0,
+                  NULL, NULL, NULL, NULL, 'bundled', 1,
+                  '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'),
+                 ('e-tray', 'Trim tray set', 'misc', NULL, NULL, 0,
+                  NULL, NULL, NULL, NULL, 'bundled', 1,
+                  '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'),
+                 ('e-dehum', 'My basement dehumidifier', 'dehumidifier', NULL, NULL, 0,
+                  NULL, NULL, NULL, NULL, NULL, 0,
+                  '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'),
+                 ('e-light', 'SE1500 LED grow light', 'light', NULL, 150, 1,
+                  NULL, NULL, NULL, NULL, 'bundled', 1,
+                  '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+             INSERT INTO grow_space
+                 (id, name, width_cm, depth_cm, height_cm, notes, created_at, updated_at)
+             VALUES ('sp-1', 'Tent', 60, 60, 180, NULL,
+                     '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+             INSERT INTO grow_space_equipment (grow_space_id, equipment_id) VALUES
+                 ('sp-1', 'e-filter'),
+                 ('sp-1', 'e-tray');",
+        )
+        .expect("pre-trim fixtures");
+    }
+
+    let db = Db::open(&path).expect("V6 applies on boot");
+    db.with(|conn| -> Result<(), StoreError> {
+        let category = |id: &str| -> Result<String, StoreError> {
+            Ok(conn.query_row(
+                "SELECT category FROM equipment_item WHERE id = ?1",
+                [id],
+                |row| row.get(0),
+            )?)
+        };
+        assert_eq!(category("e-filter")?, "fan", "carbon filters fold into fan");
+        assert_eq!(category("e-light")?, "light", "catalogue rows untouched");
+        assert_eq!(
+            category("e-dehum")?,
+            "misc",
+            "user rows in retired categories are parked, not deleted"
+        );
+        let tray: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM equipment_item WHERE id = 'e-tray')",
+            [],
+            |row| row.get(0),
+        )?;
+        assert!(!tray, "the bundled trim-tray row is removed");
+        // The space kept its reference to the recategorized filter and
+        // lost (by cascade) the reference to the removed tray.
+        let refs: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM grow_space_equipment WHERE grow_space_id = 'sp-1'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(refs, 1);
+        // Parked rows still deserialize through the store layer.
+        let items = store::equipment::list(conn, None)?;
+        assert!(
+            items
+                .iter()
+                .any(|item| { item.id == "e-dehum" && item.category == EquipmentCategory::Misc })
+        );
+        Ok(())
+    })
+    .await
+    .expect("trim assertions");
 }

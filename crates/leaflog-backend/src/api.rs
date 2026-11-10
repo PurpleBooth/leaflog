@@ -287,7 +287,7 @@ struct EquipmentQuery {
 
 /// Parses and validates an equipment category label.
 fn parse_category(label: &str) -> Result<EquipmentCategory, ApiError> {
-    EquipmentCategory::all()
+    EquipmentCategory::catalogue()
         .into_iter()
         .find(|category| category.label() == label)
         .ok_or_else(|| ApiError::BadRequest(format!("unknown equipment category {label}")))
@@ -297,6 +297,13 @@ fn parse_category(label: &str) -> Result<EquipmentCategory, ApiError> {
 fn validate_equipment(input: &EquipmentInput) -> Result<(), ApiError> {
     if input.name.trim().is_empty() {
         return Err(ApiError::BadRequest("name must not be empty".to_owned()));
+    }
+    if !EquipmentCategory::catalogue().contains(&input.category) {
+        return Err(ApiError::BadRequest(format!(
+            "equipment category must be one of the catalogue categories \
+             (light, tent_room, fan, sensor); '{}' is not accepted",
+            input.category.label()
+        )));
     }
     if input.real_watts.is_some_and(|watts| watts < 0.0) {
         return Err(ApiError::BadRequest(

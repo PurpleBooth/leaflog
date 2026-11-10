@@ -8,6 +8,33 @@ here. Date format: YYYY-MM-DD.
 
 ## 2026-11-10 — post-M8
 
+### D049: Catalogue trim to four categories, with a legacy `misc` bucket
+
+Implements D045's catalogue decision (spec §4.1): the equipment
+catalogue covers durable hardware only — `light`, `tent_room`, `fan`
+(incl. carbon filters) and `sensor`. `EquipmentCategory::catalogue()`
+is exactly those four and is what the API validates and the UI offers.
+
+- **The legacy bucket.** Retiring nine categories from a type that
+  round-trips stored rows would make old rows undeserializable.
+  Instead the enum keeps a fifth variant, `Misc`, documented as
+  legacy-only: V6 parks user rows in retired categories there, they
+  keep listing and displaying, but no create/update payload may say
+  `misc` (an update must pick a catalogue category — which is also the
+  only thing the UI's category select can send). No new row can ever
+  become misc.
+- **V6 (`V6__catalogue_trim.sql`).** `carbon_filter` → `fan`; the
+  sixteen bundled rows whose categories left the catalogue are deleted
+  by exact `(name, category)` match — the explicit, documented removal
+  spec §4.1 requires (space references cascade); everything else in a
+  retired category is parked in `misc` rather than deleted, because
+  silently dropping user data is worse than a legacy bucket. The
+  bundled seed set shrinks 21 → 5 entries (tent, light, clip fan, two
+  carbon filters as fans).
+- `EquipmentCategory::all()` became `catalogue()` (four first-class
+  categories); row parsing moved to `from_label`, which also parses
+  `misc` so parked rows deserialize.
+
 ### D048: Migrations run on refinery — auto-discovered files, checksum-verified history
 
 The hand-rolled runner from D001 (an embedded `&[&str]` array plus a

@@ -308,6 +308,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn seeded_equipment_covers_only_catalogue_categories() -> Result<(), SeedError> {
+        let db = Db::open_in_memory()?;
+        seed_equipment_if_empty(&db).await?;
+        let items = db
+            .with(|conn| crate::store::equipment::list(conn, None))
+            .await?;
+        assert!(!items.is_empty(), "the trimmed seed set still ships");
+        assert!(
+            items.iter().all(
+                |item| leaflog_core::equipment::EquipmentCategory::catalogue()
+                    .contains(&item.category)
+            ),
+            "bundled presets ship for lights, tents and fans only (spec §4.1): {:?}",
+            items.iter().map(|item| item.category).collect::<Vec<_>>()
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn seeded_equipment_has_no_personal_purchase_details() -> Result<(), SeedError> {
         let db = Db::open_in_memory()?;
         seed_equipment_if_empty(&db).await?;

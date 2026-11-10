@@ -102,7 +102,7 @@ pub fn EquipmentPage() -> impl IntoView {
                 >
                     "All"
                 </button>
-                {EquipmentCategory::all()
+                {EquipmentCategory::catalogue()
                     .into_iter()
                     .map(|category| {
                         let current = filter;
@@ -194,13 +194,13 @@ fn EquipmentForm(draft: RwSignal<EquipmentInput>) -> impl IntoView {
                     on:change=move |ev| {
                         let label = event_target_value(&ev);
                         if let Some(category) =
-                            EquipmentCategory::all().into_iter().find(|c| c.label() == label)
+                            EquipmentCategory::catalogue().into_iter().find(|c| c.label() == label)
                         {
                             draft.update(|d| d.category = category);
                         }
                     }
                 >
-                    {EquipmentCategory::all()
+                    {EquipmentCategory::catalogue()
                         .into_iter()
                         .map(|category| view! { <option value=category.label()>{category.display()}</option> })
                         .collect::<Vec<_>>()}

@@ -1,9 +1,13 @@
-//! Equipment inventory domain types (spec §4.1).
+//! Equipment catalogue domain types (spec §4.1).
 
 use serde::{Deserialize, Serialize};
 
 /// Category of a piece of grow equipment. Labels are the stable
 /// `snake_case` identifiers stored in the database and used by the API.
+///
+/// The catalogue covers durable hardware only — lights, tents/rooms,
+/// fans (incl. carbon filters) and sensors. Sensors are never bundled:
+/// each is created from a Home Assistant entity (spec §4.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EquipmentCategory {
@@ -11,49 +15,39 @@ pub enum EquipmentCategory {
     Light,
     /// Tent or grow room.
     TentRoom,
-    /// Inline, oscillating or clip fan.
+    /// Inline, oscillating or clip fan, including carbon filters.
     Fan,
-    /// Carbon filter / odour control.
-    CarbonFilter,
-    /// Humidifier.
-    Humidifier,
-    /// Dehumidifier.
-    Dehumidifier,
-    /// Heater or air conditioning.
-    HeaterAc,
-    /// Pots and growing media.
-    PotsMedia,
-    /// Pumps and reservoirs.
-    PumpsReservoir,
-    /// Measurement meters: pH, EC/TDS, PPFD/PAR.
-    Meter,
-    /// Environmental sensors.
+    /// Environmental sensor, created from a bound HA entity.
     Sensor,
-    /// Controllers (timers, climate controllers, ...).
-    Controller,
-    /// Everything else.
+    /// Legacy bucket for rows stored under a category the trimmed
+    /// catalogue no longer offers (pre-trim databases; V6 recategorizes
+    /// or parks them here). Never valid in create/update payloads.
     Misc,
 }
 
 impl EquipmentCategory {
-    /// All categories in display order.
+    /// The first-class catalogue categories (spec §4.1), in display
+    /// order. The API accepts exactly these for create and update; the
+    /// UI offers exactly these in pickers and filters. [`Self::Misc`]
+    /// is deliberately absent — it exists only so stored legacy rows
+    /// keep deserializing.
     #[must_use]
-    pub const fn all() -> [Self; 13] {
-        [
-            Self::Light,
-            Self::TentRoom,
-            Self::Fan,
-            Self::CarbonFilter,
-            Self::Humidifier,
-            Self::Dehumidifier,
-            Self::HeaterAc,
-            Self::PotsMedia,
-            Self::PumpsReservoir,
-            Self::Meter,
-            Self::Sensor,
-            Self::Controller,
-            Self::Misc,
-        ]
+    pub const fn catalogue() -> [Self; 4] {
+        [Self::Light, Self::TentRoom, Self::Fan, Self::Sensor]
+    }
+
+    /// Parses a stored category label, including the legacy `misc`
+    /// bucket. Returns `None` for labels this build does not know.
+    #[must_use]
+    pub fn from_label(label: &str) -> Option<Self> {
+        match label {
+            "light" => Some(Self::Light),
+            "tent_room" => Some(Self::TentRoom),
+            "fan" => Some(Self::Fan),
+            "sensor" => Some(Self::Sensor),
+            "misc" => Some(Self::Misc),
+            _ => None,
+        }
     }
 
     /// The stable `snake_case` label (database and API representation).
@@ -63,15 +57,7 @@ impl EquipmentCategory {
             Self::Light => "light",
             Self::TentRoom => "tent_room",
             Self::Fan => "fan",
-            Self::CarbonFilter => "carbon_filter",
-            Self::Humidifier => "humidifier",
-            Self::Dehumidifier => "dehumidifier",
-            Self::HeaterAc => "heater_ac",
-            Self::PotsMedia => "pots_media",
-            Self::PumpsReservoir => "pumps_reservoir",
-            Self::Meter => "meter",
             Self::Sensor => "sensor",
-            Self::Controller => "controller",
             Self::Misc => "misc",
         }
     }
@@ -82,17 +68,9 @@ impl EquipmentCategory {
         match self {
             Self::Light => "Light",
             Self::TentRoom => "Tent / room",
-            Self::Fan => "Fan",
-            Self::CarbonFilter => "Carbon filter",
-            Self::Humidifier => "Humidifier",
-            Self::Dehumidifier => "Dehumidifier",
-            Self::HeaterAc => "Heater / AC",
-            Self::PotsMedia => "Pots & media",
-            Self::PumpsReservoir => "Pumps & reservoir",
-            Self::Meter => "Meter",
+            Self::Fan => "Fan (incl. carbon filter)",
             Self::Sensor => "Sensor",
-            Self::Controller => "Controller",
-            Self::Misc => "Misc",
+            Self::Misc => "Legacy / misc",
         }
     }
 }
@@ -180,3 +158,45 @@ impl EquipmentInput {
 // `from_item` intentionally drops `source`/`is_builtin`: inputs describe
 // user-shaped payloads, and both flags are preserved by the store on
 // update and set only by the seeder on create.
+
+#[cfg(test)]
+mod tests {
+    use super::EquipmentCategory;
+
+    #[test]
+    fn catalogue_offers_exactly_the_durable_hardware_categories() {
+        assert_eq!(
+            EquipmentCategory::catalogue(),
+            [
+                EquipmentCategory::Light,
+                EquipmentCategory::TentRoom,
+                EquipmentCategory::Fan,
+                EquipmentCategory::Sensor,
+            ],
+        );
+    }
+
+    #[test]
+    fn labels_round_trip_through_from_label() {
+        for category in EquipmentCategory::catalogue() {
+            assert_eq!(
+                EquipmentCategory::from_label(category.label()),
+                Some(category)
+            );
+        }
+        // The legacy bucket parses too — stored rows must deserialize —
+        // but it is not part of the catalogue offered by the API/UI.
+        assert_eq!(
+            EquipmentCategory::from_label(EquipmentCategory::Misc.label()),
+            Some(EquipmentCategory::Misc),
+        );
+    }
+
+    #[test]
+    fn unknown_labels_do_not_parse() {
+        assert!(EquipmentCategory::from_label("carbon_filter").is_none());
+        assert!(EquipmentCategory::from_label("meter").is_none());
+        assert!(EquipmentCategory::from_label("humidifier").is_none());
+        assert!(EquipmentCategory::from_label("").is_none());
+    }
+}

@@ -187,14 +187,16 @@ pub fn delete(conn: &Connection, id: &str) -> Result<(), StoreOrNotFound> {
 /// migration's `equipment_item` table.
 fn map_row(row: &rusqlite::Row<'_>) -> Result<EquipmentItem, rusqlite::Error> {
     let category_label: String = row.get("category")?;
-    let category = EquipmentCategory::all()
-        .into_iter()
-        .find(|candidate| candidate.label() == category_label)
-        .ok_or(rusqlite::Error::FromSqlConversionFailure(
+    // `from_label` covers the legacy `misc` bucket too, so rows parked
+    // there by the V6 trim keep deserializing (they just cannot be
+    // re-created or updated as misc).
+    let category = EquipmentCategory::from_label(&category_label).ok_or(
+        rusqlite::Error::FromSqlConversionFailure(
             2,
             rusqlite::types::Type::Text,
             Box::from(format!("unknown equipment category {category_label}")),
-        ))?;
+        ),
+    )?;
     let dimmable: i64 = row.get("dimmable")?;
     let is_builtin: i64 = row.get("is_builtin")?;
     Ok(EquipmentItem {
