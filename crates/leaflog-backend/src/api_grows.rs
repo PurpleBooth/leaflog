@@ -117,9 +117,21 @@ async fn create_grow(
             })
             .await?;
     }
+    let ha = state.ha.clone();
     let grow = state
         .db
-        .with(move |conn| store::grows::create(conn, &input))
+        .with(move |conn| -> Result<_, crate::db::StoreError> {
+            let grow = store::grows::create(conn, &input)?;
+            // Spec §4.1: a space's temperature + humidity sensor items
+            // are the default env bindings for a grow in it; seed only
+            // fills unbound roles, so per-grow overrides stay.
+            if !store::sensors::seed_from_space(conn, &grow)?.is_empty() {
+                // track_entities replaces the tracked set, so pass the
+                // union of every grow's bindings (as put_bindings does).
+                ha.track_entities(store::sensors::all_bound_entities(conn)?);
+            }
+            Ok(grow)
+        })
         .await?;
     Ok((StatusCode::CREATED, Json(grow)))
 }
@@ -174,9 +186,19 @@ async fn update_grow(
             })
             .await?;
     }
+    let ha = state.ha.clone();
     let grow = state
         .db
-        .with(move |conn| store::grows::update(conn, &id, &input))
+        .with(move |conn| -> Result<_, store::StoreOrNotFound> {
+            let grow = store::grows::update(conn, &id, &input)?;
+            // A grow moved into (or between) spaces picks the new
+            // space's sensor defaults for any role it has not bound
+            // itself (spec §4.1, same rule as create_grow).
+            if !store::sensors::seed_from_space(conn, &grow)?.is_empty() {
+                ha.track_entities(store::sensors::all_bound_entities(conn)?);
+            }
+            Ok(grow)
+        })
         .await?;
     Ok(Json(grow))
 }

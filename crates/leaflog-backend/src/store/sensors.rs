@@ -2,6 +2,8 @@
 
 use std::collections::BTreeMap;
 
+use leaflog_core::equipment::EquipmentCategory;
+use leaflog_core::grows::Grow;
 use rusqlite::{Connection, params};
 
 use crate::db::{StoreError, new_id, now_rfc3339};
@@ -57,6 +59,49 @@ pub fn replace(conn: &Connection, grow_id: &str, input: &BindingsInput) -> Resul
     }
     tx.commit()?;
     Ok(())
+}
+
+/// Seeds a grow's unbound binding roles from its space's sensor items
+/// (spec §4.1).
+///
+/// A space's temperature and humidity items are offered as the default
+/// env bindings for grows in it. A role already bound — seeded earlier
+/// or set explicitly by the grower — is never touched, so per-grow
+/// overrides stay. A grow without a space binds nothing. Returns the
+/// entity ids newly bound; with several sensor items of the same device
+/// class in one space, the first in list order wins.
+///
+/// # Errors
+///
+/// Returns a [`StoreError`] on SQLite failures.
+pub fn seed_from_space(conn: &Connection, grow: &Grow) -> Result<Vec<String>, StoreError> {
+    let Some(space_id) = &grow.grow_space_id else {
+        return Ok(Vec::new());
+    };
+    let mut bound = list(conn, &grow.id)?;
+    let mut seeded = Vec::new();
+    for item in super::equipment::list_for_space(conn, space_id)? {
+        if item.category != EquipmentCategory::Sensor {
+            continue;
+        }
+        let Some(entity_id) = &item.ha_entity_id else {
+            continue;
+        };
+        // A v1 sensor item's device class is the binding role
+        // (temperature / humidity; other classes cannot be stored).
+        let role = item.ha_device_class.as_deref().unwrap_or_default();
+        if !ROLES.contains(&role) || bound.contains_key(role) {
+            continue;
+        }
+        conn.execute(
+            "INSERT INTO sensor_binding (grow_id, role, entity_id, updated_at)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![grow.id, role, entity_id, now_rfc3339()],
+        )?;
+        bound.insert(role.to_owned(), entity_id.clone());
+        seeded.push(entity_id.clone());
+    }
+    Ok(seeded)
 }
 
 /// Reads a grow's bindings.

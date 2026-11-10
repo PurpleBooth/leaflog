@@ -2168,3 +2168,240 @@ async fn unavailable_bound_entities_render_no_data_and_can_rebind() {
     assert_eq!(bindings[0]["entity_id"], "sensor.new_temp");
     assert_eq!(bindings[0]["available"], false, "still offline");
 }
+
+// --- Space sensor items → default grow bindings (spec §4.1) -----------
+
+/// Creates a sensor equipment item bound to an HA entity and returns
+/// its id.
+async fn create_sensor_item(
+    client: &reqwest::Client,
+    base: &str,
+    entity: &str,
+    class: &str,
+) -> String {
+    let created: Value = client
+        .post(format!("{base}/api/equipment"))
+        .json(&json!({
+            "name": entity, "category": "sensor",
+            "brand_model": null, "real_watts": null, "dimmable": false,
+            "purchase_date": null, "purchase_price": null, "currency": null,
+            "notes": null,
+            "ha_entity_id": entity, "ha_device_class": class,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    created["id"].as_str().unwrap().to_owned()
+}
+
+/// Creates a grow space and returns its id.
+async fn create_space_at(client: &reqwest::Client, base: &str, name: &str) -> String {
+    let created: Value = client
+        .post(format!("{base}/api/spaces"))
+        .json(&sample_space(name))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    created["id"].as_str().unwrap().to_owned()
+}
+
+/// Creates a grow (optionally inside a space) and returns its id.
+async fn create_grow_at(
+    client: &reqwest::Client,
+    base: &str,
+    name: &str,
+    space_id: Option<&str>,
+) -> String {
+    let created: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&json!({
+            "name": name,
+            "strain_id": null,
+            "grow_space_id": space_id,
+            "substrate": "soil",
+            "started_on": "2026-10-01",
+            "status": "active",
+            "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    created["id"].as_str().unwrap().to_owned()
+}
+
+/// Reads a grow's bindings.
+async fn bindings_of(client: &reqwest::Client, base: &str, grow_id: &str) -> Value {
+    client
+        .get(format!("{base}/api/grows/{grow_id}/bindings"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn space_sensor_items_seed_default_grow_bindings() {
+    let base = spawn_api().await;
+    let client = reqwest::Client::new();
+
+    let space_id = create_space_at(&client, &base, "60×60 tent").await;
+    let temp = create_sensor_item(&client, &base, "sensor.grow_temperature", "temperature").await;
+    let humidity = create_sensor_item(&client, &base, "sensor.grow_humidity", "humidity").await;
+    for item in [&temp, &humidity] {
+        let status = client
+            .post(format!("{base}/api/spaces/{space_id}/equipment/{item}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
+    }
+
+    // A grow created in the space inherits both roles as defaults.
+    let grow_id = create_grow_at(&client, &base, "RC #1", Some(&space_id)).await;
+    let bindings = bindings_of(&client, &base, &grow_id).await;
+    assert_eq!(bindings["temperature"], "sensor.grow_temperature");
+    assert_eq!(bindings["humidity"], "sensor.grow_humidity");
+
+    // A grow without a space binds nothing.
+    let loose_grow_id = create_grow_at(&client, &base, "Loose", None).await;
+    let loose = bindings_of(&client, &base, &loose_grow_id).await;
+    assert_eq!(loose.as_object().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn sensor_added_to_space_seeds_existing_grows_and_keeps_overrides() {
+    let base = spawn_api().await;
+    let client = reqwest::Client::new();
+
+    // The grow exists before any sensor does.
+    let space_id = create_space_at(&client, &base, "tent").await;
+    let grow_id = create_grow_at(&client, &base, "RC #2", Some(&space_id)).await;
+
+    // A sensor item added to the space seeds the role on existing grows.
+    let humidity = create_sensor_item(&client, &base, "sensor.grow_humidity", "humidity").await;
+    let status = client
+        .post(format!("{base}/api/spaces/{space_id}/equipment/{humidity}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
+    let bindings = bindings_of(&client, &base, &grow_id).await;
+    assert_eq!(bindings["humidity"], "sensor.grow_humidity");
+
+    // An explicit binding survives a later sensor item of the same role.
+    let replaced: Value = client
+        .put(format!("{base}/api/grows/{grow_id}/bindings"))
+        .json(&json!({
+            "bindings": {
+                "temperature": "sensor.chosen_temp",
+                "humidity": "sensor.grow_humidity",
+            }
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(replaced["temperature"], "sensor.chosen_temp");
+    let temp = create_sensor_item(&client, &base, "sensor.grow_temperature", "temperature").await;
+    let status = client
+        .post(format!("{base}/api/spaces/{space_id}/equipment/{temp}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
+    let bindings = bindings_of(&client, &base, &grow_id).await;
+    assert_eq!(
+        bindings["temperature"], "sensor.chosen_temp",
+        "an explicit binding is never overwritten by seeding"
+    );
+    assert_eq!(bindings["humidity"], "sensor.grow_humidity");
+}
+
+#[tokio::test]
+async fn grow_moved_into_space_picks_up_sensor_defaults() {
+    let base = spawn_api().await;
+    let client = reqwest::Client::new();
+
+    let space_id = create_space_at(&client, &base, "tent").await;
+    let temp = create_sensor_item(&client, &base, "sensor.grow_temperature", "temperature").await;
+    let status = client
+        .post(format!("{base}/api/spaces/{space_id}/equipment/{temp}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
+
+    // A grow edited into a space (PUT) picks the space's defaults for
+    // roles it has not bound itself.
+    let grow_id = create_grow_at(&client, &base, "Nomad", None).await;
+    let updated: Value = client
+        .put(format!("{base}/api/grows/{grow_id}"))
+        .json(&json!({
+            "name": "Nomad",
+            "strain_id": null,
+            "grow_space_id": space_id,
+            "substrate": "soil",
+            "started_on": "2026-10-01",
+            "status": "active",
+            "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(updated["grow_space_id"], space_id.as_str());
+    let bindings = bindings_of(&client, &base, &grow_id).await;
+    assert_eq!(bindings["temperature"], "sensor.grow_temperature");
+}
+
+#[tokio::test]
+async fn startup_healing_pass_refills_cleared_bindings() {
+    let db = leaflog_backend::Db::open_in_memory().unwrap();
+    let base = spawn_with(db.clone()).await;
+    let client = reqwest::Client::new();
+
+    let space_id = create_space_at(&client, &base, "tent").await;
+    let temp = create_sensor_item(&client, &base, "sensor.grow_temperature", "temperature").await;
+    let status = client
+        .post(format!("{base}/api/spaces/{space_id}/equipment/{temp}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
+    let grow_id = create_grow_at(&client, &base, "RC #3", Some(&space_id)).await;
+    assert_eq!(
+        bindings_of(&client, &base, &grow_id).await["temperature"],
+        "sensor.grow_temperature"
+    );
+
+    // Wipe the bindings (the state an install created before the
+    // §4.1 bridge existed would be in), then run the startup pass.
+    let status = client
+        .put(format!("{base}/api/grows/{grow_id}/bindings"))
+        .json(&json!({ "bindings": {} }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(status.status(), reqwest::StatusCode::OK);
+    leaflog_backend::seed_sensor_defaults(&db).await.unwrap();
+    let bindings = bindings_of(&client, &base, &grow_id).await;
+    assert_eq!(
+        bindings["temperature"], "sensor.grow_temperature",
+        "the startup pass re-fills unbound roles from the space's items"
+    );
+}

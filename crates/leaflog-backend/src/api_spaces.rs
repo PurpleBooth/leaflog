@@ -125,14 +125,29 @@ async fn delete_space(
 
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
 async fn add_equipment(
     State(state): State<AppState>,
     Path((id, equipment_id)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
+    let ha = state.ha.clone();
     state
         .db
-        .with(move |conn| store::spaces::add_equipment(conn, &id, &equipment_id))
+        .with(move |conn| -> Result<(), store::StoreOrNotFound> {
+            store::spaces::add_equipment(conn, &id, &equipment_id)?;
+            // Spec §4.1: a sensor item added to a space becomes the
+            // default binding for its role on every grow in that space
+            // that has not bound that role itself.
+            let item = store::equipment::get(conn, &equipment_id)?;
+            if item.category == leaflog_core::equipment::EquipmentCategory::Sensor {
+                for grow in store::grows::list_for_space(conn, &id)? {
+                    store::sensors::seed_from_space(conn, &grow)?;
+                }
+                // track_entities replaces the tracked set, so pass the
+                // union of every grow's bindings (as put_bindings does).
+                ha.track_entities(store::sensors::all_bound_entities(conn)?);
+            }
+            Ok(())
+        })
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
