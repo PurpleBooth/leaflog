@@ -1,0 +1,62 @@
+# cargo-deny configuration (spec §10, D046): the dependency-hygiene
+# half of the CI gate. `just deny` runs `cargo deny check`, failing on
+# RustSec advisories and on licences outside the allowlist.
+
+[graph]
+# The graphs the final artifacts are built from: both HA image arches
+# (musl), the native dev/test host, and the frontend's wasm target.
+targets = [
+    { triple = "x86_64-unknown-linux-gnu" },
+    { triple = "x86_64-unknown-linux-musl" },
+    { triple = "aarch64-unknown-linux-musl" },
+    { triple = "wasm32-unknown-unknown" },
+]
+
+[advisories]
+version = 2
+# A yanked dependency is a broken build waiting to happen from a cold
+# cache; fail instead.
+yanked = "deny"
+ignore = [
+    # `paste` is unmaintained, but it is pulled by the Leptos 0.8
+    # internals (either_of, tachys, reactive_graph) with no upgrade
+    # path inside the 0.8 line. Informational severity only. Re-check
+    # at the Leptos 0.9 upgrade (spec §3; D047).
+    { id = "RUSTSEC-2024-0436", reason = "via leptos 0.8 stack; drop at the 0.9 upgrade" },
+]
+
+[licenses]
+version = 2
+# Everything the Rust ecosystem actually serves. The workspace itself
+# is Unlicense; deps are MIT/Apache-2.0 dominantly.
+allow = [
+    "Unlicense",
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "MPL-2.0",
+    "CDLA-Permissive-2.0",
+    "OpenSSL",
+    "CC0-1.0",
+    "BSL-1.0",
+]
+
+[bans]
+# Clippy allows duplicate crate versions workspace-wide
+# (#![allow(clippy::multiple_crate_versions)]); cargo-deny warns rather
+# than fights the same battle. Wildcard version requirements are fine
+# too: the only ones in the graph are the path-only workspace members
+# (leaflog-core, mock-ha), which have no version to pin.
+multiple-versions = "warn"
+wildcards = "allow"
+
+[sources]
+# Only crates.io and path dependencies; no surprise git forks.
+unknown-registry = "deny"
+unknown-git = "deny"

@@ -71,8 +71,18 @@ gitleaks:
         echo "gitleaks not installed; skipping secret scan"
     fi
 
-# Everything CI checks: fmt, clippy (native + wasm), tests, WASM build, commits, secrets.
-ci: cog-check fmt clippy clippy-wasm build-frontend test gitleaks
+# Dependency hygiene: RustSec advisories + licence allowlist (cargo-deny;
+# skip if not installed). Config lives in deny.toml (D046).
+deny:
+    #!/usr/bin/env bash
+    if command -v cargo-deny &>/dev/null; then
+        cargo deny --workspace check --hide-inclusion-graph
+    else
+        echo "cargo-deny not installed; run inside devbox: devbox run -- just deny"
+    fi
+
+# Everything CI checks: fmt, clippy (native + wasm), tests, WASM build, commits, secrets, deps.
+ci: cog-check fmt clippy clippy-wasm build-frontend test gitleaks deny
 
 # Check formatting.
 fmt:

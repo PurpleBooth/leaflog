@@ -1,6 +1,44 @@
 {
   "lockfile_version": "1",
   "packages": {
+    "cargo-deny@0.20.2": {
+      "last_modified": "2026-11-06T15:06:19Z",
+      "resolved": "github:NixOS/nixpkgs/4fe25e12eb9f4c744966dd3de5a05246cf098601#cargo-deny",
+      "source": "devbox-search",
+      "version": "0.20.2",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/xhr5w7b93hn0lx2a6yahf63kjz7c42dw-cargo-deny-0.20.2",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/xhr5w7b93hn0lx2a6yahf63kjz7c42dw-cargo-deny-0.20.2"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/3bm2naqv96ri3vfljca4i8n9rb322i2j-cargo-deny-0.20.2",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/3bm2naqv96ri3vfljca4i8n9rb322i2j-cargo-deny-0.20.2"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/d06nmx3jrs73dgb64k6wrpmisnnjr8pf-cargo-deny-0.20.2",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/d06nmx3jrs73dgb64k6wrpmisnnjr8pf-cargo-deny-0.20.2"
+        }
+      }
+    },
     "cocogitto@6.2.0": {
       "last_modified": "2025-03-11T17:52:14Z",
       "resolved": "github:NixOS/nixpkgs/0d534853a55b5d02a4ababa1d71921ce8f0aee4c#cocogitto",

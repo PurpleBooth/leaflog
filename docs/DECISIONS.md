@@ -8,6 +8,34 @@ here. Date format: YYYY-MM-DD.
 
 ## 2026-11-10 — post-M8
 
+### D047: `cargo deny` gate — allowlist, one advisory ignore, and the rusqlite bump it forced
+
+`cargo deny check` (config in `deny.toml`) joins `just ci` per D046.
+Choices the first run surfaced:
+
+- **Licence allowlist**: the usual permissive set plus `CC0-1.0`
+  (`base16`, via the wasm stack) and `BSL-1.0` (`xxhash-rust`, via
+  Leptos). Both are FSF-free; `cargo deny` had flagged them as
+  unlisted, not as problematic.
+- **One advisory ignore**: RUSTSEC-2024-0436 (`paste` is unmaintained)
+  — `paste` is pulled by the Leptos 0.8 internals (`either_of`,
+  `tachys`, `reactive_graph`) with no upgrade inside the 0.8 line, and
+  the advisory is informational. The ignore carries a reason inline
+  and is dropped at the Leptos 0.9 upgrade.
+- **`bans.wildcards = "allow"`**: the only wildcard version
+  requirements in the graph are the path-only workspace members
+  (`leaflog-core`, `mock-ha`), which deliberately carry no version.
+  `multiple-versions` stays a warning, matching
+  `#![allow(clippy::multiple_crate_versions)]`.
+- **rusqlite 0.37 → 0.41**: the gate's first real finding,
+  RUSTSEC-2026-0459 — bundled SQLite before 3.54.0 can return
+  uninitialized page-cache memory from a crafted db+wal pair
+  (CVE-2026-119375). The fix ships in `libsqlite3-sys` 0.39, which
+  requires rusqlite 0.41, which declares Rust 1.89; the workspace
+  MSRV floor moves 1.88 → 1.92 accordingly (the toolchain itself
+  already floats on stable, currently 1.99). Backend code needed no
+  changes; the full backend suite passes on 0.41.
+
 ### D046: Spec amendment — harvest & yield, cross-grow history, longevity rules, EN+DE, timezone canon
 
 Post-v0.3 roadmap additions recorded in SPEC.md (§1, §2, §4.1, §4.2,
