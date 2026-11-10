@@ -32,6 +32,7 @@ mod feed;
 mod gantt;
 mod grows;
 mod live;
+mod spaces;
 mod strains;
 
 use equipment::EquipmentPage;
@@ -41,6 +42,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::components::{A, Route, Router, Routes};
 use leptos_router::path;
+use spaces::{SpaceDetail, SpacesPage};
 use strains::StrainsPage;
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 
@@ -98,6 +100,7 @@ pub fn App() -> impl IntoView {
                         <A href=route_href("/") exact=true>"Home"</A>
                         <A href=route_href("/equipment")>"Equipment"</A>
                         <A href=route_href("/strains")>"Strains"</A>
+                        <A href=route_href("/spaces")>"Spaces"</A>
                         <A href=route_href("/grows")>"Grows"</A>
                     </nav>
                 </header>
@@ -107,6 +110,8 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("/spike") view=Spike />
                         <Route path=path!("/equipment") view=EquipmentPage />
                         <Route path=path!("/strains") view=StrainsPage />
+                        <Route path=path!("/spaces") view=SpacesPage />
+                        <Route path=path!("/spaces/:id") view=SpaceDetail />
                         <Route path=path!("/grows") view=GrowsPage />
                         <Route path=path!("/grows/:id") view=GrowDetail />
                     </Routes>

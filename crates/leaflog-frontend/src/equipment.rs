@@ -1,5 +1,6 @@
-//! Equipment inventory page (spec §4.1): list with category filter,
-//! create/edit form, delete.
+//! Equipment catalogue page (spec §4.1): bundled defaults plus the
+//! user's own entries, with a category filter, create/edit form and
+//! delete. Grow spaces reference entries from here.
 
 use leaflog_core::equipment::{EquipmentCategory, EquipmentInput, EquipmentItem};
 use leptos::prelude::*;
@@ -141,6 +142,8 @@ pub fn EquipmentPage() -> impl IntoView {
                                     <div class="card-title">
                                         <strong>{item.name.clone()}</strong>
                                         <span class="badge">{item.category.display()}</span>
+                                        {item.is_builtin
+                                            .then(|| view! { <span class="badge">"bundled"</span> })}
                                     </div>
                                     <dl class="facts">
                         {item.brand_model.clone().map(|brand| view! { <div><dt>"Brand / model"</dt><dd>{brand}</dd></div> })}

@@ -20,6 +20,7 @@ use crate::feed::FeedPanel;
 use crate::gantt::GanttTimeline;
 use crate::live::LivePanel;
 use crate::route_href;
+use crate::spaces::SpaceDetail;
 
 /// The grows overview page.
 #[component]
@@ -27,6 +28,7 @@ use crate::route_href;
 pub fn GrowsPage() -> impl IntoView {
     let grows = RwSignal::<Vec<Grow>>::new(Vec::new());
     let strains = RwSignal::<Vec<Strain>>::new(Vec::new());
+    let spaces = RwSignal::<Vec<SpaceDetail>>::new(Vec::new());
     let error = RwSignal::<Option<String>>::new(None);
     let form_open = RwSignal::<bool>::new(false);
     let draft = RwSignal::<GrowInput>::new(empty_grow());
@@ -35,12 +37,16 @@ pub fn GrowsPage() -> impl IntoView {
         spawn_local(async move {
             let grow_list = api::get::<Vec<Grow>>("api/grows").await;
             let strain_list = api::get::<Vec<Strain>>("api/strains").await;
-            match (grow_list, strain_list) {
-                (Ok(grow_list), Ok(strain_list)) => {
+            let space_list = api::get::<Vec<SpaceDetail>>("api/spaces").await;
+            match (grow_list, strain_list, space_list) {
+                (Ok(grow_list), Ok(strain_list), Ok(space_list)) => {
                     grows.set(grow_list);
                     strains.set(strain_list);
+                    spaces.set(space_list);
                 }
-                (Err(failure), _) | (_, Err(failure)) => error.set(Some(failure.message)),
+                (Err(failure), _, _) | (_, Err(failure), _) | (_, _, Err(failure)) => {
+                    error.set(Some(failure.message));
+                }
             }
         });
     };
@@ -112,6 +118,33 @@ pub fn GrowsPage() -> impl IntoView {
                             </select>
                         </label>
                         <label class="field">
+                            <span>"Space"</span>
+                            <select
+                                prop:value=move || draft.get().grow_space_id.unwrap_or_default()
+                                on:change=move |ev| {
+                                    let value = event_target_value(&ev);
+                                    draft.update(|d| {
+                                        d.grow_space_id = (!value.is_empty()).then_some(value);
+                                    });
+                                }
+                            >
+                                <option value="">"— no space —"</option>
+                                {move || {
+                                    spaces
+                                        .get()
+                                        .into_iter()
+                                        .map(|detail| {
+                                            view! {
+                                                <option value=detail.space.id>
+                                                    {detail.space.name}
+                                                </option>
+                                            }
+                                        })
+                                        .collect::<Vec<_>>()
+                                }}
+                            </select>
+                        </label>
+                        <label class="field">
                             <span>"Substrate *"</span>
                             <select
                                 prop:value=move || draft.get().substrate
@@ -140,10 +173,19 @@ pub fn GrowsPage() -> impl IntoView {
 
             <ul class="cards">
                 {move || {
+                    let space_of = |id: &Option<String>| {
+                        id.as_ref().and_then(|space_id| {
+                            spaces
+                                .get()
+                                .into_iter()
+                                .find(|detail| detail.space.id == *space_id)
+                        })
+                    };
                     grows
                         .get()
                         .into_iter()
                         .map(|grow| {
+                            let space = space_of(&grow.grow_space_id);
                             view! {
                                 <li class="card">
                                     <div class="card-title">
@@ -152,6 +194,11 @@ pub fn GrowsPage() -> impl IntoView {
                                         </A>
                                         <span class="badge">{grow.status.label()}</span>
                                         <span class="muted">{grow.substrate.clone()}</span>
+                                        {space.map(|detail| view! {
+                                            <span class="badge">
+                                                {detail.space.name}
+                                            </span>
+                                        })}
                                     </div>
                                     <p class="muted small">"Started "{grow.started_on}</p>
                                 </li>
@@ -179,6 +226,7 @@ pub fn GrowDetail() -> impl IntoView {
     let plants = RwSignal::<Vec<Plant>>::new(Vec::new());
     let actions = RwSignal::<Vec<ActionEntry>>::new(Vec::new());
     let photos = RwSignal::<Vec<Photo>>::new(Vec::new());
+    let spaces = RwSignal::<Vec<SpaceDetail>>::new(Vec::new());
     let error = RwSignal::<Option<String>>::new(None);
 
     let chip = RwSignal::<Option<ActionType>>::new(None);
@@ -203,6 +251,10 @@ pub fn GrowDetail() -> impl IntoView {
             }
             match api::get::<Vec<Photo>>(&format!("{base}/photos")).await {
                 Ok(value) => photos.set(value),
+                Err(failure) => error.set(Some(failure.message)),
+            }
+            match api::get::<Vec<SpaceDetail>>("api/spaces").await {
+                Ok(value) => spaces.set(value),
                 Err(failure) => error.set(Some(failure.message)),
             }
         });
@@ -277,11 +329,29 @@ pub fn GrowDetail() -> impl IntoView {
                 grow.get().map_or_else(
                     || ().into_any(),
                     |grow| {
+                        let space_id = grow.grow_space_id.clone();
                         view! {
                             <div>
                                 <div class="page-head">
                                     <h2>{grow.name.clone()}</h2>
                                     <span class="badge">{grow.substrate.clone()}</span>
+                                    {move || {
+                                        space_id.as_ref().and_then(|id| {
+                                            spaces
+                                                .get()
+                                                .into_iter()
+                                                .find(|detail| detail.space.id == *id)
+                                        })
+                                        .map(|detail| view! {
+                                            <A href=route_href(
+                                                &format!("/spaces/{}", detail.space.id),
+                                            )>
+                                                <span class="badge">
+                                                    {detail.space.name.clone()}
+                                                </span>
+                                            </A>
+                                        })
+                                    }}
                                 </div>
                                 <p class="muted">"Started "{grow.started_on}</p>
                             </div>
@@ -581,6 +651,7 @@ fn empty_grow() -> GrowInput {
     GrowInput {
         name: String::new(),
         strain_id: None,
+        grow_space_id: None,
         substrate: "soil".to_owned(),
         started_on: String::new(),
         status: GrowStatus::default(),

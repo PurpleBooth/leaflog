@@ -56,6 +56,18 @@ pub async fn post_empty<R: DeserializeOwned>(path: &str) -> Result<R, ApiFailure
     parse(response).await
 }
 
+/// `POST` with no body, expecting an empty response (used for
+/// equipment membership).
+///
+/// # Errors
+///
+/// Returns an [`ApiFailure`] on transport errors or non-success
+/// statuses.
+pub async fn post_action(path: &str) -> Result<(), ApiFailure> {
+    check(Request::post(path).send().await).await?;
+    Ok(())
+}
+
 /// `PUT` a JSON body and parse the JSON response.
 ///
 /// # Errors
