@@ -197,6 +197,11 @@ pub fn EquipmentPage() -> impl IntoView {
             <Show when=move || !candidates.get().is_empty() || picker_source.get().is_some()>
                 <div class="card bg-base-100 shadow-sm px-5 py-4 my-4">
                     <h3>"Sensors from Home Assistant"</h3>
+                    <p class="text-base-content/70 text-sm">
+                        "Picking creates a sensor item in this catalogue. Add the item to a grow
+                        space and every grow in that space uses it as its default environment
+                        binding (each grow's own picks override it)."
+                    </p>
                     <ul class="flex flex-wrap gap-2 my-2">
                         {move || {
                             candidates
@@ -221,9 +226,11 @@ pub fn EquipmentPage() -> impl IntoView {
                     </ul>
                     <Show when=move || candidates.get().is_empty()>
                         <p class="py-6 text-center text-base-content/60">
-                            "No temperature or humidity sensors visible — Home Assistant may be
-                            unreachable. Skip for now and pick the sensor later; nothing else
-                            is blocked."
+                            "No temperature or humidity sensors came back. Home Assistant may be
+                            unreachable, or your sensors carry no temperature/humidity device
+                            class. You can enter one by hand instead: \"Add equipment\",
+                            category \"sensor\", and paste the entity id (like
+                            sensor.grow_temperature) with its device class."
                         </p>
                     </Show>
                 </div>
@@ -263,7 +270,13 @@ pub fn EquipmentPage() -> impl IntoView {
                         {item.real_watts.map(|watts| view! { <div><dt>"Wall watts"</dt><dd>{format!("{watts:.0} W")}</dd></div> })}
                         {item.dimmable.then(|| view! { <div><dt>"Dimmable"</dt><dd>"yes"</dd></div> })}
                         {item.ha_entity_id.clone().map(|entity| view! {
-                            <div><dt>"HA entity"</dt><dd>{entity}</dd></div>
+                            <div><dt>"HA entity"</dt>
+                                <dd>{format!(
+                                    "{entity}{}",
+                                    item.ha_device_class
+                                        .map(|class| format!(" ({class})"))
+                                        .unwrap_or_default(),
+                                )}</dd></div>
                         })}
                         {item.purchase_price.zip(item.currency.clone()).map(|(price, currency)| {
                             view! { <div><dt>"Price"</dt><dd>{format!("{price:.2} {currency}")}</dd></div> }

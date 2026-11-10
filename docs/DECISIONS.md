@@ -6,6 +6,52 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-11 — post-M8
+
+### D067: A space's sensor items are the default env bindings; seeding only fills unbound roles
+
+Spec §4.1 says a space's temperature + humidity sensor items "are
+offered as the default env bindings for grows in it (per-grow overrides
+stay)" — but nothing implemented the bridge, so a sensor added on the
+equipment page was write-only inventory while the live tiles read the
+per-grow `sensor_binding` rows only the grow page set. Growers could
+not discover the split (reported: "can't work out how to add a sensor
+to equipment").
+
+`store::sensors::seed_from_space` maps a sensor item's device class to
+its binding role and inserts bindings **only for roles the grow has not
+bound** — an explicit pick is never overwritten, and with several items
+of one class in a space the first in list order wins. It runs from
+three hooks: grow create, grow update (a grow moved into a space picks
+its defaults) and sensor-item-added-to-space (existing grows catch up),
+plus `seed_sensor_defaults` once at startup as an idempotent healing
+pass for installs whose data predates the bridge. Numbered D067: while
+this work was in flight the Tailwind, UI-widening and vale sessions
+landed D063-D065 on main.
+
+### D066: Grow and plant editing in the UI (the PUT endpoints existed, nothing called them)
+
+`PUT /api/grows/{id}` and `PUT /api/plants/{id}` shipped in M2/M11, but
+no page offered them: grows were create-only and plants could not be
+renamed or re-weighed after the fact. The grows page and grow detail
+page now share one `GrowForm` component (name, strain, space,
+substrate, started-on, plus the previously UI-less `status` and `notes`
+fields); `GrowInput::from_grow` in leaflog-core mirrors
+`EquipmentInput::from_item` for the pre-fill. The detail page also
+gains "Delete grow" — destructive (plants, log entries and photos go
+with it), so it asks for a `confirm()` first and redirects via
+`<Redirect>` rather than `use_navigate`, whose non-`Copy` closure
+cannot be captured from a reactive header render (the E0525 lesson:
+handlers must stay `FnMut`; payloads are cloned per render like the
+equipment page's `for_edit`). `<Redirect>` takes the **plain route
+path** (`/grows`), not `route_href("/grows")`: unlike an `<A href>`,
+it routes through `navigate()`, which resolves its argument against
+the router base — a base-prefixed path doubles the ingress prefix and
+the router falls to its fallback view. Found with the playwright smoke
+(`just dev` + mock HA), the same class of catch as D061.
+
+---
+
 ## 2026-11-11 — prose gate
 
 ### D065: Vale prose gate — LLM-tell vocabulary, 50-word sentence cap, curated write-good

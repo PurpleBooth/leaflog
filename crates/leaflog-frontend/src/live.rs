@@ -145,6 +145,10 @@ pub fn LivePanel(grow_id: String) -> impl IntoView {
             </div>
 
             <h4>"Entity bindings"</h4>
+            <p class="text-base-content/70 text-sm">
+                "A grow starts from its space's sensor items (add them on the equipment page);
+                the picks here are this grow's own overrides."
+            </p>
             <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
                 {BINDING_ROLES
                     .iter()
