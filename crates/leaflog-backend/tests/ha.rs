@@ -28,6 +28,7 @@ const SECRET: &str = "super-secret-supervisor-token-do-not-leak";
 async fn spawn_mock() -> (String, mock_ha::MockState) {
     let state = mock_ha::MockState {
         room: Arc::new(tokio::sync::Mutex::new(mock_ha::FakeRoom::new())),
+        notifications: Arc::new(tokio::sync::Mutex::new(Vec::new())),
     };
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -391,6 +392,7 @@ async fn bridge_reconnects_after_the_socket_drops() {
     let (mock_state_tx, _mock_state_rx) = tokio::sync::oneshot::channel::<mock_ha::MockState>();
     let state = mock_ha::MockState {
         room: Arc::new(tokio::sync::Mutex::new(mock_ha::FakeRoom::new())),
+        notifications: Arc::new(tokio::sync::Mutex::new(Vec::new())),
     };
     let router = mock_ha::app(state.clone());
     let server = tokio::spawn(async move {
@@ -424,6 +426,7 @@ async fn bridge_reconnects_after_the_socket_drops() {
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     let router = mock_ha::app(mock_ha::MockState {
         room: Arc::new(tokio::sync::Mutex::new(mock_ha::FakeRoom::new())),
+        notifications: Arc::new(tokio::sync::Mutex::new(Vec::new())),
     });
     tokio::spawn(async move {
         axum::serve(listener, router).await.unwrap();
@@ -653,4 +656,135 @@ async fn grow_days_count_local_calendar_days_in_the_ha_timezone() {
         .await
         .unwrap();
     assert_eq!(entry["grow_day"], 1, "Berlin local day, not the UTC day 0");
+}
+
+#[tokio::test]
+async fn env_alerts_route_to_ha_under_optin_rate_limited_and_quiet() {
+    use std::collections::HashMap;
+
+    let (mock_url, mock) = spawn_mock().await;
+    let (base, db, bridge) = spawn_api(&mock_url).await;
+    let client = reqwest::Client::new();
+
+    // Out of band from the start: 32 °C against the ~29 °C ceiling.
+    *mock.room.lock().await = mock_ha::FakeRoom {
+        temperature: 32.0,
+        humidity: 40.0,
+        soil_moisture: 30.0,
+        light_on: true,
+    };
+
+    // Opt in, and a grow watching the mock's sensors.
+    client
+        .put(format!("{base}/api/settings"))
+        .json(&json!({ "env_alert_notifications": true }))
+        .send()
+        .await
+        .unwrap();
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&json!({
+            "name": "Hot run",
+            "strain_id": null,
+            "grow_space_id": null,
+            "seed_batch_id": null,
+            "feed_template_id": null,
+            "substrate": "soil",
+            "started_on": "2026-10-01",
+            "status": "active",
+            "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    client
+        .put(format!(
+            "{}/api/grows/{}/bindings",
+            base,
+            grow["id"].as_str().unwrap()
+        ))
+        .json(&json!({
+            "bindings": {
+                "temperature": "sensor.grow_temperature",
+                "humidity": "sensor.grow_humidity",
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    // Wait until the live map carries the hot reading, then run one
+    // evaluator pass by hand (the ticker runs the same function).
+    let mut waited = 0_u32;
+    loop {
+        let live = bridge.live_now();
+        let hot = live
+            .entities
+            .get("sensor.grow_temperature")
+            .and_then(|entity| entity.state.parse::<f64>().ok())
+            .is_some_and(|celsius| celsius > 30.0);
+        if hot || waited > 100 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        waited += 1;
+    }
+    assert!(waited <= 100, "the hot reading never arrived");
+
+    let mut last_sent = HashMap::new();
+    leaflog_backend::alerts::evaluate(&db, &bridge, &mut last_sent)
+        .await
+        .unwrap();
+    let sent = mock.notifications.lock().await.clone();
+    assert!(
+        sent.iter().any(|body| body.contains("temperature")),
+        "an out-of-band temperature notifies: {sent:?}"
+    );
+
+    // Rate limit: an immediate second pass adds nothing.
+    leaflog_backend::alerts::evaluate(&db, &bridge, &mut last_sent)
+        .await
+        .unwrap();
+    assert_eq!(mock.notifications.lock().await.len(), sent.len());
+
+    // Quiet hours bracketing this exact minute block even fresh
+    // alerts (a one-minute window containing now, DST-zone aware).
+    let now_minutes =
+        leaflog_core::tz::local_wall_minutes_now("Europe/Berlin").expect("zone from the mock");
+    let start = (now_minutes, now_minutes / 60, now_minutes % 60);
+    let end_minute = (now_minutes + 1) % 1440;
+    let end = (end_minute, end_minute / 60, end_minute % 60);
+    client
+        .put(format!("{base}/api/settings"))
+        .json(&json!({
+            "quiet_hours": format!("{:02}:{:02}-{:02}:{:02}", start.1, start.2, end.1, end.2)
+        }))
+        .send()
+        .await
+        .unwrap();
+    let mut fresh = HashMap::new();
+    leaflog_backend::alerts::evaluate(&db, &bridge, &mut fresh)
+        .await
+        .unwrap();
+    assert_eq!(
+        mock.notifications.lock().await.len(),
+        sent.len(),
+        "quiet hours suppress the notification"
+    );
+
+    // And with the opt-in off, nothing routes at all.
+    client
+        .put(format!("{base}/api/settings"))
+        .json(&json!({ "env_alert_notifications": false }))
+        .send()
+        .await
+        .unwrap();
+    let mut fresh = HashMap::new();
+    leaflog_backend::alerts::evaluate(&db, &bridge, &mut fresh)
+        .await
+        .unwrap();
+    assert_eq!(mock.notifications.lock().await.len(), sent.len());
 }

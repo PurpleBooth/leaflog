@@ -52,6 +52,24 @@ impl QuietHours {
     }
 }
 
+/// Minutes since local midnight right now in `tz_name` — the input of
+/// the quiet-hours check. `None` when the zone does not resolve.
+#[must_use]
+pub fn local_wall_minutes_now(tz_name: &str) -> Option<u32> {
+    let zone = jiff::tz::TimeZone::get(tz_name).ok()?;
+    let now: Zoned = jiff::Timestamp::now().to_zoned(zone);
+    Some(u32::from(now.hour().cast_unsigned()) * 60 + u32::from(u8::try_from(now.minute()).ok()?))
+}
+
+/// Parses an `HH:MM` wall-clock time into minutes since midnight.
+#[must_use]
+pub fn parse_hhmm(text: &str) -> Option<u32> {
+    let (hours, minutes) = text.split_once(':')?;
+    let hours: u32 = hours.parse().ok()?;
+    let minutes: u32 = minutes.parse().ok()?;
+    (hours < 24 && minutes < 60).then_some(hours * 60 + minutes)
+}
+
 /// Parses a `YYYY-MM-DD` local date (validated, leap-day aware).
 fn parse_local_date(date: &str) -> Option<jiff::civil::Date> {
     date.parse().ok()

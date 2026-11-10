@@ -26,6 +26,7 @@ use std::time::Duration;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
+use axum::http::StatusCode;
 use axum::response::Response;
 use axum::routing::get;
 use axum::{Json, Router};
@@ -145,6 +146,9 @@ fn entity_state(entity_id: &str, state: &str, unit: &str, name: &str) -> Value {
 pub struct MockState {
     /// The mutable fake room (ticked by WS sessions).
     pub room: Arc<Mutex<FakeRoom>>,
+    /// Notifications received on the `persistent_notification` service
+    /// (asserted by tests).
+    pub notifications: Arc<Mutex<Vec<String>>>,
 }
 
 /// Builds the mock Supervisor router (REST + WS).
@@ -154,6 +158,10 @@ pub fn app(state: MockState) -> Router {
         .route("/core/api/", get(ping))
         .route("/core/api/states", get(states))
         .route("/core/api/config", get(config))
+        .route(
+            "/core/api/services/notify/persistent_notification",
+            axum::routing::post(notify),
+        )
         .route("/core/api/history/period/{from}", get(history))
         .route("/core/websocket", get(websocket))
         .with_state(state)
@@ -197,6 +205,14 @@ async fn config() -> Json<Value> {
         "unit_system": { "temperature": "°C", "length": "mm", "volume": "L" },
     })
     .into()
+}
+
+// Extractors are taken by value because Axum requires it.
+#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
+#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
+async fn notify(State(state): State<MockState>, body: String) -> StatusCode {
+    state.notifications.lock().await.push(body);
+    StatusCode::OK
 }
 
 // Extractors are taken by value because Axum requires it.

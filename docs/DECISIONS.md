@@ -8,6 +8,29 @@ here. Date format: YYYY-MM-DD.
 
 ## 2026-11-10 — post-M8
 
+### D060: Environment alerts route to Home Assistant, gated three ways
+
+Implements §4.9's notification routing:
+
+- **Opt-in** (`env_alert_notifications`, default off): a background
+  evaluator ticks every minute, computes each active grow's
+  environment snapshot (the same shared `snapshot` the env route
+  serves) and routes out-of-band verdicts — temperature and VPD, the
+  two verdicts the snapshot carries — as persistent notifications via
+  the documented `notify/persistent_notification` service.
+- **Rate limit**: at most one notification per grow and alert kind
+  per hour, in-memory (a restart clears it, which still honours the
+  bound).
+- **Quiet hours**: the `quiet_hours` setting (`HH:MM-HH:MM`, local
+  wall clock in the canonical D059 zone, midnight-wrapping) suppresses
+  sends; an unknown zone never blocks.
+- The mock Supervisor accepts and records the notify service, so the
+  integration test drives the evaluator directly (its own rate-limit
+  map — no ticker sleeps) and proves the opt-in, the rate limit and a
+  minute-precise quiet window end to end. Mould-risk stays un-routed:
+  it needs the phase-conditional RH rule §4.9 describes, which the
+  two verdicts do not carry yet.
+
 ### D059: Canonical timezone — HA's zone, local calendar days
 
 Implements the §2 timezone canon (spec §13 "Timezone" criterion):

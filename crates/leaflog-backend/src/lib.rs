@@ -41,6 +41,7 @@
 )]
 #![allow(clippy::multiple_crate_versions)]
 
+pub mod alerts;
 pub mod api;
 pub mod api_env;
 pub mod api_feeds;
@@ -343,6 +344,11 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         config.supervisor_token(),
         db.clone(),
     ));
+    // Environment-alert routing (spec §4.9): under the opt-in, an
+    // out-of-band reading raises an HA notification (rate-limited,
+    // quiet-hours aware).
+    alerts::spawn(db.clone(), ha_bridge.clone());
+
     // Track exactly what any grow has bound.
     if let Ok(entities) = db.with(crate::store::sensors::all_bound_entities).await {
         ha_bridge.track_entities(entities);

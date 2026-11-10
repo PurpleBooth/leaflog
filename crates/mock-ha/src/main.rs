@@ -13,6 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(|p| p.parse().ok())
         .unwrap_or(8098);
     let app = mock_ha::app(MockState {
+        notifications: std::sync::Arc::new(tokio::sync::Mutex::new(Vec::new())),
         room: std::sync::Arc::new(tokio::sync::Mutex::new(FakeRoom::new())),
     });
     let addr = SocketAddr::from(([127, 0, 0, 1], port));

@@ -168,6 +168,40 @@ impl HaBridge {
         self.inner.live_rx.borrow().clone()
     }
 
+    /// Raises a persistent notification in Home Assistant (spec §4.9
+    /// env-alert routing): the documented
+    /// `POST /core/api/services/notify/persistent_notification`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`HaError`] when the Supervisor is unreachable or
+    /// refuses the call.
+    pub async fn notify(&self, title: &str, message: &str) -> Result<(), HaError> {
+        let url = format!(
+            "{}/core/api/services/notify/persistent_notification",
+            self.rest_base()
+        );
+        let response = reqwest::Client::new()
+            .post(&url)
+            .bearer_auth(self.inner.token.0.as_ref())
+            .json(&serde_json::json!({ "title": title, "message": message }))
+            .send()
+            .await
+            .map_err(|error| HaError::Unreachable(error.to_string()))?;
+        let status = response.status().as_u16();
+        if !response.status().is_success() {
+            let message = response
+                .text()
+                .await
+                .unwrap_or_default()
+                .chars()
+                .take(300)
+                .collect();
+            return Err(HaError::Status { status, message });
+        }
+        Ok(())
+    }
+
     /// Tells the socket to track exactly this set of entities (the
     /// union of every grow's bindings).
     pub fn track_entities(&self, entity_ids: Vec<String>) {
