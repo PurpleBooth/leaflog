@@ -10,6 +10,8 @@ Build **Leaflog**, a self-hosted grow diary packaged as a **Home Assistant app (
 4. Log actions and photos, with HA sensor data attached automatically.
 5. See live "in range / out of range" feedback and **phase-, substrate- and strain-aware recommendations** for pH, EC/TDS, temperature, humidity, VPD, lamp height and equipment setup.
 6. Follow a feeding schedule that is stretched or shrunk to that plant's real timeline.
+7. Record the harvest (wet/dry/trimmed weight per plant) and later see how each grow actually went against its forecast.
+8. Look back across grows: yield by strain and substrate, forecast accuracy, per-plant timelines, and a one-tap "start next run".
 All checks in §13 must pass, with evidence.
 
 ## 2. Non-negotiables
@@ -26,6 +28,7 @@ All checks in §13 must pass, with evidence.
   - Any `call_service` (e.g. dimming a light) is gated behind an explicit opt-in setting.
 - **Privacy.** No sharing, social features or public URLs. Strip EXIF/GPS from uploaded photos.
 - Respect HA unit system and locale (°C/°F, in/cm, gal/L). Store SI internally. Display in the user's units. The presets below are written in imperial because that's the owner's preference, but you must also show metric.
+- **Timezone-aware.** Store UTC internally. The canonical timezone for display and grow-day numbering is Home Assistant's (read from the documented `GET /api/config`; manual override in settings), so day numbers match the grower's wall clock even when the panel is opened remotely. Grow-day numbers count **local calendar days** (DST-safe), never UTC day flips. Quiet hours and `.ics` phase milestones (all-day events) follow the same timezone.
 
 ## 3. Architecture (record decisions in `docs/ARCHITECTURE.md`)
 - **Backend:** Axum + Tokio + SQLite (sqlx or rusqlite) in `/data`, with versioned migrations.
@@ -49,11 +52,13 @@ All checks in §13 must pass, with evidence.
 ### 4.1 Equipment catalogue and grow spaces
 - The equipment **catalogue** covers durable hardware only — **lights, tents/rooms, fans (incl. carbon filters) and sensors**. Consumables and instruments aren't catalogued: nutrient products live in feed templates (§4.6), pH/EC/TDS readings are action-log fields (§4.2), media and pots are notes.
 - The catalogue follows the strain-database pattern: bundled presets (product facts only) plus user-added entries. **Bundled presets are read-only** — edit and delete are rejected by the API, the UI marks them with a preset badge, and "clone" copies a preset into an editable user entry. Presets ship for lights, tents and fans only, never sensors.
+- **Bundled data across app upgrades:** every bundled record (equipment presets, strains) carries a stable ID from its source dataset. On upgrade the app inserts bundled rows that are new and never modifies or deletes existing ones; user entries and clones of bundled records are never touched. A corrected bundled record ships as a new revision (new stable ID) with the old row left in place, so clones keep working; removing a bundled row entirely requires an explicit, documented migration.
 - **Sensors are populated from Home Assistant.** A sensor item is created by picking an HA entity in an entity picker (`GET /api/states`, filtered by device class); v1 supports **temperature** and **humidity**. The entity is the item's identity, and a space's temperature + humidity items are offered as the default env bindings for grows in it (per-grow overrides stay, §4.9). With HA unreachable the picker defers — skip now, pick later — and nothing else blocks.
 - Fields: name, brand/model, **real wall wattage** (not the marketing "equivalent"), dimmable (Y/N), PPFD map (lights only, optional, see 4.7), purchase date/price, notes, photos.
 - Spaces *reference* catalogue entries — there is no per-item instance layer: a shared item (a clip fan carried between tents) may appear in several spaces, and two identical lights are two entries.
 - A **grow space** is a named physical setup (for example a tent): optional interior dimensions (SI cm), notes, and a set of catalogue references. Grows run inside a space (optional); deleting a space keeps its grows. The space's most powerful light with a known wattage feeds the §4.7 advisor.
 - Optional **HA entity binding** per item (e.g. `light.*`, power sensor, dimmer `number.*`); for sensor items the bound entity is the item itself (above).
+- **Entity drift:** HA entity IDs change (renames, re-added devices). A binding whose entity is unavailable shows a status chip and a **rebind** affordance instead of silently reading stale or missing data. Alerts that depend on a dead binding degrade to an explicit "no data" state — never "in range" (§4.9).
 - Future: a per-grow snapshot of the space's equipment ("what was used"), so later catalogue edits don't rewrite history (supersedes the earlier `grow_equipment` idea).
 - Energy estimate (watts × runtime) using bound power/energy sensors where available.
 
@@ -62,6 +67,7 @@ All checks in §13 must pass, with evidence.
 - Each entry has: timestamp, plant(s), auto-filled phase and day number, structured fields, free text, appearance tags (colour, droop, taco, bleaching, tip burn, foxtailing, etc.) and photos.
 - **Auto-capture from HA:** snapshot bound sensors (temp, RH, VPD, soil moisture, CO₂, reservoir pH/EC/TDS, light state/dim level) into each entry.
 - **Auto-log from HA:** lights on/off transitions and bound-sensor excursions become log events, with opt-out.
+- **Snapshot retention:** auto-captured snapshots and auto-logged excursions would otherwise accumulate forever. A settings-configurable retention job (default 24 months) prunes old `sensor_snapshot` rows down to at most one per hour, always keeping the first and last row of each day and every excursion-linked row; it runs at startup and weekly. A database-size indicator sits beside the §4.3 photo-storage warning. Charts needing longer history read HA's history API on demand, so pruning costs no visible data.
 - Timeline with filters, and a 3-tap mobile entry flow.
 - Reminders (water/feed due, lamp height check, burp jars) show as UI badges, with an optional HA notification/event on opt-in.
 - Some actions move the forecast: Flip, Transplant, Trichome check, Harvest.
@@ -87,7 +93,7 @@ All checks in §13 must pass, with evidence.
   - Sativa/Haze/African/Afghan/Hawaiian lineages tend to be **more** heat-tolerant, but can be shocked by cold.
   - There are exceptions (e.g. some stout indica or auto cultivars are reported heat-tolerant).
 - Tolerance shifts the *alert thresholds*, not the species rules. Default shifts (editable): tolerant +2 °F ceiling, sensitive −3 °F ceiling. These are heuristics, so label them as such.
-- Users can add their own strains and clone any strain (bundled or own) as an editable "my phenotype" copy. **Bundled strains are read-only** — preset badge, edit/delete rejected, clone-to-modify — the same contract as bundled equipment (§4.1). Per-grow actual results (flower days achieved, max stretch, what temps it tolerated) can be written back to user-owned strains only.
+- Users can add their own strains and clone any strain (bundled or own) as an editable "my phenotype" copy. **Bundled strains are read-only** — preset badge, edit/delete rejected, clone-to-modify — the same contract as bundled equipment (§4.1). Per-grow actual results (flower days achieved, max stretch, what temps it tolerated, achieved yield per §4.14) can be written back to user-owned strains only. Bundled strains follow the §4.1 upgrade rule.
 
 ### 4.5 Phase forecast
 - Phases: germination → seedling → veg → (flip) → flower → harvest → dry → cure.
@@ -132,7 +138,8 @@ Substrates: soil, coco, hydro (DWC/RDWC), plus user-defined (e.g. peat soilless,
 - Show a live VPD gauge and the target band for the current phase.
 - Compute the **RH window** that would put VPD in band at the current temperature, rather than showing a fixed RH number only.
 - Lights-on and lights-off targets differ, so use the bound light entity to know which applies.
-- Alerts with hysteresis, quiet hours and per-strain thresholds. Examples: "Late flower, 83 °F, this strain is heat-sensitive: raise lamp or dim", "RH 62% in week 7: mould risk".
+- Alerts with hysteresis, quiet hours and per-strain thresholds. Examples: "Late flower, 83 °F, this strain is heat-sensitive: raise lamp or dim", "RH 62% in week 7: mould risk". An alert whose sensor binding is unavailable shows **"no data"**, never "in range".
+- Env excursions can go out of band: under the §4.2 opt-in, temperature/RH/VPD and mould-risk alerts may also raise an HA notification — rate-limited (default: at most one per alert type per hour) and always inside quiet hours.
 - Watering/feeding entries compare input vs runoff pH/EC and flag drift (§5.3).
 
 ### 4.10 Phase coach (suggested equipment setup)
@@ -154,9 +161,22 @@ Per grow: phase and day count, next milestone, today's feed target, lamp-height 
 - A basic log of owned seeds, per batch: strain (linked to the strain database), quantity, acquired from (bank / breeder / own harvest), acquisition date, storage method (default cool/dark/dry per §5.4), notes.
 - Batches list **oldest first** within a strain (use the oldest seeds first) and show the §5.4 viability window, with a "past prime" badge once it has passed.
 - Starting plants from a batch (onboarding step 4 or normal grow creation) may link to it and decrement the count; manual edits always win. Informational only — no reminders beyond the badge.
+- **Germination-test log** per batch: date, number sown, number sprouted (paper-towel or direct). The batch then shows the observed germination rate next to the §5.4 window — the rate is user evidence that sits beside the preset, it never overwrites it. The §5.4 germination-test reminder links to this log.
+
+### 4.14 Harvest, dry & cure
+- The Harvest action gains structured fields: wet weight, dry weight and trimmed weight — per plant, all optional, grams internally, displayed per HA units (g/oz). Logging it completes the forecast and freezes the actual timeline.
+- A **yield summary** on the finished grow: totals, per-plant breakdown and the wet→dry ratio.
+- Dry and cure stay action-log-driven (the Dry/Cure check chips) with the §4.2 reminders (burp jars); dry-room conditions come from the auto-captured sensors bound to the space. No jar inventory in v1.
+- Weights feed the §4.15 analytics and the §4.4 write-back (user-owned strains only).
+
+### 4.15 Cross-grow history & analytics
+- A **History** section over all grows: predicted-vs-actual phase accuracy (per grow and in aggregate), yield by strain, substrate and feed template, input-vs-runoff pH/EC drift over time, and alert frequency over time.
+- **Per-plant views**: timeline, photos, actions and final yield for one plant within a grow.
+- **Start next run**: one tap creates a new grow copying strain, substrate, grow space (with its equipment references) and feed template from an existing grow. References are copied as references — bundled entries are never duplicated.
+- Everything here is computed read-only from existing tables; no new capture flows.
 
 ## 5. Grow Science Pack (seed data, editable, each row carries a source label)
-**Rule:** the sources below disagree in places. Store ranges, never single magic numbers. Show "sources vary" where they do. Every preset is user-editable, with a "reset to default" button. Re-check each number against at least two sources before committing it. If you can't, mark it `unverified`. (User-editability applies to the numeric grow-science presets; bundled catalogue records — equipment and strains — are read-only, see §4.1 and §4.4.)
+**Rule:** the sources below disagree in places. Store ranges, never single magic numbers. Show "sources vary" where they do. Every preset is user-editable, with a "reset to default" button. Re-check each number against at least two sources before committing it. If you can't, mark it `unverified`. (User-editability applies to the numeric grow-science presets; bundled catalogue records — equipment and strains — are read-only, see §4.1 and §4.4. On app upgrade, user-edited presets keep the user's values; "reset to default" pulls the newly shipped defaults — the §4.1 upgrade rule.)
 
 ### 5.1 Light & heat
 | Stage | Generic LED height | Target PPFD |
@@ -229,18 +249,19 @@ Ranges from acquisition date, by storage method — sources disagree, so re-chec
 - Calm botanical palette, cards, generous spacing, rounded corners, subtle motion, good empty states and skeletons. Phase accents (seedling green → flower purple/amber → cure warm brown).
 - Phone-first for logging, wide layout for charts, timeline and photo compare. Large touch targets.
 - WCAG AA, keyboard navigation, no colour-only signals.
+- **Localisation: English and German.** Language follows the browser, with a manual override in settings. Externalise every UI string through `leptos_i18n` 0.6 (the line that targets Leptos 0.8, needing ≥ 0.8.15; re-check on the 0.9 upgrade), with locale-aware number and date formatting — German renders decimal commas. App-store metadata translations (§7) ship both languages too. CI fails on a key missing in either locale.
 - Screenshots in `docs/` (desktop + mobile, light + dark).
 
 ## 7. Home Assistant packaging
 - Repo: `repository.yaml` plus an app folder with `config.yaml`, `Dockerfile`, `rootfs/etc/s6-overlay/` (s6 longrun service), `README.md`, `DOCS.md`, `CHANGELOG.md`, `icon.png`, `logo.png`, translations.
-- `config.yaml`: `arch: [aarch64, amd64]`, `ingress: true`, `ingress_port: 8099`, `panel_icon: mdi:cannabis`, `panel_title: Leaflog`, `panel_admin: true`, `homeassistant_api: true`, `init: false`, `map` for `data`, options schema (units, TDS scale, entity bindings, opt-in service calls, alert thresholds, log level), and a multi-arch `image:` name.
+- `config.yaml`: `arch: [aarch64, amd64]`, `ingress: true`, `ingress_port: 8099`, `panel_icon: mdi:cannabis`, `panel_title: Leaflog`, `panel_admin: true`, `homeassistant_api: true`, `init: false`, `map` for `data`, options schema — **bootstrap-level only**: units, TDS scale, log level and the service-call opt-in; entity bindings, alert thresholds and presets live in-app, and where both could apply the options are initial seeds that in-app settings override — and a multi-arch `image:` name.
 - **Backups:** default is `backup: hot`, so checkpoint SQLite via `backup_pre`, or choose `cold`. Exclude thumbnail caches. Prove backup → restore keeps data and photos.
 - **Dockerfile:** multi-stage with BuildKit, musl targets for both arches, and a **pinned** HA Alpine base (`ghcr.io/home-assistant/base:<tag>`), never `latest`. `BUILD_FROM` is no longer passed by default, so use a fixed `FROM` or give it a default. The musl cross-compilation happens inside the container build (document how: per-arch runners, or a pinned cross linker), so the Devbox environment doesn't need musl targets.
 - GitHub Actions to build and publish a multi-arch image, plus a local-build path.
 - Re-check the HA developer docs before each milestone. Naming and behaviour are changing ("add-ons" are now "apps").
 
 ## 8. Data model (starting point, refine)
-`strain` (+ `is_builtin`), `equipment_item` (+ `source`, `is_builtin`; sensor items carry their HA entity), `seed_batch`, `fixture_ppfd_map`, `grow` (+ `grow_space_id`), `plant`, `grow_space`, `grow_space_equipment`, `substrate_profile`, `phase_plan`, `phase_event_actual`, `action_log`, `photo`, `log_attachment`, `sensor_binding`, `sensor_snapshot`, `feed_template`, `feed_template_row`, `feed_plan_day`, `preset_env`, `preset_light`, `preset_substrate`, `alert_rule`, `settings`, `schema_migrations`. ULIDs, UTC timestamps, SI units internally. Spaces reference catalogue entries (many-to-many `grow_space_equipment`); the planned `grow_equipment` snapshot is superseded by spaces for now (see 4.1). Onboarding dismissal is a `settings` flag.
+`strain` (+ `is_builtin`), `equipment_item` (+ `source`, `is_builtin`; sensor items carry their HA entity), `seed_batch`, `fixture_ppfd_map`, `grow` (+ `grow_space_id`), `plant`, `grow_space`, `grow_space_equipment`, `substrate_profile`, `phase_plan`, `phase_event_actual`, `action_log`, `photo`, `log_attachment`, `sensor_binding`, `sensor_snapshot`, `feed_template`, `feed_template_row`, `feed_plan_day`, `preset_env`, `preset_light`, `preset_substrate`, `alert_rule`, `germination_log`, `settings`, `schema_migrations`. ULIDs, UTC timestamps, SI units internally; harvest weights are nullable columns on `plant` (`wet_g`, `dry_g`, `trimmed_g`). `settings` also carries: language and display-timezone overrides, and the snapshot-retention window. Spaces reference catalogue entries (many-to-many `grow_space_equipment`); the planned `grow_equipment` snapshot is superseded by spaces for now (see 4.1). Onboarding dismissal is a `settings` flag.
 
 ## 9. Compliance (built-in, informational)
 The owner is in Germany. Private home cultivation is limited to **3 plants per adult** and must be **secured against access by third parties, especially minors**. Passing harvested cannabis to third parties is not allowed.
@@ -276,7 +297,7 @@ Rules for living with it:
 - **Never weaken the crate-level block.** If macro-generated code trips a lint (Leptos `#[component]` and prop structs, serde/sqlx derives, `#[derive(Store)]`), apply a narrowly scoped `#[allow(...)]` on that item or module, with a one-line reason comment. Log every exception in `docs/DECISIONS.md`.
 - Expected friction points to handle properly, not suppress: `missing_docs` (document every public item, including components and props); `missing_debug_implementations` / `missing_copy_implementations` (derive `Debug`, and `Copy` where it's valid); `clippy::pedantic` items such as `must_use_candidate`, `missing_errors_doc`, `missing_panics_doc`, `module_name_repetitions`, `needless_pass_by_value` (Leptos components take owned props, so expect this one).
 - `clippy::cargo` requires complete package metadata in every `Cargo.toml` (`description`, `license`, `repository`, `readme`, `keywords`, `categories`). Set them and inherit through `[workspace.package]` where possible.
-- CI runs `cargo clippy --workspace --all-targets -- -D warnings` for the native target **and** for `wasm32-unknown-unknown` on the frontend crate, plus `cargo fmt --check`.
+- CI runs `cargo clippy --workspace --all-targets -- -D warnings` for the native target **and** for `wasm32-unknown-unknown` on the frontend crate, plus `cargo fmt --check`. Dependency hygiene is part of the same gate: `cargo deny` (config in `deny.toml`) fails the build on RustSec advisories and on licences outside the allowlist.
 - Lint cleanliness is checked at every milestone commit, not just at the end.
 
 ## 11. Dev environment (Devbox)
@@ -302,7 +323,7 @@ Rules for living with it:
 - `just dev` runs the backend against a **mock HA** (an Axum app that speaks the WebSocket protocol and replays fake sensor data) plus `trunk serve`. It also simulates ingress (random path prefix and `X-Ingress-Path`). Document how to test against a real HA.
 
 ## 12. Milestones (commit at each, lint-clean)
-M1 skeleton + packaging + ingress "hello" tab + Leptos runtime-base spike → M2 DB, equipment, strains → M3 action log + photo log → M4 HA live data + history → M5 forecast + timeline → M6 feed fit + substrate profiles → M7 VPD/env engine, lamp advisor, phase coach, dashboard polish → M8 hardening, docs, CI, screenshots → M9 catalogue trim, HA sensor items, read-only presets, migration tooling → M10 onboarding wizard + seedbank.
+M1 skeleton + packaging + ingress "hello" tab + Leptos runtime-base spike → M2 DB, equipment, strains → M3 action log + photo log → M4 HA live data + history → M5 forecast + timeline → M6 feed fit + substrate profiles → M7 VPD/env engine, lamp advisor, phase coach, dashboard polish → M8 hardening, docs, CI, screenshots → M9 catalogue trim, HA sensor items, read-only presets and bundled-data upgrade rules, migration tooling → M10 onboarding wizard + seedbank → M11 harvest & yield, germination logging, cross-grow history/analytics, per-plant views, start-next-run → M12 snapshot retention, entity-drift rebinding, env-alert HA routing, EN+DE localisation. (`cargo deny` joins CI immediately, not gated on M12.)
 
 ## 13. Acceptance criteria (show evidence for each)
 - [ ] `just ci`: fmt, clippy with the §10 lint block and `-D warnings` (native + wasm), unit and integration tests, WASM build.
@@ -326,6 +347,14 @@ M1 skeleton + packaging + ingress "hello" tab + Leptos runtime-base spike → M2
 - [ ] Onboarding: on a fresh database the wizard appears and equipment → space → strain → plants produces a grow on the dashboard; skip and resume both behave (tested).
 - [ ] Seedbank: oldest-first ordering, §5.4 window shown, linked plant starts decrement the count (tested).
 - [ ] Migration tooling: `just migrate new/status` and the `migrate` subcommand work; boot applies pending files and refuses a divergent or out-of-order history (tested).
+- [ ] Harvest: wet/dry/trimmed weights per plant round-trip (SI internally, correct display units); yield summary and wet→dry ratio are correct; write-back of achieved yield reaches user-owned strains only (tested).
+- [ ] Germination log: recorded sown/sprouted shows as an observed rate beside the §5.4 window (tested).
+- [ ] History: predicted-vs-actual accuracy correct on a golden grow; "start next run" copies strain, substrate, space and feed template by reference without duplicating bundled entries (tested).
+- [ ] Bundled-data upgrade: on a simulated upgrade, new bundled rows are inserted, existing bundled rows untouched, user clones and user-edited presets keep their values (tested).
+- [ ] Retention: the prune keeps at most one snapshot per hour, the first and last row of each day, and every excursion-linked row inside the window (tested).
+- [ ] Entity drift: an unavailable bound entity renders "no data" — never "in range" — and offers rebinding (tested).
+- [ ] Timezone: grow-day numbering across a DST boundary matches local calendar days; quiet hours follow local wall-clock (golden test).
+- [ ] Localisation: no message key missing from EN or DE (CI gate); German decimal-comma rendering spot-checked.
 
 ## 14. Working agreements
 - Cite a source for every default number in the preset files. Where sources disagree, store the range and mark it.

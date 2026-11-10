@@ -8,6 +8,46 @@ here. Date format: YYYY-MM-DD.
 
 ## 2026-11-10 — post-M8
 
+### D046: Spec amendment — harvest & yield, cross-grow history, longevity rules, EN+DE, timezone canon
+
+Post-v0.3 roadmap additions recorded in SPEC.md (§1, §2, §4.1, §4.2,
+§4.4, §4.9, §4.13–§4.15, §5, §6, §7, §8, §10, §12, §13; M11/M12):
+
+- **Harvest & yield (M11):** structured wet/dry/trimmed weights on the
+  Harvest action (per plant, grams internally, HA display units), a
+  yield summary with wet→dry ratio, and achieved yield added to the
+  strain write-back. Dry/cure stay action-log-driven; no jar
+  inventory in v1.
+- **Cross-grow history (M11):** predicted-vs-actual phase accuracy,
+  yield by strain/substrate/feed template, input-vs-runoff drift and
+  alert-frequency views, per-plant views, and a one-tap "start next
+  run" that copies by reference. Computed read-only over existing
+  tables.
+- **Germination-test log (M11):** sown/sprouted per seed batch shown
+  as observed evidence beside the §5.4 preset window, never
+  overwriting it.
+- **Longevity (M12, one part amends M9):** the bundled-data upgrade
+  rule — stable IDs, insert-new-only on upgrade, corrections ship as
+  new revisions, user clones never touched — folds into M9's
+  read-only-preset work; sensor-snapshot retention pruning (default
+  24 months, ≤1/hour after, first/last-of-day and excursion rows
+  kept); entity-drift rebinding with "no data" degradation for
+  dependent alerts; env-alert HA notification routing under the
+  existing §4.2 opt-in; and a bootstrap-only options schema
+  (in-app settings win, options are initial seeds).
+- **Localisation EN+DE (M12):** `leptos_i18n` 0.6 (the line targeting
+  Leptos 0.8, needs ≥ 0.8.15; re-check at the 0.9 upgrade), language
+  follows the browser with a manual override, CI gate on missing
+  keys. Decided bilingual over English-only so new UI strings are
+  externalised as they are written from M9 onward, not retrofitted.
+- **Timezone canon (§2):** UTC stored; HA's timezone (documented
+  `GET /api/config`) is canonical for display and grow-day numbering —
+  local calendar days, DST-safe — overridable in settings. This
+  supersedes any implicit browser-timezone rendering for day math.
+- **CI:** `cargo deny` (RustSec advisories + licence allowlist,
+  `deny.toml`) joins the `just ci` gate immediately, not gated on a
+  milestone.
+
 ### D045: Spec amendment — trimmed catalogue, HA sensors, read-only presets, onboarding, seedbank, migration tooling
 
 Product decisions recorded in SPEC.md (§4.1, §4.4, §4.12, §4.13, §5.4,
