@@ -84,88 +84,7 @@ pub fn GrowsPage() -> impl IntoView {
             <Show when=move || form_open.get()>
                 <form class="card bg-base-100 shadow-sm px-5 py-4 my-4" on:submit=save>
                     <h3>"New grow"</h3>
-                    <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
-                        <label class="fieldset">
-                            <span class="fieldset-label">"Name *"</span>
-                            <input class="input" type="text" required placeholder="Closet run"
-                                prop:value=move || draft.get().name
-                                on:input=move |ev| draft.update(|d| d.name = event_target_value(&ev))
-                            />
-                        </label>
-                        <label class="fieldset">
-                            <span class="fieldset-label">"Strain"</span>
-                            <select class="select"
-                                prop:value=move || draft.get().strain_id.unwrap_or_default()
-                                on:change=move |ev| {
-                                    let value = event_target_value(&ev);
-                                    draft.update(|d| {
-                                        d.strain_id = (!value.is_empty()).then_some(value);
-                                    });
-                                }
-                            >
-                                <option value="">"— pick a strain —"</option>
-                                {move || {
-                                    strains
-                                        .get()
-                                        .into_iter()
-                                        .map(|strain| {
-                                            view! {
-                                                <option value=strain.id>
-                                                    {strain.name}
-                                                </option>
-                                            }
-                                        })
-                                        .collect::<Vec<_>>()
-                                }}
-                            </select>
-                        </label>
-                        <label class="fieldset">
-                            <span class="fieldset-label">"Space"</span>
-                            <select class="select"
-                                prop:value=move || draft.get().grow_space_id.unwrap_or_default()
-                                on:change=move |ev| {
-                                    let value = event_target_value(&ev);
-                                    draft.update(|d| {
-                                        d.grow_space_id = (!value.is_empty()).then_some(value);
-                                    });
-                                }
-                            >
-                                <option value="">"— no space —"</option>
-                                {move || {
-                                    spaces
-                                        .get()
-                                        .into_iter()
-                                        .map(|detail| {
-                                            view! {
-                                                <option value=detail.space.id>
-                                                    {detail.space.name}
-                                                </option>
-                                            }
-                                        })
-                                        .collect::<Vec<_>>()
-                                }}
-                            </select>
-                        </label>
-                        <label class="fieldset">
-                            <span class="fieldset-label">"Substrate *"</span>
-                            <select class="select"
-                                prop:value=move || draft.get().substrate
-                                on:change=move |ev| draft.update(|d| d.substrate = event_target_value(&ev))
-                            >
-                                {leaflog_core::grows::SUBSTRATES
-                                    .iter()
-                                    .map(|substrate| view! { <option value=*substrate>{*substrate}</option> })
-                                    .collect::<Vec<_>>()}
-                            </select>
-                        </label>
-                        <label class="fieldset">
-                            <span class="fieldset-label">"Started (seed/clone) *"</span>
-                            <input class="input" type="date" required
-                                prop:value=move || draft.get().started_on
-                                on:input=move |ev| draft.update(|d| d.started_on = event_target_value(&ev))
-                            />
-                        </label>
-                    </div>
+                    <GrowForm draft strains spaces />
                     <div class="flex flex-wrap gap-2 mt-4">
                         <button class="btn btn-primary btn-sm" type="submit">"Save"</button>
                         <button class="btn btn-sm" type="button" on:click=move |_| form_open.set(false)>"Cancel"</button>
@@ -229,11 +148,15 @@ pub fn GrowDetail() -> impl IntoView {
     let actions = RwSignal::<Vec<ActionEntry>>::new(Vec::new());
     let photos = RwSignal::<Vec<Photo>>::new(Vec::new());
     let spaces = RwSignal::<Vec<SpaceDetail>>::new(Vec::new());
+    let strains = RwSignal::<Vec<Strain>>::new(Vec::new());
     let error = RwSignal::<Option<String>>::new(None);
 
     let chip = RwSignal::<Option<ActionType>>::new(None);
     let draft = RwSignal::<ActionInput>::new(empty_action());
     let upload_note = RwSignal::<Option<String>>::new(None);
+    let edit_open = RwSignal::<bool>::new(false);
+    let grow_draft = RwSignal::<GrowInput>::new(empty_grow());
+    let deleted = RwSignal::<bool>::new(false);
 
     let refresh = move || {
         let id = grow_id();
@@ -259,6 +182,10 @@ pub fn GrowDetail() -> impl IntoView {
                 Ok(value) => spaces.set(value),
                 Err(failure) => error.set(Some(failure.message)),
             }
+            match api::get::<Vec<Strain>>("api/strains").await {
+                Ok(value) => strains.set(value),
+                Err(failure) => error.set(Some(failure.message)),
+            }
         });
     };
     Effect::new(move |_| {
@@ -280,6 +207,56 @@ pub fn GrowDetail() -> impl IntoView {
                     error.set(None);
                     refresh();
                 }
+                Err(failure) => error.set(Some(failure.message)),
+            }
+        });
+    };
+
+    // Opens the edit form pre-filled from the payload the header
+    // cloned out of the current grow.
+    let start_edit = move |payload: &GrowInput| {
+        grow_draft.set(payload.clone());
+        edit_open.set(true);
+    };
+
+    // prevent_default first — see docs/DECISIONS.md D061.
+    let save_edit = move |ev: leptos::ev::SubmitEvent| {
+        ev.prevent_default();
+        let id = grow_id();
+        spawn_local(async move {
+            let input = grow_draft.get();
+            match api::put::<GrowInput, Grow>(&format!("api/grows/{id}"), &input).await {
+                Ok(_) => {
+                    edit_open.set(false);
+                    error.set(None);
+                    refresh();
+                }
+                Err(failure) => error.set(Some(failure.message)),
+            }
+        });
+    };
+
+    // Deleting a grow takes its plants, log entries and photos with it,
+    // so it asks for confirmation first.
+    let delete_grow = move |_ev: leptos::ev::MouseEvent| {
+        let id = grow_id();
+        let name = grow.get().map(|current| current.name).unwrap_or_default();
+        let confirmed = leptos::web_sys::window()
+            .and_then(|window| {
+                window
+                    .confirm_with_message(&format!(
+                        "Delete '{name}' with all its plants, log entries and photos? \
+                         This cannot be undone."
+                    ))
+                    .ok()
+            })
+            .unwrap_or(false);
+        if !confirmed {
+            return;
+        }
+        spawn_local(async move {
+            match api::delete(&format!("api/grows/{id}")).await {
+                Ok(()) => deleted.set(true),
                 Err(failure) => error.set(Some(failure.message)),
             }
         });
@@ -334,16 +311,30 @@ pub fn GrowDetail() -> impl IntoView {
 
     view! {
         <section class="pb-12">
+            <Show when=move || deleted.get()>
+                // The plain route path: unlike an <A href>, Redirect
+                // routes through navigate(), which resolves the path
+                // against the router base itself — a base-prefixed
+                // path would double the ingress prefix.
+                <leptos_router::components::Redirect path="/grows" />
+            </Show>
             {move || {
                 grow.get().map_or_else(
                     || ().into_any(),
-                    |grow| {
-                        let space_id = grow.grow_space_id.clone();
+                    |current| {
+                        let space_id = current.grow_space_id.clone();
+                        let archived = current.status == GrowStatus::Archived;
                         view! {
                             <div>
                                 <div class="flex flex-wrap items-center justify-between gap-4">
-                                    <h2>{grow.name.clone()}</h2>
-                                    <span class="badge badge-ghost">{grow.substrate.clone()}</span>
+                                    <h2>{current.name.clone()}</h2>
+                                    <span class="badge badge-ghost">{current.substrate.clone()}</span>
+                                    {archived
+                                        .then(|| view! {
+                                            <span class="badge badge-ghost">
+                                                {current.status.label()}
+                                            </span>
+                                        })}
                                     {move || {
                                         space_id.as_ref().and_then(|id| {
                                             spaces
@@ -361,8 +352,23 @@ pub fn GrowDetail() -> impl IntoView {
                                             </A>
                                         })
                                     }}
+                                    {let for_edit = GrowInput::from_grow(&current);
+                                    view! {
+                                        <div class="flex flex-wrap gap-2">
+                                            <button class="btn btn-sm" on:click=move |_| {
+                                                start_edit(&for_edit);
+                                            }>"Edit grow"</button>
+                                            <button class="btn btn-error btn-outline btn-sm"
+                                                on:click=delete_grow>
+                                                "Delete grow"
+                                            </button>
+                                        </div>
+                                    }}
                                 </div>
-                                <p class="text-base-content/70">"Started "{grow.started_on}</p>
+                                <p class="text-base-content/70">"Started "{current.started_on}</p>
+                                {current.notes.map(|notes| view! {
+                                    <p class="text-base-content/70">{notes}</p>
+                                })}
                             </div>
                         }
                         .into_any()
@@ -371,6 +377,19 @@ pub fn GrowDetail() -> impl IntoView {
             }}
 
             <ErrorIf error />
+
+            <Show when=move || edit_open.get()>
+                <form class="card bg-base-100 shadow-sm px-5 py-4 my-4" on:submit=save_edit>
+                    <h3>"Edit grow"</h3>
+                    <GrowForm draft=grow_draft strains spaces />
+                    <div class="flex flex-wrap gap-2 mt-4">
+                        <button class="btn btn-primary btn-sm" type="submit">"Save"</button>
+                        <button class="btn btn-sm" type="button" on:click=move |_| edit_open.set(false)>
+                            "Cancel"
+                        </button>
+                    </div>
+                </form>
+            </Show>
 
             <h3>"Forecast"</h3>
             <GanttTimeline grow_id=grow_id() />
@@ -538,6 +557,128 @@ pub fn GrowDetail() -> impl IntoView {
 
             <p><A href=route_href("/grows")>"All grows"</A></p>
         </section>
+    }
+}
+
+/// The create/edit form fields for one grow (spec §4.2): identity,
+/// strain, space, substrate, start date, status and notes. Used by both
+/// the grows page (create) and the grow detail page (edit).
+#[component]
+#[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
+fn GrowForm(
+    draft: RwSignal<GrowInput>,
+    strains: RwSignal<Vec<Strain>>,
+    spaces: RwSignal<Vec<SpaceDetail>>,
+) -> impl IntoView {
+    view! {
+        <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
+            <label class="fieldset">
+                <span class="fieldset-label">"Name *"</span>
+                <input class="input" type="text" required placeholder="Closet run"
+                    prop:value=move || draft.get().name
+                    on:input=move |ev| draft.update(|d| d.name = event_target_value(&ev))
+                />
+            </label>
+            <label class="fieldset">
+                <span class="fieldset-label">"Strain"</span>
+                <select class="select"
+                    prop:value=move || draft.get().strain_id.unwrap_or_default()
+                    on:change=move |ev| {
+                        let value = event_target_value(&ev);
+                        draft.update(|d| {
+                            d.strain_id = (!value.is_empty()).then_some(value);
+                        });
+                    }
+                >
+                    <option value="">"— pick a strain —"</option>
+                    {move || {
+                        strains
+                            .get()
+                            .into_iter()
+                            .map(|strain| {
+                                view! {
+                                    <option value=strain.id>
+                                        {strain.name}
+                                    </option>
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                    }}
+                </select>
+            </label>
+            <label class="fieldset">
+                <span class="fieldset-label">"Space"</span>
+                <select class="select"
+                    prop:value=move || draft.get().grow_space_id.unwrap_or_default()
+                    on:change=move |ev| {
+                        let value = event_target_value(&ev);
+                        draft.update(|d| {
+                            d.grow_space_id = (!value.is_empty()).then_some(value);
+                        });
+                    }
+                >
+                    <option value="">"— no space —"</option>
+                    {move || {
+                        spaces
+                            .get()
+                            .into_iter()
+                            .map(|detail| {
+                                view! {
+                                    <option value=detail.space.id>
+                                        {detail.space.name}
+                                    </option>
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                    }}
+                </select>
+            </label>
+            <label class="fieldset">
+                <span class="fieldset-label">"Substrate *"</span>
+                <select class="select"
+                    prop:value=move || draft.get().substrate
+                    on:change=move |ev| draft.update(|d| d.substrate = event_target_value(&ev))
+                >
+                    {leaflog_core::grows::SUBSTRATES
+                        .iter()
+                        .map(|substrate| view! { <option value=*substrate>{*substrate}</option> })
+                        .collect::<Vec<_>>()}
+                </select>
+            </label>
+            <label class="fieldset">
+                <span class="fieldset-label">"Started (seed/clone) *"</span>
+                <input class="input" type="date" required
+                    prop:value=move || draft.get().started_on
+                    on:input=move |ev| draft.update(|d| d.started_on = event_target_value(&ev))
+                />
+            </label>
+            <label class="fieldset">
+                <span class="fieldset-label">"Status"</span>
+                <select class="select"
+                    prop:value=move || draft.get().status.label().to_owned()
+                    on:change=move |ev| {
+                        let value = event_target_value(&ev);
+                        draft.update(|d| {
+                            d.status = if value == GrowStatus::Archived.label() {
+                                GrowStatus::Archived
+                            } else {
+                                GrowStatus::Active
+                            };
+                        });
+                    }
+                >
+                    <option value=GrowStatus::Active.label()>{GrowStatus::Active.label()}</option>
+                    <option value=GrowStatus::Archived.label()>{GrowStatus::Archived.label()}</option>
+                </select>
+            </label>
+            <label class="fieldset col-span-full">
+                <span class="fieldset-label">"Notes"</span>
+                <textarea class="textarea" rows="2"
+                    prop:value=move || draft.get().notes.unwrap_or_default()
+                    on:input=move |ev| draft.update(|d| d.notes = non_empty(event_target_value(&ev)))
+                />
+            </label>
+        </div>
     }
 }
 

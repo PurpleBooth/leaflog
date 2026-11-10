@@ -10,7 +10,7 @@ use serde::Deserialize;
 use crate::api;
 use crate::equipment::ErrorIf;
 use crate::route_href;
-use leaflog_core::grows::Plant;
+use leaflog_core::grows::{Plant, PlantInput};
 
 /// One logged-boundary comparison from the backend.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -229,12 +229,15 @@ struct PlantView {
 
 /// The per-plant page.
 #[component]
+#[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
 pub fn PlantViewPage() -> impl IntoView {
     let params = leptos_router::hooks::use_params_map();
     let view = RwSignal::<Option<PlantView>>::new(None);
     let error = RwSignal::<Option<String>>::new(None);
+    let edit_open = RwSignal::<bool>::new(false);
+    let draft = RwSignal::<PlantInput>::new(empty_plant());
 
-    Effect::new(move |_| {
+    let refresh = move || {
         let id = params.get().get("id").unwrap_or_default();
         spawn_local(async move {
             match api::get::<PlantView>(&format!("api/plants/{id}/view")).await {
@@ -242,7 +245,35 @@ pub fn PlantViewPage() -> impl IntoView {
                 Err(failure) => error.set(Some(failure.message)),
             }
         });
+    };
+    Effect::new(move |_| {
+        params.track();
+        refresh();
     });
+
+    // Opens the edit form pre-filled from the payload the card cloned
+    // out of the current plant.
+    let start_edit = move |payload: &PlantInput| {
+        draft.set(payload.clone());
+        edit_open.set(true);
+    };
+
+    // prevent_default first — see docs/DECISIONS.md D061.
+    let save = move |ev: leptos::ev::SubmitEvent| {
+        ev.prevent_default();
+        let id = params.get().get("id").unwrap_or_default();
+        spawn_local(async move {
+            let input = draft.get();
+            match api::put::<PlantInput, Plant>(&format!("api/plants/{id}"), &input).await {
+                Ok(_) => {
+                    edit_open.set(false);
+                    error.set(None);
+                    refresh();
+                }
+                Err(failure) => error.set(Some(failure.message)),
+            }
+        });
+    };
 
     view! {
         <section class="pb-12">
@@ -253,11 +284,20 @@ pub fn PlantViewPage() -> impl IntoView {
                     let actions = data.actions.clone();
                     let has_actions = !actions.is_empty();
                     let photos = data.photos.len();
+                    let for_edit = PlantInput {
+                        name: data.plant.name.clone(),
+                        wet_g: data.plant.wet_g,
+                        dry_g: data.plant.dry_g,
+                        trimmed_g: data.plant.trimmed_g,
+                    };
                     view! {
                         <div class="card bg-base-100 shadow-sm px-5 py-4 my-4">
                             <div class="flex flex-wrap items-baseline gap-2">
                                 <strong>{data.plant.name.clone()}</strong>
                                 <A href=route_href(&format!("/grows/{grow_id}"))>"back to the grow"</A>
+                                <button class="btn btn-sm" on:click=move |_| start_edit(&for_edit)>
+                                    "Edit plant"
+                                </button>
                             </div>
                             <dl class="facts">
                                 {data.plant.wet_g.map(|grams| view! {
@@ -298,6 +338,63 @@ pub fn PlantViewPage() -> impl IntoView {
                     }
                 })
             }}
+
+            <Show when=move || edit_open.get()>
+                <form class="card bg-base-100 shadow-sm px-5 py-4 my-4" on:submit=save>
+                    <h3>"Edit plant"</h3>
+                    <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
+                        <label class="fieldset">
+                            <span class="fieldset-label">"Name *"</span>
+                            <input class="input" type="text" required
+                                prop:value=move || draft.get().name
+                                on:input=move |ev| draft.update(|d| d.name = event_target_value(&ev))
+                            />
+                        </label>
+                        {weight_field("Wet weight (g)", draft, |d| d.wet_g, |d, v| d.wet_g = v)}
+                        {weight_field("Dry weight (g)", draft, |d| d.dry_g, |d, v| d.dry_g = v)}
+                        {weight_field("Trimmed weight (g)", draft, |d| d.trimmed_g, |d, v| d.trimmed_g = v)}
+                    </div>
+                    <div class="flex flex-wrap gap-2 mt-4">
+                        <button class="btn btn-primary btn-sm" type="submit">"Save"</button>
+                        <button class="btn btn-sm" type="button" on:click=move |_| edit_open.set(false)>
+                            "Cancel"
+                        </button>
+                    </div>
+                </form>
+            </Show>
         </section>
+    }
+}
+
+/// One harvest-weight input bound to a spot in the plant draft.
+fn weight_field(
+    label: &'static str,
+    draft: RwSignal<PlantInput>,
+    read: impl Fn(&PlantInput) -> Option<f64> + Clone + Send + 'static,
+    write: impl Fn(&mut PlantInput, Option<f64>) + Clone + Send + 'static,
+) -> impl IntoView {
+    view! {
+        <label class="fieldset">
+            <span class="fieldset-label">{label}</span>
+            <input class="input" type="number" min="0" step="1"
+                prop:value=move || {
+                    read(&draft.get()).map(|value| format!("{value:.0}")).unwrap_or_default()
+                }
+                on:input=move |ev| {
+                    let parsed = event_target_value(&ev).parse::<f64>().ok();
+                    draft.update(|current| write(current, parsed));
+                }
+            />
+        </label>
+    }
+}
+
+/// A blank plant draft.
+const fn empty_plant() -> PlantInput {
+    PlantInput {
+        name: String::new(),
+        wet_g: None,
+        dry_g: None,
+        trimmed_g: None,
     }
 }

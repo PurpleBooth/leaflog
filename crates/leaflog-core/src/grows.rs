@@ -94,6 +94,27 @@ pub struct GrowInput {
     pub notes: Option<String>,
 }
 
+impl GrowInput {
+    /// Extracts the create/replace payload from a stored grow.
+    ///
+    /// Used by the edit path; id and timestamps are intentionally
+    /// dropped.
+    #[must_use]
+    pub fn from_grow(grow: &Grow) -> Self {
+        Self {
+            name: grow.name.clone(),
+            strain_id: grow.strain_id.clone(),
+            grow_space_id: grow.grow_space_id.clone(),
+            seed_batch_id: grow.seed_batch_id.clone(),
+            feed_template_id: grow.feed_template_id.clone(),
+            substrate: grow.substrate.clone(),
+            started_on: grow.started_on.clone(),
+            status: grow.status,
+            notes: grow.notes.clone(),
+        }
+    }
+}
+
 /// One plant inside a grow. Strain and timeline come from the grow.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Plant {
