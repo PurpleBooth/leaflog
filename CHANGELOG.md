@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.4.1 - 2026-11-10
+#### Bug Fixes
+- **(frontend)** submit handlers must prevent_default themselves (D061) - (f949965) - billie.codes
+#### Miscellaneous
+- **(release)** bump version to 0.4.0 - (f31b5c9) - github-actions[bot]
+- **(version)** 0.4.1 - (6c5e86f) - billie.codes
+
+- - -
+
 ## v0.4.0 - 2026-11-10
 #### CI
 - **(changelog)** generate CHANGELOG.md with cocogitto in CI - (fed0dea) - billie.codes
