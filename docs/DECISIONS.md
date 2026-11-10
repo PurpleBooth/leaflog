@@ -8,6 +8,17 @@ here. Date format: YYYY-MM-DD.
 
 ## 2026-11-10 — post-M8
 
+### D056: Germination-test log — observed evidence beside the preset
+
+The §4.13 germination log (V12): `germination_log` rows per batch
+(date, sown, sprouted, notes), created and listed under
+`/api/seed-batches/{id}/germination-tests`. The batch view carries the
+aggregated `observed` rate (total sprouted / total sown across tests,
+`None` until the first test) next to the §5.4 `viability` window — two
+separate fields, so the user's evidence can never overwrite the preset.
+Validation: `sprouted ≤ sown`, well-formed `tested_on`, unknown batch
+is a 404. Deleting a batch cascades its tests.
+
 ### D055: Harvest weights on plants, yield summary, strain write-back
 
 The §4.14 foundation of M11:

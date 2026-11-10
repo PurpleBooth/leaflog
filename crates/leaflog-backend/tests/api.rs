@@ -1761,3 +1761,107 @@ async fn harvest_weights_round_trip_summarise_and_write_back() {
         .unwrap();
     assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn germination_tests_show_an_observed_rate_beside_the_window() {
+    let base = spawn_api().await;
+    let client = reqwest::Client::new();
+
+    let batch: Value = client
+        .post(format!("{base}/api/seed-batches"))
+        .json(&sample_batch(None, "2026-09-01"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(batch["observed"], Value::Null, "no tests, no observed rate");
+
+    let batch_id = batch["id"].as_str().unwrap().to_owned();
+    // Two tests: 3/4 and 6/6 — observed 9/10 overall, sitting beside
+    // (never overwriting) the §5.4 preset window.
+    for (sown, sprouted) in [(4, 3), (6, 6)] {
+        let view: Value = client
+            .post(format!(
+                "{base}/api/seed-batches/{batch_id}/germination-tests"
+            ))
+            .json(&json!({
+                "tested_on": "2026-10-0".to_owned() + if sprouted == 3 { "1" } else { "8" },
+                "sown": sown,
+                "sprouted": sprouted,
+                "notes": "paper towel",
+            }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert!(
+            view["viability"]["window_months"].is_array(),
+            "preset stays"
+        );
+    }
+    let view: Value = client
+        .get(format!("{base}/api/seed-batches/{batch_id}"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(view["observed"]["sprouted"], 9);
+    assert_eq!(view["observed"]["sown"], 10);
+
+    let tests: Vec<Value> = client
+        .get(format!(
+            "{base}/api/seed-batches/{batch_id}/germination-tests"
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(tests.len(), 2, "tests list oldest first");
+
+    // Validation: sprouted above sown and a bad date are rejected; an
+    // unknown batch is a 404.
+    let response = client
+        .post(format!(
+            "{base}/api/seed-batches/{batch_id}/germination-tests"
+        ))
+        .json(&json!({ "tested_on": "2026-10-01", "sown": 2, "sprouted": 5, "notes": null }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+    let response = client
+        .post(format!(
+            "{base}/api/seed-batches/{batch_id}/germination-tests"
+        ))
+        .json(&json!({ "tested_on": "soon", "sown": 2, "sprouted": 1, "notes": null }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+    let response = client
+        .post(format!("{base}/api/seed-batches/nope/germination-tests"))
+        .json(&json!({ "tested_on": "2026-10-01", "sown": 2, "sprouted": 1, "notes": null }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
+
+    // The listing carries the observed rate too.
+    let list: Vec<Value> = client
+        .get(format!("{base}/api/seed-batches"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(list[0]["observed"]["sown"], 10);
+}

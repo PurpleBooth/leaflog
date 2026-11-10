@@ -5,7 +5,9 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::get;
-use leaflog_core::seedbank::{SeedBatchInput, SeedBatchView};
+use leaflog_core::seedbank::GerminationTestInput;
+use leaflog_core::seedbank::SeedBatchInput;
+use leaflog_core::seedbank::SeedBatchView;
 
 use crate::api::ApiError;
 use crate::app::AppState;
@@ -18,6 +20,10 @@ pub fn router() -> axum::Router<AppState> {
         .route(
             "/api/seed-batches/{id}",
             get(get_batch).put(update_batch).delete(delete_batch),
+        )
+        .route(
+            "/api/seed-batches/{id}/germination-tests",
+            get(list_tests).post(create_test),
         )
 }
 
@@ -44,8 +50,11 @@ async fn list_batches(State(state): State<AppState>) -> Result<Json<Vec<SeedBatc
             let batches = store::seedbank::list(conn)?;
             Ok(batches
                 .into_iter()
-                .map(|batch| SeedBatchView::new(batch, &today))
-                .collect())
+                .map(|batch| {
+                    let tests = store::germination::list_for_batch(conn, &batch.id)?;
+                    Ok(SeedBatchView::new(batch, &today).with_observed(&tests))
+                })
+                .collect::<Result<Vec<_>, crate::db::StoreError>>()?)
         })
         .await?;
     Ok(Json(views))
@@ -66,7 +75,7 @@ async fn create_batch(
                 store::strain::get(conn, strain_id)?;
             }
             let batch = store::seedbank::create(conn, &input)?;
-            Ok(SeedBatchView::new(batch, &today))
+            Ok(SeedBatchView::new(batch, &today)) // no tests exist yet
         })
         .await?;
     Ok((StatusCode::CREATED, Json(view)))
@@ -84,7 +93,8 @@ async fn get_batch(
         .db
         .with(move |conn| -> Result<SeedBatchView, ApiError> {
             let batch = store::seedbank::get(conn, &id)?;
-            Ok(SeedBatchView::new(batch, &today))
+            let tests = store::germination::list_for_batch(conn, &id)?;
+            Ok(SeedBatchView::new(batch, &today).with_observed(&tests))
         })
         .await?;
     Ok(Json(view))
@@ -127,6 +137,53 @@ async fn delete_batch(
         })
         .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// Extractors are taken by value because Axum requires it.
+#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
+#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
+async fn list_tests(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<leaflog_core::seedbank::GerminationTest>>, ApiError> {
+    let tests = state
+        .db
+        .with(move |conn| -> Result<Vec<_>, ApiError> {
+            store::seedbank::get(conn, &id)?;
+            Ok(store::germination::list_for_batch(conn, &id)?)
+        })
+        .await?;
+    Ok(Json(tests))
+}
+
+// Extractors are taken by value because Axum requires it.
+#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
+async fn create_test(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(input): Json<GerminationTestInput>,
+) -> Result<(StatusCode, Json<SeedBatchView>), ApiError> {
+    if !leaflog_core::seedbank::valid_date(&input.tested_on) {
+        return Err(ApiError::BadRequest(
+            "tested_on must be a YYYY-MM-DD date".to_owned(),
+        ));
+    }
+    if input.sprouted > input.sown {
+        return Err(ApiError::BadRequest(
+            "sprouted must not exceed sown".to_owned(),
+        ));
+    }
+    let today = today_ymd();
+    let view = state
+        .db
+        .with(move |conn| -> Result<SeedBatchView, ApiError> {
+            let batch = store::seedbank::get(conn, &id)?;
+            store::germination::create(conn, &id, &input)?;
+            let tests = store::germination::list_for_batch(conn, &id)?;
+            Ok(SeedBatchView::new(batch, &today).with_observed(&tests))
+        })
+        .await?;
+    Ok((StatusCode::CREATED, Json(view)))
 }
 
 /// Validates batch input shared by create and update.

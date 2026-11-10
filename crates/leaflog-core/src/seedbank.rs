@@ -133,14 +133,87 @@ pub struct SeedBatchView {
     pub batch: SeedBatch,
     /// The §5.4 window for the batch's storage method and age.
     pub viability: Viability,
+    /// Observed germination rate from the batch's tests (spec §4.13);
+    /// `None` until the first test is recorded.
+    #[serde(default)]
+    pub observed: Option<ObservedRate>,
 }
 
 impl SeedBatchView {
-    /// Computes the view for a stored batch at `today` (`YYYY-MM-DD`).
+    /// Computes the view for a stored batch at `today` (`YYYY-MM-DD`),
+    /// without test evidence.
     #[must_use]
     pub fn new(batch: SeedBatch, today: &str) -> Self {
         let viability = viability(&batch.acquisition_on, batch.storage_method, today);
-        Self { batch, viability }
+        Self {
+            batch,
+            viability,
+            observed: None,
+        }
+    }
+
+    /// The view with observed germination evidence attached.
+    #[must_use]
+    pub fn with_observed(mut self, tests: &[GerminationTest]) -> Self {
+        self.observed = ObservedRate::of(tests);
+        self
+    }
+}
+
+/// One germination test of a seed batch (spec §4.13): date, number
+/// sown and number sprouted (paper-towel or direct).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GerminationTest {
+    /// ULID.
+    pub id: String,
+    /// The tested batch.
+    pub seed_batch_id: String,
+    /// Test date, `YYYY-MM-DD`.
+    pub tested_on: String,
+    /// Seeds sown.
+    pub sown: u32,
+    /// Seeds that sprouted (never more than sown).
+    pub sprouted: u32,
+    /// Free-form notes (method, medium, ...).
+    pub notes: Option<String>,
+    /// Creation instant, RFC 3339 UTC.
+    pub created_at: String,
+    /// Last modification instant, RFC 3339 UTC.
+    pub updated_at: String,
+}
+
+/// Payload to create a germination-test entry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GerminationTestInput {
+    /// Test date, `YYYY-MM-DD`.
+    pub tested_on: String,
+    /// Seeds sown.
+    pub sown: u32,
+    /// Seeds that sprouted.
+    pub sprouted: u32,
+    /// Free-form notes.
+    pub notes: Option<String>,
+}
+
+/// The observed germination rate across a batch's tests — user
+/// evidence shown beside the §5.4 preset window, never overwriting it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObservedRate {
+    /// Total seeds sprouted across all tests.
+    pub sprouted: u32,
+    /// Total seeds sown across all tests.
+    pub sown: u32,
+}
+
+impl ObservedRate {
+    /// Aggregates the tests into one rate; `None` when no test has
+    /// been recorded.
+    #[must_use]
+    pub fn of(tests: &[GerminationTest]) -> Option<Self> {
+        (!tests.is_empty()).then(|| Self {
+            sprouted: tests.iter().map(|test| test.sprouted).sum(),
+            sown: tests.iter().map(|test| test.sown).sum(),
+        })
     }
 }
 

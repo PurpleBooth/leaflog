@@ -139,6 +139,15 @@ pub fn SeedbankPage() -> impl IntoView {
                                         {batch.batch.acquired_from.clone().map(|from| view! {
                                             <div><dt>"From"</dt><dd>{from}</dd></div>
                                         })}
+                                        {batch.observed.map(|rate| view! {
+                                            <div>
+                                                <dt>"Observed germination"</dt>
+                                                <dd>{format!(
+                                                    "{}/{} sprouted",
+                                                    rate.sprouted, rate.sown,
+                                                )}</dd>
+                                            </div>
+                                        })}
                                         <div>
                                             <dt>"Viability window"</dt>
                                             <dd>
