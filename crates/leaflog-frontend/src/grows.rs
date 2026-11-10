@@ -287,7 +287,12 @@ pub fn GrowDetail() -> impl IntoView {
             let name = format!("Plant {}", plants.get().len() + 1);
             match api::post::<PlantInput, Plant>(
                 &format!("api/grows/{id}/plants"),
-                &PlantInput { name },
+                &PlantInput {
+                    name,
+                    wet_g: None,
+                    dry_g: None,
+                    trimmed_g: None,
+                },
             )
             .await
             {
@@ -653,6 +658,7 @@ fn empty_grow() -> GrowInput {
         strain_id: None,
         grow_space_id: None,
         seed_batch_id: None,
+        feed_template_id: None,
         substrate: "soil".to_owned(),
         started_on: String::new(),
         status: GrowStatus::default(),

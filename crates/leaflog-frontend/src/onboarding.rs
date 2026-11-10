@@ -156,6 +156,7 @@ pub fn OnboardingWizard() -> impl IntoView {
                     strain_id: non_empty(picked_strain.get()),
                     grow_space_id: new_space_id,
                     seed_batch_id: non_empty(picked_batch.get()),
+                    feed_template_id: None,
                     substrate: "soil".to_owned(),
                     started_on: started_on.get(),
                     status: GrowStatus::Active,

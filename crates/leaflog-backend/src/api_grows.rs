@@ -4,11 +4,11 @@
 use axum::extract::{Multipart, Path, Query, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use leaflog_core::actions::ActionType;
 use leaflog_core::grows::ActionInput;
-use leaflog_core::grows::{GrowInput, PlantInput};
+use leaflog_core::grows::{GrowInput, Plant, PlantInput};
 use serde::Deserialize;
 use time::format_description::well_known::Rfc3339;
 use time::macros::format_description;
@@ -38,7 +38,10 @@ pub fn router() -> Router<AppState> {
             "/api/grows/{id}/plants",
             get(list_plants).post(create_plant),
         )
-        .route("/api/plants/{id}", axum::routing::delete(delete_plant))
+        .route(
+            "/api/plants/{id}",
+            axum::routing::put(update_plant).delete(delete_plant),
+        )
         .route(
             "/api/grows/{id}/actions",
             get(list_actions).post(create_action),
@@ -52,6 +55,8 @@ pub fn router() -> Router<AppState> {
             get(list_photos).post(upload_photo),
         )
         .route("/api/grows/{id}/forecast", get(get_forecast))
+        .route("/api/grows/{id}/yield", get(get_yield))
+        .route("/api/grows/{id}/writeback", post(writeback_grow))
         .route("/api/photos/{id}", axum::routing::delete(delete_photo))
         .route("/api/photos/{id}/original", get(photo_original))
         .route("/api/photos/{id}/thumbnail", get(photo_thumbnail))
@@ -101,6 +106,15 @@ async fn create_grow(
             })
             .await?;
     }
+    if let Some(feed_template_id) = &input.feed_template_id {
+        state
+            .db
+            .with({
+                let feed_template_id = feed_template_id.clone();
+                move |conn| store::feeds::get_template(conn, &feed_template_id)
+            })
+            .await?;
+    }
     let grow = state
         .db
         .with(move |conn| store::grows::create(conn, &input))
@@ -146,6 +160,15 @@ async fn update_grow(
             .with({
                 let seed_batch_id = seed_batch_id.clone();
                 move |conn| store::seedbank::get(conn, &seed_batch_id)
+            })
+            .await?;
+    }
+    if let Some(feed_template_id) = &input.feed_template_id {
+        state
+            .db
+            .with({
+                let feed_template_id = feed_template_id.clone();
+                move |conn| store::feeds::get_template(conn, &feed_template_id)
             })
             .await?;
     }
@@ -215,6 +238,30 @@ async fn create_plant(
         })
         .await?;
     Ok((StatusCode::CREATED, Json(plant)))
+}
+
+// Extractors are taken by value because Axum requires it.
+#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
+async fn update_plant(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(input): Json<PlantInput>,
+) -> Result<Json<Plant>, ApiError> {
+    if input.name.trim().is_empty() {
+        return Err(ApiError::BadRequest("name must not be empty".to_owned()));
+    }
+    for weight in [input.wet_g, input.dry_g, input.trimmed_g] {
+        if weight.is_some_and(|grams| grams < 0.0) {
+            return Err(ApiError::BadRequest(
+                "harvest weights must not be negative".to_owned(),
+            ));
+        }
+    }
+    let plant = state
+        .db
+        .with(move |conn| store::grows::update_plant(conn, &id, &input))
+        .await?;
+    Ok(Json(plant))
 }
 
 // Extractors are taken by value because Axum requires it.
@@ -418,6 +465,89 @@ async fn list_photos(
             .with(move |conn| store::photos::list(conn, &id))
             .await?,
     ))
+}
+
+// Extractors are taken by value because Axum requires it.
+#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
+#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
+async fn get_yield(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<leaflog_core::grows::YieldSummary>, ApiError> {
+    let summary = state
+        .db
+        .with(
+            move |conn| -> Result<leaflog_core::grows::YieldSummary, StoreOrNotFound> {
+                let grow = store::grows::get(conn, &id)?;
+                let plants = store::grows::list_plants(conn, &grow.id)?;
+                Ok(leaflog_core::grows::YieldSummary::of(&grow.id, plants))
+            },
+        )
+        .await?;
+    Ok(Json(summary))
+}
+
+/// `POST /api/grows/{id}/writeback` — copies the grow's achieved yield
+/// into its strain's yield notes (spec §4.4, §4.14). User-owned strains
+/// only: a bundled strain is read-only and answers 409.
+// Extractors are taken by value because Axum requires it.
+#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
+async fn writeback_grow(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<leaflog_core::strain::Strain>, ApiError> {
+    let strain = state
+        .db
+        .with(
+            move |conn| -> Result<leaflog_core::strain::Strain, ApiError> {
+                let grow = store::grows::get(conn, &id)?;
+                let plants = store::grows::list_plants(conn, &grow.id)?;
+                let summary = leaflog_core::grows::YieldSummary::of(&grow.id, plants);
+                let strain_id = grow.strain_id.clone().ok_or_else(|| {
+                    ApiError::BadRequest("the grow has no strain to write back to".to_owned())
+                })?;
+                let mut strain = store::strain::get(conn, &strain_id)?;
+                if strain.is_builtin {
+                    return Err(ApiError::Conflict(
+                        "bundled strain is read-only; clone it as your phenotype and write back \
+                     there"
+                            .to_owned(),
+                    ));
+                }
+                // One line per grow, replaced on re-write so the write-back
+                // is idempotent.
+                let line = format!(
+                    "achieved: {} g dry, {} g wet, {} g trimmed over {} plant(s) [grow:{}]",
+                    summary
+                        .total_dry_g
+                        .map_or_else(|| "-".to_owned(), |grams| format!("{grams:.0}")),
+                    summary
+                        .total_wet_g
+                        .map_or_else(|| "-".to_owned(), |grams| format!("{grams:.0}")),
+                    summary
+                        .total_trimmed_g
+                        .map_or_else(|| "-".to_owned(), |grams| format!("{grams:.0}")),
+                    summary.plants.len(),
+                    grow.id
+                );
+                let marker = format!("[grow:{}]", grow.id);
+                let notes = strain.yield_notes.clone().unwrap_or_default();
+                let updated_lines: Vec<String> = notes
+                    .lines()
+                    .filter(|existing| !existing.contains(&marker))
+                    .map(str::to_owned)
+                    .chain([line])
+                    .collect();
+                strain.yield_notes = Some(updated_lines.join("\n"));
+                // Rebuild the update payload from the strain and keep the
+                // evidence map the grower curated.
+                let mut input = leaflog_core::strain::StrainInput::from_strain(&strain);
+                input.yield_notes.clone_from(&strain.yield_notes);
+                Ok(store::strain::update(conn, &strain.id, &input)?)
+            },
+        )
+        .await?;
+    Ok(Json(strain))
 }
 
 // Extractors are taken by value because Axum requires it.

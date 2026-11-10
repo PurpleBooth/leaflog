@@ -21,20 +21,22 @@ pub fn create(conn: &Connection, input: &GrowInput) -> Result<Grow, StoreError> 
         strain_id: input.strain_id.clone(),
         grow_space_id: input.grow_space_id.clone(),
         seed_batch_id: input.seed_batch_id.clone(),
+        feed_template_id: input.feed_template_id.clone(),
         substrate: input.substrate.clone(),
         started_on: input.started_on.clone(),
         status: input.status,
         notes: input.notes.clone(),
     };
     conn.execute(
-        "INSERT INTO grow (id, name, strain_id, grow_space_id, seed_batch_id, substrate, started_on, status, notes, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        "INSERT INTO grow (id, name, strain_id, grow_space_id, seed_batch_id, feed_template_id, substrate, started_on, status, notes, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         params![
             grow.id,
             grow.name,
             grow.strain_id,
             grow.grow_space_id,
             grow.seed_batch_id,
+            grow.feed_template_id,
             grow.substrate,
             grow.started_on,
             grow.status.label(),
@@ -100,13 +102,15 @@ pub fn update(conn: &Connection, id: &str, input: &GrowInput) -> Result<Grow, St
     updated.strain_id.clone_from(&input.strain_id);
     updated.grow_space_id.clone_from(&input.grow_space_id);
     updated.seed_batch_id.clone_from(&input.seed_batch_id);
+    updated.feed_template_id.clone_from(&input.feed_template_id);
     updated.substrate.clone_from(&input.substrate);
     updated.started_on.clone_from(&input.started_on);
     updated.status = input.status;
     updated.notes.clone_from(&input.notes);
     conn.execute(
         "UPDATE grow SET name = ?2, strain_id = ?3, grow_space_id = ?4, seed_batch_id = ?5,
-             substrate = ?6, started_on = ?7, status = ?8, notes = ?9, updated_at = ?10
+             feed_template_id = ?6, substrate = ?7, started_on = ?8, status = ?9,
+             notes = ?10, updated_at = ?11
          WHERE id = ?1",
         params![
             updated.id,
@@ -114,6 +118,7 @@ pub fn update(conn: &Connection, id: &str, input: &GrowInput) -> Result<Grow, St
             updated.strain_id,
             updated.grow_space_id,
             updated.seed_batch_id,
+            updated.feed_template_id,
             updated.substrate,
             updated.started_on,
             updated.status.label(),
@@ -153,18 +158,74 @@ pub fn create_plant(
         created_at: now_rfc3339(),
         updated_at: now_rfc3339(),
         name: input.name.clone(),
+        wet_g: input.wet_g,
+        dry_g: input.dry_g,
+        trimmed_g: input.trimmed_g,
     };
     conn.execute(
-        "INSERT INTO plant (id, grow_id, name, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+        "INSERT INTO plant (id, grow_id, name, wet_g, dry_g, trimmed_g, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         params![
             plant.id,
             plant.grow_id,
             plant.name,
+            plant.wet_g,
+            plant.dry_g,
+            plant.trimmed_g,
             plant.created_at,
             plant.updated_at
         ],
     )?;
     Ok(plant)
+}
+
+/// Replaces a plant (full update: name and harvest weights) and
+/// returns the updated row.
+///
+/// # Errors
+///
+/// Returns [`super::NotFound`] when the id does not exist.
+pub fn update_plant(
+    conn: &Connection,
+    id: &str,
+    input: &PlantInput,
+) -> Result<Plant, StoreOrNotFound> {
+    let existing = get_plant(conn, id)?;
+    let updated = Plant {
+        id: existing.id,
+        grow_id: existing.grow_id,
+        name: input.name.clone(),
+        wet_g: input.wet_g,
+        dry_g: input.dry_g,
+        trimmed_g: input.trimmed_g,
+        created_at: existing.created_at,
+        updated_at: now_rfc3339(),
+    };
+    conn.execute(
+        "UPDATE plant
+         SET name = ?2, wet_g = ?3, dry_g = ?4, trimmed_g = ?5, updated_at = ?6
+         WHERE id = ?1",
+        params![
+            updated.id,
+            updated.name,
+            updated.wet_g,
+            updated.dry_g,
+            updated.trimmed_g,
+            updated.updated_at
+        ],
+    )?;
+    Ok(updated)
+}
+
+/// Fetches one plant by id.
+///
+/// # Errors
+///
+/// Returns [`super::NotFound`] when the id does not exist.
+pub fn get_plant(conn: &Connection, id: &str) -> Result<Plant, StoreOrNotFound> {
+    conn.query_row("SELECT * FROM plant WHERE id = ?1", params![id], map_plant)
+        .optional()?
+        .ok_or_else(|| NotFound.into())
 }
 
 /// Lists the plants of a grow by creation order.
@@ -202,6 +263,7 @@ fn map_grow(row: &rusqlite::Row<'_>) -> Result<Grow, rusqlite::Error> {
         strain_id: row.get("strain_id")?,
         grow_space_id: row.get("grow_space_id")?,
         seed_batch_id: row.get("seed_batch_id")?,
+        feed_template_id: row.get("feed_template_id")?,
         substrate: row.get("substrate")?,
         started_on: row.get("started_on")?,
         status: if status == "archived" {
@@ -221,6 +283,9 @@ fn map_plant(row: &rusqlite::Row<'_>) -> Result<Plant, rusqlite::Error> {
         id: row.get("id")?,
         grow_id: row.get("grow_id")?,
         name: row.get("name")?,
+        wet_g: row.get("wet_g")?,
+        dry_g: row.get("dry_g")?,
+        trimmed_g: row.get("trimmed_g")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
     })

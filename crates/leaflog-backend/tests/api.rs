@@ -415,6 +415,7 @@ async fn sensors_replace_is_atomic_when_an_insert_fails() {
                         strain_id: None,
                         grow_space_id: None,
                         seed_batch_id: None,
+                        feed_template_id: None,
                         substrate: "soil".to_owned(),
                         started_on: "2026-10-01".to_owned(),
                         status: GrowStatus::Active,
@@ -1542,4 +1543,221 @@ async fn onboarding_wizard_appears_runs_and_stays_dismissable() {
     assert_eq!(done["show_wizard"], false);
     assert_eq!(done["has_grows"], true);
     assert_eq!(done["has_spaces"], true);
+}
+
+#[tokio::test]
+async fn harvest_weights_round_trip_summarise_and_write_back() {
+    let base = spawn_api().await;
+    let client = reqwest::Client::new();
+
+    // A grow with a user strain and two plants, plus a second grow on a
+    // bundled strain for the write-back rejection.
+    let strain: Value = client
+        .post(format!("{base}/api/strains"))
+        .json(&sample_strain("My own cross"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&json!({
+            "name": "Harvest run",
+            "strain_id": strain["id"],
+            "grow_space_id": null,
+            "seed_batch_id": null,
+            "feed_template_id": null,
+            "substrate": "soil",
+            "started_on": "2026-08-01",
+            "status": "active",
+            "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let grow_id = grow["id"].as_str().unwrap().to_owned();
+    let mut plants = Vec::new();
+    for name in ["NL #1", "NL #2"] {
+        let plant: Value = client
+            .post(format!("{base}/api/grows/{grow_id}/plants"))
+            .json(&json!({ "name": name }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        plants.push(plant["id"].as_str().unwrap().to_owned());
+    }
+
+    // Weights are grams end to end (spec §4.14) and round-trip per
+    // plant; unset weights stay null, never zero.
+    let updated: Value = client
+        .put(format!("{base}/api/plants/{}", plants[0]))
+        .json(&json!({
+            "name": "NL #1",
+            "wet_g": 120.5,
+            "dry_g": 30.0,
+            "trimmed_g": 28.0,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(updated["wet_g"], 120.5);
+    assert_eq!(updated["trimmed_g"], 28.0);
+    client
+        .put(format!("{base}/api/plants/{}", plants[1]))
+        .json(&json!({
+            "name": "NL #2",
+            "wet_g": 99.5,
+            "dry_g": null,
+            "trimmed_g": 25.0,
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    let summary: Value = client
+        .get(format!("{base}/api/grows/{grow_id}/yield"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(summary["total_wet_g"], 220.0);
+    assert_eq!(summary["total_dry_g"], 30.0, "only the weighed plant sums");
+    assert_eq!(summary["total_trimmed_g"], 53.0);
+    let ratio = summary["wet_to_dry_ratio"].as_f64().unwrap();
+    assert!(
+        (ratio - 220.0 / 30.0).abs() < 1e-9,
+        "wet→dry ratio: {ratio}"
+    );
+    assert_eq!(summary["plants"].as_array().unwrap().len(), 2);
+
+    // Validation: negative weights and blank names are rejected; an
+    // unknown plant is a 404.
+    let response = client
+        .put(format!("{base}/api/plants/{}", plants[0]))
+        .json(&json!({ "name": "x", "wet_g": -1.0, "dry_g": null, "trimmed_g": null }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+    let response = client
+        .put(format!("{base}/api/plants/{}", plants[0]))
+        .json(&json!({ "name": "  ", "wet_g": null, "dry_g": null, "trimmed_g": null }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+    let response = client
+        .put(format!("{base}/api/plants/nope"))
+        .json(&json!({ "name": "x", "wet_g": null, "dry_g": null, "trimmed_g": null }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
+
+    // Write-back reaches the user strain exactly once per grow.
+    let written: Value = client
+        .post(format!("{base}/api/grows/{grow_id}/writeback"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let notes = written["yield_notes"].as_str().unwrap();
+    assert!(notes.contains("achieved"), "notes: {notes}");
+    assert!(notes.contains("30 g dry"), "notes: {notes}");
+    assert!(notes.contains(&format!("[grow:{grow_id}]")));
+    client
+        .post(format!("{base}/api/grows/{grow_id}/writeback"))
+        .send()
+        .await
+        .unwrap();
+    let strain_after: Value = client
+        .get(format!(
+            "{}/api/strains/{}",
+            base,
+            strain["id"].as_str().unwrap()
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let notes = strain_after["yield_notes"].as_str().unwrap();
+    assert_eq!(
+        notes.matches("achieved").count(),
+        1,
+        "re-writing replaces the line, it does not pile up: {notes}"
+    );
+
+    // A grow on a bundled strain never writes back (§4.4), and a
+    // strainless grow says so.
+    let db_seeded = Db::open_in_memory().unwrap();
+    leaflog_backend::seed::seed_strains(&db_seeded)
+        .await
+        .unwrap();
+    let seeded_base = spawn_with(db_seeded).await;
+    let bundled: Vec<Value> = reqwest::get(format!("{seeded_base}/api/strains"))
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let bundled_id = bundled
+        .iter()
+        .find(|s| s["is_builtin"] == json!(true))
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let bundled_grow: Value = reqwest::Client::new()
+        .post(format!("{seeded_base}/api/grows"))
+        .json(&json!({
+            "name": "Preset run",
+            "strain_id": bundled_id,
+            "grow_space_id": null,
+            "seed_batch_id": null,
+            "feed_template_id": null,
+            "substrate": "soil",
+            "started_on": "2026-08-01",
+            "status": "active",
+            "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let response = reqwest::Client::new()
+        .post(format!(
+            "{}/api/grows/{}/writeback",
+            seeded_base,
+            bundled_grow["id"].as_str().unwrap()
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
+
+    let response = client
+        .post(format!("{base}/api/grows/nope/writeback"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
 }

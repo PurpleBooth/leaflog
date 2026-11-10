@@ -8,6 +8,29 @@ here. Date format: YYYY-MM-DD.
 
 ## 2026-11-10 — post-M8
 
+### D055: Harvest weights on plants, yield summary, strain write-back
+
+The §4.14 foundation of M11:
+
+- **Weights live on `plant`** (V11: nullable `wet_g`/`dry_g`/
+  `trimmed_g`, grams = SI internal): unset means "not weighed",
+  never zero. `PUT /api/plants/{id}` replaces name + weights
+  (negatives and blank names are 400s). Display units stay the
+  frontend's job, like every other quantity.
+- **`GET /api/grows/{id}/yield`** aggregates via
+  `leaflog_core::grows::YieldSummary`: per-plant breakdown, totals
+  (a total is `None` when no plant carries that weight), and the
+  wet→dry ratio when both exist and dry is positive.
+- **Write-back** (`POST /api/grows/{id}/writeback`) copies the
+  achieved totals into the grow's strain's `yield_notes` as one line
+  per grow — `[grow:<id>]` marked, so re-writing replaces instead of
+  piling up. User-owned strains only: bundled strains answer 409
+  with the clone-redirect; a strainless grow is a 400.
+- **`grow.feed_template_id`** (V11, nullable, SET NULL): grows record
+  which template was fitted so §4.15 analytics can group by template
+  and "start next run" can copy it by reference. Fits predating the
+  column stay unattributed. Validated like the space and batch links.
+
 ### D054: Onboarding wizard — state-derived, dismissal as a settings flag
 
 Implements the onboarding half of M10 (spec §4.12, §13):

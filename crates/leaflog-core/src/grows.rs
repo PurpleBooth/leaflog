@@ -49,6 +49,10 @@ pub struct Grow {
     /// `None` when absent JSON parses (payloads predate the link).
     #[serde(default)]
     pub seed_batch_id: Option<String>,
+    /// The feed template fitted to this grow (spec §4.6/§4.15); copied
+    /// by reference. Absent JSON parses as `None`.
+    #[serde(default)]
+    pub feed_template_id: Option<String>,
     /// Substrate label: one of [`SUBSTRATES`] or a user-defined name.
     pub substrate: String,
     /// Seed/clone start date, `YYYY-MM-DD`. Day numbers count from here.
@@ -77,6 +81,9 @@ pub struct GrowInput {
     /// (payloads predate the link).
     #[serde(default)]
     pub seed_batch_id: Option<String>,
+    /// The fitted feed template, copied by reference (spec §4.6).
+    #[serde(default)]
+    pub feed_template_id: Option<String>,
     /// Substrate label.
     pub substrate: String,
     /// Seed/clone start date, `YYYY-MM-DD`.
@@ -88,7 +95,7 @@ pub struct GrowInput {
 }
 
 /// One plant inside a grow. Strain and timeline come from the grow.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Plant {
     /// ULID.
     pub id: String,
@@ -96,6 +103,15 @@ pub struct Plant {
     pub grow_id: String,
     /// User-chosen name, for example `NL #1`.
     pub name: String,
+    /// Harvest wet weight in grams (spec §4.14); `None` = not weighed.
+    #[serde(default)]
+    pub wet_g: Option<f64>,
+    /// Harvest dry weight in grams; `None` = not weighed.
+    #[serde(default)]
+    pub dry_g: Option<f64>,
+    /// Harvest trimmed weight in grams; `None` = not weighed.
+    #[serde(default)]
+    pub trimmed_g: Option<f64>,
     /// Creation instant, RFC 3339 UTC.
     pub created_at: String,
     /// Last modification instant, RFC 3339 UTC.
@@ -103,10 +119,79 @@ pub struct Plant {
 }
 
 /// Payload to create a plant.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PlantInput {
     /// User-chosen name.
     pub name: String,
+    /// Harvest weights in grams (spec §4.14); `None` on plain plants.
+    #[serde(default)]
+    pub wet_g: Option<f64>,
+    /// Harvest dry weight in grams.
+    #[serde(default)]
+    pub dry_g: Option<f64>,
+    /// Harvest trimmed weight in grams.
+    #[serde(default)]
+    pub trimmed_g: Option<f64>,
+}
+
+impl PlantInput {
+    /// Extracts the editable payload from a stored plant.
+    #[must_use]
+    pub fn from_plant(plant: &Plant) -> Self {
+        Self {
+            name: plant.name.clone(),
+            wet_g: plant.wet_g,
+            dry_g: plant.dry_g,
+            trimmed_g: plant.trimmed_g,
+        }
+    }
+}
+
+/// A grow's yield summary (spec §4.14): totals, per-plant breakdown
+/// and the wet→dry ratio. All grams; a total is `None` when no plant
+/// carries that weight.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct YieldSummary {
+    /// The grow the summary belongs to.
+    pub grow_id: String,
+    /// Every plant of the grow with its weights (unset weights are
+    /// `None`, not zero).
+    pub plants: Vec<Plant>,
+    /// Sum of the plants' wet weights; `None` when nothing was weighed.
+    pub total_wet_g: Option<f64>,
+    /// Sum of the plants' dry weights; `None` when nothing was weighed.
+    pub total_dry_g: Option<f64>,
+    /// Sum of the plants' trimmed weights; `None` when not weighed.
+    pub total_trimmed_g: Option<f64>,
+    /// `total_wet / total_dry` when both exist and the dry weight is
+    /// positive.
+    pub wet_to_dry_ratio: Option<f64>,
+}
+
+impl YieldSummary {
+    /// Aggregates a grow's plants into their yield summary.
+    #[must_use]
+    pub fn of(grow_id: &str, plants: Vec<Plant>) -> Self {
+        let total = |weight: fn(&Plant) -> Option<f64>| -> Option<f64> {
+            let values: Vec<f64> = plants.iter().filter_map(weight).collect();
+            (!values.is_empty()).then(|| values.iter().sum())
+        };
+        let total_wet_g = total(|plant| plant.wet_g);
+        let total_dry_g = total(|plant| plant.dry_g);
+        let total_trimmed_g = total(|plant| plant.trimmed_g);
+        let wet_to_dry_ratio = match (total_wet_g, total_dry_g) {
+            (Some(wet), Some(dry)) if dry > 0.0 => Some(wet / dry),
+            _ => None,
+        };
+        Self {
+            grow_id: grow_id.to_owned(),
+            plants,
+            total_wet_g,
+            total_dry_g,
+            total_trimmed_g,
+            wet_to_dry_ratio,
+        }
+    }
 }
 
 /// One action-log entry (spec §4.2). Phase and grow day are filled by
