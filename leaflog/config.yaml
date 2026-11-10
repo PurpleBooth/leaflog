@@ -2,7 +2,7 @@
 # Keys follow the current (2026-11) app/add-on config reference; naming
 # is in flux upstream ("add-ons" → "apps"), re-checked each milestone.
 name: Leaflog
-version: "0.4.0"
+version: "0.4.1"
 slug: leaflog
 description: Cannabis grow diary that lives inside Home Assistant
 url: https://github.com/PurpleBooth/leaflog
