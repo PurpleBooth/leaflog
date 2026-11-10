@@ -20,6 +20,10 @@ pub fn EquipmentPage() -> impl IntoView {
     let form_open = RwSignal::<bool>::new(false);
     let editing_id = RwSignal::<Option<String>>::new(None);
     let draft = RwSignal::<EquipmentInput>::new(empty_equipment());
+    // The HA sensor picker (spec §4.1): one candidate per entity, plus
+    // whether HA is reachable so the flow can defer instead of block.
+    let candidates = RwSignal::<Vec<(String, String, String)>>::new(Vec::new());
+    let picker_source = RwSignal::<Option<String>>::new(None);
 
     let refresh = move || {
         spawn_local(async move {
@@ -41,6 +45,54 @@ pub fn EquipmentPage() -> impl IntoView {
 
     let start_create = move |_| {
         draft.set(empty_equipment());
+        editing_id.set(None);
+        form_open.set(true);
+    };
+
+    // Sensor items come only from the HA entity picker: load the
+    // temperature/humidity entities and offer them; picking one
+    // pre-fills the form. With HA unreachable the list is empty and the
+    // flow defers (skip now, pick later) — nothing else blocks.
+    let open_picker = move |_| {
+        spawn_local(async move {
+            match api::get::<serde_json::Value>("api/ha/entities").await {
+                Ok(payload) => {
+                    picker_source.set(payload["source"].as_str().map(str::to_owned));
+                    let offered: Vec<(String, String, String)> = payload["entities"]
+                        .as_array()
+                        .map(|entities| {
+                            entities
+                                .iter()
+                                .filter_map(|entity| {
+                                    let id = entity["entity_id"].as_str()?;
+                                    let attributes = &entity["attributes"];
+                                    let class = attributes["device_class"].as_str()?.to_owned();
+                                    if class != "temperature" && class != "humidity" {
+                                        return None;
+                                    }
+                                    let name = attributes["friendly_name"]
+                                        .as_str()
+                                        .unwrap_or(id)
+                                        .to_owned();
+                                    Some((id.to_owned(), name, class))
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    candidates.set(offered);
+                }
+                Err(failure) => error.set(Some(failure.message)),
+            }
+        });
+    };
+
+    let pick_entity = move |(entity_id, name, class): &(String, String, String)| {
+        let mut input = empty_equipment();
+        input.name.clone_from(name);
+        input.category = EquipmentCategory::Sensor;
+        input.ha_entity_id = Some(entity_id.clone());
+        input.ha_device_class = Some(class.clone());
+        draft.set(input);
         editing_id.set(None);
         form_open.set(true);
     };
@@ -100,7 +152,10 @@ pub fn EquipmentPage() -> impl IntoView {
         <section class="page">
             <div class="page-head">
                 <h2>"Equipment"</h2>
-                <button class="primary" on:click=start_create>"Add equipment"</button>
+                <div class="page-actions">
+                    <button on:click=open_picker>"Add sensor from HA"</button>
+                    <button class="primary" on:click=start_create>"Add equipment"</button>
+                </div>
             </div>
 
             <ErrorIf error />
@@ -127,6 +182,41 @@ pub fn EquipmentPage() -> impl IntoView {
                     })
                     .collect::<Vec<_>>()}
             </nav>
+
+            <Show when=move || !candidates.get().is_empty() || picker_source.get().is_some()>
+                <div class="card form">
+                    <h3>"Sensors from Home Assistant"</h3>
+                    <ul class="chips">
+                        {move || {
+                            candidates
+                                .get()
+                                .iter()
+                                .map(|candidate| {
+                                    let for_pick = candidate.clone();
+                                    view! {
+                                        <li>
+                                            <button on:click=move |_| pick_entity(&for_pick)>
+                                                {format!(
+                                                    "{} ({})",
+                                                    for_pick.1,
+                                                    for_pick.0,
+                                                )}
+                                            </button>
+                                        </li>
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                        }}
+                    </ul>
+                    <Show when=move || candidates.get().is_empty()>
+                        <p class="empty">
+                            "No temperature or humidity sensors visible — Home Assistant may be
+                            unreachable. Skip for now and pick the sensor later; nothing else
+                            is blocked."
+                        </p>
+                    </Show>
+                </div>
+            </Show>
 
             <Show when=move || form_open.get()>
                 <form class="card form" on:submit:prevent=save>
@@ -161,6 +251,9 @@ pub fn EquipmentPage() -> impl IntoView {
                         {item.brand_model.clone().map(|brand| view! { <div><dt>"Brand / model"</dt><dd>{brand}</dd></div> })}
                         {item.real_watts.map(|watts| view! { <div><dt>"Wall watts"</dt><dd>{format!("{watts:.0} W")}</dd></div> })}
                         {item.dimmable.then(|| view! { <div><dt>"Dimmable"</dt><dd>"yes"</dd></div> })}
+                        {item.ha_entity_id.clone().map(|entity| view! {
+                            <div><dt>"HA entity"</dt><dd>{entity}</dd></div>
+                        })}
                         {item.purchase_price.zip(item.currency.clone()).map(|(price, currency)| {
                             view! { <div><dt>"Price"</dt><dd>{format!("{price:.2} {currency}")}</dd></div> }
                         })}
@@ -269,6 +362,32 @@ fn EquipmentForm(draft: RwSignal<EquipmentInput>) -> impl IntoView {
                 />
                 <span>"Dimmable"</span>
             </label>
+            <label class="field">
+                <span>{move || if draft.get().category == EquipmentCategory::Sensor {
+                    "HA entity *"
+                } else {
+                    "HA entity binding (optional)"
+                }}</span>
+                <input type="text" placeholder="sensor.grow_temperature"
+                    prop:value=move || draft.get().ha_entity_id.unwrap_or_default()
+                    on:input=move |ev| draft.update(|d| d.ha_entity_id = non_empty(event_target_value(&ev)))
+                />
+            </label>
+            <label class="field">
+                <span>"Device class"</span>
+                <select
+                    prop:value=move || {
+                        draft.get().ha_device_class.unwrap_or_default()
+                    }
+                    on:change=move |ev| {
+                        draft.update(|d| d.ha_device_class = non_empty(event_target_value(&ev)));
+                    }
+                >
+                    <option value="">"—"</option>
+                    <option value="temperature">"temperature"</option>
+                    <option value="humidity">"humidity"</option>
+                </select>
+            </label>
             <label class="field wide">
                 <span>"Notes"</span>
                 <textarea rows="2"
@@ -307,5 +426,7 @@ const fn empty_equipment() -> EquipmentInput {
         purchase_price: None,
         currency: None,
         notes: None,
+        ha_entity_id: None,
+        ha_device_class: None,
     }
 }

@@ -1029,3 +1029,94 @@ async fn bundled_records_are_read_only_and_clone_to_user_entries() {
         .unwrap();
     assert_eq!(response.status(), reqwest::StatusCode::OK);
 }
+
+#[tokio::test]
+async fn sensor_items_come_from_ha_entities_only() {
+    // The bridge is offline (spawn_api): creating sensor items must not
+    // need HA — the picker defers, nothing else blocks (spec §4.1).
+    let base = spawn_api().await;
+    let client = reqwest::Client::new();
+
+    let mut sensor = sample_equipment("Tent temperature");
+    sensor["category"] = json!("sensor");
+    // No entity at all: rejected.
+    let response = client
+        .post(format!("{base}/api/equipment"))
+        .json(&sensor)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+
+    // Entity without a device class: rejected.
+    sensor["ha_entity_id"] = json!("sensor.grow_temperature");
+    let response = client
+        .post(format!("{base}/api/equipment"))
+        .json(&sensor)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+
+    // An unsupported device class: rejected.
+    sensor["ha_device_class"] = json!("co2");
+    let response = client
+        .post(format!("{base}/api/equipment"))
+        .json(&sensor)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+
+    // Malformed or non-sensor entity ids: rejected.
+    for bad in ["grow_temperature", "switch.grow_temperature", "sensor."] {
+        sensor["ha_entity_id"] = json!(bad);
+        sensor["ha_device_class"] = json!("temperature");
+        let response = client
+            .post(format!("{base}/api/equipment"))
+            .json(&sensor)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST, "{bad}");
+    }
+
+    // A picked temperature entity round-trips with its identity.
+    sensor["ha_entity_id"] = json!("sensor.grow_temperature");
+    let created: Value = client
+        .post(format!("{base}/api/equipment"))
+        .json(&sensor)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(created["category"], "sensor");
+    assert_eq!(created["ha_entity_id"], "sensor.grow_temperature");
+    assert_eq!(created["ha_device_class"], "temperature");
+
+    // A device class on a non-sensor item is rejected; a plain entity
+    // binding on one is fine.
+    let mut light = sample_equipment("Bound light");
+    light["ha_device_class"] = json!("temperature");
+    let response = client
+        .post(format!("{base}/api/equipment"))
+        .json(&light)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+    light["ha_device_class"] = Value::Null;
+    light["ha_entity_id"] = json!("light.grow_led");
+    let created: Value = client
+        .post(format!("{base}/api/equipment"))
+        .json(&light)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(created["ha_entity_id"], "light.grow_led");
+}

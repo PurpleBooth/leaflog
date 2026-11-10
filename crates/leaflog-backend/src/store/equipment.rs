@@ -41,6 +41,8 @@ pub fn create_with_id(
         purchase_price: input.purchase_price,
         currency: input.currency.clone(),
         notes: input.notes.clone(),
+        ha_entity_id: input.ha_entity_id.clone(),
+        ha_device_class: input.ha_device_class.clone(),
         source: source.map(str::to_owned),
         is_builtin,
         created_at: now_rfc3339(),
@@ -50,8 +52,10 @@ pub fn create_with_id(
         "INSERT INTO equipment_item
              (id, name, category, brand_model, real_watts, dimmable,
               purchase_date, purchase_price, currency, notes,
-              source, is_builtin, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+              ha_entity_id, ha_device_class, source, is_builtin,
+              created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
+                 ?14, ?15, ?16)",
         params![
             item.id,
             item.name,
@@ -63,6 +67,8 @@ pub fn create_with_id(
             item.purchase_price,
             item.currency,
             item.notes,
+            item.ha_entity_id,
+            item.ha_device_class,
             item.source,
             i64::from(item.is_builtin),
             item.created_at,
@@ -161,6 +167,8 @@ pub fn update(
         purchase_price: input.purchase_price,
         currency: input.currency.clone(),
         notes: input.notes.clone(),
+        ha_entity_id: input.ha_entity_id.clone(),
+        ha_device_class: input.ha_device_class.clone(),
         // Bundled flags are store-managed, never client-supplied.
         source: existing.source,
         is_builtin: existing.is_builtin,
@@ -169,7 +177,8 @@ pub fn update(
         "UPDATE equipment_item
          SET name = ?2, category = ?3, brand_model = ?4, real_watts = ?5,
              dimmable = ?6, purchase_date = ?7, purchase_price = ?8,
-             currency = ?9, notes = ?10, updated_at = ?11
+             currency = ?9, notes = ?10, ha_entity_id = ?11,
+             ha_device_class = ?12, updated_at = ?13
          WHERE id = ?1",
         params![
             updated.id,
@@ -182,6 +191,8 @@ pub fn update(
             updated.purchase_price,
             updated.currency,
             updated.notes,
+            updated.ha_entity_id,
+            updated.ha_device_class,
             updated.updated_at,
         ],
     )?;
@@ -228,6 +239,8 @@ fn map_row(row: &rusqlite::Row<'_>) -> Result<EquipmentItem, rusqlite::Error> {
         purchase_price: row.get("purchase_price")?,
         currency: row.get("currency")?,
         notes: row.get("notes")?,
+        ha_entity_id: row.get("ha_entity_id")?,
+        ha_device_class: row.get("ha_device_class")?,
         source: row.get("source")?,
         is_builtin: is_builtin != 0,
         created_at: row.get("created_at")?,

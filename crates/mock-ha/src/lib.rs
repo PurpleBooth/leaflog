@@ -123,6 +123,14 @@ fn entity_state(entity_id: &str, state: &str, unit: &str, name: &str) -> Value {
     if !unit.is_empty() {
         attributes["unit_of_measurement"] = json!(unit);
     }
+    // Real HA exposes the device class the sensor-item picker filters
+    // on (spec §4.1); the grow sensors carry theirs.
+    if let Some(class) = entity_id
+        .strip_prefix("sensor.grow_")
+        .filter(|class| *class != "soil_moisture")
+    {
+        attributes["device_class"] = json!(class);
+    }
     json!({
         "entity_id": entity_id,
         "state": state,

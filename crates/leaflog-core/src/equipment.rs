@@ -100,6 +100,17 @@ pub struct EquipmentItem {
     pub currency: Option<String>,
     /// Free-form notes.
     pub notes: Option<String>,
+    /// Home Assistant entity bound to this item. For sensor items this
+    /// is the item's identity — the entity the picker chose (spec
+    /// §4.1); other categories may bind one optionally (a `light.*`,
+    /// power sensor or dimmer `number.*` entity).
+    #[serde(default)]
+    pub ha_entity_id: Option<String>,
+    /// Device class of a sensor item's entity: `temperature` or
+    /// `humidity` (the two classes v1 supports). Required for sensor
+    /// items, forbidden for every other category.
+    #[serde(default)]
+    pub ha_device_class: Option<String>,
     /// Provenance note for bundled entries; `None` on user-added items.
     pub source: Option<String>,
     /// Whether this entry was bundled with Leaflog (seed data). Set by
@@ -133,6 +144,14 @@ pub struct EquipmentInput {
     pub currency: Option<String>,
     /// Free-form notes.
     pub notes: Option<String>,
+    /// Home Assistant entity: the identity of a sensor item, an
+    /// optional binding for other categories (spec §4.1).
+    #[serde(default)]
+    pub ha_entity_id: Option<String>,
+    /// Device class of a sensor item's entity (`temperature` or
+    /// `humidity`); must be `None` for non-sensor categories.
+    #[serde(default)]
+    pub ha_device_class: Option<String>,
 }
 
 impl EquipmentInput {
@@ -152,6 +171,8 @@ impl EquipmentInput {
             purchase_price: item.purchase_price,
             currency: item.currency.clone(),
             notes: item.notes.clone(),
+            ha_entity_id: item.ha_entity_id.clone(),
+            ha_device_class: item.ha_device_class.clone(),
         }
     }
 }

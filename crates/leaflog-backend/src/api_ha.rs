@@ -30,20 +30,51 @@ pub fn router() -> Router<AppState> {
         )
 }
 
+/// Query of `GET /api/ha/entities`.
+#[derive(Debug, Default, Deserialize)]
+struct EntitiesQuery {
+    /// Keep only entities whose `device_class` attribute matches (the
+    /// sensor-item picker of spec §4.1 filters temperature/humidity).
+    device_class: Option<String>,
+}
+
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-async fn ha_entities(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let Ok(entities) = state.ha.list_entities().await else {
+async fn ha_entities(
+    State(state): State<AppState>,
+    Query(query): Query<EntitiesQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let source = if let Ok(entities) = state.ha.list_entities().await {
+        let filtered = match &query.device_class {
+            Some(class) => entities
+                .into_iter()
+                .filter(|entity| {
+                    entity["attributes"]["device_class"].as_str() == Some(class.as_str())
+                })
+                .collect::<Vec<_>>(),
+            None => entities,
+        };
+        json!({ "source": "supervisor", "entities": filtered })
+    } else {
         // Supervisor unreachable: fall back to the live map so pickers
         // still work offline.
         let live = state.ha.live_now();
-        return Ok(Json(
-            json!({ "source": "live", "entities": live.entities.values().collect::<Vec<_>>() }),
-        ));
+        let filtered: Vec<_> = live
+            .entities
+            .values()
+            .filter(|entity| {
+                query.device_class.as_ref().is_none_or(|class| {
+                    entity
+                        .attributes
+                        .get("device_class")
+                        .and_then(Value::as_str)
+                        == Some(class.as_str())
+                })
+            })
+            .collect();
+        json!({ "source": "live", "entities": filtered })
     };
-    Ok(Json(
-        json!({ "source": "supervisor", "entities": entities }),
-    ))
+    Ok(Json(source))
 }
 
 /// Query of `GET /api/ha/history`.

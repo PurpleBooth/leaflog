@@ -8,6 +8,31 @@ here. Date format: YYYY-MM-DD.
 
 ## 2026-11-10 — post-M8
 
+### D052: Sensor items are picked HA entities
+
+Implements the HA-sensor half of D045 (spec §4.1, §13): a sensor item
+is created by picking a Home Assistant entity, and the entity is the
+item's identity.
+
+- **Schema (V9).** `equipment_item` gains `ha_entity_id` (the sensor's
+  identity; an optional binding for other categories — a `light.*`,
+  power sensor or dimmer `number.*`) and `ha_device_class`
+  (temperature/humidity, stored so a space's env sensors resolve
+  without HA being reachable).
+- **The API is the gate.** A sensor item without a `sensor.*` entity id
+  or without one of the two supported device classes is a 400; a
+  device class on a non-sensor item is a 400; a malformed entity id of
+  any kind is a 400. Sensor items are therefore never hand-entered
+  text and never bundled — only picked.
+- **The picker.** `GET /api/ha/entities` gains `?device_class=`,
+  filtering both the Supervisor list and the offline live-map fallback
+  (mock-HA now carries `device_class` on its grow sensors). The
+  equipment page's "Add sensor from HA" panel lists
+  temperature/humidity entities; picking one pre-fills the form. With
+  HA unreachable the panel shows an explicit skip-for-now notice and
+  the rest of the app is unaffected — verified by the sensor API test
+  running against an offline bridge.
+
 ### D051: Bundled-data upgrade rule — stable ids, insert-new-only seeding
 
 Implements the §4.1 upgrade rule (spec §13 "bundled-data upgrade"

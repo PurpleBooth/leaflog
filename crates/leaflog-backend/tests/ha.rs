@@ -540,3 +540,57 @@ async fn failed_subscribe_entities_result_leaves_bridge_disconnected() {
         tokio::time::sleep(Duration::from_millis(250)).await;
     }
 }
+
+#[tokio::test]
+async fn entity_picker_filters_by_device_class() {
+    let (mock_url, _mock) = spawn_mock().await;
+    let (base, _db, _bridge) = spawn_api(&mock_url).await;
+    let client = reqwest::Client::new();
+
+    let ids = |payload: &Value| -> Vec<String> {
+        payload["entities"]
+            .as_array()
+            .map(|entities| {
+                entities
+                    .iter()
+                    .map(|entity| entity["entity_id"].as_str().unwrap_or_default().to_owned())
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+
+    // The sensor-item picker (spec §4.1): temperature and humidity are
+    // the two classes v1 offers, and nothing else sneaks in.
+    let temperature: Value = client
+        .get(format!("{base}/api/ha/entities?device_class=temperature"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(temperature["source"], "supervisor");
+    assert_eq!(ids(&temperature), ["sensor.grow_temperature"]);
+
+    let humidity: Value = client
+        .get(format!("{base}/api/ha/entities?device_class=humidity"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(ids(&humidity), ["sensor.grow_humidity"]);
+
+    // Unfiltered still lists everything.
+    let all: Value = client
+        .get(format!("{base}/api/ha/entities"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(ids(&all).contains(&"light.grow_led".to_owned()));
+    assert!(ids(&all).contains(&"sensor.grow_soil_moisture".to_owned()));
+}

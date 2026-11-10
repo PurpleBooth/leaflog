@@ -373,12 +373,84 @@ fn validate_equipment(input: &EquipmentInput) -> Result<(), ApiError> {
             input.category.label()
         )));
     }
+    validate_ha_binding(input)?;
+
     if input.real_watts.is_some_and(|watts| watts < 0.0) {
         return Err(ApiError::BadRequest(
             "real_watts must not be negative".to_owned(),
         ));
     }
     Ok(())
+}
+
+/// The sensor device classes v1 supports (spec §4.1).
+const SENSOR_DEVICE_CLASSES: [&str; 2] = ["temperature", "humidity"];
+
+/// Validates the HA entity binding rules of spec §4.1: a sensor item
+/// exists only as a picked HA entity (`sensor.*` plus one of the
+/// supported device classes — sensor items are never hand-entered or
+/// bundled); every other category may bind an entity of any domain but
+/// carries no device class.
+fn validate_ha_binding(input: &EquipmentInput) -> Result<(), ApiError> {
+    let entity = input.ha_entity_id.as_deref().map(str::trim);
+    if input.category == EquipmentCategory::Sensor {
+        let entity = entity
+            .filter(|id| !id.is_empty())
+            .ok_or_else(|| {
+                ApiError::BadRequest(
+                    "sensor items are created from a Home Assistant entity: \
+                     ha_entity_id is required (pick one in the entity picker)"
+                        .to_owned(),
+                )
+            })?
+            .to_owned();
+        if !valid_entity_id(&entity) || !entity.starts_with("sensor.") {
+            return Err(ApiError::BadRequest(format!(
+                "ha_entity_id must be a sensor entity id like sensor.grow_temperature, \
+                 got '{entity}'"
+            )));
+        }
+        let class = input.ha_device_class.as_deref().ok_or_else(|| {
+            ApiError::BadRequest(
+                "sensor items need ha_device_class (temperature or humidity)".to_owned(),
+            )
+        })?;
+        if !SENSOR_DEVICE_CLASSES.contains(&class) {
+            return Err(ApiError::BadRequest(format!(
+                "unsupported sensor device class '{class}': v1 supports temperature and \
+                 humidity"
+            )));
+        }
+    } else if input.ha_device_class.is_some() {
+        return Err(ApiError::BadRequest(format!(
+            "ha_device_class only applies to sensor items, not {}",
+            input.category.label()
+        )));
+    } else if let Some(entity) = entity
+        .filter(|id| !id.is_empty())
+        .filter(|id| !valid_entity_id(id))
+    {
+        return Err(ApiError::BadRequest(format!(
+            "ha_entity_id must look like domain.entity_id, got '{entity}'"
+        )));
+    }
+    Ok(())
+}
+
+/// An HA entity id is `domain.object_id`, both non-empty; domains are
+/// lowercase and `object_id`s use word characters.
+fn valid_entity_id(entity: &str) -> bool {
+    let Some((domain, object)) = entity.split_once('.') else {
+        return false;
+    };
+    !domain.is_empty()
+        && !object.is_empty()
+        && domain
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+        && object
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
 }
 
 /// Validates strain input shared by create and update.
