@@ -415,6 +415,7 @@ async fn sensors_replace_is_atomic_when_an_insert_fails() {
                     &GrowInput {
                         name: "Closet run".to_owned(),
                         strain_id: None,
+                        grow_space_id: None,
                         substrate: "soil".to_owned(),
                         started_on: "2026-10-01".to_owned(),
                         status: GrowStatus::Active,
@@ -472,4 +473,419 @@ fn offline_bridge() -> std::sync::Arc<leaflog_backend::ha::HaBridge> {
         leaflog_backend::ha::SupervisorToken::new("test-token"),
         leaflog_backend::Db::open_in_memory().unwrap(),
     ))
+}
+
+// --- Grow spaces (spec §4.1) -------------------------------------------
+
+fn sample_space(name: &str) -> Value {
+    json!({
+        "name": name,
+        "width_cm": 60.0,
+        "depth_cm": 60.0,
+        "height_cm": 180.0,
+        "notes": null,
+    })
+}
+
+/// Creates an equipment entry via the API and returns its id.
+async fn create_equipment_at(
+    client: &reqwest::Client,
+    base: &str,
+    name: &str,
+    real_watts: Option<f64>,
+) -> String {
+    let mut body = sample_equipment(name);
+    body["real_watts"] = json!(real_watts);
+    let created: Value = client
+        .post(format!("{base}/api/equipment"))
+        .json(&body)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    created["id"].as_str().unwrap().to_owned()
+}
+
+#[tokio::test]
+async fn spaces_crud_and_equipment_membership_round_trip() {
+    let base = spawn_api().await;
+    let client = reqwest::Client::new();
+
+    // Create.
+    let created: Value = client
+        .post(format!("{base}/api/spaces"))
+        .json(&sample_space("60×60 tent"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let id = created["id"].as_str().unwrap().to_owned();
+    assert_eq!(created["name"], "60×60 tent");
+    assert_eq!(created["height_cm"], 180.0);
+
+    // Membership: add two entries; re-adding is an idempotent no-op.
+    let light = create_equipment_at(&client, &base, "SE420", Some(420.0)).await;
+    let fan = create_equipment_at(&client, &base, "Clip fan", None).await;
+    for _ in 0..2 {
+        let status = client
+            .post(format!("{base}/api/spaces/{id}/equipment/{light}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
+    }
+    let status = client
+        .post(format!("{base}/api/spaces/{id}/equipment/{fan}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
+
+    // Detail and list resolve the equipment, ordered by name.
+    let detail: Value = client
+        .get(format!("{base}/api/spaces/{id}"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(detail["space"]["id"], id.as_str());
+    assert_eq!(detail["equipment"].as_array().unwrap().len(), 2);
+    assert_eq!(detail["equipment"][0]["name"], "Clip fan");
+    assert_eq!(detail["grows"].as_array().unwrap().len(), 0);
+    let list: Vec<Value> = client
+        .get(format!("{base}/api/spaces"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0]["equipment"].as_array().unwrap().len(), 2);
+
+    // Unknown space or equipment on membership is a 404.
+    let status = client
+        .post(format!("{base}/api/spaces/{id}/equipment/nope"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(status.status(), reqwest::StatusCode::NOT_FOUND);
+    let status = client
+        .post(format!("{base}/api/spaces/nope/equipment/{light}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(status.status(), reqwest::StatusCode::NOT_FOUND);
+
+    // Removing is idempotent and shrinks the set.
+    for _ in 0..2 {
+        let status = client
+            .delete(format!("{base}/api/spaces/{id}/equipment/{fan}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
+    }
+    let detail: Value = client
+        .get(format!("{base}/api/spaces/{id}"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(detail["equipment"].as_array().unwrap().len(), 1);
+    assert_eq!(detail["equipment"][0]["name"], "SE420");
+
+    // Deleting equipment removes it from every space (cascade).
+    let status = client
+        .delete(format!("{base}/api/equipment/{light}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
+    let detail: Value = client
+        .get(format!("{base}/api/spaces/{id}"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(detail["equipment"].as_array().unwrap().is_empty());
+
+    // Update (rename + resize), preserving id and creation time.
+    let mut renamed = sample_space("Big tent");
+    renamed["height_cm"] = json!(200.0);
+    let updated: Value = client
+        .put(format!("{base}/api/spaces/{id}"))
+        .json(&renamed)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(updated["name"], "Big tent");
+    assert_eq!(updated["height_cm"], 200.0);
+    assert_eq!(updated["created_at"], created["created_at"]);
+
+    // Validation: blank name and non-positive dimensions are 400s.
+    let mut no_name = sample_space("x");
+    no_name["name"] = json!("  ");
+    let response = client
+        .post(format!("{base}/api/spaces"))
+        .json(&no_name)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+    let mut flat = sample_space("Flat tent");
+    flat["height_cm"] = json!(-1.0);
+    let response = client
+        .post(format!("{base}/api/spaces"))
+        .json(&flat)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+
+    // Delete: 204 then 404.
+    let status = client
+        .delete(format!("{base}/api/spaces/{id}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
+    let status = client
+        .get(format!("{base}/api/spaces/{id}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(status.status(), reqwest::StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn grows_belong_to_spaces() {
+    let base = spawn_api().await;
+    let client = reqwest::Client::new();
+
+    let space: Value = client
+        .post(format!("{base}/api/spaces"))
+        .json(&sample_space("60×60 tent"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let space_id = space["id"].as_str().unwrap().to_owned();
+
+    // Create a grow inside the space.
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&json!({
+            "name": "RC #1",
+            "strain_id": null,
+            "grow_space_id": space_id,
+            "substrate": "soil",
+            "started_on": "2026-10-01",
+            "status": "active",
+            "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let grow_id = grow["id"].as_str().unwrap().to_owned();
+    assert_eq!(grow["grow_space_id"], space_id.as_str());
+
+    // The space lists the grow.
+    let detail: Value = client
+        .get(format!("{base}/api/spaces/{space_id}"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let grows = detail["grows"].as_array().unwrap();
+    assert_eq!(grows.len(), 1);
+    assert_eq!(grows[0]["id"], grow_id.as_str());
+
+    // An unknown space id is rejected on create and update.
+    let response = client
+        .post(format!("{base}/api/grows"))
+        .json(&json!({
+            "name": "Nowhere run",
+            "strain_id": null,
+            "grow_space_id": "nope",
+            "substrate": "soil",
+            "started_on": "2026-10-01",
+            "status": "active",
+            "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
+
+    // Clearing the space via PUT round-trips.
+    let cleared: Value = client
+        .put(format!("{base}/api/grows/{grow_id}"))
+        .json(&json!({
+            "name": "RC #1",
+            "strain_id": null,
+            "grow_space_id": null,
+            "substrate": "soil",
+            "started_on": "2026-10-01",
+            "status": "active",
+            "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(cleared["grow_space_id"], Value::Null);
+
+    // Re-assign, then delete the space: the grow survives, unspaced.
+    let response = client
+        .put(format!("{base}/api/grows/{grow_id}"))
+        .json(&json!({
+            "name": "RC #1",
+            "strain_id": null,
+            "grow_space_id": space_id,
+            "substrate": "soil",
+            "started_on": "2026-10-01",
+            "status": "active",
+            "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let status = client
+        .delete(format!("{base}/api/spaces/{space_id}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
+    let survived: Value = client
+        .get(format!("{base}/api/grows/{grow_id}"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(survived["name"], "RC #1");
+    assert_eq!(survived["grow_space_id"], Value::Null);
+}
+
+#[tokio::test]
+async fn lamp_advisor_uses_the_grow_space_light() {
+    let base = spawn_api().await;
+    let client = reqwest::Client::new();
+
+    // A grow started today has no flip/harvest, so the advice reflects
+    // the seedling range of the advising wattage class: 28–30 in for
+    // the historical 330 W default, 32–36 in for a 420 W fixture.
+    let today = time::OffsetDateTime::now_utc().date();
+    let started_on = format!(
+        "{:04}-{:02}-{:02}",
+        today.year(),
+        u8::from(today.month()),
+        today.day()
+    );
+
+    let plain: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&json!({
+            "name": "Default run",
+            "strain_id": null,
+            "grow_space_id": null,
+            "substrate": "soil",
+            "started_on": started_on,
+            "status": "active",
+            "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let advice: Value = client
+        .get(format!(
+            "{base}/api/grows/{}/lamp",
+            plain["id"].as_str().unwrap()
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(advice["height"]["min_in"], 28.0, "no space → 330 W class");
+
+    let light = create_equipment_at(&client, &base, "SE420", Some(420.0)).await;
+    let space: Value = client
+        .post(format!("{base}/api/spaces"))
+        .json(&sample_space("60×60 tent"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let space_id = space["id"].as_str().unwrap().to_owned();
+    let status = client
+        .post(format!("{base}/api/spaces/{space_id}/equipment/{light}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
+
+    let lit: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&json!({
+            "name": "Lit run",
+            "strain_id": null,
+            "grow_space_id": space_id,
+            "substrate": "soil",
+            "started_on": started_on,
+            "status": "active",
+            "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let advice: Value = client
+        .get(format!(
+            "{base}/api/grows/{}/lamp",
+            lit["id"].as_str().unwrap()
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        advice["height"]["min_in"], 32.0,
+        "space light → 420 W class"
+    );
 }

@@ -19,18 +19,20 @@ pub fn create(conn: &Connection, input: &GrowInput) -> Result<Grow, StoreError> 
         updated_at: now_rfc3339(),
         name: input.name.clone(),
         strain_id: input.strain_id.clone(),
+        grow_space_id: input.grow_space_id.clone(),
         substrate: input.substrate.clone(),
         started_on: input.started_on.clone(),
         status: input.status,
         notes: input.notes.clone(),
     };
     conn.execute(
-        "INSERT INTO grow (id, name, strain_id, substrate, started_on, status, notes, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        "INSERT INTO grow (id, name, strain_id, grow_space_id, substrate, started_on, status, notes, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             grow.id,
             grow.name,
             grow.strain_id,
+            grow.grow_space_id,
             grow.substrate,
             grow.started_on,
             grow.status.label(),
@@ -67,6 +69,22 @@ pub fn get(conn: &Connection, id: &str) -> Result<Grow, StoreOrNotFound> {
         .ok_or_else(|| NotFound.into())
 }
 
+/// Lists the grows inside one grow space, active first, newest start
+/// date first.
+///
+/// # Errors
+///
+/// Returns a [`StoreError`] on SQLite failures.
+pub fn list_for_space(conn: &Connection, space_id: &str) -> Result<Vec<Grow>, StoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT * FROM grow WHERE grow_space_id = ?1
+         ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, started_on DESC",
+    )?;
+    let rows = stmt.query_map(params![space_id], map_grow)?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(StoreError::from)
+}
+
 /// Replaces a grow (full update), preserving id and creation time.
 ///
 /// # Errors
@@ -78,18 +96,20 @@ pub fn update(conn: &Connection, id: &str, input: &GrowInput) -> Result<Grow, St
     updated.updated_at = now_rfc3339();
     updated.name.clone_from(&input.name);
     updated.strain_id.clone_from(&input.strain_id);
+    updated.grow_space_id.clone_from(&input.grow_space_id);
     updated.substrate.clone_from(&input.substrate);
     updated.started_on.clone_from(&input.started_on);
     updated.status = input.status;
     updated.notes.clone_from(&input.notes);
     conn.execute(
-        "UPDATE grow SET name = ?2, strain_id = ?3, substrate = ?4, started_on = ?5,
-             status = ?6, notes = ?7, updated_at = ?8
+        "UPDATE grow SET name = ?2, strain_id = ?3, grow_space_id = ?4, substrate = ?5,
+             started_on = ?6, status = ?7, notes = ?8, updated_at = ?9
          WHERE id = ?1",
         params![
             updated.id,
             updated.name,
             updated.strain_id,
+            updated.grow_space_id,
             updated.substrate,
             updated.started_on,
             updated.status.label(),
@@ -176,6 +196,7 @@ fn map_grow(row: &rusqlite::Row<'_>) -> Result<Grow, rusqlite::Error> {
         id: row.get("id")?,
         name: row.get("name")?,
         strain_id: row.get("strain_id")?,
+        grow_space_id: row.get("grow_space_id")?,
         substrate: row.get("substrate")?,
         started_on: row.get("started_on")?,
         status: if status == "archived" {

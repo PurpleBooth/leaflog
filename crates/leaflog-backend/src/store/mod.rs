@@ -8,6 +8,7 @@ pub mod grows;
 pub mod photos;
 pub mod sensors;
 pub mod settings;
+pub mod spaces;
 pub mod strain;
 
 use crate::db::StoreError;

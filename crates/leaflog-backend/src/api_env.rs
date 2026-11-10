@@ -8,6 +8,7 @@ use leaflog_core::env::{
     CoachTip, LampAdvice, LampInput, TempThresholds, advise_lamp, coach_tips, rh_window, vpd_band,
     vpd_kpa,
 };
+use leaflog_core::equipment::{EquipmentCategory, EquipmentItem};
 use leaflog_core::strain::Tolerance;
 use serde::Serialize;
 
@@ -194,9 +195,16 @@ async fn grow_lamp(
                 .and_then(|e| live.entities.get(e))
                 .and_then(|e| e.state.parse::<f64>().ok());
 
-            // The most powerful bound light's wattage (from the grow's
-            // equipment assignments or any bound light entity).
-            let light_watts: u32 = 330; // sensible default
+            // The most powerful light in the grow's space advises the
+            // wattage class; without a space (or a known wattage) we
+            // fall back to the historical sensible default
+            // (docs/DECISIONS.md D021).
+            let (light_watts, light_dimmable) = grow
+                .grow_space_id
+                .as_deref()
+                .map(|space_id| store::equipment::list_for_space(conn, space_id))
+                .transpose()?
+                .map_or((330, true), |equipment| space_light(&equipment));
 
             // Stretch/stress from recent appearance tags.
             let recent = store::actions::list(conn, &id, None, 30)?;
@@ -212,7 +220,7 @@ async fn grow_lamp(
 
             let input = LampInput {
                 real_watts: light_watts,
-                dimmable: true,
+                dimmable: light_dimmable,
                 dim_pct: 100,
                 canopy_temperature_c: canopy_temp,
                 phase,
@@ -226,6 +234,29 @@ async fn grow_lamp(
         })
         .await?;
     Ok(Json(advice))
+}
+
+/// Picks the advising light from a grow space's equipment: the most
+/// powerful light with a known real wattage, and whether any light is
+/// dimmable. Returns the `(330, true)` historical default when the
+/// space has no usable light.
+fn space_light(equipment: &[EquipmentItem]) -> (u32, bool) {
+    let lights: Vec<&EquipmentItem> = equipment
+        .iter()
+        .filter(|item| item.category == EquipmentCategory::Light)
+        .collect();
+    let watts = lights
+        .iter()
+        .filter_map(|light| light.real_watts)
+        .fold(0.0_f64, f64::max);
+    if watts <= 0.0 {
+        return (330, true);
+    }
+    let dimmable = lights.iter().any(|light| light.dimmable);
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    // fixture wattage; the clamp keeps the cast exact (see docs/DECISIONS.md D021)
+    let watts = watts.round().clamp(1.0, 9_999_999.0) as u32;
+    (watts, dimmable)
 }
 
 /// The coach response.

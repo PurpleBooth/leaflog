@@ -3,10 +3,11 @@
 //! The curated records in `seeds/strains.json` carry a source URL, a
 //! licence note and per-field evidence tags; per the seed-data
 //! discipline, numbers are ranges wherever sources disagree.
-//! `seeds/equipment.json` holds a predefined starter inventory
-//! (product facts only, no personal purchase details — the repo is
-//! public). Seeding runs only when the corresponding table is empty
-//! (first boot or a wiped database) — it never overwrites user data.
+//! `seeds/equipment.json` holds the bundled defaults of the equipment
+//! catalogue (product facts only, no personal purchase details — the
+//! repo is public), stamped `is_builtin` on first boot. Seeding runs
+//! only when the corresponding table is empty (first boot or a wiped
+//! database) — it never overwrites user data.
 
 use std::collections::BTreeMap;
 
@@ -22,6 +23,9 @@ const SEED: &str = include_str!("seeds/strains.json");
 
 /// The bundled predefined equipment records.
 const EQUIPMENT_SEED: &str = include_str!("seeds/equipment.json");
+
+/// Provenance note stamped on bundled equipment catalogue entries.
+const EQUIPMENT_SOURCE: &str = "bundled default (docs/DECISIONS.md D012)";
 
 /// One bundled record: an editable payload plus provenance.
 #[derive(Debug, Deserialize)]
@@ -110,6 +114,15 @@ pub async fn seed_equipment_if_empty(db: &Db) -> Result<u32, SeedError> {
             store::equipment::create(&tx, input)?;
             inserted += 1;
         }
+        // Mark the whole freshly-seeded set as bundled: the count>0
+        // guard above means every row in the table is a seed. Rows
+        // already present in upgraded databases stay unflagged
+        // (docs/DECISIONS.md D020).
+        tx.execute(
+            "UPDATE equipment_item SET is_builtin = 1, source = ?1",
+            rusqlite::params![EQUIPMENT_SOURCE],
+        )
+        .map_err(StoreError::from)?;
         tx.commit().map_err(StoreError::from)?;
         Ok(inserted)
     })
@@ -306,6 +319,28 @@ mod tests {
                 && item.purchase_price.is_none()
                 && item.currency.is_none()
                 && item.real_watts.is_none()
+        }));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn seeded_equipment_is_marked_builtin_with_source() -> Result<(), SeedError> {
+        let db = Db::open_in_memory()?;
+        seed_equipment_if_empty(&db).await?;
+        let items = db
+            .with(|conn| crate::store::equipment::list(conn, None))
+            .await?;
+        assert_ne!(
+            items.len(),
+            0,
+            "first boot must seed the equipment catalogue"
+        );
+        assert!(items.iter().all(|item| {
+            item.is_builtin
+                && item
+                    .source
+                    .as_deref()
+                    .is_some_and(|source| !source.is_empty())
         }));
         Ok(())
     }

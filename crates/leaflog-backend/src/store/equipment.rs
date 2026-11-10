@@ -23,6 +23,8 @@ pub fn create(conn: &Connection, input: &EquipmentInput) -> Result<EquipmentItem
         purchase_price: input.purchase_price,
         currency: input.currency.clone(),
         notes: input.notes.clone(),
+        source: None,
+        is_builtin: false,
         created_at: now_rfc3339(),
         updated_at: now_rfc3339(),
     };
@@ -30,8 +32,8 @@ pub fn create(conn: &Connection, input: &EquipmentInput) -> Result<EquipmentItem
         "INSERT INTO equipment_item
              (id, name, category, brand_model, real_watts, dimmable,
               purchase_date, purchase_price, currency, notes,
-              created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+              source, is_builtin, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         params![
             item.id,
             item.name,
@@ -43,11 +45,31 @@ pub fn create(conn: &Connection, input: &EquipmentInput) -> Result<EquipmentItem
             item.purchase_price,
             item.currency,
             item.notes,
+            item.source,
+            i64::from(item.is_builtin),
             item.created_at,
             item.updated_at,
         ],
     )?;
     Ok(item)
+}
+
+/// Lists the catalogue entries referenced by a grow space, ordered by
+/// name.
+///
+/// # Errors
+///
+/// Returns a [`crate::db::StoreError`] on SQLite failures.
+pub fn list_for_space(conn: &Connection, space_id: &str) -> Result<Vec<EquipmentItem>, StoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT equipment_item.* FROM equipment_item
+         JOIN grow_space_equipment ON grow_space_equipment.equipment_id = equipment_item.id
+         WHERE grow_space_equipment.grow_space_id = ?1
+         ORDER BY equipment_item.name",
+    )?;
+    let rows = stmt.query_map(params![space_id], map_row)?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(StoreError::from)
 }
 
 /// Counts all equipment rows.
@@ -121,6 +143,9 @@ pub fn update(
         purchase_price: input.purchase_price,
         currency: input.currency.clone(),
         notes: input.notes.clone(),
+        // Bundled flags are store-managed, never client-supplied.
+        source: existing.source,
+        is_builtin: existing.is_builtin,
     };
     conn.execute(
         "UPDATE equipment_item
@@ -171,6 +196,7 @@ fn map_row(row: &rusqlite::Row<'_>) -> Result<EquipmentItem, rusqlite::Error> {
             Box::from(format!("unknown equipment category {category_label}")),
         ))?;
     let dimmable: i64 = row.get("dimmable")?;
+    let is_builtin: i64 = row.get("is_builtin")?;
     Ok(EquipmentItem {
         id: row.get("id")?,
         name: row.get("name")?,
@@ -182,6 +208,8 @@ fn map_row(row: &rusqlite::Row<'_>) -> Result<EquipmentItem, rusqlite::Error> {
         purchase_price: row.get("purchase_price")?,
         currency: row.get("currency")?,
         notes: row.get("notes")?,
+        source: row.get("source")?,
+        is_builtin: is_builtin != 0,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
     })

@@ -46,6 +46,7 @@ pub mod api_env;
 pub mod api_feeds;
 pub mod api_grows;
 pub mod api_ha;
+pub mod api_spaces;
 pub mod app;
 pub mod assets;
 pub mod db;

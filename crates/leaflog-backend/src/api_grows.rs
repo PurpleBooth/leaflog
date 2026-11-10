@@ -83,6 +83,15 @@ async fn create_grow(
             })
             .await?;
     }
+    if let Some(grow_space_id) = &input.grow_space_id {
+        state
+            .db
+            .with({
+                let grow_space_id = grow_space_id.clone();
+                move |conn| store::spaces::get(conn, &grow_space_id)
+            })
+            .await?;
+    }
     let grow = state
         .db
         .with(move |conn| store::grows::create(conn, &input))
@@ -113,6 +122,15 @@ async fn update_grow(
     Json(input): Json<GrowInput>,
 ) -> Result<Json<leaflog_core::grows::Grow>, ApiError> {
     validate_grow(&input)?;
+    if let Some(grow_space_id) = &input.grow_space_id {
+        state
+            .db
+            .with({
+                let grow_space_id = grow_space_id.clone();
+                move |conn| store::spaces::get(conn, &grow_space_id)
+            })
+            .await?;
+    }
     let grow = state
         .db
         .with(move |conn| store::grows::update(conn, &id, &input))
