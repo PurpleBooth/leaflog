@@ -76,6 +76,16 @@ pub fn EquipmentPage() -> impl IntoView {
         });
     };
 
+    let clone_item = move |item: &EquipmentItem| {
+        let id = item.id.clone();
+        spawn_local(async move {
+            match api::post_empty::<EquipmentItem>(&format!("api/equipment/{id}/clone")).await {
+                Ok(_) => refresh(),
+                Err(failure) => error.set(Some(failure.message)),
+            }
+        });
+    };
+
     let remove = move |item: &EquipmentItem| {
         let id = item.id.clone();
         spawn_local(async move {
@@ -137,6 +147,8 @@ pub fn EquipmentPage() -> impl IntoView {
                         .map(|item| {
                             let for_edit = item.clone();
                             let for_delete = item.clone();
+                            let for_clone = item.clone();
+                            let bundled = item.is_builtin;
                             view! {
                                 <li class="card">
                                     <div class="card-title">
@@ -155,8 +167,17 @@ pub fn EquipmentPage() -> impl IntoView {
                                     </dl>
                         {item.notes.map(|notes| view! { <p class="notes">{notes}</p> })}
                                     <div class="card-actions">
-                                        <button on:click=move |_| start_edit(&for_edit)>"Edit"</button>
-                                        <button class="danger" on:click=move |_| remove(&for_delete)>"Delete"</button>
+                                        // Bundled presets are read-only (the API rejects
+                                        // edit and delete); clone-to-edit is the workflow,
+                                        // and cloning a user entry covers "two identical
+                                        // lights are two entries" (§4.1).
+                                        {(!bundled)
+                                            .then(|| view! { <button on:click=move |_| start_edit(&for_edit)>"Edit"</button> })}
+                                        <button on:click=move |_| clone_item(&for_clone)>
+                                            {move || if bundled { "Clone to edit" } else { "Clone" }}
+                                        </button>
+                                        {(!bundled)
+                                            .then(|| view! { <button class="danger" on:click=move |_| remove(&for_delete)>"Delete"</button> })}
                                     </div>
                                 </li>
                             }

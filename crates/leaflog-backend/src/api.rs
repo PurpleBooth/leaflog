@@ -25,6 +25,7 @@ pub fn router() -> Router<AppState> {
                 .put(update_equipment)
                 .delete(delete_equipment),
         )
+        .route("/api/equipment/{id}/clone", post(clone_equipment))
         .route("/api/strains", get(list_strains).post(create_strain))
         .route(
             "/api/strains/{id}",
@@ -48,6 +49,10 @@ pub enum ApiError {
     /// The request body or query is invalid.
     #[error("bad request: {0}")]
     BadRequest(String),
+    /// The request conflicts with the resource's state — used for
+    /// mutating a bundled (read-only) record.
+    #[error("conflict: {0}")]
+    Conflict(String),
     /// Something unexpected broke; the message is safe to show.
     #[error("internal error: {0}")]
     Internal(String),
@@ -58,6 +63,7 @@ impl IntoResponse for ApiError {
         let status = match &self {
             Self::NotFound => StatusCode::NOT_FOUND,
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
+            Self::Conflict(_) => StatusCode::CONFLICT,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
         (status, Json(json!({ "error": self.to_string() }))).into_response()
@@ -134,7 +140,10 @@ async fn update_equipment(
     validate_equipment(&input)?;
     let updated = state
         .db
-        .with(move |conn| store::equipment::update(conn, &id, &input))
+        .with(move |conn| -> Result<EquipmentItem, ApiError> {
+            reject_immutable_equipment(conn, &id)?;
+            Ok(store::equipment::update(conn, &id, &input)?)
+        })
         .await?;
     Ok(Json(updated))
 }
@@ -148,9 +157,47 @@ async fn delete_equipment(
 ) -> Result<StatusCode, ApiError> {
     state
         .db
-        .with(move |conn| store::equipment::delete(conn, &id))
+        .with(move |conn| -> Result<(), ApiError> {
+            reject_immutable_equipment(conn, &id)?;
+            store::equipment::delete(conn, &id)?;
+            Ok(())
+        })
         .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// Extractors are taken by value because Axum requires it.
+#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
+async fn clone_equipment(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<(StatusCode, Json<EquipmentItem>), ApiError> {
+    let clone = state
+        .db
+        .with(move |conn| -> Result<EquipmentItem, ApiError> {
+            let parent = store::equipment::get(conn, &id)?;
+            let mut copy = EquipmentInput::from_item(&parent);
+            copy.name = format!("{} (copy)", parent.name);
+            Ok(store::equipment::create(conn, &copy)?)
+        })
+        .await?;
+    Ok((StatusCode::CREATED, Json(clone)))
+}
+
+/// Fails with [`ApiError::Conflict`] when the addressed equipment entry
+/// is bundled: bundled records are read-only, and modifying one is a
+/// clone away (spec §4.1).
+fn reject_immutable_equipment(
+    conn: &rusqlite::Connection,
+    id: &str,
+) -> Result<EquipmentItem, ApiError> {
+    let existing = store::equipment::get(conn, id)?;
+    if existing.is_builtin {
+        return Err(ApiError::Conflict(
+            "bundled equipment is read-only; clone it into your own entry instead".to_owned(),
+        ));
+    }
+    Ok(existing)
 }
 
 // Extractors are taken by value because Axum requires it.
@@ -203,7 +250,10 @@ async fn update_strain(
     validate_strain(&input)?;
     let updated = state
         .db
-        .with(move |conn| store::strain::update(conn, &id, &input))
+        .with(move |conn| -> Result<Strain, ApiError> {
+            reject_immutable_strain(conn, &id)?;
+            Ok(store::strain::update(conn, &id, &input)?)
+        })
         .await?;
     Ok(Json(updated))
 }
@@ -217,7 +267,11 @@ async fn delete_strain(
 ) -> Result<StatusCode, ApiError> {
     state
         .db
-        .with(move |conn| store::strain::delete(conn, &id))
+        .with(move |conn| -> Result<(), ApiError> {
+            reject_immutable_strain(conn, &id)?;
+            store::strain::delete(conn, &id)?;
+            Ok(())
+        })
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -235,6 +289,7 @@ async fn clone_strain(
             let mut phenotype = parent.clone();
             phenotype.id = crate::db::new_id();
             phenotype.name = format!("{} (my phenotype)", parent.name);
+            phenotype.is_builtin = false;
             phenotype.is_phenotype_of = Some(parent.id);
             phenotype.source_url = None;
             phenotype.source_licence = None;
@@ -245,6 +300,19 @@ async fn clone_strain(
         })
         .await?;
     Ok((StatusCode::CREATED, Json(clone)))
+}
+
+/// Fails with [`ApiError::Conflict`] when the addressed strain is
+/// bundled: bundled records are read-only, and modifying one is a
+/// phenotype clone away (spec §4.4).
+fn reject_immutable_strain(conn: &rusqlite::Connection, id: &str) -> Result<Strain, ApiError> {
+    let existing = store::strain::get(conn, id)?;
+    if existing.is_builtin {
+        return Err(ApiError::Conflict(
+            "bundled strain is read-only; clone it as your phenotype instead".to_owned(),
+        ));
+    }
+    Ok(existing)
 }
 
 // Extractors are taken by value because Axum requires it.

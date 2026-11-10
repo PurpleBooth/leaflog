@@ -171,6 +171,12 @@ pub struct Strain {
     pub source_url: Option<String>,
     /// Licence terms of the bundled record.
     pub source_licence: Option<String>,
+    /// Whether this record was bundled with Leaflog (seed data). Set by
+    /// the seeder only; user records and clones are always `false`, and
+    /// bundled records are read-only (spec §4.4). Absent JSON parses as
+    /// `false` (older fixtures and payloads predate the flag).
+    #[serde(default)]
+    pub is_builtin: bool,
     /// Parent strain ULID when this record is a user's phenotype clone.
     pub is_phenotype_of: Option<String>,
     /// Creation instant, RFC 3339 UTC.

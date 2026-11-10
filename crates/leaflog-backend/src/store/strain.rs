@@ -28,10 +28,10 @@ pub fn create(conn: &Connection, strain: &Strain) -> Result<(), StoreError> {
               yield_notes, terpene_notes, effect_notes,
               heat_tolerance, cold_tolerance, light_tolerance,
               user_rating, notes, evidence, source_url, source_licence,
-              is_phenotype_of, created_at, updated_at)
+              is_builtin, is_phenotype_of, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
                  ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24,
-                 ?25, ?26, ?27, ?28, ?29)",
+                 ?25, ?26, ?27, ?28, ?29, ?30)",
         params![
             strain.id,
             strain.name,
@@ -59,6 +59,7 @@ pub fn create(conn: &Connection, strain: &Strain) -> Result<(), StoreError> {
             serde_json::to_string(&strain.evidence).expect("BTreeMap serializes"),
             strain.source_url,
             strain.source_licence,
+            i64::from(strain.is_builtin),
             strain.is_phenotype_of,
             strain.created_at,
             strain.updated_at,
@@ -116,6 +117,7 @@ pub fn from_input(input: &StrainInput) -> Strain {
         evidence,
         source_url: None,
         source_licence: None,
+        is_builtin: false,
         is_phenotype_of: None,
     }
 }
@@ -340,6 +342,7 @@ fn map_row(row: &rusqlite::Row<'_>) -> Result<Strain, rusqlite::Error> {
         evidence: serde_json::from_str(&evidence_json).unwrap_or_default(),
         source_url: row.get("source_url")?,
         source_licence: row.get("source_licence")?,
+        is_builtin: row.get::<_, i64>("is_builtin")? != 0,
         is_phenotype_of: row.get("is_phenotype_of")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,

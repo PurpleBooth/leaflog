@@ -118,11 +118,16 @@ pub fn StrainsPage() -> impl IntoView {
                             let for_edit = strain.clone();
                             let for_clone = strain.clone();
                             let for_delete = strain.clone();
+                            let bundled = strain.is_builtin;
                             view! {
                                 <li class="card">
                                     <div class="card-title">
                                         <strong>{strain.name}</strong>
                                         <span class="badge">{strain.photoperiod.label()}</span>
+                                        // Bundled records are read-only at the API; the badge
+                                        // says so and edit/delete stay hidden (§4.4).
+                                        {bundled
+                                            .then(|| view! { <span class="badge">"bundled"</span> })}
                                         {strain.breeder.map(|b| view! { <span class="muted">{b}</span> })}
                                     </div>
                                     <dl class="facts">
@@ -179,9 +184,11 @@ pub fn StrainsPage() -> impl IntoView {
                         </p>
                     })}
                                     <div class="card-actions">
-                                        <button on:click=move |_| start_edit(&for_edit)>"Edit"</button>
+                                        {(!bundled)
+                                            .then(|| view! { <button on:click=move |_| start_edit(&for_edit)>"Edit"</button> })}
                                         <button on:click=move |_| clone(&for_clone)>"Clone as my phenotype"</button>
-                                        <button class="danger" on:click=move |_| remove(&for_delete)>"Delete"</button>
+                                        {(!bundled)
+                                            .then(|| view! { <button class="danger" on:click=move |_| remove(&for_delete)>"Delete"</button> })}
                                     </div>
                                 </li>
                             }

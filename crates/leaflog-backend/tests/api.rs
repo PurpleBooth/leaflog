@@ -889,3 +889,149 @@ async fn lamp_advisor_uses_the_grow_space_light() {
         "space light → 420 W class"
     );
 }
+
+#[tokio::test]
+async fn bundled_records_are_read_only_and_clone_to_user_entries() {
+    let db = Db::open_in_memory().unwrap();
+    leaflog_backend::seed::seed_strains_if_empty(&db)
+        .await
+        .unwrap();
+    leaflog_backend::seed::seed_equipment_if_empty(&db)
+        .await
+        .unwrap();
+    let base = spawn_with(db).await;
+    let client = reqwest::Client::new();
+
+    // -- Bundled equipment: edit and delete are rejected, clone works.
+    let equipment: Vec<Value> = client
+        .get(format!("{base}/api/equipment"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let bundled = equipment
+        .iter()
+        .find(|item| item["is_builtin"] == json!(true))
+        .expect("bundled equipment is seeded")
+        .clone();
+    let id = bundled["id"].as_str().unwrap().to_owned();
+
+    let response = client
+        .put(format!("{base}/api/equipment/{id}"))
+        .json(&sample_equipment("Hostile takeover"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
+    let response = client
+        .delete(format!("{base}/api/equipment/{id}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
+    let survivor: Value = client
+        .get(format!("{base}/api/equipment/{id}"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(survivor["name"], bundled["name"], "the preset is intact");
+
+    let clone: Value = client
+        .post(format!("{base}/api/equipment/{id}/clone"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        clone["name"],
+        format!("{} (copy)", bundled["name"].as_str().unwrap())
+    );
+    assert_eq!(clone["is_builtin"], json!(false), "clones are user entries");
+    assert_eq!(clone["dimmable"], bundled["dimmable"]);
+    assert_eq!(clone["category"], bundled["category"]);
+    assert_ne!(clone["id"], id.as_str());
+
+    // Cloning a user entry is the "two identical lights" flow (§4.1).
+    let user = create_equipment_at(&client, &base, "Second SE1500", Some(150.0)).await;
+    let second: Value = client
+        .post(format!("{base}/api/equipment/{user}/clone"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(second["real_watts"], 150.0);
+    assert_ne!(second["id"], user.as_str());
+
+    // -- Bundled strains: same contract.
+    let strains: Vec<Value> = client
+        .get(format!("{base}/api/strains"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let bundled_strain = strains
+        .iter()
+        .find(|strain| strain["is_builtin"] == json!(true))
+        .expect("bundled strain is seeded")
+        .clone();
+    let strain_id = bundled_strain["id"].as_str().unwrap().to_owned();
+
+    let response = client
+        .put(format!("{base}/api/strains/{strain_id}"))
+        .json(&sample_strain("Rewritten history"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
+    let response = client
+        .delete(format!("{base}/api/strains/{strain_id}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
+
+    let phenotype: Value = client
+        .post(format!("{base}/api/strains/{strain_id}/clone"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(phenotype["is_builtin"], json!(false));
+    assert_eq!(phenotype["is_phenotype_of"], strain_id.as_str());
+
+    // User strains stay fully mutable.
+    let own: Value = client
+        .post(format!("{base}/api/strains"))
+        .json(&sample_strain("My own cross"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(own["is_builtin"], json!(false));
+    let response = client
+        .put(format!(
+            "{}/api/strains/{}",
+            base,
+            own["id"].as_str().unwrap()
+        ))
+        .json(&sample_strain("My own cross v2"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+}

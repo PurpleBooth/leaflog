@@ -8,6 +8,27 @@ here. Date format: YYYY-MM-DD.
 
 ## 2026-11-10 — post-M8
 
+### D050: Bundled records are read-only; immutability is a 409
+
+Implements the read-only-preset half of D045 (spec §4.1, §4.4, §13):
+
+- `strain` gains the explicit `is_builtin` flag the data model
+  reserves for it (V7), backfilled from provenance — only the seeder
+  ever wrote `source_url`, so every row carrying one is bundled. The
+  core `Strain` field parses as `false` when absent
+  (`#[serde(default)]`) so pre-flag fixtures keep deserializing.
+- PUT and DELETE on a bundled equipment entry or strain return **409
+  Conflict** with a clone-redirecting message. 409 over 403: the
+  resource exists and the client may mutate it — just not this
+  representation of it; the fix is a new resource (the clone), which
+  is what a conflict response points at.
+- `POST /api/equipment/{id}/clone` joins the strain clone: any entry
+  (bundled or user) copies into a user entry named `X (copy)`. For
+  user entries this is also the "two identical lights are two entries"
+  flow from §4.1.
+- UI: bundled cards show the existing badge and only the clone action
+  (edit/delete hidden); user cards keep edit/delete and gain clone.
+
 ### D049: Catalogue trim to four categories, with a legacy `misc` bucket
 
 Implements D045's catalogue decision (spec §4.1): the equipment

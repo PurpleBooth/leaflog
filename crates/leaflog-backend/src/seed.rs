@@ -80,6 +80,7 @@ pub async fn seed_strains_if_empty(db: &Db) -> Result<u32, SeedError> {
             for seed in &seeds {
                 let mut strain = store::strain::from_input(&seed.input);
                 strain.evidence = seed.evidence.clone();
+                strain.is_builtin = true;
                 strain.source_url = Some(seed.source_url.clone());
                 strain.source_licence = Some(seed.source_licence.clone());
                 store::strain::create(&tx, &strain)?;
