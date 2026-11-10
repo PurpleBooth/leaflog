@@ -1,0 +1,317 @@
+/* Leaflog stylesheet — Tailwind v4 + daisyUI 5 (D064).
+ *
+ * Input for the Trunk-managed Tailwind standalone CLI (no Node; the
+ * daisyUI plugin bundles are vendored under `tailwind/`, see
+ * docs/DECISIONS.md for versions, checksums and licence). Class tokens
+ * are scanned out of the Rust sources, so utilities used in `view!`
+ * macros must appear as literals there.
+ *
+ * The two themes below carry the original calm-botanical palette:
+ * `leaflog` (light) and `leaflogdark` (dark, automatic via
+ * prefers-color-scheme). base-100 is the card surface, base-200 the
+ * page background, base-300 the hairline colour — so `card` +
+ * `bg-base-100` on a `bg-base-200` page reproduces the old depth.
+ */
+
+@import "tailwindcss";
+
+@plugin "./tailwind/daisyui.mjs" {
+  themes: leaflog --default, leaflogdark --prefersdark;
+}
+
+/* Light: paper-white surface on a soft green-tinged page. */
+@plugin "./tailwind/daisyui-theme.mjs" {
+  name: "leaflog";
+  color-scheme: light;
+  --color-base-100: #ffffff;
+  --color-base-200: #f4f7f2;
+  --color-base-300: #dbe5da;
+  --color-base-content: #1d2b1f;
+  --color-primary: #2e7d4f;
+  --color-primary-content: #ffffff;
+  --color-secondary: #4c5f4e;
+  --color-secondary-content: #ffffff;
+  --color-accent: #6fcf97;
+  --color-accent-content: #0d1c0c;
+  --color-neutral: #4c5f4e;
+  --color-neutral-content: #ffffff;
+  --color-info: #5b8def;
+  --color-info-content: #ffffff;
+  --color-success: #4caf50;
+  --color-success-content: #0b1f0d;
+  --color-warning: #ff9800;
+  --color-warning-content: #241300;
+  --color-error: #b3392f;
+  --color-error-content: #ffffff;
+  --radius-selector: 0.5rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.875rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* Dark: deep botanical greens, mint accent (the pre-daisyUI dark mode). */
+@plugin "./tailwind/daisyui-theme.mjs" {
+  name: "leaflogdark";
+  prefersdark: true;
+  color-scheme: dark;
+  --color-base-100: #182a17;
+  --color-base-200: #10200f;
+  --color-base-300: #2c422a;
+  --color-base-content: #e7f0e4;
+  --color-primary: #6fcf97;
+  --color-primary-content: #0d1c0c;
+  --color-secondary: #a9bda6;
+  --color-secondary-content: #14261a;
+  --color-accent: #2e7d4f;
+  --color-accent-content: #ffffff;
+  --color-neutral: #a9bda6;
+  --color-neutral-content: #14261a;
+  --color-info: #7ca9f7;
+  --color-info-content: #0b1626;
+  --color-success: #66bb6a;
+  --color-success-content: #0b1f0d;
+  --color-warning: #ffb74d;
+  --color-warning-content: #241300;
+  --color-error: #ef5350;
+  --color-error-content: #1f0b0a;
+  --radius-selector: 0.5rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.875rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+@source "./index.html";
+@source "./src/**/*.rs";
+@source not "./tailwind";
+
+/* ── App layer ────────────────────────────────────────────────────
+ * Element-level defaults daisyUI leaves to us, plus the chart
+ * geometry (Gantt, feed bars) that stays hand-rolled by design:
+ * positions are computed in Rust and set as inline styles.
+ */
+
+body {
+  background: var(--color-base-200);
+  color: var(--color-base-content);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.55;
+  min-height: 100vh;
+}
+
+/* Tailwind preflight flattens headings and paragraphs; daisyUI only
+ * styles its own component classes, so document-level rhythm lives
+ * here (the sizes the hand-rolled sheet effectively had). */
+h1 {
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+h4 {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+p {
+  margin-block: 0.5rem;
+}
+
+a {
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+a:hover {
+  filter: brightness(1.1);
+}
+
+a:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Top-nav active marker: leptos_router's <A> flags the current page
+ * with aria-current, so style that instead of daisyUI's menu-active. */
+.mainnav a[aria-current="page"] {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+
+code {
+  background: var(--color-base-200);
+  border: 1px solid var(--color-base-300);
+  border-radius: 6px;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.95em;
+}
+
+pre {
+  background: var(--color-base-200);
+  border: 1px solid var(--color-base-300);
+  border-radius: var(--radius-box);
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  margin: 0;
+}
+
+/* Definition-list fact grids on cards. */
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: 0.5rem 1rem;
+  margin: 0.75rem 0;
+}
+
+.facts div {
+  min-width: 0;
+}
+
+.facts dt {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--color-base-content) 65%, transparent);
+}
+
+.facts dd {
+  margin: 0;
+}
+
+/* Gantt forecast (M5): geometry is inline-styled from Rust; --color
+ * comes per phase from `phase_color`. */
+.gantt {
+  margin: 0.5rem 0 1rem;
+}
+
+.gantt-chart {
+  position: relative;
+  border: 1px solid var(--color-base-300);
+  border-radius: var(--radius-box);
+  padding: 0.5rem 0.5rem 0.5rem 7rem;
+  background: var(--color-base-100);
+}
+
+.gantt-rows {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.gantt-row {
+  display: grid;
+  grid-template-columns: 6rem 1fr;
+  gap: 0.5rem;
+  align-items: center;
+  min-height: 1.6rem;
+}
+
+.gantt-phase-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--color-base-content) 65%, transparent);
+  text-align: right;
+}
+
+.gantt-track {
+  position: relative;
+  height: 1.4rem;
+}
+
+.gantt-range {
+  position: absolute;
+  top: 0.15rem;
+  bottom: 0.15rem;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color, #90a4ae) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color, #90a4ae) 35%, transparent);
+}
+
+.gantt-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 0.4rem;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color, #90a4ae) 55%, transparent);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-base-content);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.gantt-today {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 7rem;
+  width: 2px;
+  cursor: help;
+}
+
+.gantt-today-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  background: #e53935;
+}
+
+.gantt-today-label {
+  position: absolute;
+  top: -0.2rem;
+  left: 4px;
+  font-size: 0.65rem;
+  color: #e53935;
+  font-weight: 700;
+}
+
+/* Feed-fit bar chart (M6): heights are inline-styled from Rust. */
+.feed-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 8rem;
+  border: 1px solid var(--color-base-300);
+  border-radius: var(--radius-box);
+  padding: 0.3rem;
+  background: var(--color-base-100);
+  overflow-x: auto;
+}
+
+.feed-bar-container {
+  flex: 1 0 4px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 100%;
+  min-width: 4px;
+}
+
+.feed-bar {
+  border-radius: 2px;
+  min-height: 1px;
+}

@@ -99,14 +99,14 @@ pub fn HistoryPage() -> impl IntoView {
     };
 
     view! {
-        <section class="page">
-            <div class="page-head">
+        <section class="pb-12">
+            <div class="flex flex-wrap items-center justify-between gap-4">
                 <h2>"History"</h2>
             </div>
             <ErrorIf error />
 
             <h3>"Predicted vs actual"</h3>
-            <ul class="cards">
+            <ul class="grid gap-4 lg:grid-cols-2">
                 {move || {
                     report
                         .get()
@@ -115,15 +115,15 @@ pub fn HistoryPage() -> impl IntoView {
                         .map(|row| {
                             let grow_id = row.grow_id.clone();
                             view! {
-                                <li class="card">
-                                    <div class="card-title">
+                                <li class="card bg-base-100 shadow-sm px-5 py-4">
+                                    <div class="flex flex-wrap items-baseline gap-2">
                                         <strong>
                                             <A href=route_href(&format!("/grows/{}", row.grow_id))>
                                                 {row.name.clone()}
                                             </A>
                                         </strong>
                                         {row.strain.clone().map(|strain| {
-                                            view! { <span class="badge">{strain}</span> }
+                                            view! { <span class="badge badge-ghost">{strain}</span> }
                                         })}
                                     </div>
                                     <dl class="facts">
@@ -155,8 +155,8 @@ pub fn HistoryPage() -> impl IntoView {
                                             })
                                             .collect::<Vec<_>>()}
                                     </dl>
-                                    <div class="card-actions">
-                                        <button on:click=move |_| next_run(&grow_id)>
+                                    <div class="flex flex-wrap gap-2 mt-3">
+                                        <button class="btn btn-sm" on:click=move |_| next_run(&grow_id)>
                                             "Start next run"
                                         </button>
                                     </div>
@@ -167,7 +167,7 @@ pub fn HistoryPage() -> impl IntoView {
                 }}
             </ul>
             <Show when=move || report.get().accuracy.is_empty()>
-                <p class="empty">"No grows yet — history builds itself as grows finish."</p>
+                <p class="py-6 text-center text-base-content/60">"No grows yet — history builds itself as grows finish."</p>
             </Show>
 
             <Aggregate title="Yield by strain" rows=Signal::derive(move || report.get().yield_by_strain) />
@@ -186,9 +186,9 @@ fn Aggregate(title: &'static str, rows: Signal<Vec<YieldAggregate>>) -> impl Int
         <h3>{title}</h3>
         <Show
             when=move || !rows.get().is_empty()
-            fallback=move || view! { <p class="empty">"Nothing weighed yet."</p> }
+            fallback=move || view! { <p class="py-6 text-center text-base-content/60">"Nothing weighed yet."</p> }
         >
-            <table>
+            <table class="table table-sm">
                 <thead>
                     <tr><th>" "</th><th>"Wet g"</th><th>"Dry g"</th><th>"Trimmed g"</th><th>"Grows"</th></tr>
                 </thead>
@@ -245,7 +245,7 @@ pub fn PlantViewPage() -> impl IntoView {
     });
 
     view! {
-        <section class="page">
+        <section class="pb-12">
             <ErrorIf error />
             {move || {
                 view.get().map(|data| {
@@ -254,8 +254,8 @@ pub fn PlantViewPage() -> impl IntoView {
                     let has_actions = !actions.is_empty();
                     let photos = data.photos.len();
                     view! {
-                        <div class="card">
-                            <div class="card-title">
+                        <div class="card bg-base-100 shadow-sm px-5 py-4 my-4">
+                            <div class="flex flex-wrap items-baseline gap-2">
                                 <strong>{data.plant.name.clone()}</strong>
                                 <A href=route_href(&format!("/grows/{grow_id}"))>"back to the grow"</A>
                             </div>
@@ -273,9 +273,9 @@ pub fn PlantViewPage() -> impl IntoView {
                             <h3>"Log"</h3>
                             <Show
                                 when=move || has_actions
-                                fallback=move || view! { <p class="empty">"No entries name this plant."</p> }
+                                fallback=move || view! { <p class="py-6 text-center text-base-content/60">"No entries name this plant."</p> }
                             >
-                                <ul>
+                                <ul class="list-disc pl-5">
                                     {actions
                                         .iter()
                                         .map(|entry| {
@@ -293,7 +293,7 @@ pub fn PlantViewPage() -> impl IntoView {
                                 </ul>
                             </Show>
                             <h3>"Photos"</h3>
-                            <p class="empty">{format!("{photos} photo(s) linked")}</p>
+                            <p class="py-6 text-center text-base-content/60">{format!("{photos} photo(s) linked")}</p>
                         </div>
                     }
                 })

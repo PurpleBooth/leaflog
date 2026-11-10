@@ -121,12 +121,12 @@ pub fn FeedPanel(grow_id: String) -> impl IntoView {
     };
 
     view! {
-        <div class="feed-panel">
+        <div class="my-4">
             <ErrorIf error />
-            <div class="feed-toolbar">
-                <label class="field">
-                    <span>"Feed template"</span>
-                    <select
+            <div class="flex flex-wrap gap-3 items-end mb-3">
+                <label class="fieldset">
+                    <span class="fieldset-label">"Feed template"</span>
+                    <select class="select"
                         prop:value=move || selected.get()
                         on:change=move |ev| selected.set(event_target_value(&ev))
                     >
@@ -146,13 +146,13 @@ pub fn FeedPanel(grow_id: String) -> impl IntoView {
                         }}
                     </select>
                 </label>
-                <button class="primary" on:click=do_fit>"Fit to timeline"</button>
+                <button class="btn btn-primary btn-sm" on:click=do_fit>"Fit to timeline"</button>
             </div>
 
             {move || {
                 let Some(result) = fit.get() else {
                     return view! {
-                        <p class="muted">"Pick a template and fit it to see the feeding schedule."</p>
+                        <p class="text-base-content/70">"Pick a template and fit it to see the feeding schedule."</p>
                     }.into_any();
                 };
                 let max_ec = result
@@ -165,19 +165,19 @@ pub fn FeedPanel(grow_id: String) -> impl IntoView {
                     .max(1);
                 let total_days = result.after.days.len().max(1);
                 view! {
-                    <div class="feed-diff">
+                    <div class="grid gap-4 lg:grid-cols-[minmax(10rem,1fr)_minmax(0,3fr)]">
                         {result.before.first().map(|_| {
                             view! {
                                 <div class="feed-before">
                                     <h4>"Template (before)"</h4>
-                                    <ul class="feed-list">
+                                    <ul class="list-none m-0 p-0 grid gap-1">
                                         {result
                                             .before
                                             .iter()
                                             .map(|row| {
                                                 view! {
-                                                    <li>
-                                                        <span class="muted">{row.phase.replace('_', " ")}</span>
+                                                    <li class="flex justify-between gap-2 text-sm">
+                                                        <span class="text-base-content/70">{row.phase.replace('_', " ")}</span>
                                                         <span>{format!("{} µS/cm", row.ec_target_us)}</span>
                                                     </li>
                                                 }
@@ -213,7 +213,7 @@ pub fn FeedPanel(grow_id: String) -> impl IntoView {
                                     })
                                     .collect::<Vec<_>>()}
                             </div>
-                            <p class="muted small">
+                            <p class="text-base-content/70 text-sm">
                                 {format!(
                                     "{} days (template: {})",
                                     total_days,

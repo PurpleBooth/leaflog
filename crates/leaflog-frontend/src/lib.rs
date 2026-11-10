@@ -103,11 +103,13 @@ pub(crate) fn non_empty(value: String) -> Option<String> {
 pub fn App() -> impl IntoView {
     view! {
         <Router base=ingress_base()>
-            <div class="shell">
-                <header class="topbar">
-                    <span class="brand" aria-hidden="true">"🌿"</span>
-                    <h1>"Leaflog"</h1>
-                    <nav class="mainnav" aria-label="Main">
+            <div class="mx-auto max-w-6xl px-5">
+                <header class="navbar min-h-0 w-full flex-wrap gap-x-3 px-1 py-3">
+                    <span class="text-2xl" aria-hidden="true">"🌿"</span>
+                    <h1 class="m-0 text-xl font-semibold tracking-wide">"Leaflog"</h1>
+                    <nav class="mainnav ml-auto flex flex-wrap items-center gap-4 text-sm"
+                        aria-label="Main"
+                    >
                         <A href=route_href("/") exact=true>"Home"</A>
                         <A href=route_href("/equipment")>"Equipment"</A>
                         <A href=route_href("/strains")>"Strains"</A>
@@ -155,21 +157,21 @@ fn Home() -> impl IntoView {
         });
     });
     view! {
-        <section class="page">
+        <section class="pb-12">
             <OnboardingWizard />
-            <div class="card">
+            <div class="card bg-base-100 shadow-sm px-5 py-4 my-4">
                 <h2>"Grow diary, at home in Home Assistant"</h2>
                 <p>
                     "Track your grows: log actions and photos with sensor data, follow a
                      feeding schedule fitted to your plants, and keep every degree,
                      pH point and watt in one private place."
                 </p>
-                <p class="muted small">
+                <p class="text-base-content/70 text-sm">
                     "Milestone M2: the foundation — equipment inventory and the strain
                      database (bundled records carry sources and evidence tags). More
                      arrives with each milestone."
                 </p>
-                <ul class="links">
+                <ul class="list-disc pl-5">
                     <li><A href=route_href("/equipment")>"Equipment inventory"</A></li>
                     <li><A href=route_href("/strains")>"Strain database"</A></li>
                 </ul>
@@ -185,7 +187,7 @@ fn Home() -> impl IntoView {
 #[component]
 fn Spike() -> impl IntoView {
     view! {
-        <section class="card">
+        <section class="card bg-base-100 shadow-sm px-5 py-4 my-4">
             <h2>"Ingress spike"</h2>
             <p>"This deep link was served by the SPA under runtime base:"</p>
             <p><code>{ingress_base()}</code></p>

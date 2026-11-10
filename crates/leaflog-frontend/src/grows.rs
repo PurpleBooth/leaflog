@@ -70,10 +70,10 @@ pub fn GrowsPage() -> impl IntoView {
     };
 
     view! {
-        <section class="page">
-            <div class="page-head">
+        <section class="pb-12">
+            <div class="flex flex-wrap items-center justify-between gap-4">
                 <h2>"Grows"</h2>
-                <button class="primary" on:click=move |_| {
+                <button class="btn btn-primary btn-sm" on:click=move |_| {
                     draft.set(empty_grow());
                     form_open.set(true);
                 }>"Start a grow"</button>
@@ -82,19 +82,19 @@ pub fn GrowsPage() -> impl IntoView {
             <ErrorIf error />
 
             <Show when=move || form_open.get()>
-                <form class="card form" on:submit=save>
+                <form class="card bg-base-100 shadow-sm px-5 py-4 my-4" on:submit=save>
                     <h3>"New grow"</h3>
-                    <div class="grid">
-                        <label class="field">
-                            <span>"Name *"</span>
-                            <input type="text" required placeholder="Closet run"
+                    <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
+                        <label class="fieldset">
+                            <span class="fieldset-label">"Name *"</span>
+                            <input class="input" type="text" required placeholder="Closet run"
                                 prop:value=move || draft.get().name
                                 on:input=move |ev| draft.update(|d| d.name = event_target_value(&ev))
                             />
                         </label>
-                        <label class="field">
-                            <span>"Strain"</span>
-                            <select
+                        <label class="fieldset">
+                            <span class="fieldset-label">"Strain"</span>
+                            <select class="select"
                                 prop:value=move || draft.get().strain_id.unwrap_or_default()
                                 on:change=move |ev| {
                                     let value = event_target_value(&ev);
@@ -119,9 +119,9 @@ pub fn GrowsPage() -> impl IntoView {
                                 }}
                             </select>
                         </label>
-                        <label class="field">
-                            <span>"Space"</span>
-                            <select
+                        <label class="fieldset">
+                            <span class="fieldset-label">"Space"</span>
+                            <select class="select"
                                 prop:value=move || draft.get().grow_space_id.unwrap_or_default()
                                 on:change=move |ev| {
                                     let value = event_target_value(&ev);
@@ -146,9 +146,9 @@ pub fn GrowsPage() -> impl IntoView {
                                 }}
                             </select>
                         </label>
-                        <label class="field">
-                            <span>"Substrate *"</span>
-                            <select
+                        <label class="fieldset">
+                            <span class="fieldset-label">"Substrate *"</span>
+                            <select class="select"
                                 prop:value=move || draft.get().substrate
                                 on:change=move |ev| draft.update(|d| d.substrate = event_target_value(&ev))
                             >
@@ -158,22 +158,22 @@ pub fn GrowsPage() -> impl IntoView {
                                     .collect::<Vec<_>>()}
                             </select>
                         </label>
-                        <label class="field">
-                            <span>"Started (seed/clone) *"</span>
-                            <input type="date" required
+                        <label class="fieldset">
+                            <span class="fieldset-label">"Started (seed/clone) *"</span>
+                            <input class="input" type="date" required
                                 prop:value=move || draft.get().started_on
                                 on:input=move |ev| draft.update(|d| d.started_on = event_target_value(&ev))
                             />
                         </label>
                     </div>
-                    <div class="form-actions">
-                        <button class="primary" type="submit">"Save"</button>
-                        <button type="button" on:click=move |_| form_open.set(false)>"Cancel"</button>
+                    <div class="flex flex-wrap gap-2 mt-4">
+                        <button class="btn btn-primary btn-sm" type="submit">"Save"</button>
+                        <button class="btn btn-sm" type="button" on:click=move |_| form_open.set(false)>"Cancel"</button>
                     </div>
                 </form>
             </Show>
 
-            <ul class="cards">
+            <ul class="grid gap-4 lg:grid-cols-2">
                 {move || {
                     let space_of = |id: &Option<String>| {
                         id.as_ref().and_then(|space_id| {
@@ -189,20 +189,20 @@ pub fn GrowsPage() -> impl IntoView {
                         .map(|grow| {
                             let space = space_of(&grow.grow_space_id);
                             view! {
-                                <li class="card">
-                                    <div class="card-title">
+                                <li class="card bg-base-100 shadow-sm px-5 py-4">
+                                    <div class="flex flex-wrap items-baseline gap-2">
                                         <A href=route_href(&format!("/grows/{}", grow.id))>
                                             <strong>{grow.name.clone()}</strong>
                                         </A>
-                                        <span class="badge">{grow.status.label()}</span>
-                                        <span class="muted">{grow.substrate.clone()}</span>
+                                        <span class="badge badge-ghost">{grow.status.label()}</span>
+                                        <span class="text-base-content/70">{grow.substrate.clone()}</span>
                                         {space.map(|detail| view! {
-                                            <span class="badge">
+                                            <span class="badge badge-ghost">
                                                 {detail.space.name}
                                             </span>
                                         })}
                                     </div>
-                                    <p class="muted small">"Started "{grow.started_on}</p>
+                                    <p class="text-base-content/70 text-sm">"Started "{grow.started_on}</p>
                                 </li>
                             }
                         })
@@ -210,7 +210,7 @@ pub fn GrowsPage() -> impl IntoView {
                 }}
             </ul>
             <Show when=move || grows.get().is_empty() && error.get().is_none()>
-                <p class="empty">"No grows yet — start your first one."</p>
+                <p class="py-6 text-center text-base-content/60">"No grows yet — start your first one."</p>
             </Show>
             <p><A href=route_href("/")>"Back to home"</A></p>
         </section>
@@ -333,7 +333,7 @@ pub fn GrowDetail() -> impl IntoView {
     };
 
     view! {
-        <section class="page">
+        <section class="pb-12">
             {move || {
                 grow.get().map_or_else(
                     || ().into_any(),
@@ -341,9 +341,9 @@ pub fn GrowDetail() -> impl IntoView {
                         let space_id = grow.grow_space_id.clone();
                         view! {
                             <div>
-                                <div class="page-head">
+                                <div class="flex flex-wrap items-center justify-between gap-4">
                                     <h2>{grow.name.clone()}</h2>
-                                    <span class="badge">{grow.substrate.clone()}</span>
+                                    <span class="badge badge-ghost">{grow.substrate.clone()}</span>
                                     {move || {
                                         space_id.as_ref().and_then(|id| {
                                             spaces
@@ -355,14 +355,14 @@ pub fn GrowDetail() -> impl IntoView {
                                             <A href=route_href(
                                                 &format!("/spaces/{}", detail.space.id),
                                             )>
-                                                <span class="badge">
+                                                <span class="badge badge-ghost">
                                                     {detail.space.name.clone()}
                                                 </span>
                                             </A>
                                         })
                                     }}
                                 </div>
-                                <p class="muted">"Started "{grow.started_on}</p>
+                                <p class="text-base-content/70">"Started "{grow.started_on}</p>
                             </div>
                         }
                         .into_any()
@@ -381,14 +381,18 @@ pub fn GrowDetail() -> impl IntoView {
             <FeedPanel grow_id=grow_id() />
 
             <h3>"Quick add"</h3>
-            <nav class="chips" aria-label="Quick add action">
+            <nav class="flex flex-wrap gap-2 my-2" aria-label="Quick add action">
                 {ActionType::all()
                     .into_iter()
                     .map(|kind| {
                         let current = chip;
                         view! {
                             <button
-                                class:chip-active=move || current.get() == Some(kind)
+                                class=move || if current.get() == Some(kind) {
+                                    "btn btn-sm rounded-full btn-primary"
+                                } else {
+                                    "btn btn-sm rounded-full"
+                                }
                                 on:click=move |_| {
                                     let selected = current.get() == Some(kind);
                                     current.set((!selected).then_some(kind));
@@ -403,31 +407,31 @@ pub fn GrowDetail() -> impl IntoView {
             </nav>
 
             <Show when=move || chip.get().is_some()>
-                <form class="card form" on:submit=save_action>
+                <form class="card bg-base-100 shadow-sm px-5 py-4 my-4" on:submit=save_action>
                     <ActionForm draft kind=chip />
-                    <div class="form-actions">
-                        <button class="primary" type="submit">"Log it"</button>
-                        <button type="button" on:click=move |_| chip.set(None)>"Cancel"</button>
+                    <div class="flex flex-wrap gap-2 mt-4">
+                        <button class="btn btn-primary btn-sm" type="submit">"Log it"</button>
+                        <button class="btn btn-sm" type="button" on:click=move |_| chip.set(None)>"Cancel"</button>
                     </div>
                 </form>
             </Show>
 
-            <div class="split">
+            <div class="grid gap-6 items-start lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
                 <div>
                     <h3>"Timeline"</h3>
-                    <ul class="timeline">
+                    <ul class="list-none m-0 p-0 grid gap-2">
                         {move || {
                             actions
                                 .get()
                                 .into_iter()
                                 .map(|entry| {
                                     view! {
-                                        <li class="card">
-                                            <div class="card-title">
+                                        <li class="card bg-base-100 shadow-sm px-5 py-4">
+                                            <div class="flex flex-wrap items-baseline gap-2">
                                                 <strong>{entry.action_type.display()}</strong>
-                                                <span class="badge">{"day "}{entry.grow_day}</span>
+                                                <span class="badge badge-ghost">{"day "}{entry.grow_day}</span>
                                                 {entry.phase.map(|phase| view! {
-                                                    <span class="badge">{phase.label()}</span>
+                                                    <span class="badge badge-ghost">{phase.label()}</span>
                                                 })}
                                             </div>
                                             <dl class="facts">
@@ -451,22 +455,22 @@ pub fn GrowDetail() -> impl IntoView {
                         })}
                                             </dl>
                                             {entry.notes.clone().map(|notes| view! {
-                                                <p class="notes">{notes}</p>
+                                                <p class="mt-2 text-base-content/70">{notes}</p>
                                             })}
                                             {(!entry.appearance_tags.is_empty()).then(|| {
                                                 view! {
-                                                    <p class="tags">
+                                                    <p class="flex flex-wrap gap-1.5 mt-2">
                                                         {entry
                                                             .appearance_tags
                                                             .iter()
                                                             .map(|tag| {
-                                                                view! { <span class="tag">{tag.clone()}</span> }
+                                                                view! { <span class="badge badge-sm badge-ghost">{tag.clone()}</span> }
                                                             })
                                                             .collect::<Vec<_>>()}
                                                     </p>
                                                 }
                                             })}
-                                            <p class="muted small">{entry.occurred_at.clone()}</p>
+                                            <p class="text-base-content/70 text-sm">{entry.occurred_at.clone()}</p>
                                         </li>
                                     }
                                 })
@@ -474,21 +478,21 @@ pub fn GrowDetail() -> impl IntoView {
                         }}
                     </ul>
                     <Show when=move || actions.get().is_empty()>
-                        <p class="empty">"Nothing logged yet."</p>
+                        <p class="py-6 text-center text-base-content/60">"Nothing logged yet."</p>
                     </Show>
                 </div>
 
                 <div>
                     <LivePanel grow_id=grow_id() />
                     <h3>"Plants"</h3>
-                    <ul class="cards">
+                    <ul class="grid gap-4 lg:grid-cols-2">
                         {move || {
                             plants
                                 .get()
                                 .into_iter()
                                 .map(|plant| {
                                     view! {
-                                        <li class="card slim">
+                                        <li class="card bg-base-100 shadow-sm px-4 py-3 my-3">
                                             <A href=route_href(&format!("/plants/{}", plant.id))>
                                                 {plant.name.clone()}
                                             </A>
@@ -498,17 +502,17 @@ pub fn GrowDetail() -> impl IntoView {
                                 .collect::<Vec<_>>()
                         }}
                     </ul>
-                    <button on:click=add_plant>"Add plant"</button>
+                    <button class="btn btn-sm" on:click=add_plant>"Add plant"</button>
 
                     <h3>"Photos"</h3>
-                    <label class="field">
-                        <span>"Upload photos (JPEG/PNG/WebP; EXIF/GPS stripped on store)"</span>
-                        <input type="file" accept="image/jpeg,image/png,image/webp" multiple
+                    <label class="fieldset">
+                        <span class="fieldset-label">"Upload photos (JPEG/PNG/WebP; EXIF/GPS stripped on store)"</span>
+                        <input type="file" class="file-input file-input-sm" accept="image/jpeg,image/png,image/webp" multiple
                             on:change=upload
                         />
                     </label>
-                    {move || upload_note.get().map(|note| view! { <p class="muted small">{note}</p> })}
-                    <div class="gallery">
+                    {move || upload_note.get().map(|note| view! { <p class="text-base-content/70 text-sm">{note}</p> })}
+                    <div class="grid gap-2 mt-3 grid-cols-[repeat(auto-fill,minmax(7rem,1fr))]">
                         {move || {
                             photos
                                 .get()
@@ -517,9 +521,12 @@ pub fn GrowDetail() -> impl IntoView {
                                     let url = format!("api/photos/{}/thumbnail", photo.id);
                                     let full = format!("api/photos/{}/original", photo.id);
                                     view! {
-                                        <a href=full target="_blank" rel="noreferrer">
-                                            <img src=url alt=format!("day {}", photo.grow_day) />
-                                            <span class="muted small">{"day "}{photo.grow_day}</span>
+                                        <a href=full target="_blank" rel="noreferrer"
+                                            class="grid gap-1 text-center no-underline"
+                                        >
+                                            <img class="w-full h-auto rounded-lg border border-base-300"
+                                                src=url alt=format!("day {}", photo.grow_day) />
+                                            <span class="text-base-content/70 text-sm">{"day "}{photo.grow_day}</span>
                                         </a>
                                     }
                                 })
@@ -540,10 +547,10 @@ pub fn GrowDetail() -> impl IntoView {
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
 fn ActionForm(draft: RwSignal<ActionInput>, kind: RwSignal<Option<ActionType>>) -> impl IntoView {
     view! {
-        <div class="grid">
-            <label class="field">
-                <span>"When (UTC) *"</span>
-                <input type="datetime-local" required
+        <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
+            <label class="fieldset">
+                <span class="fieldset-label">"When (UTC) *"</span>
+                <input class="input" type="datetime-local" required
                     prop:value=move || draft.get().occurred_at
                     on:input=move |ev| draft.update(|d| d.occurred_at = event_target_value(&ev))
                 />
@@ -583,22 +590,22 @@ fn ActionForm(draft: RwSignal<ActionInput>, kind: RwSignal<Option<ActionType>>) 
                 })
             }}
 
-            <label class="field wide">
-                <span>"Notes"</span>
-                <textarea rows="2"
+            <label class="fieldset col-span-full">
+                <span class="fieldset-label">"Notes"</span>
+                <textarea class="textarea" rows="2"
                     prop:value=move || draft.get().notes.unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.notes = non_empty(event_target_value(&ev)))
                 />
             </label>
         </div>
-        <fieldset class="tags">
-            <legend class="muted small">"Appearance"</legend>
+        <fieldset class="fieldset mt-3">
+            <legend class="fieldset-legend">"Appearance"</legend>
             {leaflog_core::actions::APPEARANCE_TAGS
                 .iter()
                 .map(|tag| {
                     view! {
-                        <label class="field checkbox">
-                            <input type="checkbox"
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" class="checkbox checkbox-sm"
                                 on:change=move |ev| {
                                     let tag = (*tag).to_owned();
                                     let checked = event_target_checked(&ev);
@@ -610,7 +617,7 @@ fn ActionForm(draft: RwSignal<ActionInput>, kind: RwSignal<Option<ActionType>>) 
                                     });
                                 }
                             />
-                            <span class="small">{*tag}</span>
+                            <span class="text-sm">{*tag}</span>
                         </label>
                     }
                 })
@@ -637,9 +644,9 @@ fn num_field(
     write: impl Fn(&mut ActionInput, Option<f64>) + Clone + Send + 'static,
 ) -> impl IntoView {
     view! {
-        <label class="field">
-            <span>{label}</span>
-            <input type="number" step=step
+        <label class="fieldset">
+            <span class="fieldset-label">{label}</span>
+            <input class="input" type="number" step=step
                 prop:value=move || {
                     read(&draft.get()).map(|value| value.to_string()).unwrap_or_default()
                 }

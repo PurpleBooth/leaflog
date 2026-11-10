@@ -10,8 +10,31 @@ static_dir := frontend_dir / "dist"
 # `just migrate status`, `just migrate apply`, dev-only `just migrate redo`.
 mod migrate
 
+# Fetch the daisyUI plugin bundles for the Tailwind standalone CLI
+# (build-time only, never in the image; no Node anywhere). Not
+# vendored (working agreement): pinned release + sha256 gate, same
+# pattern as Trunk's own tool downloads. Output dir is gitignored.
+daisyui_version := "5.7.50"
+daisyui_dir := frontend_dir / "tailwind"
+daisyui_sha_daisyui := "d69de07c7463bb1f41548e2688f88ee105cdadf9779fce5b3c47b3bfaa6be472"
+daisyui_sha_theme := "e48a35d8326d650181ca600560e8520cf6b44cf9242bbd9d45825607e641f251"
+
+# Download and verify the daisyUI bundles into tailwind/ (idempotent).
+tailwind-daisyui:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p {{daisyui_dir}}
+    base="https://github.com/saadeghi/daisyui/releases/download/v{{daisyui_version}}"
+    curl -sL -o "{{daisyui_dir}}/.daisyui.mjs.tmp" "$base/daisyui.mjs"
+    curl -sL -o "{{daisyui_dir}}/.daisyui-theme.mjs.tmp" "$base/daisyui-theme.mjs"
+    echo "{{daisyui_sha_daisyui}}  {{daisyui_dir}}/.daisyui.mjs.tmp" | sha256sum -c - >/dev/null
+    echo "{{daisyui_sha_theme}}  {{daisyui_dir}}/.daisyui-theme.mjs.tmp" | sha256sum -c - >/dev/null
+    mv "{{daisyui_dir}}/.daisyui.mjs.tmp" "{{daisyui_dir}}/daisyui.mjs"
+    mv "{{daisyui_dir}}/.daisyui-theme.mjs.tmp" "{{daisyui_dir}}/daisyui-theme.mjs"
+    echo "daisyUI v{{daisyui_version}} bundles ready (sha256 verified)"
+
 # Run backend + mock Home Assistant + frontend with simulated ingress.
-dev:
+dev: tailwind-daisyui
     #!/usr/bin/env bash
     set -euo pipefail
     prefix="/api/hassio_ingress/dev-${RANDOM}${RANDOM}"
@@ -121,7 +144,7 @@ test:
     cargo test --workspace
 
 # Build the frontend bundle (relative public URL, never a baked base).
-build-frontend:
+build-frontend: tailwind-daisyui
     cd {{frontend_dir}} && trunk build --release
 
 # Build the HA app image locally with Podman (amd64 by default).

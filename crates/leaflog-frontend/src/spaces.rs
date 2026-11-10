@@ -63,10 +63,10 @@ pub fn SpacesPage() -> impl IntoView {
     };
 
     view! {
-        <section class="page">
-            <div class="page-head">
+        <section class="pb-12">
+            <div class="flex flex-wrap items-center justify-between gap-4">
                 <h2>"Grow spaces"</h2>
-                <button class="primary" on:click=move |_| {
+                <button class="btn btn-primary btn-sm" on:click=move |_| {
                     draft.set(empty_space());
                     form_open.set(true);
                 }>"New space"</button>
@@ -75,17 +75,17 @@ pub fn SpacesPage() -> impl IntoView {
             <ErrorIf error />
 
             <Show when=move || form_open.get()>
-                <form class="card form" on:submit=save>
+                <form class="card bg-base-100 shadow-sm px-5 py-4 my-4" on:submit=save>
                     <h3>"New space"</h3>
                     <SpaceForm draft />
-                    <div class="form-actions">
-                        <button class="primary" type="submit">"Save"</button>
-                        <button type="button" on:click=move |_| form_open.set(false)>"Cancel"</button>
+                    <div class="flex flex-wrap gap-2 mt-4">
+                        <button class="btn btn-primary btn-sm" type="submit">"Save"</button>
+                        <button class="btn btn-sm" type="button" on:click=move |_| form_open.set(false)>"Cancel"</button>
                     </div>
                 </form>
             </Show>
 
-            <ul class="cards">
+            <ul class="grid gap-4 lg:grid-cols-2">
                 {move || {
                     spaces
                         .get()
@@ -99,14 +99,14 @@ pub fn SpacesPage() -> impl IntoView {
                             let gear = detail.equipment.len();
                             let grow_count = detail.grows.len();
                             view! {
-                                <li class="card">
-                                    <div class="card-title">
+                                <li class="card bg-base-100 shadow-sm px-5 py-4">
+                                    <div class="flex flex-wrap items-baseline gap-2">
                                         <A href=href>
                                             <strong>{name}</strong>
                                         </A>
                                     </div>
                                     {dims
-                                        .map(|dims| view! { <p class="muted small">{dims}</p> })}
+                                        .map(|dims| view! { <p class="text-base-content/70 text-sm">{dims}</p> })}
                                     <dl class="facts">
                                         <div><dt>"Gear"</dt><dd>{gear}</dd></div>
                                         <div><dt>"Grows"</dt><dd>{grow_count}</dd></div>
@@ -119,7 +119,7 @@ pub fn SpacesPage() -> impl IntoView {
             </ul>
 
             <Show when=move || spaces.get().is_empty() && error.get().is_none()>
-                <p class="empty">"No spaces yet — set up your tent or room, then fill it with gear."</p>
+                <p class="py-6 text-center text-base-content/60">"No spaces yet — set up your tent or room, then fill it with gear."</p>
             </Show>
             <p><A href=route_href("/")>"Back to home"</A></p>
         </section>
@@ -217,7 +217,7 @@ pub fn SpaceDetail() -> impl IntoView {
     };
 
     view! {
-        <section class="page">
+        <section class="pb-12">
             {move || {
                 detail.get().map(|detail| {
                     // Destructure into owned parts: view children are
@@ -234,45 +234,45 @@ pub fn SpaceDetail() -> impl IntoView {
                         .collect();
                     view! {
                         <div>
-                            <div class="page-head">
+                            <div class="flex flex-wrap items-center justify-between gap-4">
                                 <h2>{space.name.clone()}</h2>
                                 {dims_label(&space)
-                                    .map(|dims| view! { <span class="badge">{dims}</span> })}
+                                    .map(|dims| view! { <span class="badge badge-ghost">{dims}</span> })}
                             </div>
 
                             <Show when=move || form_open.get()>
-                                <form class="card form" on:submit=save>
+                                <form class="card bg-base-100 shadow-sm px-5 py-4 my-4" on:submit=save>
                                     <h3>"Edit space"</h3>
                                     <SpaceForm draft />
-                                    <div class="form-actions">
-                                        <button class="primary" type="submit">"Save"</button>
-                                        <button type="button" on:click=move |_| form_open.set(false)>"Cancel"</button>
+                                    <div class="flex flex-wrap gap-2 mt-4">
+                                        <button class="btn btn-primary btn-sm" type="submit">"Save"</button>
+                                        <button class="btn btn-sm" type="button" on:click=move |_| form_open.set(false)>"Cancel"</button>
                                     </div>
                                 </form>
                             </Show>
 
-                            <div class="split">
+                            <div class="grid gap-6 items-start lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
                                 <div>
                                     <h3>"Equipment"</h3>
-                                    <ul class="cards">
+                                    <ul class="grid gap-4 lg:grid-cols-2">
                                         {equipment
                                             .into_iter()
                                             .map(|item| {
                                                 let for_remove = item.id.clone();
                                                 view! {
-                                                    <li class="card">
-                                                        <div class="card-title">
+                                                    <li class="card bg-base-100 shadow-sm px-5 py-4">
+                                                        <div class="flex flex-wrap items-baseline gap-2">
                                                             <strong>{item.name.clone()}</strong>
-                                                            <span class="badge">{item.category.display()}</span>
+                                                            <span class="badge badge-ghost">{item.category.display()}</span>
                                                         </div>
                                                         {item.real_watts
                                                             .map(|watts| view! {
-                                                                <p class="muted small">
+                                                                <p class="text-base-content/70 text-sm">
                                                                     {format!("{watts:.0} W")}
                                                                 </p>
                                                             })}
-                                                        <div class="card-actions">
-                                                            <button class="danger"
+                                                        <div class="flex flex-wrap gap-2 mt-3">
+                                                            <button class="btn btn-error btn-outline btn-sm"
                                                                 on:click=move |_| remove_equipment(&for_remove)
                                                             >
                                                                 "Remove"
@@ -283,8 +283,8 @@ pub fn SpaceDetail() -> impl IntoView {
                                             })
                                             .collect::<Vec<_>>()}
                                     </ul>
-                                    <div class="form-actions">
-                                        <select
+                                    <div class="flex flex-wrap gap-2 mt-4">
+                                        <select class="select"
                                             prop:value=move || pick.get()
                                             on:change=move |ev| pick.set(event_target_value(&ev))
                                         >
@@ -308,7 +308,7 @@ pub fn SpaceDetail() -> impl IntoView {
                                                     .collect::<Vec<_>>()
                                             }}
                                         </select>
-                                        <button on:click=add_equipment disabled=move || pick.get().is_empty()>
+                                        <button class="btn btn-sm" on:click=add_equipment disabled=move || pick.get().is_empty()>
                                             "Add"
                                         </button>
                                     </div>
@@ -316,19 +316,19 @@ pub fn SpaceDetail() -> impl IntoView {
 
                                 <div>
                                     <h3>"Grows in this space"</h3>
-                                    <ul class="cards">
+                                    <ul class="grid gap-4 lg:grid-cols-2">
                                         {grows
                                             .into_iter()
                                             .map(|grow| {
                                                 view! {
-                                                    <li class="card">
-                                                        <div class="card-title">
+                                                    <li class="card bg-base-100 shadow-sm px-5 py-4">
+                                                        <div class="flex flex-wrap items-baseline gap-2">
                                                             <A href=route_href(&format!("/grows/{}", grow.id))>
                                                                 <strong>{grow.name.clone()}</strong>
                                                             </A>
-                                                            <span class="badge">{grow.status.label()}</span>
+                                                            <span class="badge badge-ghost">{grow.status.label()}</span>
                                                         </div>
-                                                        <p class="muted small">"Started "{grow.started_on}</p>
+                                                        <p class="text-base-content/70 text-sm">"Started "{grow.started_on}</p>
                                                     </li>
                                                 }
                                             })
@@ -341,14 +341,14 @@ pub fn SpaceDetail() -> impl IntoView {
                             </div>
 
                             {space.notes
-                                .map(|notes| view! { <p class="notes">{notes}</p> })}
+                                .map(|notes| view! { <p class="mt-2 text-base-content/70">{notes}</p> })}
 
-                            <div class="card-actions">
-                                <button on:click=move |_| {
+                            <div class="flex flex-wrap gap-2 mt-3">
+                                <button class="btn btn-sm" on:click=move |_| {
                                     draft.set(space_input(&for_edit));
                                     form_open.set(true);
                                 }>"Edit space"</button>
-                                <button class="danger" on:click=move |_| remove_space()>
+                                <button class="btn btn-error btn-outline btn-sm" on:click=move |_| remove_space()>
                                     "Delete space"
                                 </button>
                             </div>
@@ -358,7 +358,7 @@ pub fn SpaceDetail() -> impl IntoView {
             }}
 
             <Show when=move || detail.get().is_none() && error.get().is_none()>
-                <p class="empty">"This space is gone. "<A href=route_href("/spaces")>"Back to spaces"</A></p>
+                <p class="py-6 text-center text-base-content/60">"This space is gone. "<A href=route_href("/spaces")>"Back to spaces"</A></p>
             </Show>
 
             <ErrorIf error />
@@ -371,38 +371,38 @@ pub fn SpaceDetail() -> impl IntoView {
 #[component]
 fn SpaceForm(draft: RwSignal<GrowSpaceInput>) -> impl IntoView {
     view! {
-        <div class="grid">
-            <label class="field">
-                <span>"Name *"</span>
-                <input type="text" required placeholder="60×60 tent"
+        <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
+            <label class="fieldset">
+                <span class="fieldset-label">"Name *"</span>
+                <input class="input" type="text" required placeholder="60×60 tent"
                     prop:value=move || draft.get().name
                     on:input=move |ev| draft.update(|d| d.name = event_target_value(&ev))
                 />
             </label>
-            <label class="field">
-                <span>"Width (cm)"</span>
-                <input type="number" min="1" step="1"
+            <label class="fieldset">
+                <span class="fieldset-label">"Width (cm)"</span>
+                <input class="input" type="number" min="1" step="1"
                     prop:value=move || draft.get().width_cm.map(|v| v.to_string()).unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.width_cm = event_target_value(&ev).parse().ok())
                 />
             </label>
-            <label class="field">
-                <span>"Depth (cm)"</span>
-                <input type="number" min="1" step="1"
+            <label class="fieldset">
+                <span class="fieldset-label">"Depth (cm)"</span>
+                <input class="input" type="number" min="1" step="1"
                     prop:value=move || draft.get().depth_cm.map(|v| v.to_string()).unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.depth_cm = event_target_value(&ev).parse().ok())
                 />
             </label>
-            <label class="field">
-                <span>"Height (cm)"</span>
-                <input type="number" min="1" step="1"
+            <label class="fieldset">
+                <span class="fieldset-label">"Height (cm)"</span>
+                <input class="input" type="number" min="1" step="1"
                     prop:value=move || draft.get().height_cm.map(|v| v.to_string()).unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.height_cm = event_target_value(&ev).parse().ok())
                 />
             </label>
-            <label class="field wide">
-                <span>"Notes"</span>
-                <textarea rows="2"
+            <label class="fieldset col-span-full">
+                <span class="fieldset-label">"Notes"</span>
+                <textarea class="textarea" rows="2"
                     prop:value=move || draft.get().notes.unwrap_or_default()
                     on:input=move |ev| {
                         let value = event_target_value(&ev);

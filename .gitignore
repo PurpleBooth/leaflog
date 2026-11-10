@@ -6,6 +6,10 @@
 # crates/leaflog-backend/tests/fixtures/dist ARE committed)
 /crates/leaflog-frontend/dist
 
+# daisyUI plugin bundles, fetched and sha256-verified by
+# `just tailwind-daisyui` (no-vendoring agreement; D064)
+/crates/leaflog-frontend/tailwind
+
 # Runtime data (SQLite DB, photos) — never commit grow data
 /data
 

@@ -221,32 +221,46 @@ pub fn OnboardingWizard() -> impl IntoView {
             .is_some_and(|state| state.dismissed && !state.has_spaces && !state.has_grows)
     };
 
+    // The step indicator class as a reactive value: `step` lights up
+    // every step reached so far (a bare inline closure trips the view!
+    // parser, so the closure is built here and called in the markup).
+    let step_class = move |reached: u8| {
+        let step = step;
+        move || {
+            if step.get() >= reached {
+                "step step-primary"
+            } else {
+                "step"
+            }
+        }
+    };
+
     view! {
         <Show when=visible>
-            <section class="card form" aria-label="First-run setup">
+            <section class="card bg-base-100 shadow-sm px-5 py-4 my-4" aria-label="First-run setup">
                 <h2>"Welcome to Leaflog"</h2>
-                <p class="muted">
+                <p class="text-base-content/70">
                     "Four quick steps to a first grow — skip any of them, everything stays
                      reachable from the tabs."
                 </p>
-                <ol class="steps">
-                    <li class:done=move || {step.get() > 1} class:active=move || {step.get() == 1}>"Equipment"</li>
-                    <li class:done=move || {step.get() > 2} class:active=move || {step.get() == 2}>"Grow space"</li>
-                    <li class:done=move || {step.get() > 3} class:active=move || {step.get() == 3}>"Strain"</li>
-                    <li class:active=move || {step.get() == 4}>"Plants"</li>
-                </ol>
+                <ul class="steps my-2">
+                    <li class=step_class(1)>"Equipment"</li>
+                    <li class=step_class(2)>"Grow space"</li>
+                    <li class=step_class(3)>"Strain"</li>
+                    <li class=step_class(4)>"Plants"</li>
+                </ul>
                 <ErrorIf error />
 
                 <Show when=move || step.get() == 1>
                     <div>
                         <h3>"1. Equipment basics"</h3>
-                        <p class="muted">
+                        <p class="text-base-content/70">
                             "Start from the bundled presets — anything you pick here goes straight
                              into your space. Add your own gear (and HA sensors) on the "
                             <a href=crate::route_href("/equipment")>"equipment page"</a>
                             " and come back; the wizard waits."
                         </p>
-                        <ul class="chips">
+                        <ul class="flex flex-wrap gap-2 my-2">
                             {move || {
                                 equipment
                                     .get()
@@ -260,7 +274,11 @@ pub fn OnboardingWizard() -> impl IntoView {
                                         view! {
                                             <li>
                                                 <button
-                                                    class:chip-active=is_picked
+                                                    class=move || if is_picked() {
+                                                        "btn btn-sm rounded-full btn-primary"
+                                                    } else {
+                                                        "btn btn-sm rounded-full"
+                                                    }
                                                     on:click=move |_| {
                                                         picked.update(|current| {
                                                             if let Some(position) =
@@ -281,9 +299,9 @@ pub fn OnboardingWizard() -> impl IntoView {
                                     .collect::<Vec<_>>()
                             }}
                         </ul>
-                        <div class="form-actions">
-                            <button on:click=skip>"Skip this step"</button>
-                            <button class="primary" on:click=skip disabled=move || picked.get().is_empty()>
+                        <div class="flex flex-wrap gap-2 mt-4">
+                            <button class="btn btn-sm" on:click=skip>"Skip this step"</button>
+                            <button class="btn btn-primary btn-sm" on:click=skip disabled=move || picked.get().is_empty()>
                                 "Next"
                             </button>
                         </div>
@@ -293,37 +311,37 @@ pub fn OnboardingWizard() -> impl IntoView {
                 <Show when=move || step.get() == 2>
                     <div>
                         <h3>"2. Grow space"</h3>
-                        <p class="muted">"Name the tent or room your picked equipment lives in."</p>
-                        <div class="grid">
-                            <label class="field">
-                                <span>"Name"</span>
-                                <input type="text" placeholder="60×60 tent"
+                        <p class="text-base-content/70">"Name the tent or room your picked equipment lives in."</p>
+                        <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
+                            <label class="fieldset">
+                                <span class="fieldset-label">"Name"</span>
+                                <input class="input" type="text" placeholder="60×60 tent"
                                     prop:value=move || space_name.get()
                                     on:input=move |ev| space_name.set(event_target_value(&ev))
                                 />
                             </label>
-                            <label class="field"><span>"Width (cm)"</span>
-                                <input type="number" min="0"
+                            <label class="fieldset"><span class="fieldset-label">"Width (cm)"</span>
+                                <input class="input" type="number" min="0"
                                     prop:value=move || space_w.get()
                                     on:input=move |ev| space_w.set(event_target_value(&ev))
                                 />
                             </label>
-                            <label class="field"><span>"Depth (cm)"</span>
-                                <input type="number" min="0"
+                            <label class="fieldset"><span class="fieldset-label">"Depth (cm)"</span>
+                                <input class="input" type="number" min="0"
                                     prop:value=move || space_d.get()
                                     on:input=move |ev| space_d.set(event_target_value(&ev))
                                 />
                             </label>
-                            <label class="field"><span>"Height (cm)"</span>
-                                <input type="number" min="0"
+                            <label class="fieldset"><span class="fieldset-label">"Height (cm)"</span>
+                                <input class="input" type="number" min="0"
                                     prop:value=move || space_h.get()
                                     on:input=move |ev| space_h.set(event_target_value(&ev))
                                 />
                             </label>
                         </div>
-                        <div class="form-actions">
-                            <button on:click=skip>"Skip this step"</button>
-                            <button class="primary" on:click=move |_| step.set(3)>"Next"</button>
+                        <div class="flex flex-wrap gap-2 mt-4">
+                            <button class="btn btn-sm" on:click=skip>"Skip this step"</button>
+                            <button class="btn btn-primary btn-sm" on:click=move |_| step.set(3)>"Next"</button>
                         </div>
                     </div>
                 </Show>
@@ -331,13 +349,13 @@ pub fn OnboardingWizard() -> impl IntoView {
                 <Show when=move || step.get() == 3>
                     <div>
                         <h3>"3. Strain"</h3>
-                        <p class="muted">
+                        <p class="text-base-content/70">
                             "Pick a strain for the grow diary — bundled presets are marked and
                              read-only; clone one as your phenotype to tweak it."
                         </p>
-                        <label class="field">
-                            <span>"Strain"</span>
-                            <select
+                        <label class="fieldset">
+                            <span class="fieldset-label">"Strain"</span>
+                            <select class="select"
                                 prop:value=move || picked_strain.get()
                                 on:change=move |ev| picked_strain.set(event_target_value(&ev))
                             >
@@ -359,9 +377,9 @@ pub fn OnboardingWizard() -> impl IntoView {
                                 }}
                             </select>
                         </label>
-                        <div class="form-actions">
-                            <button on:click=skip>"Skip this step"</button>
-                            <button class="primary" on:click=move |_| step.set(4)>"Next"</button>
+                        <div class="flex flex-wrap gap-2 mt-4">
+                            <button class="btn btn-sm" on:click=skip>"Skip this step"</button>
+                            <button class="btn btn-primary btn-sm" on:click=move |_| step.set(4)>"Next"</button>
                         </div>
                     </div>
                 </Show>
@@ -369,39 +387,39 @@ pub fn OnboardingWizard() -> impl IntoView {
                 <Show when=move || step.get() == 4>
                     <form on:submit=finish>
                         <h3>"4. Plants"</h3>
-                        <p class="muted">
+                        <p class="text-base-content/70">
                             "Finishing creates a grow inside your space (today counts as day one —
                              change it if the seeds went in earlier) and opens its dashboard."
                         </p>
-                        <div class="grid">
-                            <label class="field"><span>"Grow name"</span>
-                                <input type="text" placeholder="First run"
+                        <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
+                            <label class="fieldset"><span class="fieldset-label">"Grow name"</span>
+                                <input class="input" type="text" placeholder="First run"
                                     prop:value=move || grow_name.get()
                                     on:input=move |ev| grow_name.set(event_target_value(&ev))
                                 />
                             </label>
-                            <label class="field"><span>"Name prefix"</span>
-                                <input type="text"
+                            <label class="fieldset"><span class="fieldset-label">"Name prefix"</span>
+                                <input class="input" type="text"
                                     prop:value=move || plant_prefix.get()
                                     on:input=move |ev| plant_prefix.set(event_target_value(&ev))
                                 />
                             </label>
-                            <label class="field"><span>"Plants"</span>
-                                <input type="number" min="1" max="99" step="1"
+                            <label class="fieldset"><span class="fieldset-label">"Plants"</span>
+                                <input class="input" type="number" min="1" max="99" step="1"
                                     prop:value=move || plant_count.get().to_string()
                                     on:input=move |ev| {
                                         plant_count.set(event_target_value(&ev).parse().unwrap_or(1).clamp(1, 99));
                                     }
                                 />
                             </label>
-                            <label class="field"><span>"Germination (day one)"</span>
-                                <input type="date"
+                            <label class="fieldset"><span class="fieldset-label">"Germination (day one)"</span>
+                                <input class="input" type="date"
                                     prop:value=move || started_on.get()
                                     on:input=move |ev| started_on.set(event_target_value(&ev))
                                 />
                             </label>
-                            <label class="field"><span>"From seed batch"</span>
-                                <select
+                            <label class="fieldset"><span class="fieldset-label">"From seed batch"</span>
+                                <select class="select"
                                     prop:value=move || picked_batch.get()
                                     on:change=move |ev| picked_batch.set(event_target_value(&ev))
                                 >
@@ -424,14 +442,14 @@ pub fn OnboardingWizard() -> impl IntoView {
                                 </select>
                             </label>
                         </div>
-                        <div class="form-actions">
-                            <button type="button" on:click=move |_| step.set(3)>"Back"</button>
-                            <button type="button" class="danger"
+                        <div class="flex flex-wrap gap-2 mt-4">
+                            <button class="btn btn-sm" type="button" on:click=move |_| step.set(3)>"Back"</button>
+                            <button class="btn btn-sm btn-error btn-outline" type="button"
                                 on:click=move |_| set_dismissed(true)
                             >
                                 "Dismiss — I'll explore on my own"
                             </button>
-                            <button class="primary" type="submit">"Start the grow"</button>
+                            <button class="btn btn-primary btn-sm" type="submit">"Start the grow"</button>
                         </div>
                     </form>
                 </Show>
@@ -441,10 +459,10 @@ pub fn OnboardingWizard() -> impl IntoView {
         // The empty-state "set up" card: dismissed but still nothing
         // grown — one tap restarts the wizard (spec §4.12).
         <Show when=restartable>
-            <section class="card">
+            <section class="card bg-base-100 shadow-sm px-5 py-4 my-4">
                 <h3>"Set up your first grow"</h3>
-                <p class="muted">"The setup wizard is available whenever you want it."</p>
-                <button class="primary" on:click=move |_| set_dismissed(false)>
+                <p class="text-base-content/70">"The setup wizard is available whenever you want it."</p>
+                <button class="btn btn-primary btn-sm" on:click=move |_| set_dismissed(false)>
                     "Run the setup wizard"
                 </button>
             </section>

@@ -152,20 +152,24 @@ pub fn EquipmentPage() -> impl IntoView {
     };
 
     view! {
-        <section class="page">
-            <div class="page-head">
+        <section class="pb-12">
+            <div class="flex flex-wrap items-center justify-between gap-4">
                 <h2>"Equipment"</h2>
-                <div class="page-actions">
-                    <button on:click=open_picker>"Add sensor from HA"</button>
-                    <button class="primary" on:click=start_create>"Add equipment"</button>
+                <div class="flex gap-2">
+                    <button class="btn btn-sm" on:click=open_picker>"Add sensor from HA"</button>
+                    <button class="btn btn-primary btn-sm" on:click=start_create>"Add equipment"</button>
                 </div>
             </div>
 
             <ErrorIf error />
 
-            <nav class="chips" aria-label="Filter by category">
+            <nav class="flex flex-wrap gap-2 my-2" aria-label="Filter by category">
                 <button
-                    class:chip-active=move || filter.get().is_none()
+                    class=move || if filter.get().is_none() {
+                        "btn btn-sm rounded-full btn-primary"
+                    } else {
+                        "btn btn-sm rounded-full"
+                    }
                     on:click=move |_| filter.set(None)
                 >
                     "All"
@@ -176,7 +180,11 @@ pub fn EquipmentPage() -> impl IntoView {
                         let current = filter;
                         view! {
                             <button
-                                class:chip-active=move || current.get() == Some(category)
+                                class=move || if current.get() == Some(category) {
+                                    "btn btn-sm rounded-full btn-primary"
+                                } else {
+                                    "btn btn-sm rounded-full"
+                                }
                                 on:click=move |_| current.set(Some(category))
                             >
                                 {category.display()}
@@ -187,9 +195,9 @@ pub fn EquipmentPage() -> impl IntoView {
             </nav>
 
             <Show when=move || !candidates.get().is_empty() || picker_source.get().is_some()>
-                <div class="card form">
+                <div class="card bg-base-100 shadow-sm px-5 py-4 my-4">
                     <h3>"Sensors from Home Assistant"</h3>
-                    <ul class="chips">
+                    <ul class="flex flex-wrap gap-2 my-2">
                         {move || {
                             candidates
                                 .get()
@@ -198,7 +206,7 @@ pub fn EquipmentPage() -> impl IntoView {
                                     let for_pick = candidate.clone();
                                     view! {
                                         <li>
-                                            <button on:click=move |_| pick_entity(&for_pick)>
+                                            <button class="btn btn-sm" on:click=move |_| pick_entity(&for_pick)>
                                                 {format!(
                                                     "{} ({})",
                                                     for_pick.1,
@@ -212,7 +220,7 @@ pub fn EquipmentPage() -> impl IntoView {
                         }}
                     </ul>
                     <Show when=move || candidates.get().is_empty()>
-                        <p class="empty">
+                        <p class="py-6 text-center text-base-content/60">
                             "No temperature or humidity sensors visible — Home Assistant may be
                             unreachable. Skip for now and pick the sensor later; nothing else
                             is blocked."
@@ -222,17 +230,17 @@ pub fn EquipmentPage() -> impl IntoView {
             </Show>
 
             <Show when=move || form_open.get()>
-                <form class="card form" on:submit=save>
+                <form class="card bg-base-100 shadow-sm px-5 py-4 my-4" on:submit=save>
                     <h3>{move || if editing_id.get().is_some() { "Edit equipment" } else { "New equipment" }}</h3>
                     <EquipmentForm draft />
-                    <div class="form-actions">
-                        <button class="primary" type="submit">"Save"</button>
-                        <button type="button" on:click=move |_| form_open.set(false)>"Cancel"</button>
+                    <div class="flex flex-wrap gap-2 mt-4">
+                        <button class="btn btn-primary btn-sm" type="submit">"Save"</button>
+                        <button class="btn btn-sm" type="button" on:click=move |_| form_open.set(false)>"Cancel"</button>
                     </div>
                 </form>
             </Show>
 
-            <ul class="cards">
+            <ul class="grid gap-4 lg:grid-cols-2">
                 {move || {
                     items
                         .get()
@@ -243,12 +251,12 @@ pub fn EquipmentPage() -> impl IntoView {
                             let for_clone = item.clone();
                             let bundled = item.is_builtin;
                             view! {
-                                <li class="card">
-                                    <div class="card-title">
+                                <li class="card bg-base-100 shadow-sm px-5 py-4">
+                                    <div class="flex flex-wrap items-baseline gap-2">
                                         <strong>{item.name.clone()}</strong>
-                                        <span class="badge">{item.category.display()}</span>
+                                        <span class="badge badge-ghost">{item.category.display()}</span>
                                         {item.is_builtin
-                                            .then(|| view! { <span class="badge">"bundled"</span> })}
+                                            .then(|| view! { <span class="badge badge-outline">"bundled"</span> })}
                                     </div>
                                     <dl class="facts">
                         {item.brand_model.clone().map(|brand| view! { <div><dt>"Brand / model"</dt><dd>{brand}</dd></div> })}
@@ -261,19 +269,19 @@ pub fn EquipmentPage() -> impl IntoView {
                             view! { <div><dt>"Price"</dt><dd>{format!("{price:.2} {currency}")}</dd></div> }
                         })}
                                     </dl>
-                        {item.notes.map(|notes| view! { <p class="notes">{notes}</p> })}
-                                    <div class="card-actions">
+                        {item.notes.map(|notes| view! { <p class="mt-2 text-base-content/70">{notes}</p> })}
+                                    <div class="flex flex-wrap gap-2 mt-3">
                                         // Bundled presets are read-only (the API rejects
                                         // edit and delete); clone-to-edit is the workflow,
                                         // and cloning a user entry covers "two identical
                                         // lights are two entries" (§4.1).
                                         {(!bundled)
-                                            .then(|| view! { <button on:click=move |_| start_edit(&for_edit)>"Edit"</button> })}
-                                        <button on:click=move |_| clone_item(&for_clone)>
+                                            .then(|| view! { <button class="btn btn-sm" on:click=move |_| start_edit(&for_edit)>"Edit"</button> })}
+                                        <button class="btn btn-sm" on:click=move |_| clone_item(&for_clone)>
                                             {move || if bundled { "Clone to edit" } else { "Clone" }}
                                         </button>
                                         {(!bundled)
-                                            .then(|| view! { <button class="danger" on:click=move |_| remove(&for_delete)>"Delete"</button> })}
+                                            .then(|| view! { <button class="btn btn-error btn-outline btn-sm" on:click=move |_| remove(&for_delete)>"Delete"</button> })}
                                     </div>
                                 </li>
                             }
@@ -283,7 +291,7 @@ pub fn EquipmentPage() -> impl IntoView {
             </ul>
 
             <Show when=move || items.get().is_empty() && error.get().is_none()>
-                <p class="empty">"Nothing here yet — add your light, tent, fan, meters…"</p>
+                <p class="py-6 text-center text-base-content/60">"Nothing here yet — add your light, tent, fan, meters…"</p>
             </Show>
 
             <p><A href=route_href("/")>"Back to home"</A></p>
@@ -296,17 +304,17 @@ pub fn EquipmentPage() -> impl IntoView {
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
 fn EquipmentForm(draft: RwSignal<EquipmentInput>) -> impl IntoView {
     view! {
-        <div class="grid">
-            <label class="field">
-                <span>"Name *"</span>
-                <input type="text" required
+        <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
+            <label class="fieldset">
+                <span class="fieldset-label">"Name *"</span>
+                <input class="input" type="text" required
                     prop:value=move || draft.get().name
                     on:input=move |ev| draft.update(|d| d.name = event_target_value(&ev))
                 />
             </label>
-            <label class="field">
-                <span>"Category *"</span>
-                <select
+            <label class="fieldset">
+                <span class="fieldset-label">"Category *"</span>
+                <select class="select"
                     prop:value=move || draft.get().category.label().to_owned()
                     on:change=move |ev| {
                         let label = event_target_value(&ev);
@@ -323,62 +331,62 @@ fn EquipmentForm(draft: RwSignal<EquipmentInput>) -> impl IntoView {
                         .collect::<Vec<_>>()}
                 </select>
             </label>
-            <label class="field">
-                <span>"Brand / model"</span>
-                <input type="text"
+            <label class="fieldset">
+                <span class="fieldset-label">"Brand / model"</span>
+                <input class="input" type="text"
                     prop:value=move || draft.get().brand_model.unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.brand_model = non_empty(event_target_value(&ev)))
                 />
             </label>
-            <label class="field">
-                <span>"Real wall watts"</span>
-                <input type="number" min="0" step="1"
+            <label class="fieldset">
+                <span class="fieldset-label">"Real wall watts"</span>
+                <input class="input" type="number" min="0" step="1"
                     prop:value=move || draft.get().real_watts.map(|w| w.to_string()).unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.real_watts = event_target_value(&ev).parse().ok())
                 />
             </label>
-            <label class="field">
-                <span>"Purchased (YYYY-MM-DD)"</span>
-                <input type="date"
+            <label class="fieldset">
+                <span class="fieldset-label">"Purchased (YYYY-MM-DD)"</span>
+                <input class="input" type="date"
                     prop:value=move || draft.get().purchase_date.unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.purchase_date = non_empty(event_target_value(&ev)))
                 />
             </label>
-            <label class="field">
-                <span>"Price"</span>
-                <input type="number" min="0" step="0.01"
+            <label class="fieldset">
+                <span class="fieldset-label">"Price"</span>
+                <input class="input" type="number" min="0" step="0.01"
                     prop:value=move || draft.get().purchase_price.map(|p| p.to_string()).unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.purchase_price = event_target_value(&ev).parse().ok())
                 />
             </label>
-            <label class="field">
-                <span>"Currency"</span>
-                <input type="text" placeholder="EUR"
+            <label class="fieldset">
+                <span class="fieldset-label">"Currency"</span>
+                <input class="input" type="text" placeholder="EUR"
                     prop:value=move || draft.get().currency.unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.currency = non_empty(event_target_value(&ev).to_uppercase()))
                 />
             </label>
-            <label class="field checkbox">
-                <input type="checkbox"
+            <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" class="checkbox checkbox-sm"
                     prop:checked=move || draft.get().dimmable
                     on:change=move |ev| draft.update(|d| d.dimmable = event_target_checked(&ev))
                 />
-                <span>"Dimmable"</span>
+                <span class="fieldset-label">"Dimmable"</span>
             </label>
-            <label class="field">
-                <span>{move || if draft.get().category == EquipmentCategory::Sensor {
+            <label class="fieldset">
+                <span class="fieldset-label">{move || if draft.get().category == EquipmentCategory::Sensor {
                     "HA entity *"
                 } else {
                     "HA entity binding (optional)"
                 }}</span>
-                <input type="text" placeholder="sensor.grow_temperature"
+                <input class="input" type="text" placeholder="sensor.grow_temperature"
                     prop:value=move || draft.get().ha_entity_id.unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.ha_entity_id = non_empty(event_target_value(&ev)))
                 />
             </label>
-            <label class="field">
-                <span>"Device class"</span>
-                <select
+            <label class="fieldset">
+                <span class="fieldset-label">"Device class"</span>
+                <select class="select"
                     prop:value=move || {
                         draft.get().ha_device_class.unwrap_or_default()
                     }
@@ -391,9 +399,9 @@ fn EquipmentForm(draft: RwSignal<EquipmentInput>) -> impl IntoView {
                     <option value="humidity">"humidity"</option>
                 </select>
             </label>
-            <label class="field wide">
-                <span>"Notes"</span>
-                <textarea rows="2"
+            <label class="fieldset col-span-full">
+                <span class="fieldset-label">"Notes"</span>
+                <textarea class="textarea" rows="2"
                     prop:value=move || draft.get().notes.unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.notes = non_empty(event_target_value(&ev)))
                 />
@@ -407,7 +415,7 @@ fn EquipmentForm(draft: RwSignal<EquipmentInput>) -> impl IntoView {
 pub(crate) fn ErrorIf(error: RwSignal<Option<String>>) -> impl IntoView {
     move || {
         error.get().map(|message| {
-            view! { <p class="error" role="alert">{message}</p> }
+            view! { <p class="alert alert-error py-2 px-4 text-sm" role="alert">{message}</p> }
         })
     }
 }

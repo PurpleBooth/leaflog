@@ -4,3 +4,15 @@ dist = "dist"
 # Relative public URL: no base path is ever baked into the build; the
 # backend injects <base href> at serve time from X-Ingress-Path.
 public_url = "./"
+
+# Tailwind v4 standalone CLI, managed by Trunk (no Node anywhere; the
+# binary is fetched and cached per this version pin). Build-time only —
+# it never reaches the image. CSS entry is `tailwind.css`, wired via
+# <link data-trunk rel="tailwind-css"> in index.html.
+[tools]
+tailwindcss = "4.3.5"
+
+# Class tokens live in the Rust sources; editing them must recompile
+# the stylesheet too.
+[watch]
+watch = ["src"]

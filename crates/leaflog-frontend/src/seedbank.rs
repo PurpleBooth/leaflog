@@ -91,26 +91,26 @@ pub fn SeedbankPage() -> impl IntoView {
     };
 
     view! {
-        <section class="page">
-            <div class="page-head">
+        <section class="pb-12">
+            <div class="flex flex-wrap items-center justify-between gap-4">
                 <h2>"Seedbank"</h2>
-                <button class="primary" on:click=start_create>"Add batch"</button>
+                <button class="btn btn-primary btn-sm" on:click=start_create>"Add batch"</button>
             </div>
 
             <ErrorIf error />
 
             <Show when=move || form_open.get()>
-                <form class="card form" on:submit=save>
+                <form class="card bg-base-100 shadow-sm px-5 py-4 my-4" on:submit=save>
                     <h3>{move || if editing_id.get().is_some() { "Edit batch" } else { "New batch" }}</h3>
                     <BatchForm draft strains />
-                    <div class="form-actions">
-                        <button class="primary" type="submit">"Save"</button>
-                        <button type="button" on:click=move |_| form_open.set(false)>"Cancel"</button>
+                    <div class="flex flex-wrap gap-2 mt-4">
+                        <button class="btn btn-primary btn-sm" type="submit">"Save"</button>
+                        <button class="btn btn-sm" type="button" on:click=move |_| form_open.set(false)>"Cancel"</button>
                     </div>
                 </form>
             </Show>
 
-            <ul class="cards">
+            <ul class="grid gap-4 lg:grid-cols-2">
                 {move || {
                     batches
                         .get()
@@ -119,8 +119,8 @@ pub fn SeedbankPage() -> impl IntoView {
                             let for_edit = batch.clone();
                             let for_delete = batch.clone();
                             view! {
-                                <li class="card">
-                                    <div class="card-title">
+                                <li class="card bg-base-100 shadow-sm px-5 py-4">
+                                    <div class="flex flex-wrap items-baseline gap-2">
                                         <strong>{batch.batch.quantity}" × "</strong>
                                         {move || {
                                             strains
@@ -133,7 +133,7 @@ pub fn SeedbankPage() -> impl IntoView {
                                                 )
                                         }}
                                         {batch.viability.past_prime
-                                            .then(|| view! { <span class="badge">"past prime"</span> })}
+                                            .then(|| view! { <span class="badge badge-warning badge-outline">"past prime"</span> })}
                                     </div>
                                     <dl class="facts">
                                         <div><dt>"Acquired"</dt><dd>{batch.batch.acquisition_on.clone()}</dd></div>
@@ -166,10 +166,10 @@ pub fn SeedbankPage() -> impl IntoView {
                                             </dd>
                                         </div>
                                     </dl>
-                                    {batch.batch.notes.map(|notes| view! { <p class="notes">{notes}</p> })}
-                                    <div class="card-actions">
-                                        <button on:click=move |_| start_edit(&for_edit)>"Edit"</button>
-                                        <button class="danger" on:click=move |_| remove(&for_delete)>"Delete"</button>
+                                    {batch.batch.notes.map(|notes| view! { <p class="mt-2 text-base-content/70">{notes}</p> })}
+                                    <div class="flex flex-wrap gap-2 mt-3">
+                                        <button class="btn btn-sm" on:click=move |_| start_edit(&for_edit)>"Edit"</button>
+                                        <button class="btn btn-error btn-outline btn-sm" on:click=move |_| remove(&for_delete)>"Delete"</button>
                                     </div>
                                 </li>
                             }
@@ -179,7 +179,7 @@ pub fn SeedbankPage() -> impl IntoView {
             </ul>
 
             <Show when=move || batches.get().is_empty() && error.get().is_none()>
-                <p class="empty">
+                <p class="py-6 text-center text-base-content/60">
                     "No seeds logged yet — add a batch to see its §5.4 viability window. The oldest
                     batch of each strain is listed first: use those seeds first."
                 </p>
@@ -194,10 +194,10 @@ pub fn SeedbankPage() -> impl IntoView {
 #[component]
 fn BatchForm(draft: RwSignal<SeedBatchInput>, strains: RwSignal<Vec<Strain>>) -> impl IntoView {
     view! {
-        <div class="grid">
-            <label class="field">
-                <span>"Strain"</span>
-                <select
+        <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
+            <label class="fieldset">
+                <span class="fieldset-label">"Strain"</span>
+                <select class="select"
                     prop:value=move || {
                         draft.get().strain_id.unwrap_or_default()
                     }
@@ -218,23 +218,23 @@ fn BatchForm(draft: RwSignal<SeedBatchInput>, strains: RwSignal<Vec<Strain>>) ->
                     }}
                 </select>
             </label>
-            <label class="field">
-                <span>"Seeds *"</span>
-                <input type="number" min="0" step="1" required
+            <label class="fieldset">
+                <span class="fieldset-label">"Seeds *"</span>
+                <input class="input" type="number" min="0" step="1" required
                     prop:value=move || draft.get().quantity.to_string()
                     on:input=move |ev| draft.update(|d| d.quantity = event_target_value(&ev).parse().unwrap_or(0))
                 />
             </label>
-            <label class="field">
-                <span>"Acquired (YYYY-MM-DD) *"</span>
-                <input type="date" required
+            <label class="fieldset">
+                <span class="fieldset-label">"Acquired (YYYY-MM-DD) *"</span>
+                <input class="input" type="date" required
                     prop:value=move || draft.get().acquisition_on
                     on:input=move |ev| draft.update(|d| d.acquisition_on = event_target_value(&ev))
                 />
             </label>
-            <label class="field">
-                <span>"Storage"</span>
-                <select
+            <label class="fieldset">
+                <span class="fieldset-label">"Storage"</span>
+                <select class="select"
                     prop:value=move || draft.get().storage_method.label().to_owned()
                     on:change=move |ev| {
                         let label = event_target_value(&ev);
@@ -249,18 +249,18 @@ fn BatchForm(draft: RwSignal<SeedBatchInput>, strains: RwSignal<Vec<Strain>>) ->
                         .collect::<Vec<_>>()}
                 </select>
             </label>
-            <label class="field">
-                <span>"Acquired from"</span>
-                <input type="text" placeholder="bank, breeder, own harvest"
+            <label class="fieldset">
+                <span class="fieldset-label">"Acquired from"</span>
+                <input class="input" type="text" placeholder="bank, breeder, own harvest"
                     prop:value=move || draft.get().acquired_from.unwrap_or_default()
                     on:input=move |ev| {
                         draft.update(|d| d.acquired_from = crate::non_empty(event_target_value(&ev)));
                     }
                 />
             </label>
-            <label class="field wide">
-                <span>"Notes"</span>
-                <textarea rows="2"
+            <label class="fieldset col-span-full">
+                <span class="fieldset-label">"Notes"</span>
+                <textarea class="textarea" rows="2"
                     prop:value=move || draft.get().notes.unwrap_or_default()
                     on:input=move |ev| {
                         draft.update(|d| d.notes = crate::non_empty(event_target_value(&ev)));

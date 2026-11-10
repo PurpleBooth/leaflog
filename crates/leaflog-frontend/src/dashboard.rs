@@ -127,7 +127,7 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
     });
 
     view! {
-        <div class="env-dashboard">
+        <div class="my-4 grid gap-3">
             <ErrorIf error />
 
             // Entity drift (spec §4.1): a dead binding shows a chip
@@ -145,13 +145,13 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                     .unwrap_or_default();
                 (dead.is_empty()).then(move || {
                     view! {
-                        <p class="error" role="status">
+                        <p class="alert alert-warning py-2 px-4 text-sm" role="status">
                             "No data: "
                             {dead
                                 .into_iter()
                                 .map(|binding| {
                                     view! {
-                                        <span class="badge">
+                                        <span class="badge badge-ghost">
                                             {format!("{} ({})", binding.role, binding.entity_id)}
                                         </span>
                                     }
@@ -163,31 +163,41 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                 })
             }}
 
-            <div class="tiles">
+            <div class="grid gap-2 grid-cols-[repeat(auto-fill,minmax(9rem,1fr))]">
                 {move || {
                     let Some(e) = env.get() else { return Vec::<_>::new() };
                     let temp_display = e.temperature_c.map_or_else(|| "—".to_owned(), leaflog_core::units::temp_both);
                     let rh_display = e.humidity_pct.map_or_else(|| "—".to_owned(), |h| format!("{h:.0} %"));
                     let vpd_display = e.vpd_kpa.map_or_else(|| "—".to_owned(), |v| format!("{v:.2} kPa"));
-                    let temp_class = e.temp_ok.map_or("", |ok| if ok { "tile-ok" } else { "tile-warn" });
-                    let vpd_class = e.vpd_ok.map_or("", |ok| if ok { "tile-ok" } else { "tile-warn" });
+                    // Full class strings (Tailwind only compiles literals it
+                    // can scan out of the sources; no format! fragments).
+                    let temp_class = match e.temp_ok {
+                        Some(true) => "rounded-box border border-success/50 bg-success/10 px-3 py-2 grid gap-0.5",
+                        Some(false) => "rounded-box border border-warning/60 bg-warning/10 px-3 py-2 grid gap-0.5",
+                        None => "rounded-box border border-base-300 bg-base-100 px-3 py-2 grid gap-0.5",
+                    };
+                    let vpd_class = match e.vpd_ok {
+                        Some(true) => "rounded-box border border-success/50 bg-success/10 px-3 py-2 grid gap-0.5",
+                        Some(false) => "rounded-box border border-warning/60 bg-warning/10 px-3 py-2 grid gap-0.5",
+                        None => "rounded-box border border-base-300 bg-base-100 px-3 py-2 grid gap-0.5",
+                    };
                     vec![
-                        view! { <div class=format!("tile {temp_class}")>
-                            <span class="tile-label">"Temp"</span>
-                            <span class="tile-value">{temp_display}</span>
+                        view! { <div class=temp_class>
+                            <span class="text-xs uppercase tracking-wide text-base-content/60">"Temp"</span>
+                            <span class="text-lg font-semibold">{temp_display}</span>
                         </div> }.into_any(),
-                        view! { <div class="tile">
-                            <span class="tile-label">"RH"</span>
-                            <span class="tile-value">{rh_display}</span>
+                        view! { <div class="rounded-box border border-base-300 bg-base-100 px-3 py-2 grid gap-0.5">
+                            <span class="text-xs uppercase tracking-wide text-base-content/60">"RH"</span>
+                            <span class="text-lg font-semibold">{rh_display}</span>
                         </div> }.into_any(),
-                        view! { <div class=format!("tile {vpd_class}")>
-                            <span class="tile-label">"VPD"</span>
-                            <span class="tile-value">{vpd_display}</span>
-                            <span class="tile-sub">"band: "{format!("{:.1}–{:.1}", e.vpd_band.0, e.vpd_band.1)}</span>
+                        view! { <div class=vpd_class>
+                            <span class="text-xs uppercase tracking-wide text-base-content/60">"VPD"</span>
+                            <span class="text-lg font-semibold">{vpd_display}</span>
+                            <span class="text-xs text-base-content/60">"band: "{format!("{:.1}–{:.1}", e.vpd_band.0, e.vpd_band.1)}</span>
                         </div> }.into_any(),
-                        view! { <div class="tile">
-                            <span class="tile-label">"RH window"</span>
-                            <span class="tile-value">{format!("{:.0}–{:.0} %", e.rh_window.0, e.rh_window.1)}</span>
+                        view! { <div class="rounded-box border border-base-300 bg-base-100 px-3 py-2 grid gap-0.5">
+                            <span class="text-xs uppercase tracking-wide text-base-content/60">"RH window"</span>
+                            <span class="text-lg font-semibold">{format!("{:.0}–{:.0} %", e.rh_window.0, e.rh_window.1)}</span>
                         </div> }.into_any(),
                     ]
                 }}
@@ -196,11 +206,11 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
             {move || {
                 lamp.get().map(|advice| {
                     view! {
-                        <div class="card slim">
+                        <div class="card bg-base-100 shadow-sm px-4 py-3 my-3">
                             <h4>"Lamp height"</h4>
                             <p>{format!("{:.0}–{:.0} in / {:.0}–{:.0} cm from canopy", advice.height.min_in, advice.height.max_in, leaflog_core::units::inches_to_cm(advice.height.min_in), leaflog_core::units::inches_to_cm(advice.height.max_in))}</p>
-                            {advice.dim_pct.map(|d| view! { <p class="muted">"Dim to "{d}"%"</p> })}
-                            <p class="muted small">{advice.why}</p>
+                            {advice.dim_pct.map(|d| view! { <p class="text-base-content/70">"Dim to "{d}"%"</p> })}
+                            <p class="text-base-content/70 text-sm">{advice.why}</p>
                         </div>
                     }
                 })
@@ -209,14 +219,14 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
             {move || {
                 coach.get().map(|c| {
                     view! {
-                        <div class="card slim">
+                        <div class="card bg-base-100 shadow-sm px-4 py-3 my-3">
                             <h4>{format!("Phase coach ({})", c.phase)}</h4>
-                            <ul class="coach-tips">
+                            <ul class="list-none m-0 p-0 grid gap-2">
                                 {c.tips.iter().map(|tip| {
                                     view! {
-                                        <li>
+                                        <li class="border-l-4 border-primary pl-3">
                                             <strong>{tip.title.clone()}</strong>
-                                            <p class="muted small">{tip.why.clone()}</p>
+                                            <p class="text-base-content/70 text-sm">{tip.why.clone()}</p>
                                         </li>
                                     }
                                 }).collect::<Vec<_>>()}

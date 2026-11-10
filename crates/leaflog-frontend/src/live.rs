@@ -95,10 +95,10 @@ pub fn LivePanel(grow_id: String) -> impl IntoView {
     };
 
     view! {
-        <div class="live-panel">
+        <div class="my-4">
             <ErrorIf error />
             <h3>"Live sensors"</h3>
-            <p class="muted small">
+            <p class="text-base-content/70 text-sm">
                 {move || {
                     live.get().map_or_else(
                         || "Loading…".to_owned(),
@@ -112,7 +112,7 @@ pub fn LivePanel(grow_id: String) -> impl IntoView {
                     )
                 }}
             </p>
-            <div class="tiles">
+            <div class="grid gap-2 grid-cols-[repeat(auto-fill,minmax(9rem,1fr))]">
                 {move || {
                     let Some(data) = live.get() else {
                         return Vec::<_>::new();
@@ -130,9 +130,9 @@ pub fn LivePanel(grow_id: String) -> impl IntoView {
                                 .unwrap_or_default();
                             Some(
                                 view! {
-                                    <div class="tile">
-                                        <span class="tile-label">{*label}</span>
-                                        <span class="tile-value">
+                                    <div class="rounded-box border border-base-300 bg-base-100 px-3 py-2 grid gap-0.5">
+                                        <span class="text-xs uppercase tracking-wide text-base-content/60">{*label}</span>
+                                        <span class="text-lg font-semibold">
                                             {format!("{} {}", entity.state, unit)}
                                         </span>
                                     </div>
@@ -145,7 +145,7 @@ pub fn LivePanel(grow_id: String) -> impl IntoView {
             </div>
 
             <h4>"Entity bindings"</h4>
-            <div class="grid">
+            <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
                 {BINDING_ROLES
                     .iter()
                     .map(|(role, label)| {
@@ -154,9 +154,9 @@ pub fn LivePanel(grow_id: String) -> impl IntoView {
                         let options = entities;
                         let save = save_binding.clone();
                         view! {
-                            <label class="field">
-                                <span>{*label}</span>
-                                <select
+                            <label class="fieldset">
+                                <span class="fieldset-label">{*label}</span>
+                                <select class="select"
                                     prop:value=move || {
                                         current.get().get(role).cloned().unwrap_or_default()
                                     }

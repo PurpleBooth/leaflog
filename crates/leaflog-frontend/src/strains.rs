@@ -92,26 +92,26 @@ pub fn StrainsPage() -> impl IntoView {
     };
 
     view! {
-        <section class="page">
-            <div class="page-head">
+        <section class="pb-12">
+            <div class="flex flex-wrap items-center justify-between gap-4">
                 <h2>"Strains"</h2>
-                <button class="primary" on:click=start_create>"Add strain"</button>
+                <button class="btn btn-primary btn-sm" on:click=start_create>"Add strain"</button>
             </div>
 
             <ErrorIf error />
 
             <Show when=move || form_open.get()>
-                <form class="card form" on:submit=save>
+                <form class="card bg-base-100 shadow-sm px-5 py-4 my-4" on:submit=save>
                     <h3>{move || if editing_id.get().is_some() { "Edit strain" } else { "New strain" }}</h3>
                     <StrainForm draft />
-                    <div class="form-actions">
-                        <button class="primary" type="submit">"Save"</button>
-                        <button type="button" on:click=move |_| form_open.set(false)>"Cancel"</button>
+                    <div class="flex flex-wrap gap-2 mt-4">
+                        <button class="btn btn-primary btn-sm" type="submit">"Save"</button>
+                        <button class="btn btn-sm" type="button" on:click=move |_| form_open.set(false)>"Cancel"</button>
                     </div>
                 </form>
             </Show>
 
-            <ul class="cards">
+            <ul class="grid gap-4 lg:grid-cols-2">
                 {move || {
                     strains
                         .get()
@@ -122,22 +122,22 @@ pub fn StrainsPage() -> impl IntoView {
                             let for_delete = strain.clone();
                             let bundled = strain.is_builtin;
                             view! {
-                                <li class="card">
-                                    <div class="card-title">
+                                <li class="card bg-base-100 shadow-sm px-5 py-4">
+                                    <div class="flex flex-wrap items-baseline gap-2">
                                         <strong>{strain.name}</strong>
-                                        <span class="badge">{strain.photoperiod.label()}</span>
+                                        <span class="badge badge-ghost">{strain.photoperiod.label()}</span>
                                         // Bundled records are read-only at the API; the badge
                                         // says so and edit/delete stay hidden (§4.4).
                                         {bundled
-                                            .then(|| view! { <span class="badge">"bundled"</span> })}
-                                        {strain.breeder.map(|b| view! { <span class="muted">{b}</span> })}
+                                            .then(|| view! { <span class="badge badge-outline">"bundled"</span> })}
+                                        {strain.breeder.map(|b| view! { <span class="text-base-content/70">{b}</span> })}
                                     </div>
                                     <dl class="facts">
                     {strain.flower_days_min.zip(strain.flower_days_max).map(|(min, max)| {
                         let evidence = evidence_label(&strain.evidence, "flower_days_min");
                         view! {
                             <div>
-                                <dt>"Flowering" <span class="evidence" title=evidence>{evidence}</span></dt>
+                                <dt>"Flowering" <span class="badge badge-xs badge-outline" title=evidence>{evidence}</span></dt>
                                 <dd>{format!("{min}-{max} days")}</dd>
                             </div>
                         }
@@ -164,33 +164,33 @@ pub fn StrainsPage() -> impl IntoView {
                                                     strain.cold_tolerance.label(),
                                                     strain.light_tolerance.label(),
                                                 )}
-                                                <span class="evidence" title="inferred">"inferred"</span>
+                                                <span class="badge badge-xs badge-outline" title="inferred">"inferred"</span>
                                             </dd>
                                         </div>
                                     </dl>
                     {(!strain.landrace_tags.is_empty()).then(|| {
                         view! {
-                            <p class="tags">
+                            <p class="flex flex-wrap gap-1.5 mt-2">
                                 {strain
                                     .landrace_tags
                                     .iter()
-                                    .map(|tag| view! { <span class="tag">{tag.clone()}</span> })
+                                    .map(|tag| view! { <span class="badge badge-sm badge-ghost">{tag.clone()}</span> })
                                     .collect::<Vec<_>>()}
                             </p>
                         }
                     })}
-                    {strain.notes.map(|notes| view! { <p class="notes">{notes}</p> })}
+                    {strain.notes.map(|notes| view! { <p class="mt-2 text-base-content/70">{notes}</p> })}
                     {strain.source_url.map(|url| view! {
-                        <p class="muted small">
+                        <p class="text-base-content/70 text-sm">
                             "Source: " <a href=url target="_blank" rel="noreferrer">{source_host(&url)}</a>
                         </p>
                     })}
-                                    <div class="card-actions">
+                                    <div class="flex flex-wrap gap-2 mt-3">
                                         {(!bundled)
-                                            .then(|| view! { <button on:click=move |_| start_edit(&for_edit)>"Edit"</button> })}
-                                        <button on:click=move |_| clone(&for_clone)>"Clone as my phenotype"</button>
+                                            .then(|| view! { <button class="btn btn-sm" on:click=move |_| start_edit(&for_edit)>"Edit"</button> })}
+                                        <button class="btn btn-sm" on:click=move |_| clone(&for_clone)>"Clone as my phenotype"</button>
                                         {(!bundled)
-                                            .then(|| view! { <button class="danger" on:click=move |_| remove(&for_delete)>"Delete"</button> })}
+                                            .then(|| view! { <button class="btn btn-error btn-outline btn-sm" on:click=move |_| remove(&for_delete)>"Delete"</button> })}
                                     </div>
                                 </li>
                             }
@@ -200,7 +200,7 @@ pub fn StrainsPage() -> impl IntoView {
             </ul>
 
             <Show when=move || strains.get().is_empty() && error.get().is_none()>
-                <p class="empty">"No strains yet — add one, or clone a bundled record as your phenotype."</p>
+                <p class="py-6 text-center text-base-content/60">"No strains yet — add one, or clone a bundled record as your phenotype."</p>
             </Show>
 
             <p><A href=route_href("/")>"Back to home"</A></p>
@@ -213,24 +213,24 @@ pub fn StrainsPage() -> impl IntoView {
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
 fn StrainForm(draft: RwSignal<StrainInput>) -> impl IntoView {
     view! {
-        <div class="grid">
-            <label class="field">
-                <span>"Name *"</span>
-                <input type="text" required
+        <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
+            <label class="fieldset">
+                <span class="fieldset-label">"Name *"</span>
+                <input class="input" type="text" required
                     prop:value=move || draft.get().name
                     on:input=move |ev| draft.update(|d| d.name = event_target_value(&ev))
                 />
             </label>
-            <label class="field">
-                <span>"Breeder"</span>
-                <input type="text"
+            <label class="fieldset">
+                <span class="fieldset-label">"Breeder"</span>
+                <input class="input" type="text"
                     prop:value=move || draft.get().breeder.unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.breeder = non_empty(event_target_value(&ev)))
                 />
             </label>
-            <label class="field">
-                <span>"Type *"</span>
-                <select
+            <label class="fieldset">
+                <span class="fieldset-label">"Type *"</span>
+                <select class="select"
                     prop:value=move || draft.get().photoperiod.label().to_owned()
                     on:change=move |ev| {
                         draft.update(|d| {
@@ -246,9 +246,9 @@ fn StrainForm(draft: RwSignal<StrainInput>) -> impl IntoView {
                     <option value="auto">"Autoflower"</option>
                 </select>
             </label>
-            <label class="field">
-                <span>"Seeds *"</span>
-                <select
+            <label class="fieldset">
+                <span class="fieldset-label">"Seeds *"</span>
+                <select class="select"
                     prop:value=move || draft.get().sex.label().to_owned()
                     on:change=move |ev| {
                         draft.update(|d| {
@@ -264,65 +264,65 @@ fn StrainForm(draft: RwSignal<StrainInput>) -> impl IntoView {
                     <option value="regular">"Regular"</option>
                 </select>
             </label>
-            <label class="field">
-                <span>"Indica %"</span>
-                <input type="number" min="0" max="100" step="1"
+            <label class="fieldset">
+                <span class="fieldset-label">"Indica %"</span>
+                <input class="input" type="number" min="0" max="100" step="1"
                     prop:value=move || draft.get().indica_pct.map(|p| p.to_string()).unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.indica_pct = event_target_value(&ev).parse().ok())
                 />
             </label>
-            <label class="field">
-                <span>"Flower days (min)"</span>
-                <input type="number" min="0" step="1"
+            <label class="fieldset">
+                <span class="fieldset-label">"Flower days (min)"</span>
+                <input class="input" type="number" min="0" step="1"
                     prop:value=move || draft.get().flower_days_min.map(|v| v.to_string()).unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.flower_days_min = event_target_value(&ev).parse().ok())
                 />
             </label>
-            <label class="field">
-                <span>"Flower days (max)"</span>
-                <input type="number" min="0" step="1"
+            <label class="fieldset">
+                <span class="fieldset-label">"Flower days (max)"</span>
+                <input class="input" type="number" min="0" step="1"
                     prop:value=move || draft.get().flower_days_max.map(|v| v.to_string()).unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.flower_days_max = event_target_value(&ev).parse().ok())
                 />
             </label>
-            <label class="field">
-                <span>"Auto: seed-to-harvest days (min)"</span>
-                <input type="number" min="0" step="1"
+            <label class="fieldset">
+                <span class="fieldset-label">"Auto: seed-to-harvest days (min)"</span>
+                <input class="input" type="number" min="0" step="1"
                     prop:value=move || draft.get().auto_total_days_min.map(|v| v.to_string()).unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.auto_total_days_min = event_target_value(&ev).parse().ok())
                 />
             </label>
-            <label class="field">
-                <span>"Auto: seed-to-harvest days (max)"</span>
-                <input type="number" min="0" step="1"
+            <label class="fieldset">
+                <span class="fieldset-label">"Auto: seed-to-harvest days (max)"</span>
+                <input class="input" type="number" min="0" step="1"
                     prop:value=move || draft.get().auto_total_days_max.map(|v| v.to_string()).unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.auto_total_days_max = event_target_value(&ev).parse().ok())
                 />
             </label>
-            <label class="field">
-                <span>"Stretch factor (1.5 = +50%)"</span>
-                <input type="number" min="1" step="0.1"
+            <label class="fieldset">
+                <span class="fieldset-label">"Stretch factor (1.5 = +50%)"</span>
+                <input class="input" type="number" min="1" step="0.1"
                     prop:value=move || draft.get().stretch_factor.map(|v| v.to_string()).unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.stretch_factor = event_target_value(&ev).parse().ok())
                 />
             </label>
-            <label class="field">
-                <span>"Veg weeks (min)"</span>
-                <input type="number" min="0" step="1"
+            <label class="fieldset">
+                <span class="fieldset-label">"Veg weeks (min)"</span>
+                <input class="input" type="number" min="0" step="1"
                     prop:value=move || draft.get().veg_weeks_min.map(|v| v.to_string()).unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.veg_weeks_min = event_target_value(&ev).parse().ok())
                 />
             </label>
-            <label class="field">
-                <span>"Veg weeks (max)"</span>
-                <input type="number" min="0" step="1"
+            <label class="fieldset">
+                <span class="fieldset-label">"Veg weeks (max)"</span>
+                <input class="input" type="number" min="0" step="1"
                     prop:value=move || draft.get().veg_weeks_max.map(|v| v.to_string()).unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.veg_weeks_max = event_target_value(&ev).parse().ok())
                 />
             </label>
-            <label class="field">
-                <span>"Height class"</span>
-                <select
+            <label class="fieldset">
+                <span class="fieldset-label">"Height class"</span>
+                <select class="select"
                     prop:value=move || draft.get().height_class.map(|h| h.label().to_owned()).unwrap_or_default()
                     on:change=move |ev| {
                         draft.update(|d| {
@@ -341,16 +341,16 @@ fn StrainForm(draft: RwSignal<StrainInput>) -> impl IntoView {
                     <option value="tall">"Tall"</option>
                 </select>
             </label>
-            <label class="field">
-                <span>"User rating (0-5)"</span>
-                <input type="number" min="0" max="5" step="1"
+            <label class="fieldset">
+                <span class="fieldset-label">"User rating (0-5)"</span>
+                <input class="input" type="number" min="0" max="5" step="1"
                     prop:value=move || draft.get().user_rating.map(|v| v.to_string()).unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.user_rating = event_target_value(&ev).parse().ok())
                 />
             </label>
-            <label class="field">
-                <span>"Heat tolerance"</span>
-                <select
+            <label class="fieldset">
+                <span class="fieldset-label">"Heat tolerance"</span>
+                <select class="select"
                     prop:value=move || draft.get().heat_tolerance.label().to_owned()
                     on:change=move |ev| {
                         draft.update(|d| d.heat_tolerance = tolerance_from_label(&event_target_value(&ev)));
@@ -361,9 +361,9 @@ fn StrainForm(draft: RwSignal<StrainInput>) -> impl IntoView {
                     <option value="tolerant">"Tolerant"</option>
                 </select>
             </label>
-            <label class="field">
-                <span>"Cold tolerance"</span>
-                <select
+            <label class="fieldset">
+                <span class="fieldset-label">"Cold tolerance"</span>
+                <select class="select"
                     prop:value=move || draft.get().cold_tolerance.label().to_owned()
                     on:change=move |ev| {
                         draft.update(|d| d.cold_tolerance = tolerance_from_label(&event_target_value(&ev)));
@@ -374,9 +374,9 @@ fn StrainForm(draft: RwSignal<StrainInput>) -> impl IntoView {
                     <option value="tolerant">"Tolerant"</option>
                 </select>
             </label>
-            <label class="field">
-                <span>"Light tolerance"</span>
-                <select
+            <label class="fieldset">
+                <span class="fieldset-label">"Light tolerance"</span>
+                <select class="select"
                     prop:value=move || draft.get().light_tolerance.label().to_owned()
                     on:change=move |ev| {
                         draft.update(|d| d.light_tolerance = tolerance_from_label(&event_target_value(&ev)));
@@ -387,9 +387,9 @@ fn StrainForm(draft: RwSignal<StrainInput>) -> impl IntoView {
                     <option value="tolerant">"Tolerant"</option>
                 </select>
             </label>
-            <label class="field wide">
-                <span>"Lineage tags (comma separated)"</span>
-                <input type="text" placeholder="haze, afghan"
+            <label class="fieldset col-span-full">
+                <span class="fieldset-label">"Lineage tags (comma separated)"</span>
+                <input class="input" type="text" placeholder="haze, afghan"
                     prop:value=move || draft.get().landrace_tags.join(", ")
                     on:input=move |ev| {
                         draft.update(|d| {
@@ -403,30 +403,30 @@ fn StrainForm(draft: RwSignal<StrainInput>) -> impl IntoView {
                     }
                 />
             </label>
-            <label class="field wide">
-                <span>"Terpene notes"</span>
-                <input type="text"
+            <label class="fieldset col-span-full">
+                <span class="fieldset-label">"Terpene notes"</span>
+                <input class="input" type="text"
                     prop:value=move || draft.get().terpene_notes.unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.terpene_notes = non_empty(event_target_value(&ev)))
                 />
             </label>
-            <label class="field wide">
-                <span>"Effect notes"</span>
-                <input type="text"
+            <label class="fieldset col-span-full">
+                <span class="fieldset-label">"Effect notes"</span>
+                <input class="input" type="text"
                     prop:value=move || draft.get().effect_notes.unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.effect_notes = non_empty(event_target_value(&ev)))
                 />
             </label>
-            <label class="field wide">
-                <span>"Yield notes"</span>
-                <input type="text"
+            <label class="fieldset col-span-full">
+                <span class="fieldset-label">"Yield notes"</span>
+                <input class="input" type="text"
                     prop:value=move || draft.get().yield_notes.unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.yield_notes = non_empty(event_target_value(&ev)))
                 />
             </label>
-            <label class="field wide">
-                <span>"Notes"</span>
-                <textarea rows="2"
+            <label class="fieldset col-span-full">
+                <span class="fieldset-label">"Notes"</span>
+                <textarea class="textarea" rows="2"
                     prop:value=move || draft.get().notes.unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.notes = non_empty(event_target_value(&ev)))
                 />
@@ -449,7 +449,7 @@ fn tolerance_from_label(label: &str) -> Tolerance {
 fn ErrorIf(error: RwSignal<Option<String>>) -> impl IntoView {
     move || {
         error.get().map(|message| {
-            view! { <p class="error" role="alert">{message}</p> }
+            view! { <p class="alert alert-error py-2 px-4 text-sm" role="alert">{message}</p> }
         })
     }
 }

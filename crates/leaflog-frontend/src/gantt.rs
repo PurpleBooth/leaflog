@@ -47,7 +47,7 @@ pub fn GanttTimeline(grow_id: String) -> impl IntoView {
             <ErrorIf error />
             {move || {
                 let Some(data) = forecast.get() else {
-                    return view! { <p class="muted">"Loading forecast…"</p> }.into_any();
+                    return view! { <p class="text-base-content/70">"Loading forecast…"</p> }.into_any();
                 };
                 let total_days = data
                     .windows
@@ -74,7 +74,7 @@ pub fn GanttTimeline(grow_id: String) -> impl IntoView {
                             <span class="gantt-today-label">"today"</span>
                         </div>
                     </div>
-                    <p class="muted small">
+                    <p class="text-base-content/70 text-sm">
                         "Bars show the likely window; light extensions show the                          earliest/latest range. Day count: "
                         {data.today_day}
                         " / "

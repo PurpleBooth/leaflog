@@ -8,6 +8,48 @@ here. Date format: YYYY-MM-DD.
 
 ## 2026-11-10 — post-M8
 
+### D064: Tailwind v4 + daisyUI 5 replace the hand-rolled stylesheet
+
+Rust-native Leptos component libraries were ruled out first: thaw 0.4.8
+pins `leptos ^0.7.7` (we are on 0.8), Leptonic last shipped Feb 2024,
+no Mantine port exists. Adopted instead: **Tailwind CSS 4.3.5 standalone
+CLI + daisyUI 5.7.50**, both build-time only (no Node anywhere, per the
+non-negotiables — Trunk fetches the pinned tailwind binary via
+`[tools]` in Trunk.toml and runs it off `<link data-trunk
+rel="tailwind-css">`).
+
+- Per the no-vendoring agreement, the daisyUI plugin bundles are
+  **fetched at build time, not committed**: `just tailwind-daisyui`
+  downloads `daisyui.mjs` + `daisyui-theme.mjs` (release v5.7.50, MIT)
+  into the gitignored `tailwind/` dir and refuses to proceed on any
+  sha256 mismatch (`d69de07c…6be472`, `e48a35d8…f251`) — the same
+  pinned-fetch pattern Trunk itself uses for the tailwindcss binary.
+  CSS entry is `tailwind.css` (`@source "./src/**/*.rs"`);
+  `styles.css` is deleted.
+- The green identity survives as two custom daisyUI themes (`leaflog`
+  light, `leaflogdark` dark via `prefersdark`) carrying the old palette:
+  base-100 = card surface, base-200 = page, base-300 = hairline.
+- Stayed hand-rolled by design: gantt + feed-chart geometry (inline
+  styles from Rust), the `.facts` dl grid, `.mainnav a[aria-current]`
+  (leptos_router flags active via aria-current, not a class), and
+  element defaults preflight strips (headings, `p` rhythm, `a`, `code`).
+- Leptos 0.8 gotchas found: an element cannot mix `class="…"` with
+  `class:name=` directives (two `Class` attributes fail `RenderHtml`);
+  reactive whole-class values use `class=move || …` (or a helper
+  returning the closure, because the view! parser rejects inline
+  `move || if {} else {}`). Every class token must appear as a literal
+  in the sources for Tailwind's scanner — `format!` fragments produce
+  no CSS, so conditional classes pick between full literal strings.
+- `steps-sm` was dropped: daisyUI 5 has no size modifier for `steps`.
+
+### D063: app shell widened to 72rem
+
+The UI shell (`styles.css` `.shell`) was capped at `46rem` — a reading
+column, narrow for a dashboard-style app with split grids, galleries and
+charts. Widened to `72rem`, still centred with side padding. The 48rem
+media queries are viewport-based and unchanged; all inner layouts
+(3fr/2fr split, auto-fill gallery, percentage-positioned gantt bars,
+flexbox feed bars) are fluid, so no other rules needed adjusting.
 ### D062: Home Assistant serves `leaflog/CHANGELOG.md`; version headings are bare `## <version>`
 
 The HA update dialog kept showing the 0.1.0 changelog for every
@@ -62,6 +104,7 @@ swallowed by `let _ =`) to `api::post_action`, and the per-plant POST
 failures now surface in the wizard's error line instead of being
 dropped silently.
 ||||||| parent of ee68fe8 (ci(changelog): serve an HA-sliceable app changelog (D061))
+||||||| parent of 4b7a27c (feat(frontend): Tailwind v4 + daisyUI 5 with green themes (D063, D064))
 
 ### D060: Environment alerts route to Home Assistant, gated three ways
 
