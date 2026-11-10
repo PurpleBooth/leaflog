@@ -34,6 +34,7 @@ pub mod equipment;
 pub mod feed;
 pub mod forecast;
 pub mod grows;
+pub mod spaces;
 pub mod strain;
 pub mod units;
 

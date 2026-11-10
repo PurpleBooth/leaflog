@@ -97,7 +97,9 @@ impl EquipmentCategory {
     }
 }
 
-/// One item in the user's equipment inventory.
+/// One entry in the equipment catalogue: bundled defaults plus
+/// user-added items (the strain-catalogue pattern, spec §4.1). Grow
+/// spaces reference entries from here.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EquipmentItem {
     /// ULID.
@@ -120,6 +122,11 @@ pub struct EquipmentItem {
     pub currency: Option<String>,
     /// Free-form notes.
     pub notes: Option<String>,
+    /// Provenance note for bundled entries; `None` on user-added items.
+    pub source: Option<String>,
+    /// Whether this entry was bundled with Leaflog (seed data). Set by
+    /// the seeder only; API-created items are always user entries.
+    pub is_builtin: bool,
     /// Creation instant, RFC 3339 UTC.
     pub created_at: String,
     /// Last modification instant, RFC 3339 UTC.
@@ -170,3 +177,6 @@ impl EquipmentInput {
         }
     }
 }
+// `from_item` intentionally drops `source`/`is_builtin`: inputs describe
+// user-shaped payloads, and both flags are preserved by the store on
+// update and set only by the seeder on create.

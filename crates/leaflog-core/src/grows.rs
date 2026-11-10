@@ -32,7 +32,8 @@ impl GrowStatus {
     }
 }
 
-/// One grow: a run of one or more plants of a strain in a substrate.
+/// One grow: a run of one or more plants of a strain in a substrate,
+/// optionally inside a grow space.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Grow {
     /// ULID.
@@ -41,6 +42,9 @@ pub struct Grow {
     pub name: String,
     /// Strain ULID (nullable: a grow may predate the catalogue entry).
     pub strain_id: Option<String>,
+    /// Grow-space ULID (nullable: grows may run outside any space, and
+    /// deleting a space keeps its grows).
+    pub grow_space_id: Option<String>,
     /// Substrate label: one of [`SUBSTRATES`] or a user-defined name.
     pub substrate: String,
     /// Seed/clone start date, `YYYY-MM-DD`. Day numbers count from here.
@@ -62,6 +66,8 @@ pub struct GrowInput {
     pub name: String,
     /// Strain ULID.
     pub strain_id: Option<String>,
+    /// Grow-space ULID.
+    pub grow_space_id: Option<String>,
     /// Substrate label.
     pub substrate: String,
     /// Seed/clone start date, `YYYY-MM-DD`.
