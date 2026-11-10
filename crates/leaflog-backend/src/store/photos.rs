@@ -79,6 +79,19 @@ pub fn create(conn: &Connection, new: &NewPhoto) -> Result<Photo, StoreError> {
     Ok(photo)
 }
 
+/// Lists the photos linked to one plant, newest first.
+///
+/// # Errors
+///
+/// Returns a [`StoreError`] on SQLite failures.
+pub fn list_for_plant(conn: &Connection, plant_id: &str) -> Result<Vec<Photo>, StoreError> {
+    let mut stmt =
+        conn.prepare("SELECT * FROM photo WHERE plant_id = ?1 ORDER BY created_at DESC")?;
+    let rows = stmt.query_map(params![plant_id], map_row)?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(StoreError::from)
+}
+
 /// Lists a grow's photos, newest capture first.
 ///
 /// # Errors

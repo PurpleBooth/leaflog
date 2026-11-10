@@ -1865,3 +1865,218 @@ async fn germination_tests_show_an_observed_rate_beside_the_window() {
         .unwrap();
     assert_eq!(list[0]["observed"]["sown"], 10);
 }
+
+#[tokio::test]
+async fn history_accuracy_on_a_golden_grow_and_next_run_by_reference() {
+    let db = Db::open_in_memory().unwrap();
+    leaflog_backend::seed::seed_strains(&db).await.unwrap();
+    leaflog_backend::seed::seed_equipment(&db).await.unwrap();
+    let base = spawn_with(db).await;
+    let client = reqwest::Client::new();
+
+    // A grow of bundled Northern Lights (45–55 flower days) in a space
+    // with a generic feed template fitted.
+    let strains: Vec<Value> = client
+        .get(format!("{base}/api/strains"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let northern = strains
+        .iter()
+        .find(|strain| strain["name"] == "Northern Lights")
+        .unwrap()
+        .clone();
+    let strain_count = strains.len();
+
+    let space: Value = client
+        .post(format!("{base}/api/spaces"))
+        .json(&sample_space("Golden tent"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let templates: Vec<Value> = client
+        .get(format!("{base}/api/feeds/templates"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let template = &templates[0];
+
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&json!({
+            "name": "NL golden run",
+            "strain_id": northern["id"],
+            "grow_space_id": space["id"],
+            "seed_batch_id": null,
+            "feed_template_id": template["id"],
+            "substrate": "soil",
+            "started_on": "2026-08-01",
+            "status": "archived",
+            "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let grow_id = grow["id"].as_str().unwrap().to_owned();
+
+    // Flip on grow day 42 (2026-09-12), harvest on day 100
+    // (2026-11-09).
+    for (action, when) in [
+        ("flip", "2026-09-12T12:00:00Z"),
+        ("harvest", "2026-11-09T12:00:00Z"),
+    ] {
+        client
+            .post(format!("{base}/api/grows/{grow_id}/actions"))
+            .json(&json!({
+                "plant_ids": [],
+                "occurred_at": when,
+                "action_type": action,
+                "details": {},
+                "notes": null,
+                "appearance_tags": [],
+            }))
+            .send()
+            .await
+            .unwrap();
+    }
+
+    // One plant with a dry weight feeds the yield aggregates.
+    let plant: Value = client
+        .post(format!("{base}/api/grows/{grow_id}/plants"))
+        .json(&json!({ "name": "NL #1", "wet_g": null, "dry_g": null, "trimmed_g": null }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    client
+        .put(format!(
+            "{base}/api/plants/{}",
+            plant["id"].as_str().unwrap()
+        ))
+        .json(&json!({ "name": "NL #1", "wet_g": 100.0, "dry_g": 25.0, "trimmed_g": 23.0 }))
+        .send()
+        .await
+        .unwrap();
+
+    // The golden comparison: the plan (no actuals) against the logged
+    // days. The predicted numbers come from the M5-golden-verified
+    // engine; here the deltas must be exactly actual − predicted.
+    let report: Value = client
+        .get(format!("{base}/api/history"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let row = report["accuracy"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["grow_id"] == grow_id.as_str())
+        .expect("the golden grow is in the history");
+    assert_eq!(row["strain"], "Northern Lights");
+    let boundaries = row["boundaries"].as_array().unwrap();
+    assert_eq!(boundaries.len(), 2, "flip and harvest are both logged");
+
+    let predicted_flip = boundaries[0]["predicted_day"].as_i64().unwrap();
+    assert_eq!(boundaries[0]["actual_day"], 42);
+    assert_eq!(boundaries[0]["delta_days"], 42 - predicted_flip);
+    let predicted_harvest = boundaries[1]["predicted_day"].as_i64().unwrap();
+    assert_eq!(boundaries[1]["actual_day"], 100);
+    assert_eq!(boundaries[1]["delta_days"], 100 - predicted_harvest);
+    // The plan's flip sits after germination + seedling + default veg;
+    // the harvest after the strain's 45–55 day flower.
+    assert!(predicted_flip > 0 && predicted_harvest > predicted_flip);
+
+    let nl_yield = report["yield_by_strain"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["label"] == "Northern Lights")
+        .expect("yield grouped by strain");
+    assert_eq!(nl_yield["total_dry_g"], 25.0);
+    let soil_yield = report["yield_by_substrate"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["label"] == "soil")
+        .expect("yield grouped by substrate");
+    assert_eq!(soil_yield["total_wet_g"], 100.0);
+    let template_yield = report["yield_by_feed_template"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["label"] == template["name"].as_str().unwrap())
+        .expect("yield grouped by feed template");
+    assert_eq!(template_yield["total_trimmed_g"], 23.0);
+
+    // The per-plant view ties the plant to its weights.
+    let view: Value = client
+        .get(format!(
+            "{base}/api/plants/{}/view",
+            plant["id"].as_str().unwrap()
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(view["plant"]["name"], "NL #1");
+    assert_eq!(view["yield_g"]["total_dry_g"], 25.0);
+
+    // One-tap next run: everything copied by reference — the bundled
+    // strain is not duplicated.
+    let next: Value = client
+        .post(format!("{base}/api/grows/{grow_id}/next-run"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(next["name"], "NL golden run (next run)");
+    assert_eq!(
+        next["strain_id"], northern["id"],
+        "strain copied by reference"
+    );
+    assert_eq!(next["grow_space_id"], space["id"]);
+    assert_eq!(next["feed_template_id"], template["id"]);
+    assert_eq!(next["substrate"], "soil");
+    assert_eq!(next["seed_batch_id"], Value::Null);
+    assert_eq!(next["status"], "active");
+
+    let strains_after: Vec<Value> = client
+        .get(format!("{base}/api/strains"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(strains_after.len(), strain_count, "no bundled duplication");
+    let spaces_after: Vec<Value> = client
+        .get(format!("{base}/api/spaces"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(spaces_after.len(), 1, "the space is reused, not copied");
+}

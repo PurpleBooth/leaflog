@@ -8,6 +8,32 @@ here. Date format: YYYY-MM-DD.
 
 ## 2026-11-10 — post-M8
 
+### D057: Cross-grow history — plan-based accuracy, aggregates, next-run
+
+The §4.15 section, computed read-only over existing tables:
+
+- **Accuracy compares the *plan*, not the live forecast.** The live
+  forecast pins boundaries to logged events, so feeding actuals into
+  it would zero every delta. `GET /api/history` therefore forecasts
+  each grow with empty `Actuals` and compares the flip against the
+  predicted flower start and the harvest against the predicted flower
+  end (likely path), reporting `actual − predicted` per boundary —
+  only for boundaries actually logged. The engine behind the predicted
+  numbers is the M5-golden-verified one.
+- **Yield aggregates** group per-grow totals by strain name,
+  substrate and fitted feed-template name (D055's link), keeping only
+  grows that produced a weight. Input-vs-runoff drift and alert
+  frequency views are deferred until M12's alert routing persists the
+  events they read.
+- **Per-plant view**: `GET /api/plants/{id}/view` returns the plant,
+  the log entries naming it (`plant_ids` is a JSON array — matched on
+  the id between its quotes), its photos and, via the plant's
+  weights, its yield. Grow-detail plant names link to it.
+- **Start next run**: `POST /api/grows/{id}/next-run` creates an
+  active grow copying strain, substrate, grow space and feed template
+  by reference (seed batch deliberately not copied — §4.15 does not
+  list it), started today, named `X (next run)`.
+
 ### D056: Germination-test log — observed evidence beside the preset
 
 The §4.13 germination log (V12): `germination_log` rows per batch

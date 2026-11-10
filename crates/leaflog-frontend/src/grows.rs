@@ -485,7 +485,9 @@ pub fn GrowDetail() -> impl IntoView {
                                 .map(|plant| {
                                     view! {
                                         <li class="card slim">
-                                            <strong>{plant.name}</strong>
+                                            <A href=route_href(&format!("/plants/{}", plant.id))>
+                                                {plant.name.clone()}
+                                            </A>
                                         </li>
                                     }
                                 })

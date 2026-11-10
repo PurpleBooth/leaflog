@@ -40,6 +40,7 @@ pub fn router() -> Router<AppState> {
         .merge(crate::api_env::router())
         .merge(crate::api_spaces::router())
         .merge(crate::api_seedbank::router())
+        .merge(crate::api_history::router())
 }
 
 /// An API failure mapped to an HTTP status and a JSON error body.

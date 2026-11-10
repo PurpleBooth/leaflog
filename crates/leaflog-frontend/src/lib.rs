@@ -31,6 +31,7 @@ mod equipment;
 mod feed;
 mod gantt;
 mod grows;
+mod history;
 mod live;
 mod onboarding;
 mod seedbank;
@@ -39,6 +40,7 @@ mod strains;
 
 use equipment::EquipmentPage;
 use grows::{GrowDetail, GrowsPage};
+use history::{HistoryPage, PlantViewPage};
 use js_sys::{Reflect, global};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -111,6 +113,7 @@ pub fn App() -> impl IntoView {
                         <A href=route_href("/strains")>"Strains"</A>
                         <A href=route_href("/spaces")>"Spaces"</A>
                         <A href=route_href("/seedbank")>"Seedbank"</A>
+                        <A href=route_href("/history")>"History"</A>
                         <A href=route_href("/grows")>"Grows"</A>
                     </nav>
                 </header>
@@ -122,6 +125,8 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("/strains") view=StrainsPage />
                         <Route path=path!("/spaces") view=SpacesPage />
                     <Route path=path!("/seedbank") view=SeedbankPage />
+                    <Route path=path!("/history") view=HistoryPage />
+                    <Route path=path!("/plants/:id") view=PlantViewPage />
                         <Route path=path!("/spaces/:id") view=SpaceDetail />
                         <Route path=path!("/grows") view=GrowsPage />
                         <Route path=path!("/grows/:id") view=GrowDetail />

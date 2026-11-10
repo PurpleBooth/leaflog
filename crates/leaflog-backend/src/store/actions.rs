@@ -59,6 +59,23 @@ pub fn create(conn: &Connection, entry: &ActionEntry) -> Result<(), StoreError> 
     Ok(())
 }
 
+/// Lists the entries that name one plant, newest first. `plant_ids`
+/// is a JSON array, so the match is the id between the array's quotes.
+///
+/// # Errors
+///
+/// Returns a [`StoreError`] on SQLite failures.
+pub fn list_for_plant(conn: &Connection, plant_id: &str) -> Result<Vec<ActionEntry>, StoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT * FROM action_log
+         WHERE plant_ids LIKE ?1
+         ORDER BY occurred_at DESC, created_at DESC",
+    )?;
+    let rows = stmt.query_map(params![format!("%\"{plant_id}\"%")], map_row)?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(StoreError::from)
+}
+
 /// Lists a grow's entries, newest first, optionally filtered by type.
 ///
 /// # Errors
