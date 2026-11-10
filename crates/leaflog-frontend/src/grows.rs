@@ -54,7 +54,9 @@ pub fn GrowsPage() -> impl IntoView {
         refresh();
     });
 
-    let save = move |_ev: leptos::ev::SubmitEvent| {
+    // prevent_default first — see docs/DECISIONS.md D061.
+    let save = move |ev: leptos::ev::SubmitEvent| {
+        ev.prevent_default();
         spawn_local(async move {
             match api::post::<GrowInput, Grow>("api/grows", &draft.get()).await {
                 Ok(_) => {
@@ -80,7 +82,7 @@ pub fn GrowsPage() -> impl IntoView {
             <ErrorIf error />
 
             <Show when=move || form_open.get()>
-                <form class="card form" on:submit:prevent=save>
+                <form class="card form" on:submit=save>
                     <h3>"New grow"</h3>
                     <div class="grid">
                         <label class="field">
@@ -264,7 +266,9 @@ pub fn GrowDetail() -> impl IntoView {
         refresh();
     });
 
-    let save_action = move |_ev: leptos::ev::SubmitEvent| {
+    // prevent_default first — see docs/DECISIONS.md D061.
+    let save_action = move |ev: leptos::ev::SubmitEvent| {
+        ev.prevent_default();
         let id = grow_id();
         spawn_local(async move {
             let input = draft.get();
@@ -399,7 +403,7 @@ pub fn GrowDetail() -> impl IntoView {
             </nav>
 
             <Show when=move || chip.get().is_some()>
-                <form class="card form" on:submit:prevent=save_action>
+                <form class="card form" on:submit=save_action>
                     <ActionForm draft kind=chip />
                     <div class="form-actions">
                         <button class="primary" type="submit">"Log it"</button>

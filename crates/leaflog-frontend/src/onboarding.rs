@@ -105,7 +105,12 @@ pub fn OnboardingWizard() -> impl IntoView {
         step.update(|current| *current = (*current).clamp(1, 3) + 1);
     };
 
-    let finish = move |_ev: leptos::ev::SubmitEvent| {
+    // prevent_default first: Leptos has no `on:submit:prevent` modifier
+    // (an unknown `:word` suffix becomes a custom event that never
+    // fires), so without this the browser submits the form natively and
+    // reloads the page, losing everything (docs/DECISIONS.md D061).
+    let finish = move |ev: leptos::ev::SubmitEvent| {
+        ev.prevent_default();
         let navigate = navigate.get_value();
         spawn_local(async move {
             // Step 2: a space built from the picked equipment.
@@ -123,10 +128,15 @@ pub fn OnboardingWizard() -> impl IntoView {
                         let created = space.id;
                         new_space_id = Some(created.clone());
                         for id in picked.get() {
-                            let _ = api::post_empty::<serde_json::Value>(&format!(
-                                "api/spaces/{created}/equipment/{id}"
-                            ))
-                            .await;
+                            // 204 No Content: post_action, not post_empty
+                            // (which would try to parse a missing body).
+                            if let Err(failure) =
+                                api::post_action(&format!("api/spaces/{created}/equipment/{id}"))
+                                    .await
+                            {
+                                error.set(Some(failure.message));
+                                return;
+                            }
                         }
                     }
                     Err(failure) => {
@@ -166,11 +176,15 @@ pub fn OnboardingWizard() -> impl IntoView {
                     Ok(grow) => {
                         for index in 1..=plant_count.get() {
                             let plant = json!({ "name": format!("{prefix} {index}") });
-                            let _ = api::post::<serde_json::Value, serde_json::Value>(
+                            if let Err(failure) = api::post::<serde_json::Value, serde_json::Value>(
                                 &format!("api/grows/{}/plants", grow.id),
                                 &plant,
                             )
-                            .await;
+                            .await
+                            {
+                                error.set(Some(failure.message));
+                                return;
+                            }
                         }
                         grow_id = Some(grow.id);
                     }
@@ -353,7 +367,7 @@ pub fn OnboardingWizard() -> impl IntoView {
                 </Show>
 
                 <Show when=move || step.get() == 4>
-                    <form on:submit:prevent=finish>
+                    <form on:submit=finish>
                         <h3>"4. Plants"</h3>
                         <p class="muted">
                             "Finishing creates a grow inside your space (today counts as day one —

@@ -8,6 +8,28 @@ here. Date format: YYYY-MM-DD.
 
 ## 2026-11-10 — post-M8
 
+### D061: Form submit handlers call `prevent_default` themselves — `on:submit:prevent` is not a Leptos modifier
+
+Every form used `on:submit:prevent=save` — but `leptos_macro` 0.8 only
+knows the `:undelegated`, `:target` and `:capture` suffixes
+(`parse_event`, `view/mod.rs`). Anything else stays part of the event
+name: the attribute compiled to a listener for a *custom* event named
+`submit:prevent`, which the DOM never dispatches. Compiles fine, runs
+never — so every save button (all 8 forms, including the onboarding
+wizard) performed a **native** GET submission: page reload, all entered
+data lost, nothing persisted. Found via a user's HAR capture (a
+`GET …/?` plus a full asset reload where the POSTs should have been);
+CI never saw it because the wrong listener name is not a compile error.
+
+Fix: the canonical idiom — handlers take the event and call
+`ev.prevent_default()` as their first statement, forms bind plain
+`on:submit`. While fixing the wizard, its equipment-attach call moved
+from `api::post_empty` (which tried to JSON-parse the `204 No Content`
+body of `POST /api/spaces/{id}/equipment/{id}` and always failed,
+swallowed by `let _ =`) to `api::post_action`, and the per-plant POST
+failures now surface in the wizard's error line instead of being
+dropped silently.
+
 ### D060: Environment alerts route to Home Assistant, gated three ways
 
 Implements §4.9's notification routing:

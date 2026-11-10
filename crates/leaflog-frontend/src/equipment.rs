@@ -104,7 +104,9 @@ pub fn EquipmentPage() -> impl IntoView {
         form_open.set(true);
     };
 
-    let save = move |_ev: leptos::ev::SubmitEvent| {
+    // prevent_default first — see docs/DECISIONS.md D061.
+    let save = move |ev: leptos::ev::SubmitEvent| {
+        ev.prevent_default();
         spawn_local(async move {
             let input = draft.get();
             let result = match editing_id.get() {
@@ -220,7 +222,7 @@ pub fn EquipmentPage() -> impl IntoView {
             </Show>
 
             <Show when=move || form_open.get()>
-                <form class="card form" on:submit:prevent=save>
+                <form class="card form" on:submit=save>
                     <h3>{move || if editing_id.get().is_some() { "Edit equipment" } else { "New equipment" }}</h3>
                     <EquipmentForm draft />
                     <div class="form-actions">

@@ -47,7 +47,9 @@ pub fn SpacesPage() -> impl IntoView {
         refresh();
     });
 
-    let save = move |_ev: leptos::ev::SubmitEvent| {
+    // prevent_default first — see docs/DECISIONS.md D061.
+    let save = move |ev: leptos::ev::SubmitEvent| {
+        ev.prevent_default();
         spawn_local(async move {
             match api::post::<GrowSpaceInput, GrowSpace>("api/spaces", &draft.get()).await {
                 Ok(_) => {
@@ -73,7 +75,7 @@ pub fn SpacesPage() -> impl IntoView {
             <ErrorIf error />
 
             <Show when=move || form_open.get()>
-                <form class="card form" on:submit:prevent=save>
+                <form class="card form" on:submit=save>
                     <h3>"New space"</h3>
                     <SpaceForm draft />
                     <div class="form-actions">
@@ -157,7 +159,9 @@ pub fn SpaceDetail() -> impl IntoView {
         refresh();
     });
 
-    let save = move |_ev: leptos::ev::SubmitEvent| {
+    // prevent_default first — see docs/DECISIONS.md D061.
+    let save = move |ev: leptos::ev::SubmitEvent| {
+        ev.prevent_default();
         let id = space_id();
         spawn_local(async move {
             match api::put::<GrowSpaceInput, GrowSpace>(&format!("api/spaces/{id}"), &draft.get())
@@ -237,7 +241,7 @@ pub fn SpaceDetail() -> impl IntoView {
                             </div>
 
                             <Show when=move || form_open.get()>
-                                <form class="card form" on:submit:prevent=save>
+                                <form class="card form" on:submit=save>
                                     <h3>"Edit space"</h3>
                                     <SpaceForm draft />
                                     <div class="form-actions">
