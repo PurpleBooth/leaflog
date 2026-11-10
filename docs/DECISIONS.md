@@ -8,6 +8,56 @@ here. Date format: YYYY-MM-DD.
 
 ## 2026-11-10 — post-M8
 
+### D048: Migrations run on refinery — auto-discovered files, checksum-verified history
+
+The hand-rolled runner from D001 (an embedded `&[&str]` array plus a
+`schema_migrations` table) is replaced by [refinery] 0.10, satisfying
+the first-class migration tooling of spec §3 / D045:
+
+- **Why refinery over the leading candidate `rusqlite_migration`:**
+  the spec wants the applied history *checksum-verified* with a
+  refusal on divergent or out-of-order histories. `rusqlite_migration`
+  (2.x) tracks state in SQLite's single `user_version` integer — there
+  is no per-migration record to checksum against, so the requirement
+  is unimplementable on it without a parallel table that duplicates
+  the runner's job. Refinery keeps a `refinery_schema_history` table
+  (version, name, applied_on, checksum), verifies every applied row
+  against the embedded set on every run (`abort_divergent`, default
+  on), and aborts on gaps, unknown versions, or repeated versions
+  (`abort_missing`, default on). Each migration applies in its own
+  transaction (the default; `set_grouped` stays untouched).
+- **File discovery is the workflow:** `embed_migrations!` collects
+  `crates/leaflog-backend/migrations/V<n>__<name>.sql` at compile
+  time — adding a file is the whole change. Files were renamed from
+  `0001_init.sql` to `V1__init.sql` (content untouched, so checksums
+  describe every database ever built). `just migrate new <name>`
+  creates the next numbered file and pokes the crate root so cargo's
+  change detection cannot miss the new file.
+- **Adopting pre-refinery databases:** on open, a legacy
+  `schema_migrations` table (the D001 format) is adopted once — its
+  max version is marked applied via `Target::FakeVersion` (inserting
+  the embedded names/checksums without running anything) and the
+  legacy table is dropped. A legacy version newer than the embedded
+  set refuses to start, and an adoption interrupted between marking
+  and dropping completes on the next open.
+- **Tooling:** the binary gains `migrate apply` / `migrate status`
+  subcommands (boot-time apply stays the normal path); `just migrate
+  new/status/apply` wrap them, plus a dev-only `just migrate redo`
+  that rebuilds `data/leaflog.db` from scratch. Refinery pairs with
+  rusqlite 0.41 (via the D047 bump) and needs Rust ≥ 1.92 — already
+  the workspace floor.
+
+Supersedes the runner half of D001 (the `rusqlite` + blocking-pool
+choice stands).
+
+[refinery]: https://crates.io/crates/refinery
+
+### Lint-policy exceptions (`#[allow]` register) — refinery macros
+
+| Crate | Items | Lint | Reason |
+|---|---|---|---|
+| leaflog-backend | `db::embedded` module | `missing_docs` | The refinery `embed_migrations!` macro generates the inner module and `runner()` without doc comments; the wrapper module documents the contract |
+
 ### D047: `cargo deny` gate — allowlist, one advisory ignore, and the rusqlite bump it forced
 
 `cargo deny check` (config in `deny.toml`) joins `just ci` per D046.

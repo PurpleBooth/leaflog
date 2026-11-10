@@ -32,6 +32,9 @@ reqwest = { version = "0.12", default-features = false, features = ["json"] }
 tokio-tungstenite = "0.27"
 futures-util = "0.3"
 rusqlite = { version = "0.41", features = ["bundled"] }
+# Maintained migration runner (spec §3, D048): auto-discovered SQL
+# files, checksum-verified history, divergent/out-of-order refusal.
+refinery = { version = "0.10", features = ["rusqlite"], default-features = false }
 ulid = "1"
 time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
 thiserror = "2"
@@ -45,3 +48,6 @@ axum = { workspace = true, features = ["multipart", "ws"] }
 tokio.workspace = true
 serde_json.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart"] }
+# tests/migrations.rs drives the migration runner directly.
+rusqlite = { version = "0.41", features = ["bundled"] }
+refinery = { version = "0.10", features = ["rusqlite"], default-features = false }

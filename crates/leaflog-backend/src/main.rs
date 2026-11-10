@@ -22,5 +22,13 @@
 #![allow(clippy::multiple_crate_versions)]
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    leaflog_backend::run()
+    let mut args = std::env::args().skip(1);
+    match args.next().as_deref() {
+        None => leaflog_backend::run(),
+        Some("migrate") => leaflog_backend::run_migrate(&args.collect::<Vec<_>>()),
+        Some(other) => Err(format!(
+            "unknown command {other}; usage: leaflog-backend [migrate <apply|status>]"
+        )
+        .into()),
+    }
 }

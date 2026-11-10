@@ -6,6 +6,10 @@ mock_port := "8098"
 frontend_dir := "crates/leaflog-frontend"
 static_dir := frontend_dir / "dist"
 
+# Migration tooling lives in migrate.just: `just migrate new <name>`,
+# `just migrate status`, `just migrate apply`, dev-only `just migrate redo`.
+mod migrate
+
 # Run backend + mock Home Assistant + frontend with simulated ingress.
 dev:
     #!/usr/bin/env bash

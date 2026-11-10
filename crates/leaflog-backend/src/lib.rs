@@ -216,6 +216,67 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     tokio::runtime::Runtime::new()?.block_on(serve(config))
 }
 
+/// Runs the `migrate` subcommand (spec §3).
+///
+/// `apply` applies pending migrations to the configured database
+/// (boot-time apply stays the normal path; this exists for standalone
+/// runs); `status` prints the applied and pending set without changing
+/// anything.
+///
+/// # Errors
+///
+/// Returns an error when the subcommand is unknown or the database
+/// cannot be opened or migrated — including a refusal when the applied
+/// history diverges from the embedded migration set.
+pub fn run_migrate(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let path = Config::from_env().db_path();
+    match args {
+        [command] if command == "apply" => {
+            let applied = db::migrate_apply(&path)?;
+            if applied.is_empty() {
+                println!("{}: already at the latest schema version", path.display());
+            } else {
+                println!(
+                    "{}: applied {} migration(s):",
+                    path.display(),
+                    applied.len()
+                );
+                for name in applied {
+                    println!("  - {name}");
+                }
+            }
+            Ok(())
+        }
+        [command] if command == "status" => {
+            let status = db::migrate_status(&path)?;
+            println!("{}:", path.display());
+            if let Some(legacy) = status.legacy_version {
+                println!("  pre-refinery history at version {legacy}; it will be adopted on apply");
+            }
+            if status.applied.is_empty() && status.legacy_version.is_none() {
+                println!("  no migrations applied yet");
+            }
+            for migration in &status.applied {
+                let when = migration.applied_on.as_deref().unwrap_or("unknown date");
+                println!(
+                    "  applied V{:0>3} {} ({when})",
+                    migration.version, migration.name
+                );
+            }
+            if status.pending.is_empty() {
+                println!("  no pending migrations");
+            } else {
+                println!("  pending (applies on `migrate apply` or next boot):");
+                for migration in &status.pending {
+                    println!("  pending V{:0>3} {}", migration.version, migration.name);
+                }
+            }
+            Ok(())
+        }
+        _ => Err("usage: leaflog-backend migrate <apply|status>".into()),
+    }
+}
+
 /// Binds the listener and serves until a shutdown signal arrives.
 ///
 /// # Errors

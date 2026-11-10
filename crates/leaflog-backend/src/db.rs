@@ -1,40 +1,49 @@
 //! SQLite storage: a single-connection database guarded for blocking
-//! access, plus the versioned-migration runner.
+//! access, plus schema migrations run by [refinery] (spec §3, D048).
+//!
+//! Migration files live in the crate's `migrations/` directory and are
+//! discovered at compile time — adding a `V<n>__<name>.sql` file is the
+//! whole workflow (`just migrate new <name>` creates it). Each file
+//! applies in its own transaction; the applied history in
+//! `refinery_schema_history` is checksum-verified against the embedded
+//! set on every open, and a divergent, gapped, or newer-than-binary
+//! history refuses to start.
+//!
+//! Databases from the earlier hand-rolled runner (D001, table
+//! `schema_migrations`) are adopted once: the versions recorded there
+//! are marked applied via refinery's fake-version target and the legacy
+//! table is dropped — the SQL files themselves never changed, so the
+//! embedded checksums describe exactly what those databases contain.
 //!
 //! Per `docs/DECISIONS.md` (D001) access goes through `rusqlite`, run
 //! on Tokio's blocking pool via [`Db::with`]. The app is single-user,
 //! so one connection is plenty; it is opened at `/data/leaflog.db`
 //! inside Home Assistant (see [`crate::Config`]).
+//!
+//! [refinery]: https://crates.io/crates/refinery
 
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+use refinery::Target;
 use rusqlite::Connection;
 
-/// Embedded schema migrations, applied in order. Array index + 1 is the
-/// schema version. Files live in the crate's `migrations/` directory.
-static MIGRATIONS: &[&str] = &[
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/migrations/0001_init.sql"
-    )),
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/migrations/0002_grows_actions_photos.sql"
-    )),
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/migrations/0003_sensors.sql"
-    )),
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/migrations/0004_feeds.sql"
-    )),
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/migrations/0005_grow_spaces.sql"
-    )),
-];
+/// The embedded SQL migration set (refinery; spec §3). The macro
+/// collects every `migrations/V<n>__<name>.sql` file at compile time;
+/// `embedded::migrations::runner()` serves it.
+// The refinery macro generates the inner module and function; they carry
+// no doc comments of their own (see docs/DECISIONS.md D048).
+#[allow(missing_docs)]
+pub mod embedded {
+    refinery::embed_migrations!("./migrations");
+}
+
+/// The applied-history table refinery maintains.
+const HISTORY_TABLE: &str = "refinery_schema_history";
+
+/// The pre-refinery runner's history table (D001), adopted and dropped
+/// on first open with the new runner.
+const LEGACY_HISTORY_TABLE: &str = "schema_migrations";
 
 /// A storage-layer error.
 #[derive(Debug, thiserror::Error)]
@@ -45,12 +54,44 @@ pub enum StoreError {
     /// An I/O error while opening the database file.
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
+    /// A migration failed, or the applied history does not match the
+    /// embedded set (checksum mismatch, gap, or a version this binary
+    /// does not know).
+    #[error("migration error: {0}")]
+    Migration(String),
     /// The connection mutex was poisoned by a panic in another task.
     #[error("database connection poisoned")]
     Poisoned,
     /// A blocking task panicked or was cancelled.
     #[error("database task join error: {0}")]
     Join(#[from] tokio::task::JoinError),
+}
+
+/// One row of the applied-migration history.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppliedMigration {
+    /// Version number (the `V<n>` prefix of the file).
+    pub version: i64,
+    /// File-name part of the migration (`V2__grows_actions_photos` →
+    /// `grows_actions_photos`).
+    pub name: String,
+    /// When the migration ran, RFC 3339; `None` for not-yet-applied
+    /// entries reported as pending.
+    pub applied_on: Option<String>,
+}
+
+/// What `migrate status` reports: applied rows, pending files, and —
+/// for a database still carrying the pre-refinery history — the legacy
+/// version awaiting adoption.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MigrationStatus {
+    /// Applied migrations, in version order.
+    pub applied: Vec<AppliedMigration>,
+    /// Embedded files not yet applied, in version order.
+    pub pending: Vec<AppliedMigration>,
+    /// Highest version of a legacy `schema_migrations` history that
+    /// [`migrate_apply`] will adopt.
+    pub legacy_version: Option<i64>,
 }
 
 /// The database handle, cheap to clone.
@@ -64,12 +105,10 @@ impl Db {
     /// # Errors
     ///
     /// Returns a [`StoreError`] when the file cannot be created, opened,
-    /// or migrated.
+    /// or migrated — including a refusal to start when the applied
+    /// history diverges from the embedded migration set.
     pub fn open(path: &Path) -> Result<Self, StoreError> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let conn = Connection::open(path)?;
+        let conn = open_connection(path)?;
         Self::init(conn)
     }
 
@@ -84,9 +123,10 @@ impl Db {
     }
 
     fn init(conn: Connection) -> Result<Self, StoreError> {
+        let mut conn = conn;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
-        migrate(&conn)?;
+        migrate(&mut conn)?;
         Ok(Self(Arc::new(Mutex::new(conn))))
     }
 
@@ -119,11 +159,20 @@ impl Db {
     /// Returns a [`StoreError`] when the query fails.
     pub fn version(conn: &Connection) -> Result<i64, StoreError> {
         Ok(conn.query_row(
-            "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
+            &format!("SELECT COALESCE(MAX(version), 0) FROM {HISTORY_TABLE}"),
             [],
             |row| row.get(0),
         )?)
     }
+}
+
+/// Opens (creating directories and file as needed) a connection without
+/// migrating; shared by [`Db::open`] and the `migrate` subcommand.
+fn open_connection(path: &Path) -> Result<Connection, StoreError> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    Ok(Connection::open(path)?)
 }
 
 /// Locks the connection, mapping poisoning to [`StoreError::Poisoned`].
@@ -134,33 +183,160 @@ fn lock(db: &Mutex<Connection>) -> Result<std::sync::MutexGuard<'_, Connection>,
     })
 }
 
-/// Applies every pending migration in its own transaction.
-fn migrate(conn: &Connection) -> Result<(), rusqlite::Error> {
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS schema_migrations (
-             version    INTEGER PRIMARY KEY,
-             applied_at TEXT NOT NULL
-         );",
-    )?;
-    let current = Db::version(conn).map_err(|e| match e {
-        StoreError::Sqlite(sqlite) => sqlite,
-        other => unreachable!("version() only fails with SQLite errors, got {other:?}"),
-    })?;
-    for (index, sql) in MIGRATIONS.iter().enumerate() {
-        let version = i64::try_from(index + 1).expect("migration index always fits in i64");
-        if version <= current {
-            continue;
-        }
-        let applied_at = now_rfc3339();
-        conn.execute_batch(&format!(
-            "BEGIN IMMEDIATE;
-             {sql}
-             INSERT INTO schema_migrations (version, applied_at)
-                 VALUES ({version}, '{applied_at}');
-             COMMIT;"
-        ))?;
-    }
+/// Applies all pending migrations (adopting a legacy history first if
+/// one is present); returns the names of the migrations that ran.
+///
+/// Boot-time apply via [`Db::open`] is the normal path; this is the
+/// `migrate apply` subcommand and test entry point.
+///
+/// # Errors
+///
+/// Returns a [`StoreError`] when a migration fails or the applied
+/// history does not match the embedded set.
+pub fn migrate_apply(path: &Path) -> Result<Vec<String>, StoreError> {
+    let mut conn = open_connection(path)?;
+    conn.pragma_update(None, "foreign_keys", "ON")?;
+    conn.pragma_update(None, "journal_mode", "WAL")?;
+    let before = status_of(&conn)?;
+    migrate(&mut conn)?;
+    Ok(before.pending.into_iter().map(|m| m.name).collect())
+}
+
+/// Reads the applied and pending migrations without changing anything
+/// (beyond creating an empty database file when none exists).
+///
+/// # Errors
+///
+/// Returns a [`StoreError`] when the database cannot be opened or read.
+pub fn migrate_status(path: &Path) -> Result<MigrationStatus, StoreError> {
+    let conn = open_connection(path)?;
+    status_of(&conn)
+}
+
+/// Adopts a legacy history when present, then applies pending
+/// migrations. Refinery verifies the applied history against the
+/// embedded set (names and checksums) on every run and errors on a
+/// divergent, gapped, or unknown-version history.
+fn migrate(conn: &mut Connection) -> Result<(), StoreError> {
+    adopt_legacy_history(conn)?;
+    embedded::migrations::runner()
+        .run(conn)
+        .map_err(|error| StoreError::Migration(error.to_string()))?;
     Ok(())
+}
+
+/// Adopts the D001 runner's `schema_migrations` table: the versions it
+/// recorded are marked applied with the embedded names and checksums
+/// (the SQL files never changed, so the checksums describe exactly what
+/// those databases contain), and the legacy table is dropped. A no-op
+/// for databases refinery already tracks; the table is also dropped
+/// then, in case an adoption was interrupted between marking and
+/// dropping.
+fn adopt_legacy_history(conn: &mut Connection) -> Result<(), StoreError> {
+    let runner = embedded::migrations::runner();
+    let embedded_count =
+        i64::try_from(runner.get_migrations().len()).expect("migration count fits in i64");
+
+    let table = |name: &str| -> Result<bool, StoreError> {
+        Ok(conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+            [name],
+            |row| row.get(0),
+        )?)
+    };
+    if table(HISTORY_TABLE)? {
+        // Interrupted adoption: refinery knows the history, the legacy
+        // table just never got dropped.
+        if table(LEGACY_HISTORY_TABLE)? {
+            conn.execute(&format!("DROP TABLE {LEGACY_HISTORY_TABLE}"), [])?;
+        }
+        return Ok(());
+    }
+    let Some(legacy_version) = legacy_history_version(conn)? else {
+        return Ok(());
+    };
+    if legacy_version > embedded_count {
+        return Err(StoreError::Migration(format!(
+            "database history is at version {legacy_version}, but this binary only knows \
+             {embedded_count} migrations; refusing to start against a newer database"
+        )));
+    }
+    let target = i32::try_from(legacy_version)
+        .expect("legacy version is bounded by the embedded count above");
+    runner
+        .set_target(Target::FakeVersion(target))
+        .run(conn)
+        .map_err(|error| StoreError::Migration(error.to_string()))?;
+    conn.execute(&format!("DROP TABLE {LEGACY_HISTORY_TABLE}"), [])?;
+    Ok(())
+}
+
+/// The highest version of a legacy `schema_migrations` table, if the
+/// table exists at all.
+fn legacy_history_version(conn: &Connection) -> Result<Option<i64>, StoreError> {
+    let exists: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+        [LEGACY_HISTORY_TABLE],
+        |row| row.get(0),
+    )?;
+    if !exists {
+        return Ok(None);
+    }
+    Ok(Some(conn.query_row(
+        &format!("SELECT COALESCE(MAX(version), 0) FROM {LEGACY_HISTORY_TABLE}"),
+        [],
+        |row| row.get(0),
+    )?))
+}
+
+/// Builds the [`MigrationStatus`] of an open connection: applied rows
+/// from refinery's table (or the legacy version when adoption is still
+/// pending), pending files from the embedded set.
+fn status_of(conn: &Connection) -> Result<MigrationStatus, StoreError> {
+    let runner = embedded::migrations::runner();
+    let embedded = runner.get_migrations().clone();
+    let mut applied: Vec<AppliedMigration> = Vec::new();
+    let mut legacy_version = None;
+
+    let refinery_exists: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+        [HISTORY_TABLE],
+        |row| row.get(0),
+    )?;
+    if refinery_exists {
+        let mut statement = conn.prepare(&format!(
+            "SELECT version, name, applied_on FROM {HISTORY_TABLE} ORDER BY version"
+        ))?;
+        let rows = statement.query_map([], |row| {
+            Ok(AppliedMigration {
+                version: row.get(0)?,
+                name: row.get(1)?,
+                applied_on: row.get(2)?,
+            })
+        })?;
+        for row in rows {
+            applied.push(row?);
+        }
+    } else {
+        legacy_version = legacy_history_version(conn)?;
+    }
+
+    let applied_upto =
+        legacy_version.unwrap_or_else(|| applied.last().map_or(0, |migration| migration.version));
+    let pending = embedded
+        .iter()
+        .filter(|migration| i64::from(migration.version()) > applied_upto)
+        .map(|migration| AppliedMigration {
+            version: i64::from(migration.version()),
+            name: migration.name().to_owned(),
+            applied_on: None,
+        })
+        .collect();
+    Ok(MigrationStatus {
+        applied,
+        pending,
+        legacy_version,
+    })
 }
 
 /// The current UTC instant as an RFC 3339 string.
@@ -185,17 +361,23 @@ pub fn new_id() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Db, StoreError};
+    use super::{Db, StoreError, embedded};
+
+    fn embedded_count() -> i64 {
+        i64::try_from(embedded::migrations::runner().get_migrations().len())
+            .expect("migration count fits in i64")
+    }
 
     #[tokio::test]
-    async fn in_memory_database_migrates_to_version_1() -> Result<(), StoreError> {
+    async fn in_memory_database_migrates_to_the_latest_version() -> Result<(), StoreError> {
         let db = Db::open_in_memory()?;
         db.with(|conn| -> Result<(), StoreError> {
-            assert_eq!(Db::version(conn)?, 5);
-            let applied = conn.query_row("SELECT COUNT(*) FROM schema_migrations", [], |r| {
-                r.get::<_, i64>(0)
-            })?;
-            assert_eq!(applied, 5);
+            assert_eq!(Db::version(conn)?, embedded_count());
+            let applied: i64 =
+                conn.query_row("SELECT COUNT(*) FROM refinery_schema_history", [], |row| {
+                    row.get(0)
+                })?;
+            assert_eq!(applied, embedded_count());
             Ok(())
         })
         .await
@@ -207,7 +389,7 @@ mod tests {
         let path = dir.join("nested").join("leaflog.db");
         let db = Db::open(&path)?;
         db.with(|conn| -> Result<(), StoreError> {
-            assert_eq!(Db::version(conn)?, 5);
+            assert_eq!(Db::version(conn)?, embedded_count());
             Ok(())
         })
         .await?;
@@ -218,13 +400,21 @@ mod tests {
 
     #[tokio::test]
     async fn reopening_applies_nothing_new() -> Result<(), StoreError> {
-        let db = Db::open_in_memory()?;
-        db.with(|conn| -> Result<(), StoreError> { Ok(super::migrate(conn)?) })
-            .await?;
+        let dir = std::env::temp_dir().join(format!("leaflog-db-test-{}", super::new_id()));
+        let path = dir.join("leaflog.db");
+        drop(Db::open(&path)?);
+        let db = Db::open(&path)?;
         db.with(|conn| -> Result<(), StoreError> {
-            assert_eq!(Db::version(conn)?, 5);
+            assert_eq!(Db::version(conn)?, embedded_count());
+            let applied: i64 =
+                conn.query_row("SELECT COUNT(*) FROM refinery_schema_history", [], |row| {
+                    row.get(0)
+                })?;
+            assert_eq!(applied, embedded_count());
             Ok(())
         })
-        .await
+        .await?;
+        std::fs::remove_dir_all(&dir).ok();
+        Ok(())
     }
 }
