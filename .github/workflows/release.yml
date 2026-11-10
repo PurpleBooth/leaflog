@@ -4,10 +4,13 @@
 # locally with the version commit (`cog bump --auto`; when cocogitto's
 # own signing fails, finish its commit + tag with git) and sync the
 # version files first (leaflog/config.yaml, workspace Cargo.toml,
-# Cargo.lock, custom_components/leaflog/manifest.json). A dispatch
-# re-runs the release for whatever version leaflog/config.yaml
-# declares — a recovery hatch for a broken release, not a bumper; the
-# former `bump` input was never honoured (D039).
+# Cargo.lock, custom_components/leaflog/manifest.json). The pipeline
+# then rewrites CHANGELOG.md wholesale from `cog changelog` (D042) and
+# commits it with the version sync, so the file is always cocogitto
+# output regardless of local tooling. A dispatch re-runs the release
+# for whatever version leaflog/config.yaml declares — a recovery hatch
+# for a broken release, not a bumper; the former `bump` input was
+# never honoured (D039).
 
 name: Release
 
@@ -40,15 +43,18 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install cocogitto
+      - name: Install cocogitto and just
         env:
           COG_VERSION: "6.2.0"
+          JUST_VERSION: "1.59.0"
         run: |
           curl -sSL "https://github.com/cocogitto/cocogitto/releases/download/${COG_VERSION}/cocogitto-${COG_VERSION}-x86_64-unknown-linux-musl.tar.gz" -o /tmp/cog.tar.gz
           tar -xzf /tmp/cog.tar.gz -C /tmp
           cp /tmp/x86_64-unknown-linux-musl/cog /usr/local/bin/cog
           chmod +x /usr/local/bin/cog
           cog --version
+          curl -sSL "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar -xz -C /usr/local/bin just
+          just --version
 
       - name: Verify conventional commits
         run: cog check
@@ -67,9 +73,16 @@ jobs:
       - name: Generate changelog
         id: changelog
         run: |
-          # Generate the changelog from conventional commits
-          cog changelog --template default > /tmp/changelog.md
-          # Write to a multiline output
+          VERSION="${{ steps.version.outputs.version }}"
+          ROOT="$(git rev-list --max-parents=0 HEAD | tail -1)"
+          # Released history up to this tag only: no Unreleased section,
+          # even on a dispatch re-run where main has moved past the tag.
+          cog changelog --template default "${ROOT}..v${VERSION}" > /tmp/changelog.md
+          # Rewrite CHANGELOG.md wholesale from cocogitto via the same
+          # recipe used locally (D042), so bump-time drift never survives
+          # a release. Committed by the version-sync step below.
+          just changelog
+          # Write the release body to a multiline output
           EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
           echo "changelog<<$EOF" >> "$GITHUB_OUTPUT"
           cat /tmp/changelog.md >> "$GITHUB_OUTPUT"
@@ -102,7 +115,7 @@ jobs:
           if ! git diff --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add leaflog/config.yaml Cargo.toml Cargo.lock custom_components/
+            git add leaflog/config.yaml Cargo.toml Cargo.lock custom_components/ CHANGELOG.md
             git commit -m "chore(release): bump version to $VERSION"
             git push origin HEAD:main
           fi

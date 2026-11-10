@@ -1,5 +1,7 @@
-# PR validation: conventional-commit format check via cocogitto.
-# Runs on every pull request; blocks merge on non-conventional commits.
+# PR validation: conventional-commit format check via cocogitto, plus a
+# guard that CHANGELOG.md, when touched, matches cocogitto output (D042).
+# Runs on every pull request; blocks merge on non-conventional commits
+# and hand-maintained changelogs.
 
 name: PR Check
 
@@ -20,15 +22,32 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install cocogitto
+      - name: Install cocogitto and just
         env:
           COG_VERSION: "6.2.0"
+          JUST_VERSION: "1.59.0"
         run: |
           curl -sSL "https://github.com/cocogitto/cocogitto/releases/download/${COG_VERSION}/cocogitto-${COG_VERSION}-x86_64-unknown-linux-musl.tar.gz" -o /tmp/cog.tar.gz
           tar -xzf /tmp/cog.tar.gz -C /tmp
           cp /tmp/x86_64-unknown-linux-musl/cog /usr/local/bin/cog
           chmod +x /usr/local/bin/cog
           cog --version
+          curl -sSL "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar -xz -C /usr/local/bin just
+          just --version
+
+      - name: CHANGELOG.md must be cocogitto output
+        run: |
+          # Only inspect the file when the PR touches it (D042).
+          if ! git diff --name-only "${{ github.event.pull_request.base.sha }}...HEAD" -- CHANGELOG.md | grep -q .; then
+            exit 0
+          fi
+          # Regenerate; a clean diff means the committed file is exactly
+          # cocogitto output. Any residue is a hand edit.
+          just changelog
+          if ! git diff --exit-code -- CHANGELOG.md; then
+            echo "::error::CHANGELOG.md differs from cocogitto output. The file is generated at release time (D042) — run 'just changelog' instead of editing it."
+            exit 1
+          fi
 
       - name: Check conventional commits
         run: cog check --from-branch-format "origin/{branch}"

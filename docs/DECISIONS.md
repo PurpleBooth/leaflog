@@ -6,6 +6,42 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-10 — post-M8
+
+### D042: CHANGELOG.md is cocogitto output, regenerated in CI
+
+The committed changelog had drifted from what cocogitto produces: the
+v0.1.0 section was missing entirely (cocogitto's `cog bump` only
+*prepends* a new section into the existing file — history before the
+file first existed is never backfilled), release dates showed bump-day
+instead of tag-day, and scope styling matched the host's cargo-installed
+cog 7.0.0 while devbox/CI pin 6.2.0. Nothing verified the file, so it
+could equally have been edited by hand.
+
+Chosen setup, replacing `cog bump`'s prepend as the maintainer:
+
+- **Canonical form**: `cog changelog <root-commit>..<latest-tag>`
+  (released tags only, never an Unreleased section, deterministic
+  wherever main is) wrapped in cocogitto's own `DEFAULT_HEADER` /
+  `DEFAULT_FOOTER` file constants. Verified byte-identical to the
+  format `cog bump` writes.
+- **`just changelog`** is the only writer of the file (the header/footer
+  constants live in exactly this one place). CI installs the same
+  pinned `just` 1.59.0 as devbox.lock.
+- **The release pipeline rewrites the file wholesale** via that recipe
+  and commits it with the version sync, so local bump-time drift (or a
+  hand edit) never survives a release. The GitHub Release body uses the
+  same `<root>..<tag>` range, which also fixes dispatch re-runs
+  picking up an Unreleased section once main moved past the tag.
+- **PR guard** (pr-check.yml): when a PR touches CHANGELOG.md it must
+  be byte-identical to `just changelog` output; anything else fails.
+
+`cog bump --auto` still creates the local version commit + tag (and its
+prepend write is harmless), but the file's content is defined by CI
+regeneration, not by the bump. Local bumps should use devbox's pinned
+cog (`devbox run -- cog bump --auto`) — the style skew came from host
+cog 7.0.0.
+
 ## 2026-11-09 — post-M8
 
 ### D041: multi-part photo upload is all-or-nothing
