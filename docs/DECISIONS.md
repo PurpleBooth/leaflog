@@ -8,6 +8,39 @@ here. Date format: YYYY-MM-DD.
 
 ## 2026-11-10 — post-M8
 
+### D051: Bundled-data upgrade rule — stable ids, insert-new-only seeding
+
+Implements the §4.1 upgrade rule (spec §13 "bundled-data upgrade"
+criterion): every bundled record carries a stable id from its source
+dataset (`seed-equip-<slug>`, `seed-strain-<slug>`), upgrades insert
+bundled rows that are new and never modify or delete existing ones,
+user entries and clones are never touched, corrections ship as new
+revisions, and removals require an explicit migration (V6 did that).
+
+- **V8 adopts pre-stable-id databases.** Existing databases were seeded
+  with random ULIDs, so keying by stable id alone would duplicate every
+  bundled row on upgrade. V8 re-keys old bundled rows onto their stable
+  ids with the FK-safe insert → repoint children → delete-old pattern
+  (foreign keys stay ON through refinery migrations; a plain PK update
+  would violate them). Children follow: `grow_space_equipment` for
+  equipment, `grow.strain_id` and clone parents (`strain.is_phenotype_of`)
+  for strains. Adoption matches by (name, category) / (name, breeder)
+  and only when exactly one row matches — zero matches means the row is
+  "new" under its stable id (the seeder inserts it fresh), and an
+  ambiguous match is left untouched rather than guessed at. Adopted
+  rows are marked `is_builtin = 1` whatever the old flag said.
+- **User edits survive by construction.** A renamed bundled row no
+  longer matches its adoption block, keeps its identity untouched, and
+  the pristine record inserts fresh beside it. Verified against the
+  real dev database: the tent and light (unrenamed) were adopted onto
+  stable ids while thirteen renamed rows kept their ids, and the
+  renamed fans will get the pristine fan presets re-inserted next boot.
+- **The seeder is idempotent and insert-only.** `seed_strains` /
+  `seed_equipment` skip any stable id already present (user-edited
+  bundled rows keep their values), so seeding runs on every boot
+  instead of the old empty-table guard. Feed templates keep their
+  count-based guard for now — they are outside the §4.1 criterion.
+
 ### D050: Bundled records are read-only; immutability is a 409
 
 Implements the read-only-preset half of D045 (spec §4.1, §4.4, §13):

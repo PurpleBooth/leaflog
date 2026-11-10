@@ -293,7 +293,7 @@ async fn catalogue_trim_recategorizes_prunes_and_parks() {
                   purchase_date, purchase_price, currency, notes,
                   source, is_builtin, created_at, updated_at)
              VALUES
-                 ('e-filter', 'Carbon filter 100 mm', 'carbon_filter', NULL, NULL, 0,
+                 ('e-filter', 'Shop carbon filter 100', 'carbon_filter', NULL, NULL, 0,
                   NULL, NULL, NULL, NULL, 'bundled', 1,
                   '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'),
                  ('e-tray', 'Trim tray set', 'misc', NULL, NULL, 0,
@@ -302,7 +302,7 @@ async fn catalogue_trim_recategorizes_prunes_and_parks() {
                  ('e-dehum', 'My basement dehumidifier', 'dehumidifier', NULL, NULL, 0,
                   NULL, NULL, NULL, NULL, NULL, 0,
                   '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'),
-                 ('e-light', 'SE1500 LED grow light', 'light', NULL, 150, 1,
+                 ('e-light', 'My SE999 light', 'light', NULL, 150, 1,
                   NULL, NULL, NULL, NULL, 'bundled', 1,
                   '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
              INSERT INTO grow_space

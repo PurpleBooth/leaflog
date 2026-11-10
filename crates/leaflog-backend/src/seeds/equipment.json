@@ -1,5 +1,6 @@
 [
   {
+    "id": "seed-equip-grow-tent-60x60x180",
     "name": "Grow tent 60x60x180",
     "category": "tent_room",
     "brand_model": "Spider Farmer 60x60x180 cm",
@@ -11,6 +12,7 @@
     "notes": "Reflective mylar indoor tent with observation window and removable floor tray; sized for one small LED fixture."
   },
   {
+    "id": "seed-equip-se1500-led-grow-light",
     "name": "SE1500 LED grow light",
     "category": "light",
     "brand_model": "Spider Farmer 2026 SE1500",
@@ -22,6 +24,7 @@
     "notes": "Dimmable full-spectrum LED for 60x60-70x70 cm tents, smart-app control. 150 W nameplate - measure the wall draw and record it in real watts."
   },
   {
+    "id": "seed-equip-e6-clip-fan-150-mm",
     "name": "E6 clip fan 150 mm",
     "category": "fan",
     "brand_model": "VIVOSUN E6",
@@ -33,6 +36,7 @@
     "notes": "Oscillating clip-on circulation fan, 150 mm head, 10 speed levels."
   },
   {
+    "id": "seed-equip-carbon-filter-100-mm",
     "name": "Carbon filter 100 mm",
     "category": "fan",
     "brand_model": "Spider Farmer 4\"/100 mm",
@@ -44,6 +48,7 @@
     "notes": "Australian activated-carbon odour filter for a 100 mm pipe fan."
   },
   {
+    "id": "seed-equip-carbon-filter-150-mm",
     "name": "Carbon filter 150 mm",
     "category": "fan",
     "brand_model": "Spider Farmer 6\"/150 mm",

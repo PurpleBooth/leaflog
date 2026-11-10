@@ -1,11 +1,14 @@
 [
   {
     "name": "Northern Lights",
+    "id": "seed-strain-northern-lights",
     "breeder": "Sensi Seeds",
     "photoperiod": "photoperiod",
     "sex": "feminized",
     "indica_pct": 90,
-    "landrace_tags": ["afghani"],
+    "landrace_tags": [
+      "afghani"
+    ],
     "flower_days_min": 45,
     "flower_days_max": 63,
     "stretch_factor": 1.4,
@@ -37,11 +40,16 @@
   },
   {
     "name": "Amnesia Haze",
+    "id": "seed-strain-amnesia-haze",
     "breeder": "Barney's Farm",
     "photoperiod": "photoperiod",
     "sex": "feminized",
     "indica_pct": 20,
-    "landrace_tags": ["haze", "afghan", "hawaiian"],
+    "landrace_tags": [
+      "haze",
+      "afghan",
+      "hawaiian"
+    ],
     "flower_days_min": 70,
     "flower_days_max": 85,
     "stretch_factor": 1.9,
@@ -73,11 +81,15 @@
   },
   {
     "name": "Blue Dream",
+    "id": "seed-strain-blue-dream",
     "breeder": null,
     "photoperiod": "photoperiod",
     "sex": "feminized",
     "indica_pct": 40,
-    "landrace_tags": ["blueberry", "haze"],
+    "landrace_tags": [
+      "blueberry",
+      "haze"
+    ],
     "flower_days_min": 56,
     "flower_days_max": 77,
     "stretch_factor": 1.6,
@@ -109,11 +121,15 @@
   },
   {
     "name": "Gorilla Glue #4",
+    "id": "seed-strain-gorilla-glue-4",
     "breeder": null,
     "photoperiod": "photoperiod",
     "sex": "feminized",
     "indica_pct": 60,
-    "landrace_tags": ["chem", "sour_diesel"],
+    "landrace_tags": [
+      "chem",
+      "sour_diesel"
+    ],
     "flower_days_min": 56,
     "flower_days_max": 70,
     "stretch_factor": 1.5,
@@ -145,11 +161,16 @@
   },
   {
     "name": "GG4 Auto",
+    "id": "seed-strain-gg4-auto",
     "breeder": null,
     "photoperiod": "auto",
     "sex": "feminized",
     "indica_pct": 60,
-    "landrace_tags": ["chem", "sour_diesel", "ruderalis"],
+    "landrace_tags": [
+      "chem",
+      "sour_diesel",
+      "ruderalis"
+    ],
     "flower_days_min": null,
     "flower_days_max": null,
     "stretch_factor": 1.4,
@@ -181,11 +202,15 @@
   },
   {
     "name": "Mokum's Tulip",
+    "id": "seed-strain-mokum-s-tulip",
     "breeder": "Dutch Passion",
     "photoperiod": "photoperiod",
     "sex": "feminized",
     "indica_pct": null,
-    "landrace_tags": ["gelato", "cookies"],
+    "landrace_tags": [
+      "gelato",
+      "cookies"
+    ],
     "flower_days_min": 56,
     "flower_days_max": 63,
     "stretch_factor": null,
@@ -215,11 +240,14 @@
   },
   {
     "name": "Euforia",
+    "id": "seed-strain-euforia",
     "breeder": "Dutch Passion",
     "photoperiod": "photoperiod",
     "sex": "feminized",
     "indica_pct": null,
-    "landrace_tags": ["skunk"],
+    "landrace_tags": [
+      "skunk"
+    ],
     "flower_days_min": 56,
     "flower_days_max": 70,
     "stretch_factor": null,
@@ -249,11 +277,14 @@
   },
   {
     "name": "Melonade Runtz",
+    "id": "seed-strain-melonade-runtz",
     "breeder": "Dutch Passion",
     "photoperiod": "photoperiod",
     "sex": "feminized",
     "indica_pct": null,
-    "landrace_tags": ["runtz"],
+    "landrace_tags": [
+      "runtz"
+    ],
     "flower_days_min": 63,
     "flower_days_max": 70,
     "stretch_factor": null,
@@ -283,11 +314,14 @@
   },
   {
     "name": "Frozen Biscotti",
+    "id": "seed-strain-frozen-biscotti",
     "breeder": "Dutch Passion",
     "photoperiod": "photoperiod",
     "sex": "feminized",
     "indica_pct": 60,
-    "landrace_tags": ["cookies"],
+    "landrace_tags": [
+      "cookies"
+    ],
     "flower_days_min": 56,
     "flower_days_max": 63,
     "stretch_factor": null,
@@ -318,11 +352,14 @@
   },
   {
     "name": "Tropical Tangie",
+    "id": "seed-strain-tropical-tangie",
     "breeder": "Dutch Passion",
     "photoperiod": "photoperiod",
     "sex": "feminized",
     "indica_pct": null,
-    "landrace_tags": ["tangie"],
+    "landrace_tags": [
+      "tangie"
+    ],
     "flower_days_min": 56,
     "flower_days_max": 63,
     "stretch_factor": null,
@@ -352,11 +389,14 @@
   },
   {
     "name": "Royal Cookies",
+    "id": "seed-strain-royal-cookies",
     "breeder": "Royal Queen Seeds",
     "photoperiod": "photoperiod",
     "sex": "feminized",
     "indica_pct": 80,
-    "landrace_tags": ["cookies"],
+    "landrace_tags": [
+      "cookies"
+    ],
     "flower_days_min": 55,
     "flower_days_max": 60,
     "stretch_factor": null,
@@ -387,11 +427,16 @@
   },
   {
     "name": "Fat Banana Auto",
+    "id": "seed-strain-fat-banana-auto",
     "breeder": "Royal Queen Seeds",
     "photoperiod": "auto",
     "sex": "feminized",
     "indica_pct": 70,
-    "landrace_tags": ["og_kush", "cookies", "ruderalis"],
+    "landrace_tags": [
+      "og_kush",
+      "cookies",
+      "ruderalis"
+    ],
     "flower_days_min": null,
     "flower_days_max": null,
     "stretch_factor": null,
@@ -422,11 +467,16 @@
   },
   {
     "name": "Green Gelato Auto",
+    "id": "seed-strain-green-gelato-auto",
     "breeder": "Royal Queen Seeds",
     "photoperiod": "auto",
     "sex": "feminized",
     "indica_pct": 40,
-    "landrace_tags": ["gelato", "cookies", "ruderalis"],
+    "landrace_tags": [
+      "gelato",
+      "cookies",
+      "ruderalis"
+    ],
     "flower_days_min": null,
     "flower_days_max": null,
     "stretch_factor": null,
@@ -457,11 +507,16 @@
   },
   {
     "name": "Cookies Gelato Auto",
+    "id": "seed-strain-cookies-gelato-auto",
     "breeder": "Royal Queen Seeds",
     "photoperiod": "auto",
     "sex": "feminized",
     "indica_pct": 75,
-    "landrace_tags": ["cookies", "gelato", "ruderalis"],
+    "landrace_tags": [
+      "cookies",
+      "gelato",
+      "ruderalis"
+    ],
     "flower_days_min": null,
     "flower_days_max": null,
     "stretch_factor": null,
@@ -492,11 +547,14 @@
   },
   {
     "name": "Special Queen #1",
+    "id": "seed-strain-special-queen-1",
     "breeder": "Royal Queen Seeds",
     "photoperiod": "photoperiod",
     "sex": "feminized",
     "indica_pct": 50,
-    "landrace_tags": ["skunk"],
+    "landrace_tags": [
+      "skunk"
+    ],
     "flower_days_min": 55,
     "flower_days_max": 63,
     "stretch_factor": null,

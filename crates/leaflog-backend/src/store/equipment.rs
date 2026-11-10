@@ -12,8 +12,26 @@ use crate::db::{StoreError, new_id, now_rfc3339};
 ///
 /// Returns a [`crate::db::StoreError`] on SQLite failures.
 pub fn create(conn: &Connection, input: &EquipmentInput) -> Result<EquipmentItem, StoreError> {
+    create_with_id(conn, &new_id(), input, None, false)
+}
+
+/// Inserts an equipment item under an explicit id with the given
+/// provenance flags — the seeder's path for bundled records, whose ids
+/// are stable across releases (spec §4.1).
+///
+/// # Errors
+///
+/// Returns a [`crate::db::StoreError`] on SQLite failures, including a
+/// uniqueness violation when the id is already taken.
+pub fn create_with_id(
+    conn: &Connection,
+    id: &str,
+    input: &EquipmentInput,
+    source: Option<&str>,
+    is_builtin: bool,
+) -> Result<EquipmentItem, StoreError> {
     let item = EquipmentItem {
-        id: new_id(),
+        id: id.to_owned(),
         name: input.name.clone(),
         category: input.category,
         brand_model: input.brand_model.clone(),
@@ -23,8 +41,8 @@ pub fn create(conn: &Connection, input: &EquipmentInput) -> Result<EquipmentItem
         purchase_price: input.purchase_price,
         currency: input.currency.clone(),
         notes: input.notes.clone(),
-        source: None,
-        is_builtin: false,
+        source: source.map(str::to_owned),
+        is_builtin,
         created_at: now_rfc3339(),
         updated_at: now_rfc3339(),
     };

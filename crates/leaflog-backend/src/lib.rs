@@ -286,14 +286,14 @@ pub fn run_migrate(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
 async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     let mode = config.mode;
     let db = Db::open(&config.db_path())?;
-    match seed::seed_strains_if_empty(&db).await {
+    match seed::seed_strains(&db).await {
         Ok(seeded) if seeded > 0 => {
             println!("Seeded {seeded} bundled strain records");
         }
         Ok(_) => {}
         Err(error) => eprintln!("strain seeding skipped: {error}"),
     }
-    match seed::seed_equipment_if_empty(&db).await {
+    match seed::seed_equipment(&db).await {
         Ok(seeded) if seeded > 0 => {
             println!("Seeded {seeded} predefined equipment items");
         }

@@ -361,9 +361,7 @@ async fn settings_round_trip() {
 #[tokio::test]
 async fn seeds_arrive_once_and_carry_provenance() {
     let db = Db::open_in_memory().unwrap();
-    leaflog_backend::seed::seed_strains_if_empty(&db)
-        .await
-        .unwrap();
+    leaflog_backend::seed::seed_strains(&db).await.unwrap();
     let base = spawn_with(db).await;
 
     let strains: Vec<Value> = reqwest::get(format!("{base}/api/strains"))
@@ -893,12 +891,8 @@ async fn lamp_advisor_uses_the_grow_space_light() {
 #[tokio::test]
 async fn bundled_records_are_read_only_and_clone_to_user_entries() {
     let db = Db::open_in_memory().unwrap();
-    leaflog_backend::seed::seed_strains_if_empty(&db)
-        .await
-        .unwrap();
-    leaflog_backend::seed::seed_equipment_if_empty(&db)
-        .await
-        .unwrap();
+    leaflog_backend::seed::seed_strains(&db).await.unwrap();
+    leaflog_backend::seed::seed_equipment(&db).await.unwrap();
     let base = spawn_with(db).await;
     let client = reqwest::Client::new();
 
