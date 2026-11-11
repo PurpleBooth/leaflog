@@ -8,6 +8,16 @@ here. Date format: YYYY-MM-DD.
 
 ## 2026-11-11 — post-M8
 
+### D068: `cog check` ignores merge commits
+
+The vale-gate session merged its branch with git's default "Merge
+branch '…'" message, which is not a conventional commit — and `cog
+check` (the first `just ci` recipe) then failed for every later
+checkout, including the Image workflow on main. Merge commits carry no
+changelog content, so the `cog-check` recipe passes
+`--ignore-merge-commits`; branches should still land as conventional
+commits.
+
 ### D067: A space's sensor items are the default env bindings; seeding only fills unbound roles
 
 Spec §4.1 says a space's temperature + humidity sensor items "are

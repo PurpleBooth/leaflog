@@ -60,10 +60,12 @@ dev: tailwind-daisyui
     cargo run -p leaflog-backend --quiet --no-default-features
 
 # Check conventional commits (cocogitto; skip if not installed).
+# Merge commits are skipped: git's default "Merge branch '…'" message
+# is not conventional and carries no changelog content (D068).
 cog-check:
     #!/usr/bin/env bash
     if command -v cog &>/dev/null; then
-        cog check
+        cog check --ignore-merge-commits
     else
         echo "cocogitto not installed; skipping conventional commit check"
     fi
