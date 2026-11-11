@@ -414,8 +414,18 @@ pub fn GrowDetail() -> impl IntoView {
                                 }
                                 on:click=move |_| {
                                     let selected = current.get() == Some(kind);
-                                    current.set((!selected).then_some(kind));
-                                    draft.set(empty_action());
+                                    let next = (!selected).then_some(kind);
+                                    // The chip picks the entry's type; the
+                                    // form below shows its fields. A plain
+                                    // reset left the draft as `note`, so
+                                    // every quick add was logged as one
+                                    // (found by the e2e suite, D069).
+                                    let mut reset = empty_action();
+                                    if let Some(next) = next {
+                                        reset.action_type = next;
+                                    }
+                                    current.set(next);
+                                    draft.set(reset);
                                 }
                             >
                                 {kind.display()}
