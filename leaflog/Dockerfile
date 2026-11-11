@@ -11,21 +11,26 @@ ARG HA_BASE=ghcr.io/home-assistant/base:3.24-2026.11.0
 
 # ---------------------------------------------------------------------------
 # Stage 1: build the frontend (Trunk, relative public URL).
-# Trunk is a static musl release binary; pick the one for this arch.
+# Debian (glibc), not Alpine: Trunk's [tools] fetch of the Tailwind
+# standalone CLI brings a glibc binary that cannot exec on musl
+# (relocation errors even under gcompat), and this stage only produces
+# dist/ files — no static-musl requirement (D064). Tool triplets differ
+# per upstream: trunk ships gnu builds, wasm-bindgen linux builds are
+# musl-only — and being static, they run on glibc too. --retry: the
+# release downloads truncate now and then behind this network.
 # ---------------------------------------------------------------------------
-FROM rust:1.99.1-alpine AS frontend-builder
+FROM rust:1.99.1-slim-bookworm AS frontend-builder
 ARG TARGETARCH
-# curl (not busybox wget): GitHub release downloads redirect in ways
-# busybox wget mishandles.
-RUN apk add --no-cache curl \
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
     && case "$TARGETARCH" in \
-      amd64)   TRIPLET=x86_64-unknown-linux-musl  ;; \
-      aarch64) TRIPLET=aarch64-unknown-linux-musl ;; \
+      amd64)   GNU=x86_64-unknown-linux-gnu;  MUSL=x86_64-unknown-linux-musl  ;; \
+      aarch64) GNU=aarch64-unknown-linux-gnu; MUSL=aarch64-unknown-linux-musl ;; \
       *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
     esac \
-    && curl -fsSL "https://github.com/trunk-rs/trunk/releases/download/v0.21.14/trunk-${TRIPLET}.tar.gz" \
+    && curl -fsSL --retry 3 "https://github.com/trunk-rs/trunk/releases/download/v0.21.14/trunk-${GNU}.tar.gz" \
       | tar -xz -C /usr/local/bin && trunk --version \
-    && curl -fsSL "https://github.com/rustwasm/wasm-bindgen/releases/download/0.2.130/wasm-bindgen-0.2.130-${TRIPLET}.tar.gz" \
+    && curl -fsSL --retry 3 "https://github.com/rustwasm/wasm-bindgen/releases/download/0.2.130/wasm-bindgen-0.2.130-${MUSL}.tar.gz" \
       | tar -xz --strip-components=1 -C /usr/local/bin && wasm-bindgen --version
 RUN rustup target add wasm32-unknown-unknown
 WORKDIR /build
