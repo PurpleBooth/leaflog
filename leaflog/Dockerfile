@@ -31,11 +31,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
     && curl -fsSL --retry 3 "https://github.com/trunk-rs/trunk/releases/download/v0.21.14/trunk-${GNU}.tar.gz" \
       | tar -xz -C /usr/local/bin && trunk --version \
     && curl -fsSL --retry 3 "https://github.com/rustwasm/wasm-bindgen/releases/download/0.2.130/wasm-bindgen-0.2.130-${MUSL}.tar.gz" \
-      | tar -xz --strip-components=1 -C /usr/local/bin && wasm-bindgen --version
+      | tar -xz --strip-components=1 -C /usr/local/bin && wasm-bindgen --version \
+    && curl -fsSL --retry 3 "https://github.com/casey/just/releases/download/1.40.0/just-1.40.0-${MUSL}.tar.gz" \
+      | tar -xz -C /usr/local/bin just && just --version
 RUN rustup target add wasm32-unknown-unknown
 WORKDIR /build
-COPY Cargo.toml Cargo.lock* rust-toolchain.toml ./
+COPY Cargo.toml Cargo.lock* rust-toolchain.toml justfile migrate.just ./
 COPY crates crates
+# The daisyUI bundles are gitignored (fetched, never vendored); the
+# same pinned+verified recipe that `just dev`/`just ci` run fetches
+# them here too.
+RUN just tailwind-daisyui
 RUN cd crates/leaflog-frontend \
     && trunk build --release \
     && mkdir -p /out && cp -r dist /out/dist
