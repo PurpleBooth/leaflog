@@ -2,7 +2,29 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
-## v0.4.1 - 2026-11-10
+## v0.5.0 - 2026-11-11
+#### Bug Fixes
+- **(ci)** UI prose extraction drops Tailwind class lists (D065) - (063b515) - billie.codes
+- **(image)** fetch the daisyUI bundles inside the container build - (ca3df1f) - billie.codes
+- **(image)** Debian frontend stage so the Tailwind CLI execs (D064) - (8c8f841) - billie.codes
+#### CI
+- **(changelog)** serve an HA-sliceable app changelog (D062) - (34abd6b) - billie.codes
+- add vale prose gate — LLM-tell vocabulary, 50-word cap (D065) - (b4bd02f) - billie.codes
+#### Documentation
+- discourage vendoring in AGENTS.md - (6a4b501) - billie.codes
+#### Features
+- **(backend)** space sensor items seed grow env bindings (D067) - (1ded3e6) - billie.codes
+- **(frontend)** sensor-default guidance in picker and live panel (D067) - (efa2a6d) - billie.codes
+- **(frontend)** grow and plant editing with delete (D066) - (2265e50) - billie.codes
+- **(frontend)** Tailwind v4 + daisyUI 5 with green themes (D063, D064) - (dfcc429) - billie.codes
+#### Miscellaneous
+- **(ci)** cog check ignores merge commits (D068) - (6a970c4) - billie.codes
+- **(release)** bump version to 0.4.1 - (12d10ca) - github-actions[bot]
+- **(version)** 0.5.0 - (4bb86ae) - billie.codes
+
+- - -
+
+## v0.4.1 - 2026-11-11
 #### Bug Fixes
 - **(frontend)** submit handlers must prevent_default themselves (D061) - (f949965) - billie.codes
 #### Miscellaneous
@@ -11,7 +33,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.4.0 - 2026-11-10
+## v0.4.0 - 2026-11-11
 #### CI
 - **(changelog)** generate CHANGELOG.md with cocogitto in CI - (fed0dea) - billie.codes
 - **(deny)** cargo-deny gate for advisories and licences (D047) - (780f227) - billie.codes
@@ -40,7 +62,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.3.0 - 2026-11-10
+## v0.3.0 - 2026-11-11
 #### Bug Fixes
 - **(backend)** add nosniff and a hash-pinned CSP to served responses - (bae8103) - billie.codes
 - **(backend)** reject traversal and interior separators in photo path builders - (e139c7e) - billie.codes
@@ -59,7 +81,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.2.0 - 2026-11-10
+## v0.2.0 - 2026-11-11
 #### Bug Fixes
 - **(backend)** normalize photos to rgb8 so non-rgb inputs cannot panic - (ebcf88e) - billie.codes
 - **(ci)** cocogitto tarball extracts to x86_64-unknown-linux-musl/cog - (726b341) - billie.codes
@@ -85,7 +107,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.1.0 - 2026-11-10
+## v0.1.0 - 2026-11-11
 #### Bug Fixes
 - **(ci)** reference arch-tagged images when merging the multi-arch manifest - (23a7e5a) - billie.codes
 - **(ha)** pin wasm-bindgen-cli in the image builder (trunk auto-fetch failed on aarch64 CI) - (d458f19) - billie.codes

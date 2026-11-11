@@ -2,9 +2,34 @@
 All notable changes to the Leaflog Home Assistant app. Version headings are exactly `## <version>` — Home Assistant slices release notes on them. Generated file; never edit by hand.
 
 - - -
+## 0.5.0
+
+_Released 2026-11-11._
+
+#### Bug Fixes
+- **(ci)** UI prose extraction drops Tailwind class lists (D065) - (063b515) - billie.codes
+- **(image)** fetch the daisyUI bundles inside the container build - (ca3df1f) - billie.codes
+- **(image)** Debian frontend stage so the Tailwind CLI execs (D064) - (8c8f841) - billie.codes
+#### CI
+- **(changelog)** serve an HA-sliceable app changelog (D062) - (34abd6b) - billie.codes
+- add vale prose gate — LLM-tell vocabulary, 50-word cap (D065) - (b4bd02f) - billie.codes
+#### Documentation
+- discourage vendoring in AGENTS.md - (6a4b501) - billie.codes
+#### Features
+- **(backend)** space sensor items seed grow env bindings (D067) - (1ded3e6) - billie.codes
+- **(frontend)** sensor-default guidance in picker and live panel (D067) - (efa2a6d) - billie.codes
+- **(frontend)** grow and plant editing with delete (D066) - (2265e50) - billie.codes
+- **(frontend)** Tailwind v4 + daisyUI 5 with green themes (D063, D064) - (dfcc429) - billie.codes
+#### Miscellaneous
+- **(ci)** cog check ignores merge commits (D068) - (6a970c4) - billie.codes
+- **(release)** bump version to 0.4.1 - (12d10ca) - github-actions[bot]
+- **(version)** 0.5.0 - (4bb86ae) - billie.codes
+
+- - -
+
 ## 0.4.1
 
-_Released 2026-11-10._
+_Released 2026-11-11._
 
 #### Bug Fixes
 - **(frontend)** submit handlers must prevent_default themselves (D061) - (f949965) - billie.codes
@@ -16,7 +41,7 @@ _Released 2026-11-10._
 
 ## 0.4.0
 
-_Released 2026-11-10._
+_Released 2026-11-11._
 
 #### CI
 - **(changelog)** generate CHANGELOG.md with cocogitto in CI - (fed0dea) - billie.codes
@@ -48,7 +73,7 @@ _Released 2026-11-10._
 
 ## 0.3.0
 
-_Released 2026-11-10._
+_Released 2026-11-11._
 
 #### Bug Fixes
 - **(backend)** add nosniff and a hash-pinned CSP to served responses - (bae8103) - billie.codes
@@ -70,7 +95,7 @@ _Released 2026-11-10._
 
 ## 0.2.0
 
-_Released 2026-11-10._
+_Released 2026-11-11._
 
 #### Bug Fixes
 - **(backend)** normalize photos to rgb8 so non-rgb inputs cannot panic - (ebcf88e) - billie.codes
@@ -99,7 +124,7 @@ _Released 2026-11-10._
 
 ## 0.1.0
 
-_Released 2026-11-10._
+_Released 2026-11-11._
 
 #### Bug Fixes
 - **(ci)** reference arch-tagged images when merging the multi-arch manifest - (23a7e5a) - billie.codes
