@@ -6,6 +6,13 @@ mock_port := "8098"
 frontend_dir := "crates/leaflog-frontend"
 static_dir := frontend_dir / "dist"
 
+# E2E stack (justfile `e2e`): own ports so `just dev` can keep running
+# alongside, and a fixed simulated ingress prefix so test URLs stay
+# deterministic. Everything else (fresh DB, photos) is throwaway.
+e2e_port := "8199"
+e2e_mock_port := "8198"
+e2e_prefix := "/api/hassio_ingress/e2e"
+
 # Migration tooling lives in migrate.just: `just migrate new <name>`,
 # `just migrate status`, `just migrate apply`, dev-only `just migrate redo`.
 mod migrate
@@ -58,6 +65,79 @@ dev: tailwind-daisyui
     LEAFLOG_DEV_PREFIX="$prefix" \
     LEAFLOG_STATIC_DIR={{static_dir}} \
     cargo run -p leaflog-backend --quiet --no-default-features
+
+# Install the e2e suite's node dependencies and Playwright's chromium
+# (test-time tooling only; Node never enters the shipped image, D069).
+e2e-install:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v npm >/dev/null 2>&1 || {
+        echo "npm not found; run inside devbox: devbox run -- just e2e-install" >&2
+        exit 1
+    }
+    (cd e2e && npm ci && npx playwright install chromium)
+
+# Frontend E2E: built dist/ served by the backend against the mock
+# Supervisor, under a fixed ingress prefix with a throwaway database,
+# then the Playwright suite (e2e/README.md). Skips when node or the
+# deps are absent, like gitleaks/deny — CI runs a dedicated e2e job.
+# Stop `just dev` first: both write {{static_dir}}.
+e2e: build-frontend
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v npm >/dev/null 2>&1; then
+        echo "npm not found; skipping e2e (devbox run -- just e2e)"
+        exit 0
+    fi
+    if [ ! -d e2e/node_modules ]; then
+        echo "e2e deps missing; run 'just e2e-install' first — skipping e2e"
+        exit 0
+    fi
+    cargo build -p mock-ha --quiet
+    cargo build -p leaflog-backend --no-default-features --quiet
+    work="$(mktemp -d)"
+    echo "── Leaflog e2e ────────────────────────────────────────────"
+    echo "  app: http://127.0.0.1:{{e2e_port}}{{e2e_prefix}}/"
+    echo "  db:  ${work} (throwaway)"
+    echo "────────────────────────────────────────────────────────────"
+    MOCK_HA_PORT={{e2e_mock_port}} ./target/debug/mock-ha &
+    mock_pid=$!
+    LEAFLOG_PORT={{e2e_port}} \
+    LEAFLOG_ENV=dev \
+    LEAFLOG_DEV_PREFIX={{e2e_prefix}} \
+    LEAFLOG_STATIC_DIR={{static_dir}} \
+    LEAFLOG_DB_PATH="$work/leaflog.db" \
+    LEAFLOG_PHOTOS_DIR="$work/photos" \
+    ./target/debug/leaflog-backend &
+    backend_pid=$!
+    cleanup() {
+        kill "$mock_pid" "$backend_pid" 2>/dev/null || true
+        wait "$mock_pid" "$backend_pid" 2>/dev/null || true
+        rm -rf "$work"
+    }
+    trap cleanup EXIT INT TERM
+    LEAFLOG_E2E_HEALTH_URL="http://127.0.0.1:{{e2e_port}}{{e2e_prefix}}/api/health" \
+    node -e '
+        const url = process.env.LEAFLOG_E2E_HEALTH_URL;
+        const deadline = Date.now() + 60000;
+        (async () => {
+            while (Date.now() < deadline) {
+                try {
+                    if ((await fetch(url)).ok) process.exit(0);
+                } catch {}
+                await new Promise((resolve) => setTimeout(resolve, 500));
+            }
+            process.exit(1);
+        })();
+    ' || { echo "e2e stack did not become healthy" >&2; exit 1; }
+    # The health probe can pass against a stale stack squatting on the
+    # port while our own backend died on bind — catch that here rather
+    # than as confusing test failures on someone else's database.
+    kill -0 "$backend_pid" 2>/dev/null || {
+        echo "e2e backend died — port {{e2e_port}} already in use (stale stack? stop just dev / old e2e runs)" >&2
+        exit 1
+    }
+    cd e2e && npx playwright test
 
 # Check conventional commits (cocogitto; skip if not installed).
 # Merge commits are skipped: git's default "Merge branch '…'" message
@@ -205,8 +285,8 @@ lint-prose:
     vale "$tmp/ui" || status=1
     exit "$status"
 
-# Everything CI checks: fmt, clippy (native + wasm), tests, WASM build, commits, secrets, deps, prose.
-ci: cog-check fmt clippy clippy-wasm build-frontend test gitleaks deny lint-prose
+# Everything CI checks: fmt, clippy (native + wasm), tests, WASM build, commits, secrets, deps, prose, e2e.
+ci: cog-check fmt clippy clippy-wasm build-frontend test gitleaks deny lint-prose e2e
 
 # Check formatting.
 fmt:

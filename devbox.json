@@ -10,7 +10,8 @@
     "cocogitto@6.2.0",
     "gitleaks@latest",
     "cargo-deny@0.20.2",
-    "vale@3"
+    "vale@3",
+    "nodejs@24"
   ],
   "shell": {
     "init_hook": [

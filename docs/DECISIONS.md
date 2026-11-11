@@ -6,6 +6,40 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-11 — frontend e2e
+
+### D069: Frontend E2E — Playwright under a simulated ingress prefix
+
+D061 (every form silently doing a native GET submit) and D066 (edit UI
+that called nothing) both shipped to a release because the compiler
+cannot see them: a listener for a custom event name compiles fine. Both
+were found by hand-run playwright sessions that then evaporated. The
+kept answer is a Playwright suite in `e2e/`. Node there is test-time
+tooling only, like the build-time Tailwind CLI (D064) — nothing Node
+enters the shipped image.
+
+Harness: the `e2e` justfile recipe serves the built `dist/` through the
+real backend against the mock Supervisor, on ports 8199/8198 (so `just
+dev` can keep running), under the fixed prefix `/api/hassio_ingress/e2e`
+and with a throwaway SQLite DB and photo dir. Every navigation and API
+call in the suite goes through that prefix.
+
+The D061 guard: each form case arms a `window` marker before submit and
+asserts it survived — a native submit reloads the page and loses the
+marker. Each case then reloads and asserts the data persisted. All ten
+forms are covered (equipment, strain, space ×2, seed batch, grow ×2,
+wizard, quick-add log, plant edit), plus the ingress/deep-link checks
+and the photo upload.
+
+Rules: one shared stack per run (`workers: 1`, numeric file order —
+`01-onboarding` needs the fresh DB and dismisses the wizard for the
+rest), and every new form gets a case in `e2e/src/02-forms.spec.ts`.
+`just e2e` skips when node is absent, the gitleaks/deny pattern; CI's
+dedicated `e2e` job installs node + chromium so the gate is real, and
+release runs it through the ci workflow call.
+
+---
+
 ## 2026-11-11 — post-M8
 
 ### D068: `cog check` ignores merge commits
