@@ -23,6 +23,10 @@ wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
 web-sys = { version = "0.3", features = ["HtmlInputElement", "FormData", "File", "FileList"] }
 gloo-net = { version = "0.6", features = ["json"] }
+# Request timeout for the grows page list fetches (ticket 02):
+# gloo-timers pairs a timer future with the request via futures select.
+gloo-timers = { version = "0.3", features = ["futures"] }
+futures = "0.3"
 serde.workspace = true
 serde_json.workspace = true
 

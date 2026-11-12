@@ -102,12 +102,16 @@ e2e: build-frontend
     echo "────────────────────────────────────────────────────────────"
     MOCK_HA_PORT={{e2e_mock_port}} ./target/debug/mock-ha &
     mock_pid=$!
+    # The dev default supervisor URL is just dev's mock port (8098);
+    # the e2e mock listens on its own port, so point the backend at it
+    # explicitly or its WS loop dials a dead socket forever.
     LEAFLOG_PORT={{e2e_port}} \
     LEAFLOG_ENV=dev \
     LEAFLOG_DEV_PREFIX={{e2e_prefix}} \
     LEAFLOG_STATIC_DIR={{static_dir}} \
     LEAFLOG_DB_PATH="$work/leaflog.db" \
     LEAFLOG_PHOTOS_DIR="$work/photos" \
+    LEAFLOG_SUPERVISOR_URL="http://127.0.0.1:{{e2e_mock_port}}" \
     ./target/debug/leaflog-backend &
     backend_pid=$!
     cleanup() {

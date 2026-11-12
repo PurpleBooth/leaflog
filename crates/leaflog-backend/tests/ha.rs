@@ -240,6 +240,51 @@ async fn bindings_auto_capture_and_entities_endpoints() {
 }
 
 #[tokio::test]
+async fn bindings_put_while_connected_resubscribes_and_lands_the_states() {
+    // The rebind path of a live session: the earlier cases PUT so soon
+    // after spawn that the track set drains before the first connect.
+    // Connected-first (as after minutes of real use), a bindings PUT
+    // must tear down the socket, resubscribe on the new set, and seed
+    // the live map — the state the env endpoint's availability reads.
+    let (mock_url, _mock) = spawn_mock().await;
+    let (base, _db, bridge) = spawn_api(&mock_url).await;
+    let grow_id = create_grow(&base).await;
+    wait_connected(bridge.as_ref()).await;
+
+    let client = reqwest::Client::new();
+    client
+        .put(format!("{base}/api/grows/{grow_id}/bindings"))
+        .json(&json!({
+            "bindings": {
+                "temperature": "sensor.grow_temperature",
+                "humidity": "sensor.grow_humidity",
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    // The resubscribe reconnects with one backoff step; poll like the
+    // callers of the live map (env snapshot, auto-capture) do.
+    for _ in 0..40 {
+        let live = bridge.live_now();
+        if live.entities.contains_key("sensor.grow_temperature")
+            && live.entities.contains_key("sensor.grow_humidity")
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    let live = bridge.live_now();
+    assert!(
+        live.entities.contains_key("sensor.grow_temperature")
+            && live.entities.contains_key("sensor.grow_humidity"),
+        "rebound entities never landed in the live map (connected: {})",
+        live.connected
+    );
+}
+
+#[tokio::test]
 async fn app_works_with_supervisor_unreachable() {
     // Point at a dead port; every API endpoint must still answer.
     let dead_url = "http://127.0.0.1:1".to_owned();
