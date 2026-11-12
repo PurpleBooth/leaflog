@@ -36,6 +36,12 @@ test('healthy bindings show no No-data banner, at load or after load', async ({
     'GET',
     `api/grows/${growId}/env`,
   );
+  // The healthy case must not be vacuous: both live bindings above
+  // present in the snapshot before the availability check runs.
+  expect(
+    env!.bindings.length,
+    `env snapshot must carry both bindings: ${JSON.stringify(env)}`,
+  ).toBeGreaterThanOrEqual(2);
   expect(
     env!.bindings.every((binding) => binding.available),
     `every binding must be available: ${JSON.stringify(env)}`,
