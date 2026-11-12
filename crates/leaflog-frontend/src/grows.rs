@@ -2,6 +2,8 @@
 //! page with quick-add action chips, the timeline, plant management and
 //! the photo gallery with uploads.
 
+use futures::future::Either;
+use gloo_timers::future::TimeoutFuture;
 use leaflog_core::actions::{ActionDetails, ActionType};
 use leaflog_core::grows::{
     ActionEntry, ActionInput, Grow, GrowInput, GrowStatus, Photo, Plant, PlantInput,
@@ -12,8 +14,9 @@ use leptos::task::spawn_local;
 use leptos::web_sys::FormData;
 use leptos_router::components::A;
 use leptos_router::hooks::use_params_map;
+use serde::de::DeserializeOwned;
 
-use crate::api;
+use crate::api::{self, ApiFailure};
 use crate::dashboard::EnvDashboard;
 use crate::equipment::ErrorIf;
 use crate::feed::FeedPanel;
@@ -30,24 +33,42 @@ pub fn GrowsPage() -> impl IntoView {
     let strains = RwSignal::<Vec<Strain>>::new(Vec::new());
     let spaces = RwSignal::<Vec<SpaceDetail>>::new(Vec::new());
     let error = RwSignal::<Option<String>>::new(None);
+    let loading = RwSignal::<bool>::new(true);
     let form_open = RwSignal::<bool>::new(false);
     let draft = RwSignal::<GrowInput>::new(empty_grow());
 
+    // Each list resource fetches on its own: the grows list renders
+    // from its own request whatever the strains or spaces requests
+    // did, and every failure lands in the shared error banner.
     let refresh = move || {
+        loading.set(true);
         spawn_local(async move {
-            let grow_list = api::get::<Vec<Grow>>("api/grows").await;
-            let strain_list = api::get::<Vec<Strain>>("api/strains").await;
-            let space_list = api::get::<Vec<SpaceDetail>>("api/spaces").await;
-            match (grow_list, strain_list, space_list) {
-                (Ok(grow_list), Ok(strain_list), Ok(space_list)) => {
-                    grows.set(grow_list);
-                    strains.set(strain_list);
-                    spaces.set(space_list);
-                }
-                (Err(failure), _, _) | (_, Err(failure), _) | (_, _, Err(failure)) => {
-                    error.set(Some(failure.message));
-                }
+            // All three in flight at once: the list lands as soon as its
+            // own request answers, however long strains or spaces take.
+            let (grow_list, strain_list, space_list) = futures::join!(
+                fetch_list::<Vec<Grow>>("api/grows"),
+                fetch_list::<Vec<Strain>>("api/strains"),
+                fetch_list::<Vec<SpaceDetail>>("api/spaces"),
+            );
+            let mut failures = Vec::new();
+            match grow_list {
+                Ok(list) => grows.set(list),
+                Err(failure) => failures.push(failure.message),
             }
+            match strain_list {
+                Ok(list) => strains.set(list),
+                Err(failure) => failures.push(failure.message),
+            }
+            match space_list {
+                Ok(list) => spaces.set(list),
+                Err(failure) => failures.push(failure.message),
+            }
+            error.set(if failures.is_empty() {
+                None
+            } else {
+                Some(failures.join("; "))
+            });
+            loading.set(false);
         });
     };
     Effect::new(move |_| {
@@ -80,6 +101,12 @@ pub fn GrowsPage() -> impl IntoView {
             </div>
 
             <ErrorIf error />
+
+            <Show when=move || error.get().is_some()>
+                <button class="btn btn-sm mt-2" on:click=move |_| refresh()>
+                    "Retry"
+                </button>
+            </Show>
 
             <Show when=move || form_open.get()>
                 <form class="card bg-base-100 shadow-sm px-5 py-4 my-4" on:submit=save>
@@ -128,7 +155,16 @@ pub fn GrowsPage() -> impl IntoView {
                         .collect::<Vec<_>>()
                 }}
             </ul>
-            <Show when=move || grows.get().is_empty() && error.get().is_none()>
+            <Show when=move || loading.get()>
+                <p class="py-6 text-center text-base-content/70">"Loading grows…"</p>
+            </Show>
+            <Show
+                when=move || {
+                    !loading.get()
+                        && grows.get().is_empty()
+                        && error.get().is_none()
+                }
+            >
                 <p class="py-6 text-center text-base-content/60">"No grows yet — start your first one."</p>
             </Show>
             <p><A href=route_href("/")>"Back to home"</A></p>
@@ -323,35 +359,68 @@ pub fn GrowDetail() -> impl IntoView {
                     || ().into_any(),
                     |current| {
                         let space_id = current.grow_space_id.clone();
+                        let strain_id = current.strain_id.clone();
                         let archived = current.status == GrowStatus::Archived;
                         view! {
                             <div>
                                 <div class="flex flex-wrap items-center justify-between gap-4">
-                                    <h2>{current.name.clone()}</h2>
-                                    <span class="badge badge-ghost">{current.substrate.clone()}</span>
-                                    {archived
-                                        .then(|| view! {
-                                            <span class="badge badge-ghost">
-                                                {current.status.label()}
-                                            </span>
-                                        })}
-                                    {move || {
-                                        space_id.as_ref().and_then(|id| {
-                                            spaces
-                                                .get()
-                                                .into_iter()
-                                                .find(|detail| detail.space.id == *id)
-                                        })
-                                        .map(|detail| view! {
-                                            <A href=route_href(
-                                                &format!("/spaces/{}", detail.space.id),
-                                            )>
+                                    // One left-aligned quiet cluster:
+                                    // name · glyph + medium · strain,
+                                    // with the status and space badges
+                                    // joining it. The buttons are the
+                                    // row's second child, so
+                                    // justify-between keeps them clear
+                                    // on the right. A grow with no
+                                    // strain (or an unresolvable one)
+                                    // leaves the strain slot empty —
+                                    // no placeholder.
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <h2>{current.name.clone()}</h2>
+                                        <span class="badge badge-ghost">
+                                            {substrate_glyph(&current.substrate).map(|glyph| view! {
+                                                <span aria-hidden="true">{glyph}</span>
+                                            })}
+                                            {current.substrate.clone()}
+                                        </span>
+                                        {move || {
+                                            strain_id
+                                                .as_ref()
+                                                .and_then(|id| {
+                                                    strains
+                                                        .get()
+                                                        .into_iter()
+                                                        .find(|strain| strain.id == *id)
+                                                })
+                                                .map(|strain| view! {
+                                                    <span class="badge badge-ghost">
+                                                        {strain.name}
+                                                    </span>
+                                                })
+                                        }}
+                                        {archived
+                                            .then(|| view! {
                                                 <span class="badge badge-ghost">
-                                                    {detail.space.name.clone()}
+                                                    {current.status.label()}
                                                 </span>
-                                            </A>
-                                        })
-                                    }}
+                                            })}
+                                        {move || {
+                                            space_id.as_ref().and_then(|id| {
+                                                spaces
+                                                    .get()
+                                                    .into_iter()
+                                                    .find(|detail| detail.space.id == *id)
+                                            })
+                                            .map(|detail| view! {
+                                                <A href=route_href(
+                                                    &format!("/spaces/{}", detail.space.id),
+                                                )>
+                                                    <span class="badge badge-ghost">
+                                                        {detail.space.name.clone()}
+                                                    </span>
+                                                </A>
+                                            })
+                                        }}
+                                    </div>
                                     {let for_edit = GrowInput::from_grow(&current);
                                     view! {
                                         <div class="flex flex-wrap gap-2">
@@ -827,6 +896,55 @@ fn non_empty(value: String) -> Option<String> {
     (!value.trim().is_empty()).then_some(value)
 }
 
+/// How long one grows-page list request may run before it is
+/// abandoned and tried again (a stalled request must never pin the
+/// page).
+const REQUEST_TIMEOUT_MS: u32 = 10_000;
+
+/// How a grows-page list request failed: a timeout is retried by
+/// itself; any other failure surfaces in the error banner at once.
+#[derive(Debug)]
+enum FetchFailure {
+    /// The request stalled past [`REQUEST_TIMEOUT_MS`].
+    Timeout,
+    /// The request completed with an error.
+    Api(ApiFailure),
+}
+
+/// Fetches a JSON list for the grows page. A stalled request is
+/// retried once by itself, so the page heals without a hard refresh.
+// WASM is single-threaded; the gloo timer/request types are not `Send`
+// and `spawn_local` does not require it (same allowance as api.rs).
+#[allow(clippy::future_not_send)]
+async fn fetch_list<T: DeserializeOwned>(path: &str) -> Result<T, ApiFailure> {
+    match timed_get::<T>(path).await {
+        Ok(value) => Ok(value),
+        Err(FetchFailure::Api(failure)) => Err(failure),
+        Err(FetchFailure::Timeout) => match timed_get::<T>(path).await {
+            Ok(value) => Ok(value),
+            Err(FetchFailure::Api(failure)) => Err(failure),
+            Err(FetchFailure::Timeout) => Err(ApiFailure {
+                status: 0,
+                message: format!("The request to {path} kept timing out."),
+            }),
+        },
+    }
+}
+
+/// One list request paired with a timeout (gloo requests never time
+/// out on their own).
+// WASM is single-threaded; the gloo timer/request types are not `Send`
+// and `spawn_local` does not require it (same allowance as api.rs).
+#[allow(clippy::future_not_send)]
+async fn timed_get<T: DeserializeOwned>(path: &str) -> Result<T, FetchFailure> {
+    let request = api::get::<T>(path);
+    futures::pin_mut!(request);
+    match futures::future::select(request, TimeoutFuture::new(REQUEST_TIMEOUT_MS)).await {
+        Either::Left((result, _timer)) => result.map_err(FetchFailure::Api),
+        Either::Right(((), _request)) => Err(FetchFailure::Timeout),
+    }
+}
+
 /// A blank grow draft.
 fn empty_grow() -> GrowInput {
     GrowInput {
@@ -868,4 +986,37 @@ fn datetime_local_now() -> String {
         .get(..16)
         .unwrap_or_default()
         .to_owned()
+}
+
+/// The spot-it-without-reading glyph shown beside a grow's medium in
+/// the header cluster (grow-page spec): one emoji per known
+/// substrate, in the house aria-hidden-span style. A user-defined
+/// medium gets no glyph — an unknown value must never render a lie.
+fn substrate_glyph(substrate: &str) -> Option<&'static str> {
+    match substrate {
+        "soil" => Some("🪴"),
+        "coco" => Some("🥥"),
+        "hydro" => Some("💧"),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod substrate_glyph_tests {
+    use super::substrate_glyph;
+
+    #[test]
+    fn known_substrates_get_their_glyph() {
+        assert_eq!(substrate_glyph("soil"), Some("🪴"));
+        assert_eq!(substrate_glyph("coco"), Some("🥥"));
+        assert_eq!(substrate_glyph("hydro"), Some("💧"));
+    }
+
+    // A user-defined medium must never render a glyph that claims
+    // something the grower did not pick.
+    #[test]
+    fn unknown_or_empty_substrate_gets_no_glyph() {
+        assert_eq!(substrate_glyph("perlite"), None);
+        assert_eq!(substrate_glyph(""), None);
+    }
 }

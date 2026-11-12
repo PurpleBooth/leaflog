@@ -197,9 +197,15 @@ pre {
   margin: 0;
 }
 
-/* Gantt forecast (M5): geometry is inline-styled from Rust; --color
- * comes per phase from `phase_color`. */
+/* Gantt forecast (M5): bar and range geometry is inline-styled from
+ * Rust; --color comes per phase from `phase_color`. The chart's
+ * padding, gutter and label column are declared once below; the
+ * today-marker overlay derives the track area from them. */
 .gantt {
+  --gantt-pad: 0.5rem; /* chart padding on all sides */
+  --gantt-gutter: 7rem; /* chart left padding: the label gutter */
+  --gantt-label-col: 6rem; /* phase label column in each row */
+  --gantt-col-gap: 0.5rem; /* gap between label column and track */
   margin: 0.5rem 0 1rem;
 }
 
@@ -207,7 +213,8 @@ pre {
   position: relative;
   border: 1px solid var(--color-base-300);
   border-radius: var(--radius-box);
-  padding: 0.5rem 0.5rem 0.5rem 7rem;
+  padding: var(--gantt-pad) var(--gantt-pad) var(--gantt-pad)
+    var(--gantt-gutter);
   background: var(--color-base-100);
 }
 
@@ -218,8 +225,8 @@ pre {
 
 .gantt-row {
   display: grid;
-  grid-template-columns: 6rem 1fr;
-  gap: 0.5rem;
+  grid-template-columns: var(--gantt-label-col) 1fr;
+  gap: var(--gantt-col-gap);
   align-items: center;
   min-height: 1.6rem;
 }
@@ -262,13 +269,28 @@ pre {
   overflow: hidden;
 }
 
+/* Today-marker overlay spanning exactly the track columns: the
+ * marker's inline `left: {pct}%` (gantt.rs) resolves against the
+ * track width, so the marker sits past the label gutter, aligned
+ * with the bars, at every day count. */
+.gantt-today-area {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(
+    var(--gantt-gutter) + var(--gantt-label-col) + var(--gantt-col-gap)
+  );
+  right: var(--gantt-pad);
+  pointer-events: none;
+}
+
 .gantt-today {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 7rem;
   width: 2px;
   cursor: help;
+  pointer-events: auto;
 }
 
 .gantt-today-line {
