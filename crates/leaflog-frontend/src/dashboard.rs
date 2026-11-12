@@ -132,18 +132,20 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
 
             // Entity drift (spec §4.1): a dead binding shows a chip
             // and points at the entity-bindings editor below — never a
-            // silent "in range".
+            // silent "in range". The banner tells the truth: it renders
+            // only once the snapshot is loaded AND a binding is actually
+            // dead — no flash while the fetch is in flight, and a
+            // healthy grow stays quiet.
             {move || {
-                let dead = env
-                    .get()
-                    .map(|e| {
-                        e.bindings
-                            .into_iter()
-                            .filter(|binding| !binding.available)
-                            .collect::<Vec<_>>()
-                    })
-                    .unwrap_or_default();
-                (dead.is_empty()).then(move || {
+                // `?` on the Option signal: no snapshot, no banner —
+                // nothing flashes while the fetch is in flight.
+                let snapshot = env.get()?;
+                let dead = snapshot
+                    .bindings
+                    .into_iter()
+                    .filter(|binding| !binding.available)
+                    .collect::<Vec<_>>();
+                (!dead.is_empty()).then(move || {
                     view! {
                         <p class="alert alert-warning py-2 px-4 text-sm" role="status">
                             "No data: "
