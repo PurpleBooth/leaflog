@@ -6,6 +6,26 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-11 — agent tooling
+
+### D070: Engineering-agent skills use a local-markdown issue tracker
+
+The mattpocock engineering skills (`to-tickets`, `triage`, `to-spec`,
+`wayfinder`) need to know where issues live. Chose local markdown under
+`.scratch/<feature-slug>/` over GitHub Issues: agent-driven spec and ticket
+workflows produce working notes (specs, ticket drafts, wayfinder maps) that
+belong next to the checkout, not in the public tracker. `/.scratch` is
+gitignored like `/data` — machine-local state, never pushed.
+
+Wiring lives in `docs/agents/`: `issue-tracker.md` (file conventions and
+wayfinding), `triage-labels.md` (the five canonical triage roles kept verbatim
+as `Status:` values), and `domain.md` (single-context domain docs — a
+lazily-created root `GLOSSARY.md`; decision conflicts cite `D0xx` entries in
+this file rather than a separate `docs/adr/`). `AGENTS.md` points at the three
+via its `## Agent skills` section.
+
+---
+
 ## 2026-11-11 — frontend e2e
 
 ### D069: Frontend E2E — Playwright under a simulated ingress prefix

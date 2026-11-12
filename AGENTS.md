@@ -133,3 +133,21 @@ Automation lives in a `justfile` (or `xtask` crate) — no bash-only scripts.
 - Owner is in Germany: plant-count limits and access-securing reminders are informational
   only (default off outside DE); verify statutory limits from current statute text before
   encoding.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as local markdown under `.scratch/<feature-slug>/` (gitignored,
+machine-local). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`,
+`ready-for-human`, `wontfix`), recorded as `Status:` lines. See
+`docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: root `GLOSSARY.md` (created lazily) + decisions in
+`docs/DECISIONS.md`. See `docs/agents/domain.md`.

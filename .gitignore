@@ -13,6 +13,9 @@
 # Runtime data (SQLite DB, photos) — never commit grow data
 /data
 
+# Agent-skills local issue tracker (D070) — machine-local working notes
+/.scratch
+
 # Environment / secrets — never commit values
 .env
 .env.*
