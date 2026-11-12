@@ -207,14 +207,13 @@ test('grow: picked strain survives late options, save and reopen', async ({
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Edit grow' }).click();
-  await expect(page.getByLabel('Strain', { exact: true })).toHaveValue(
-    northern!.id,
-  );
+  // No `exact: true` on select labels: the wrapping label's computed
+  // text includes the <option> texts, so an exact match never resolves
+  // (true for every select in this form, not a strain quirk).
+  await expect(page.getByLabel('Strain')).toHaveValue(northern!.id);
 
   // Pick explicitly and save (the D061 guard: no native submit, no reload).
-  await page
-    .getByLabel('Strain', { exact: true })
-    .selectOption(northern!.id);
+  await page.getByLabel('Strain').selectOption(northern!.id);
   await armNoReloadGuard(page);
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
@@ -223,9 +222,7 @@ test('grow: picked strain survives late options, save and reopen', async ({
   // Saving refetches the strains list; reopening the form must show the
   // pick, never reset to the placeholder.
   await page.getByRole('button', { name: 'Edit grow' }).click();
-  await expect(page.getByLabel('Strain', { exact: true })).toHaveValue(
-    northern!.id,
-  );
+  await expect(page.getByLabel('Strain')).toHaveValue(northern!.id);
 });
 
 test('grow header cluster: strain shows after picking, left of the buttons', async ({
@@ -241,11 +238,10 @@ test('grow header cluster: strain shows after picking, left of the buttons', asy
   // seeded catalogue must not leak in as a placeholder.
   await expect(page.getByText('Northern Lights')).toHaveCount(0);
 
-  // Pick a bundled strain in the edit form and save.
+  // Pick a bundled strain in the edit form and save (no `exact: true`,
+  // same wrapping-label option-text reason as the strain-pick case).
   await page.getByRole('button', { name: 'Edit grow' }).click();
-  await page
-    .getByLabel('Strain', { exact: true })
-    .selectOption({ label: 'Northern Lights' });
+  await page.getByLabel('Strain').selectOption({ label: 'Northern Lights' });
   await armNoReloadGuard(page);
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();

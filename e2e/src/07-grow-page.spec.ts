@@ -31,21 +31,28 @@ test('healthy bindings show no No-data banner, at load or after load', async ({
       humidity: 'sensor.grow_humidity',
     },
   });
-  const env = await api<{ bindings: Array<{ available: boolean }> }>(
-    request,
-    'GET',
-    `api/grows/${growId}/env`,
-  );
-  // The healthy case must not be vacuous: both live bindings above
-  // present in the snapshot before the availability check runs.
-  expect(
-    env!.bindings.length,
-    `env snapshot must carry both bindings: ${JSON.stringify(env)}`,
-  ).toBeGreaterThanOrEqual(2);
-  expect(
-    env!.bindings.every((binding) => binding.available),
-    `every binding must be available: ${JSON.stringify(env)}`,
-  ).toBe(true);
+  // PUTting bindings resubscribes the bridge on a fresh WS connection
+  // (teardown clears the live map, then the resubscribed stream seeds
+  // it), so an immediate env fetch can legitimately still see both
+  // bindings dead: poll until the initial states have landed.
+  await expect
+    .poll(
+      async () => {
+        const env = await api<{
+          bindings: Array<{ role: string; available: boolean }>;
+        }>(request, 'GET', `api/grows/${growId}/env`);
+        return env!.bindings;
+      },
+      { timeout: 10_000 },
+    )
+    // The healthy case must not be vacuous: both live bindings above
+    // present AND available once the poll settles.
+    .toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: 'temperature', available: true }),
+        expect.objectContaining({ role: 'humidity', available: true }),
+      ]),
+    );
 
   await page.goto(url(`/grows/${growId}`));
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
