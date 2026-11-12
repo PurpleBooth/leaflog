@@ -24,6 +24,9 @@
     non_fmt_panics
 )]
 #![allow(clippy::multiple_crate_versions)]
+// Leptos `#[component]` TypedBuilder derives emit uninhabited enums by
+// design; clippy 1.100 flags each one (macro-generated, not app code).
+#![allow(clippy::empty_enums)]
 
 pub mod api;
 mod dashboard;
