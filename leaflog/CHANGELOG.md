@@ -2,9 +2,35 @@
 All notable changes to the Leaflog Home Assistant app. Version headings are exactly `## <version>` — Home Assistant slices release notes on them. Generated file; never edit by hand.
 
 - - -
+## 0.5.1
+
+_Released 2026-11-12._
+
+#### Bug Fixes
+- **(dashboard)** show the No-data banner only for real dead bindings - (d788fe3) - billie.codes
+- **(e2e)** point the stack at its mock; honest env poll, strain locators - (f9ce5aa) - billie.codes
+- **(frontend)** cover timeout retry, gate retry button, tidy specs - (53a71ae) - billie.codes
+- **(frontend)** strain select survives options mount and refetch - (6b3fe34) - billie.codes
+- **(frontend)** position today marker by day count within gantt track - (9902108) - billie.codes
+- **(grows)** tri-state list with per-resource fetch, timeout and retry - (a15f8e9) - billie.codes
+- **(grows)** quick-add chips logged every entry as a note - (5bff00a) - billie.codes
+#### Documentation
+- **(agents)** D070 local issue tracker, triage labels, domain docs - (9b1d86f) - billie.codes
+- **(decisions)** register fetch-list allows, tighten D071 prose - (64a89de) - billie.codes
+- **(decisions)** D071 empty_enums allowance on Leptos-generated code - (d3666a4) - billie.codes
+#### Features
+- **(grows)** quiet header cluster with medium glyph and strain - (2645acc) - billie.codes
+#### Miscellaneous
+- **(release)** bump version to 0.5.0 - (670112e) - github-actions[bot]
+- **(version)** 0.5.1 - (5ed19f2) - billie.codes
+#### Tests
+- **(e2e)** Playwright suite for every form under the ingress prefix - (ad193db) - billie.codes
+
+- - -
+
 ## 0.5.0
 
-_Released 2026-11-11._
+_Released 2026-11-12._
 
 #### Bug Fixes
 - **(ci)** UI prose extraction drops Tailwind class lists (D065) - (063b515) - billie.codes
@@ -29,7 +55,7 @@ _Released 2026-11-11._
 
 ## 0.4.1
 
-_Released 2026-11-11._
+_Released 2026-11-12._
 
 #### Bug Fixes
 - **(frontend)** submit handlers must prevent_default themselves (D061) - (f949965) - billie.codes
@@ -41,7 +67,7 @@ _Released 2026-11-11._
 
 ## 0.4.0
 
-_Released 2026-11-11._
+_Released 2026-11-12._
 
 #### CI
 - **(changelog)** generate CHANGELOG.md with cocogitto in CI - (fed0dea) - billie.codes
@@ -73,7 +99,7 @@ _Released 2026-11-11._
 
 ## 0.3.0
 
-_Released 2026-11-11._
+_Released 2026-11-12._
 
 #### Bug Fixes
 - **(backend)** add nosniff and a hash-pinned CSP to served responses - (bae8103) - billie.codes
@@ -95,7 +121,7 @@ _Released 2026-11-11._
 
 ## 0.2.0
 
-_Released 2026-11-11._
+_Released 2026-11-12._
 
 #### Bug Fixes
 - **(backend)** normalize photos to rgb8 so non-rgb inputs cannot panic - (ebcf88e) - billie.codes
@@ -124,7 +150,7 @@ _Released 2026-11-11._
 
 ## 0.1.0
 
-_Released 2026-11-11._
+_Released 2026-11-12._
 
 #### Bug Fixes
 - **(ci)** reference arch-tagged images when merging the multi-arch manifest - (23a7e5a) - billie.codes
