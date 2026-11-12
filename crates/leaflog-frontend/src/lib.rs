@@ -24,8 +24,8 @@
     non_fmt_panics
 )]
 #![allow(clippy::multiple_crate_versions)]
-// Leptos `#[component]` TypedBuilder derives emit uninhabited enums by
-// design; clippy 1.100 flags each one (macro-generated, not app code).
+// clippy 1.100 warns on the empty marker enums the Leptos TypedBuilder
+// derive emits for every #[component]; the crate writes none itself.
 #![allow(clippy::empty_enums)]
 
 pub mod api;
