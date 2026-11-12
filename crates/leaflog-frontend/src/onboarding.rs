@@ -439,6 +439,11 @@ pub fn OnboardingWizard() -> impl IntoView {
                                 >
                                     <option value="">"— none —"</option>
                                     {move || {
+                                        // Mount-time `selected`, as in the grow
+                                        // form's list selects: freshly rebuilt
+                                        // options must not reset the pick that
+                                        // `picked_batch` already holds.
+                                        let picked = picked_batch.get_untracked();
                                         batches
                                             .get()
                                             .into_iter()
@@ -449,7 +454,10 @@ pub fn OnboardingWizard() -> impl IntoView {
                                                     batch.batch.quantity,
                                                     strain_label(&strains, batch.batch.strain_id.as_ref()),
                                                 );
-                                                view! { <option value=id>{label}</option> }
+                                                let is_selected = picked == id;
+                                                view! {
+                                                    <option value=id selected=is_selected>{label}</option>
+                                                }
                                             })
                                             .collect::<Vec<_>>()
                                     }}

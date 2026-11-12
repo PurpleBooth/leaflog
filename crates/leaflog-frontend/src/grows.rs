@@ -726,12 +726,19 @@ fn GrowForm(
                 >
                     <option value="">"— no space —"</option>
                     {move || {
+                        // Same mount-time `selected` encoding as the strain
+                        // select above: a spaces list that arrives late or is
+                        // refetched after a save must not visibly reset the
+                        // draft's binding to the placeholder.
+                        let picked = draft.get_untracked().grow_space_id;
                         spaces
                             .get()
                             .into_iter()
                             .map(|detail| {
+                                let is_selected =
+                                    picked.as_deref() == Some(detail.space.id.as_str());
                                 view! {
-                                    <option value=detail.space.id>
+                                    <option value=detail.space.id selected=is_selected>
                                         {detail.space.name}
                                     </option>
                                 }

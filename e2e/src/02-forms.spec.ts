@@ -225,6 +225,53 @@ test('grow: picked strain survives late options, save and reopen', async ({
   await expect(page.getByLabel('Strain')).toHaveValue(northern!.id);
 });
 
+test('grow: bound space survives late options, save and reopen', async ({
+  page,
+  request,
+}) => {
+  const name = uniqueName('E2E Space Grow');
+  const spaceId = await createSpace(request, uniqueName('E2E Space'));
+  const grow = await api<{ id: string }>(request, 'POST', 'api/grows', {
+    name,
+    strain_id: null,
+    grow_space_id: spaceId,
+    seed_batch_id: null,
+    feed_template_id: null,
+    substrate: 'soil',
+    started_on: new Date().toISOString().slice(0, 10),
+    status: 'active',
+    notes: null,
+  });
+
+  // Hold the spaces list back so the <option> nodes mount after the
+  // select: the bound space must display as selected once they land,
+  // never the placeholder while the draft keeps the binding.
+  await page.route('**/api/spaces', async (route) => {
+    await new Promise((resolve) => {
+      setTimeout(resolve, 300);
+    });
+    await route.continue();
+  });
+
+  await page.goto(url(`/grows/${grow!.id}`));
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Edit grow' }).click();
+  await expect(page.getByLabel('Space')).toHaveValue(spaceId);
+
+  // Pick explicitly and save (the D061 guard: no native submit, no reload).
+  await page.getByLabel('Space').selectOption(spaceId);
+  await armNoReloadGuard(page);
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+  await expectNoReload(page);
+
+  // Saving refetches the spaces list; reopening the form must show the
+  // binding, never reset to the placeholder.
+  await page.getByRole('button', { name: 'Edit grow' }).click();
+  await expect(page.getByLabel('Space')).toHaveValue(spaceId);
+});
+
 test('grow header cluster: strain shows after picking, left of the buttons', async ({
   page,
   request,
