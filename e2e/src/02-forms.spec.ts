@@ -168,6 +168,66 @@ test('grow: edit from the detail page', async ({ page, request }) => {
   await expect(page.getByRole('heading', { name: renamed, exact: true })).toBeVisible();
 });
 
+test('grow: picked strain survives late options, save and reopen', async ({
+  page,
+  request,
+}) => {
+  const name = uniqueName('E2E Strain Grow');
+  // The strain id comes from the API, not the UI: the select's value is
+  // asserted against an independent source of truth.
+  const strains = await api<Array<{ id: string; name: string }>>(
+    request,
+    'GET',
+    'api/strains',
+  );
+  const northern = strains!.find((strain) => strain.name === 'Northern Lights');
+  const grow = await api<{ id: string }>(request, 'POST', 'api/grows', {
+    name,
+    strain_id: northern!.id,
+    grow_space_id: null,
+    seed_batch_id: null,
+    feed_template_id: null,
+    substrate: 'soil',
+    started_on: new Date().toISOString().slice(0, 10),
+    status: 'active',
+    notes: null,
+  });
+
+  // Hold the strains list back so the <option> nodes mount after the
+  // select: the bound strain must display as selected once they land,
+  // never the placeholder while the draft keeps the pick.
+  await page.route('**/api/strains', async (route) => {
+    await new Promise((resolve) => {
+      setTimeout(resolve, 300);
+    });
+    await route.continue();
+  });
+
+  await page.goto(url(`/grows/${grow!.id}`));
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Edit grow' }).click();
+  await expect(page.getByLabel('Strain', { exact: true })).toHaveValue(
+    northern!.id,
+  );
+
+  // Pick explicitly and save (the D061 guard: no native submit, no reload).
+  await page
+    .getByLabel('Strain', { exact: true })
+    .selectOption(northern!.id);
+  await armNoReloadGuard(page);
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+  await expectNoReload(page);
+
+  // Saving refetches the strains list; reopening the form must show the
+  // pick, never reset to the placeholder.
+  await page.getByRole('button', { name: 'Edit grow' }).click();
+  await expect(page.getByLabel('Strain', { exact: true })).toHaveValue(
+    northern!.id,
+  );
+});
+
 test('quick add: log a watering from the grow page', async ({ page, request }) => {
   const name = uniqueName('E2E Log Grow');
   const id = await createGrow(request, name);

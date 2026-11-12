@@ -207,12 +207,24 @@ fn BatchForm(draft: RwSignal<SeedBatchInput>, strains: RwSignal<Vec<Strain>>) ->
                 >
                     <option value="">"— unlinked —"</option>
                     {move || {
+                        // Same reliability fix as the grow form's strain
+                        // select: rebuilt <option> nodes mount with no
+                        // selected state, so the pick is re-encoded from the
+                        // draft whenever the list arrives or refetches
+                        // (untracked — `prop:value` covers draft changes).
+                        let picked = draft.get_untracked().strain_id;
                         strains
                             .get()
                             .into_iter()
                             .map(|strain| {
                                 let id = strain.id.clone();
-                                view! { <option value=id>{strain.name}</option> }
+                                let is_selected =
+                                    picked.as_deref() == Some(id.as_str());
+                                view! {
+                                    <option value=id selected=is_selected>
+                                        {strain.name}
+                                    </option>
+                                }
                             })
                             .collect::<Vec<_>>()
                     }}

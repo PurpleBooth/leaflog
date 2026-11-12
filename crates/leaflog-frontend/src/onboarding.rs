@@ -361,17 +361,31 @@ pub fn OnboardingWizard() -> impl IntoView {
                             >
                                 <option value="">"— none —"</option>
                                 {move || {
+                                    // Same reliability fix as the grow form's
+                                    // strain select: rebuilt <option> nodes
+                                    // mount with no selected state, so the
+                                    // pick is re-encoded from the draft
+                                    // whenever the list arrives or refetches
+                                    // (untracked — `prop:value` covers draft
+                                    // changes).
+                                    let picked = picked_strain.get_untracked();
                                     strains
                                         .get()
                                         .into_iter()
                                         .map(|strain| {
                                             let id = strain.id.clone();
+                                            let is_selected = !picked.is_empty()
+                                                && picked == strain.id;
                                             let label = if strain.is_builtin {
                                                 format!("{} (bundled)", strain.name)
                                             } else {
                                                 strain.name
                                             };
-                                            view! { <option value=id>{label}</option> }
+                                            view! {
+                                                <option value=id selected=is_selected>
+                                                    {label}
+                                                </option>
+                                            }
                                         })
                                         .collect::<Vec<_>>()
                                 }}

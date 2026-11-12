@@ -602,12 +602,24 @@ fn GrowForm(
                 >
                     <option value="">"— pick a strain —"</option>
                     {move || {
+                        // Freshly mounted <option> nodes carry no selected
+                        // state, so an options list that arrives late (or is
+                        // refetched after a save) resets the visible pick to
+                        // the placeholder while the draft keeps the strain.
+                        // Encode the draft's pick into the rebuilt options:
+                        // the matching node mounts `selected` and the browser
+                        // honours it at insertion, whatever order the effects
+                        // run in. Untracked: `prop:value` already re-applies
+                        // the value when the draft itself changes.
+                        let picked = draft.get_untracked().strain_id;
                         strains
                             .get()
                             .into_iter()
                             .map(|strain| {
+                                let is_selected =
+                                    picked.as_deref() == Some(strain.id.as_str());
                                 view! {
-                                    <option value=strain.id>
+                                    <option value=strain.id selected=is_selected>
                                         {strain.name}
                                     </option>
                                 }
