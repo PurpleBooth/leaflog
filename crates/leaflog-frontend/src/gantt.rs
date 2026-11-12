@@ -67,11 +67,17 @@ pub fn GanttTimeline(grow_id: String) -> impl IntoView {
                         <div class="gantt-rows">
                             {rows}
                         </div>
-                        <div class="gantt-today" style=format!("left: {today_pct:.1}%")
-                            title=format!("today (day {})", data.today_day)
-                        >
-                            <span class="gantt-today-line"></span>
-                            <span class="gantt-today-label">"today"</span>
+                        // The overlay spans exactly the track columns, so
+                        // the marker's inline percentage below resolves
+                        // against the track width, past the label gutter
+                        // (see `.gantt-today-area` in tailwind.css).
+                        <div class="gantt-today-area">
+                            <div class="gantt-today" style=format!("left: {today_pct:.1}%")
+                                title=format!("today (day {})", data.today_day)
+                            >
+                                <span class="gantt-today-line"></span>
+                                <span class="gantt-today-label">"today"</span>
+                            </div>
                         </div>
                     </div>
                     <p class="text-base-content/70 text-sm">
