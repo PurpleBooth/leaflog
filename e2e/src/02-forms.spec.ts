@@ -168,6 +168,47 @@ test('grow: edit from the detail page', async ({ page, request }) => {
   await expect(page.getByRole('heading', { name: renamed, exact: true })).toBeVisible();
 });
 
+test('grow header cluster: strain shows after picking, left of the buttons', async ({
+  page,
+  request,
+}) => {
+  const name = uniqueName('E2E Cluster Grow');
+  const id = await createGrow(request, name);
+  await page.goto(url(`/grows/${id}`));
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+
+  // A grow without a strain renders nothing in the strain slot: the
+  // seeded catalogue must not leak in as a placeholder.
+  await expect(page.getByText('Northern Lights')).toHaveCount(0);
+
+  // Pick a bundled strain in the edit form and save.
+  await page.getByRole('button', { name: 'Edit grow' }).click();
+  await page
+    .getByLabel('Strain', { exact: true })
+    .selectOption({ label: 'Northern Lights' });
+  await armNoReloadGuard(page);
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+  await expectNoReload(page);
+
+  // The strain joins the quiet header cluster beside the medium glyph.
+  const strainBadge = page.getByText('Northern Lights');
+  await expect(strainBadge).toBeVisible();
+  await expect(page.locator('[aria-hidden="true"]', { hasText: '🪴' })).toBeVisible();
+
+  // The action buttons sit right of the cluster — loose geometry, like
+  // the today-marker case: x position only, never pixel-exact.
+  const editButton = page.getByRole('button', { name: 'Edit grow' });
+  await expect(editButton).toBeVisible();
+  expect((await editButton.boundingBox())!.x).toBeGreaterThan(
+    (await strainBadge.boundingBox())!.x,
+  );
+
+  // The pick persisted.
+  await page.reload();
+  await expect(page.getByText('Northern Lights')).toBeVisible();
+});
+
 test('quick add: log a watering from the grow page', async ({ page, request }) => {
   const name = uniqueName('E2E Log Grow');
   const id = await createGrow(request, name);

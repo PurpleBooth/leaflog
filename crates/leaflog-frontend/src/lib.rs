@@ -24,6 +24,9 @@
     non_fmt_panics
 )]
 #![allow(clippy::multiple_crate_versions)]
+// clippy 1.100 warns on the empty marker enums the Leptos TypedBuilder
+// derive emits for every #[component]; the crate writes none itself.
+#![allow(clippy::empty_enums)]
 
 pub mod api;
 mod dashboard;

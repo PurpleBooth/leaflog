@@ -359,35 +359,68 @@ pub fn GrowDetail() -> impl IntoView {
                     || ().into_any(),
                     |current| {
                         let space_id = current.grow_space_id.clone();
+                        let strain_id = current.strain_id.clone();
                         let archived = current.status == GrowStatus::Archived;
                         view! {
                             <div>
                                 <div class="flex flex-wrap items-center justify-between gap-4">
-                                    <h2>{current.name.clone()}</h2>
-                                    <span class="badge badge-ghost">{current.substrate.clone()}</span>
-                                    {archived
-                                        .then(|| view! {
-                                            <span class="badge badge-ghost">
-                                                {current.status.label()}
-                                            </span>
-                                        })}
-                                    {move || {
-                                        space_id.as_ref().and_then(|id| {
-                                            spaces
-                                                .get()
-                                                .into_iter()
-                                                .find(|detail| detail.space.id == *id)
-                                        })
-                                        .map(|detail| view! {
-                                            <A href=route_href(
-                                                &format!("/spaces/{}", detail.space.id),
-                                            )>
+                                    // One left-aligned quiet cluster:
+                                    // name · glyph + medium · strain,
+                                    // with the status and space badges
+                                    // joining it. The buttons are the
+                                    // row's second child, so
+                                    // justify-between keeps them clear
+                                    // on the right. A grow with no
+                                    // strain (or an unresolvable one)
+                                    // leaves the strain slot empty —
+                                    // no placeholder.
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <h2>{current.name.clone()}</h2>
+                                        <span class="badge badge-ghost">
+                                            {substrate_glyph(&current.substrate).map(|glyph| view! {
+                                                <span aria-hidden="true">{glyph}</span>
+                                            })}
+                                            {current.substrate.clone()}
+                                        </span>
+                                        {move || {
+                                            strain_id
+                                                .as_ref()
+                                                .and_then(|id| {
+                                                    strains
+                                                        .get()
+                                                        .into_iter()
+                                                        .find(|strain| strain.id == *id)
+                                                })
+                                                .map(|strain| view! {
+                                                    <span class="badge badge-ghost">
+                                                        {strain.name}
+                                                    </span>
+                                                })
+                                        }}
+                                        {archived
+                                            .then(|| view! {
                                                 <span class="badge badge-ghost">
-                                                    {detail.space.name.clone()}
+                                                    {current.status.label()}
                                                 </span>
-                                            </A>
-                                        })
-                                    }}
+                                            })}
+                                        {move || {
+                                            space_id.as_ref().and_then(|id| {
+                                                spaces
+                                                    .get()
+                                                    .into_iter()
+                                                    .find(|detail| detail.space.id == *id)
+                                            })
+                                            .map(|detail| view! {
+                                                <A href=route_href(
+                                                    &format!("/spaces/{}", detail.space.id),
+                                                )>
+                                                    <span class="badge badge-ghost">
+                                                        {detail.space.name.clone()}
+                                                    </span>
+                                                </A>
+                                            })
+                                        }}
+                                    </div>
                                     {let for_edit = GrowInput::from_grow(&current);
                                     view! {
                                         <div class="flex flex-wrap gap-2">
@@ -941,4 +974,37 @@ fn datetime_local_now() -> String {
         .get(..16)
         .unwrap_or_default()
         .to_owned()
+}
+
+/// The spot-it-without-reading glyph shown beside a grow's medium in
+/// the header cluster (grow-page spec): one emoji per known
+/// substrate, in the house aria-hidden-span style. A user-defined
+/// medium gets no glyph — an unknown value must never render a lie.
+fn substrate_glyph(substrate: &str) -> Option<&'static str> {
+    match substrate {
+        "soil" => Some("🪴"),
+        "coco" => Some("🥥"),
+        "hydro" => Some("💧"),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod substrate_glyph_tests {
+    use super::substrate_glyph;
+
+    #[test]
+    fn known_substrates_get_their_glyph() {
+        assert_eq!(substrate_glyph("soil"), Some("🪴"));
+        assert_eq!(substrate_glyph("coco"), Some("🥥"));
+        assert_eq!(substrate_glyph("hydro"), Some("💧"));
+    }
+
+    // A user-defined medium must never render a glyph that claims
+    // something the grower did not pick.
+    #[test]
+    fn unknown_or_empty_substrate_gets_no_glyph() {
+        assert_eq!(substrate_glyph("perlite"), None);
+        assert_eq!(substrate_glyph(""), None);
+    }
 }
