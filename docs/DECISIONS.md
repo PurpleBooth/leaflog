@@ -1253,6 +1253,8 @@ packaging changes were needed.
 | leaflog-frontend | module `api` | `clippy::future_not_send` | WASM is single-threaded; gloo-net response types are not `Send` and `spawn_local` does not require it |
 | leaflog-frontend | `GrowsPage::fetch_list`, `GrowsPage::timed_get` | `clippy::future_not_send` | Same rationale as module `api`: the list fetch races a timeout future and the wasm types are not `Send` |
 | leaflog-frontend | `EquipmentPage`, `EquipmentForm`, `StrainsPage`, `StrainForm` | `clippy::too_many_lines` | Declarative view code, not logic; splitting would obscure the forms |
+| leaflog-backend | store `photos`, `feeds`, `actions`, `grows` serde writes | `clippy::missing_panics_doc` | Serialising plain data with serde_json cannot fail |
+| leaflog-frontend | `OnboardingState` in `onboarding.rs` | `clippy::struct_excessive_bools` | The flags are the payload: the onboarding endpoint reports a snapshot of booleans by design |
 
 ---
 

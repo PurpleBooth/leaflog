@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_call:
+  # Weekly gate on the floating `stable` toolchain (rust-toolchain.toml
+  # pins the channel, not a version — D071 keeps that policy): catches
+  # lint and toolchain drift within days instead of mid-release.
+  schedule:
+    - cron: "17 4 * * 1"
 
 env:
   CARGO_TERM_COLOR: always

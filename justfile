@@ -81,8 +81,15 @@ e2e-install:
 # Supervisor, under a fixed ingress prefix with a throwaway database,
 # then the Playwright suite (e2e/README.md). Skips when node or the
 # deps are absent, like gitleaks/deny — CI runs a dedicated e2e job.
-# Stop `just dev` first: both write {{static_dir}}.
-e2e: build-frontend
+# The whole stack is throwaway and port-parametric, so several stacks
+# run concurrently (CI agents, parallel agents):
+#
+#   just e2e_port=8301 e2e_mock_port=8300 e2e
+#
+# The frontend bundle builds into the run's own temp dist/, never the
+# shared {{static_dir}} — a concurrent `just dev` or second stack
+# cannot race it.
+e2e: tailwind-daisyui
     #!/usr/bin/env bash
     set -euo pipefail
     if ! command -v npm >/dev/null 2>&1; then
@@ -96,10 +103,19 @@ e2e: build-frontend
     cargo build -p mock-ha --quiet
     cargo build -p leaflog-backend --no-default-features --quiet
     work="$(mktemp -d)"
+    mock_pid=""
+    backend_pid=""
+    cleanup() {
+        kill "$mock_pid" "$backend_pid" 2>/dev/null || true
+        wait "$mock_pid" "$backend_pid" 2>/dev/null || true
+        rm -rf "$work"
+    }
+    trap cleanup EXIT INT TERM
     echo "── Leaflog e2e ────────────────────────────────────────────"
     echo "  app: http://127.0.0.1:{{e2e_port}}{{e2e_prefix}}/"
     echo "  db:  ${work} (throwaway)"
     echo "────────────────────────────────────────────────────────────"
+    (cd {{frontend_dir}} && trunk build --release --dist "$work/dist")
     MOCK_HA_PORT={{e2e_mock_port}} ./target/debug/mock-ha &
     mock_pid=$!
     # The dev default supervisor URL is just dev's mock port (8098);
@@ -108,18 +124,17 @@ e2e: build-frontend
     LEAFLOG_PORT={{e2e_port}} \
     LEAFLOG_ENV=dev \
     LEAFLOG_DEV_PREFIX={{e2e_prefix}} \
-    LEAFLOG_STATIC_DIR={{static_dir}} \
+    LEAFLOG_STATIC_DIR="$work/dist" \
     LEAFLOG_DB_PATH="$work/leaflog.db" \
     LEAFLOG_PHOTOS_DIR="$work/photos" \
     LEAFLOG_SUPERVISOR_URL="http://127.0.0.1:{{e2e_mock_port}}" \
     ./target/debug/leaflog-backend &
     backend_pid=$!
-    cleanup() {
-        kill "$mock_pid" "$backend_pid" 2>/dev/null || true
-        wait "$mock_pid" "$backend_pid" 2>/dev/null || true
-        rm -rf "$work"
-    }
-    trap cleanup EXIT INT TERM
+    # Wait for liveness before the suite: a poll on /api/health, plus
+    # the bind check — the probe can pass against a stale stack
+    # squatting on the port while our own backend died on bind; catch
+    # that here rather than as confusing test failures on someone
+    # else's database.
     LEAFLOG_E2E_HEALTH_URL="http://127.0.0.1:{{e2e_port}}{{e2e_prefix}}/api/health" \
     node -e '
         const url = process.env.LEAFLOG_E2E_HEALTH_URL;
@@ -134,14 +149,30 @@ e2e: build-frontend
             process.exit(1);
         })();
     ' || { echo "e2e stack did not become healthy" >&2; exit 1; }
-    # The health probe can pass against a stale stack squatting on the
-    # port while our own backend died on bind — catch that here rather
-    # than as confusing test failures on someone else's database.
     kill -0 "$backend_pid" 2>/dev/null || {
         echo "e2e backend died — port {{e2e_port}} already in use (stale stack? stop just dev / old e2e runs)" >&2
         exit 1
     }
-    cd e2e && npx playwright test
+    cd e2e && LEAFLOG_E2E_PORT={{e2e_port}} npx playwright test
+
+# Allow-register guard (AGENTS.md lint policy): every clippy allow in
+# the sources must be logged in docs/DECISIONS.md. Group names from the
+# mandated lint block (nursery, pedantic, …) are policy, not exceptions.
+# Catches an unregistered exception at CI speed instead of at review.
+allow-register:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    status=0
+    while IFS= read -r lint; do
+        if ! grep -q "$lint" docs/DECISIONS.md; then
+            echo "unregistered allow: $lint" >&2
+            grep -rn "$lint" crates --include='*.rs' | sed 's/^/  /' >&2
+            status=1
+        fi
+    done < <(grep -rhoE 'clippy::[a-z_]+' crates --include='*.rs' \
+        | grep -vE 'clippy::(nursery|cargo|complexity|correctness|perf|style|suspicious|pedantic)' \
+        | sort -u)
+    exit "$status"
 
 # Check conventional commits (cocogitto; skip if not installed).
 # Merge commits are skipped: git's default "Merge branch '…'" message
@@ -289,8 +320,8 @@ lint-prose:
     vale "$tmp/ui" || status=1
     exit "$status"
 
-# Everything CI checks: fmt, clippy (native + wasm), tests, WASM build, commits, secrets, deps, prose, e2e.
-ci: cog-check fmt clippy clippy-wasm build-frontend test gitleaks deny lint-prose e2e
+# Everything CI checks: fmt, clippy (native + wasm), tests, WASM build, commits, allow register, secrets, deps, prose, e2e.
+ci: cog-check allow-register fmt clippy clippy-wasm build-frontend test gitleaks deny lint-prose e2e
 
 # Check formatting.
 fmt:
