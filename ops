@@ -1,1 +1,1 @@
-{"author":{"id":"ce771b8a9b8c30a8aac165a8b1cdb0957637d3941276ec4f27335daee16d79de"},"ops":[{"type":5,"timestamp":1794622665,"nonce":"cmeYtiAnJmBHArpQcUK21poEcmo=","added":["ready-for-agent"],"removed":null}]}
+{"author":{"id":"ce771b8a9b8c30a8aac165a8b1cdb0957637d3941276ec4f27335daee16d79de"},"ops":[{"type":3,"timestamp":1794622684,"nonce":"hU3SYyLrZoqNTpkaUu2pzm399eQ=","message":"Migrated from .scratch/localisation/issues/01-locale-plumbing-skeleton.md (2026-11-14). Blocked by: none. Sibling references now use shortIds; spec = 11052b1.","files":null}]}
