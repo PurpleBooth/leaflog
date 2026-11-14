@@ -6,6 +6,46 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-14 — issue tracker moves to git-bug
+
+### D072: git-bug as the issue tracker, synced to origin
+
+The tracker moves from local markdown under `.scratch/` to
+[git-bug](https://github.com/MichaelMure/git-bug) (v0.11.0, already installed
+via devbox): bugs are git objects under `refs/bugs/*`, shared between clones
+with explicit `git bug pull` / `git bug push` against `origin`. The motivating
+cost of the machine-local tracker was coordination between parallel sessions
+(this machine and Tangled): the same D-number got claimed twice (D061) and a
+release landed under us (v0.4.1). The `git fetch` discipline covers commits,
+but not working state. A tracker stored as plain git refs shares that state
+without new infrastructure — no GitHub token, no Issues, no bridge (the
+git-bug GitHub bridge exists if mirroring is ever wanted; unused for now).
+
+Once pushed, bug content is public on GitHub. That matches the repo's existing
+posture (SPEC.md and THREAT-MODEL.md are already public), and ordinary
+`git push` never carries `refs/bugs/*`, so syncing the tracker is always an
+explicit step and nothing leaks by accident.
+
+Two things deliberately stay local. Wayfinder's map/child model does not fit a
+flat bug store and its files are ephemeral working state, so it keeps
+`.scratch/<effort>/` (gitignored), unchanged. The released
+`grow-page-correctness` batch also stays in `.scratch/` as history. The live
+`localisation` effort was migrated: spec + 7 tickets, statuses became labels,
+original numbers kept in titles with shortId resolution recorded in comments.
+
+The five canonical triage roles become git-bug labels verbatim; done work is
+the built-in closed status, `wontfix` is label + close. The pinned build has
+the old-style CLI with three sharp edges, all recorded in
+`docs/agents/issue-tracker.md`: verbs precede the bug id; `git bug bug new -t`
+does not persist the title, so skills create-then-`title edit`; and every
+`-F` file body silently strips `#`-led lines (commit-comment behaviour), so
+heading-bearing bodies are set verbatim with
+`comment edit <comment-id> -m "$(cat body.md)"`. GitHub Issues was rejected:
+it needs `gh` and network for every read and abandons the local-first working
+posture.
+
+---
+
 ## 2026-11-12 — grow-page correctness (v0.5.1)
 
 ### D071: Crate-level `empty_enums` allowance on Leptos-generated code

@@ -141,13 +141,14 @@ Automation lives in a `justfile` (or `xtask` crate) — no bash-only scripts.
 
 ### Issue tracker
 
-Issues live as local markdown under `.scratch/<feature-slug>/` (gitignored,
-machine-local). See `docs/agents/issue-tracker.md`.
+Issues live in git-bug (`refs/bugs/*`, synced to origin via `git bug pull` /
+`git bug push`); reference tickets by shortId. Wayfinder maps stay local under
+`.scratch/`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
 Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`,
-`ready-for-human`, `wontfix`), recorded as `Status:` lines. See
+`ready-for-human`, `wontfix`), applied as git-bug labels. See
 `docs/agents/triage-labels.md`.
 
 ### Domain docs

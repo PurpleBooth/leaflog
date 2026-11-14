@@ -13,3 +13,7 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
 Edit the "Label in our tracker" column to match whatever vocabulary you actually use.
+
+Labels are git-bug labels (`git bug bug label new <id> "<label>"`; remove with
+`label rm`). `wontfix` additionally closes the bug (`git bug bug status close <id>`).
+Done work generally needs no label — it is the built-in closed status.
