@@ -1,1 +1,1 @@
-{"author":{"id":"ce771b8a9b8c30a8aac165a8b1cdb0957637d3941276ec4f27335daee16d79de"},"ops":[{"type":2,"timestamp":1794784847,"nonce":"QmjUM0hsjU4zKUuxdjsIxYxy1fw=","title":"08: pH/EC event scatter charts","was":"placeholder"}]}
+{"author":{"id":"ce771b8a9b8c30a8aac165a8b1cdb0957637d3941276ec4f27335daee16d79de"},"ops":[{"type":5,"timestamp":1794784847,"nonce":"RBI7NnjLtWarvj3Nt7qHIlZWufg=","added":["ready-for-agent"],"removed":null}]}
