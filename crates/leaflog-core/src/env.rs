@@ -20,6 +20,18 @@ use crate::strain::Tolerance;
 /// Default leaf-temperature offset: −2 °C / −3.6 °F (spec §4.9).
 pub const DEFAULT_LEAF_OFFSET_C: f64 = -2.0;
 
+/// Lights-off leaf-temperature offset: −1 °C.
+///
+/// [`DEFAULT_LEAF_OFFSET_C`] is a lights-on assumption: with the lamps
+/// running, the leaf runs measurably below the air sensor's reading.
+/// In the dark the stomata close, transpiration cooling stops, and
+/// the leaf sits close to air temperature — Black Dog LED's guidance
+/// spans 0 to −1 °C for lights-off. −1 °C takes the conservative
+/// edge. Any night VPD or RH computation must pass this offset in
+/// place of the default, or the numbers carry the lights-on cooling
+/// assumption into a dark room.
+pub const NIGHT_LEAF_OFFSET_C: f64 = -1.0;
+
 /// Saturation vapour pressure over water, kPa.
 ///
 /// Magnus/Tetens approximation, ASHRAE-fundamentals accuracy ±0.1 %.
@@ -58,6 +70,59 @@ pub const fn vpd_band(phase: Phase) -> (f64, f64) {
 pub fn vpd_in_band(vpd: f64, phase: Phase) -> bool {
     let (min, max) = vpd_band(phase);
     (min..=max).contains(&vpd)
+}
+
+/// A lights-off VPD target band in kPa, with the sources behind its
+/// numbers (seed-data discipline: a label on every row).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NightVpdBand {
+    /// Lower edge, kPa.
+    pub min_kpa: f64,
+    /// Upper edge, kPa.
+    pub max_kpa: f64,
+    /// Where the numbers come from.
+    pub sources: &'static str,
+}
+
+/// The per-phase lights-off VPD band (kPa).
+///
+/// No peer-reviewed source publishes cannabis night-VPD numbers; the
+/// bands are vendor/community consensus (one guide keeps a dedicated
+/// "VPD at Night" section), each consistent with the peer-reviewed
+/// night-transpiration work those guides cite. The row labels name
+/// them. The shared rule across sources: keep night VPD close to the
+/// day band — transpiration falls ~10× in the dark and the room cools
+/// with it.
+///
+/// Drying and curing rooms run with no lights, so there is no
+/// lights-off variant: the single day band applies 24/7 and this
+/// returns [`None`].
+#[must_use]
+pub const fn night_vpd_band(phase: Phase) -> Option<NightVpdBand> {
+    match phase {
+        // Dome and clone numbers disagree widely across sources; the
+        // label keeps that disagreement visible.
+        Phase::Germination | Phase::Seedling => Some(NightVpdBand {
+            min_kpa: 0.5,
+            max_kpa: 0.9,
+            sources: "Pulse Grow night 0.6–1.0 kPa; THCFarmer 0.4–0.8; Black Dog LED \
+                clones 0.3–0.6 — sources vary (0.3–1.0 kPa)",
+        }),
+        Phase::Vegetative => Some(NightVpdBand {
+            min_kpa: 0.8,
+            max_kpa: 1.2,
+            sources: "Pulse Grow night 0.8–1.2 kPa; Black Dog LED 0.8–1.1; \
+                THCFarmer 0.8–1.1",
+        }),
+        Phase::Flower => Some(NightVpdBand {
+            min_kpa: 1.0,
+            max_kpa: 1.4,
+            sources: "Pulse Grow night 1.0–1.5 kPa; THCFarmer 0.9–1.5 across flower; \
+                Black Dog LED 1.0–1.6 by stage",
+        }),
+        // No lights, no lights-off period: the day band applies 24/7.
+        Phase::Drying | Phase::Curing => None,
+    }
 }
 
 /// One phase's temperature corridor: the lights-on range the chart
@@ -111,6 +176,41 @@ pub const fn temperature_corridor(phase: Phase) -> TemperatureCorridor {
     }
 }
 
+/// The per-phase lights-off temperature corridor (°C).
+///
+/// From the 2026-11-16 lights-off research pass: a grower guide's
+/// stage table is the only source with an explicit lights-off column
+/// (named in the row labels), and the peer-reviewed anchor (Agronomy
+/// 13(10):2636) found 21 °C nights optimal and 27 °C nights harmful in
+/// the reproductive stage. Drying and curing rooms run with no lights,
+/// so they have no lights-off variant — the single preset in
+/// [`temperature_corridor`] applies 24/7 and this returns [`None`].
+#[must_use]
+pub const fn night_temperature_corridor(phase: Phase) -> Option<TemperatureCorridor> {
+    match phase {
+        Phase::Germination | Phase::Seedling => Some(TemperatureCorridor {
+            min_c: 20.0,
+            max_c: 23.3,
+            source: "THCFarmer lights-off 68–74 °F (germination reuses the seedling row); \
+                Agronomy 13(10):2636 rooting ran a constant 24 °C day/night",
+        }),
+        Phase::Vegetative => Some(TemperatureCorridor {
+            min_c: 18.3,
+            max_c: 23.9,
+            source: "THCFarmer lights-off 65–75 °F; Growers Network ~68 °F lights-off; \
+                Agronomy 13(10):2636 night 21 °C optimal",
+        }),
+        Phase::Flower => Some(TemperatureCorridor {
+            min_c: 15.6,
+            max_c: 23.3,
+            source: "THCFarmer lights-off 60–74 °F across flower (early → top, late → \
+                bottom); Agronomy 13(10):2636 night 21 °C optimal, ≥27 °C harmful",
+        }),
+        // No lights, no lights-off period: the day preset applies 24/7.
+        Phase::Drying | Phase::Curing => None,
+    }
+}
+
 /// The RH window that keeps VPD in band at the given temperature.
 ///
 /// Returns `(rh_min, rh_max)` in %; the range may be empty (no RH can
@@ -152,6 +252,48 @@ pub const SOIL_MOISTURE_BAND: BandPct = BandPct {
     sources: "HortScience 47(1):98 — peat substrates hold 50–60 % VWC \
         at container capacity; AcuRite soil-moisture guide — 40 %+ \
         for heavy-feeding plantings",
+};
+
+/// A recommended CO2 band in ppm, with the sources behind its numbers
+/// (seed-data discipline: a label on every row).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BandPpm {
+    /// Lower edge, ppm.
+    pub min_ppm: f64,
+    /// Upper edge, ppm.
+    pub max_ppm: f64,
+    /// Where the numbers come from.
+    pub sources: &'static str,
+}
+
+/// The lights-on CO2 band (ppm): the enrichment target.
+///
+/// Extracted from the two independent enrichment articles in the
+/// research pass (both named in the label): one gives 800–1,200 ppm as
+/// the beneficial range (900–1,200 ppm research-backed; above
+/// 1,500 ppm not economic), the other maintains 1,200–1,500 ppm. The
+/// union is the encoded range and the ceiling disagreement is kept
+/// visible in the label.
+pub const CO2_LIGHTS_ON_PPM: BandPpm = BandPpm {
+    min_ppm: 800.0,
+    max_ppm: 1500.0,
+    sources: "Cannabis Business Times 800–1,200 ppm (>1,500 uneconomic); \
+        GrowWeedEasy 1,200–1,500 ppm — sources vary on the ceiling",
+};
+
+/// The lights-off CO2 band (ppm): ambient air, enrichment off.
+///
+/// Enrichment is useless in darkness (stomata close, photosynthesis
+/// stops) and commercial practice injects from lights-on only, so the
+/// lights-off target is plain ambient air. Ambient baseline reads
+/// ~400–420 ppm across the sources; the room drifts up overnight from
+/// respiration, so the band tops out at 450 ppm.
+pub const CO2_LIGHTS_OFF_PPM: BandPpm = BandPpm {
+    min_ppm: 400.0,
+    max_ppm: 450.0,
+    sources: "Oklahoma State Extension and Cannabis Business Times \
+        (~400–410 ppm ambient); GrowWeedEasy ~400 ppm; CO2Meter — \
+        enrichment off in darkness",
 };
 
 // ---------------------------------------------------------------------------
@@ -561,8 +703,10 @@ pub fn coach_tips(phase: Phase, substrate_label: &str, light_on: bool) -> Vec<Co
 #[cfg(test)]
 mod tests {
     use super::{
-        LampInput, Phase, TempThresholds, Tolerance, advise_lamp, coach_tips, rh_window,
-        saturation_vp_kpa, temperature_corridor, vpd_band, vpd_kpa, wattage_classes,
+        CO2_LIGHTS_OFF_PPM, CO2_LIGHTS_ON_PPM, DEFAULT_LEAF_OFFSET_C, LampInput,
+        NIGHT_LEAF_OFFSET_C, NightVpdBand, Phase, TempThresholds, Tolerance, advise_lamp,
+        coach_tips, night_temperature_corridor, night_vpd_band, rh_window, saturation_vp_kpa,
+        temperature_corridor, vpd_band, vpd_kpa, wattage_classes,
     };
     use crate::strain::PhotoperiodType;
 
@@ -582,6 +726,13 @@ mod tests {
             (28.0, 40.0, -2.0, 1.91), // hot + dry = high VPD
             (30.0, 70.0, -2.0, 0.83), // hot + humid = moderate
             (22.0, 80.0, -2.0, 0.35), // cool + very humid = low
+            // Saturated air with a negative leaf offset makes the raw
+            // difference negative; the derivation clamps at zero (D076).
+            (25.0, 100.0, -2.0, 0.0), // raw ≈ −0.36 kPa
+            (20.0, 100.0, -2.0, 0.0), // raw ≈ −0.27 kPa
+            (22.0, 95.0, -2.0, 0.0),  // raw ≈ −0.17 kPa
+            // The lights-off offset is part of the same contract.
+            (25.0, 50.0, NIGHT_LEAF_OFFSET_C, 1.40),
         ];
         for (temp, rh, offset, expected) in cases {
             let vpd = vpd_kpa(temp, rh, offset);
@@ -589,6 +740,26 @@ mod tests {
                 (vpd - expected).abs() < 0.15,
                 "vpd({temp}°C, {rh}%, {offset} offset) = {vpd:.3}, expected ≈ {expected}"
             );
+        }
+    }
+
+    #[test]
+    fn vpd_kpa_is_never_negative() {
+        // The clamp is a contract for every consumer (charts, bands,
+        // alerts): no air temperature, humidity, or leaf offset in the
+        // realistic ranges may yield a negative VPD, however deep the
+        // negative raw difference runs.
+        let offsets = [0.0, NIGHT_LEAF_OFFSET_C, DEFAULT_LEAF_OFFSET_C, -3.0];
+        for temp in [0.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0] {
+            for rh in [0.0, 25.0, 50.0, 75.0, 90.0, 99.0, 100.0] {
+                for offset in offsets {
+                    let vpd = vpd_kpa(temp, rh, offset);
+                    assert!(
+                        vpd >= 0.0,
+                        "vpd({temp}°C, {rh}%, {offset}) = {vpd} must clamp at zero"
+                    );
+                }
+            }
         }
     }
 
@@ -869,5 +1040,265 @@ mod tests {
         // range, and the source label says so.
         assert_eq!(temperature_corridor(Phase::Germination), seedling);
         assert!(seedling.source.contains("germination reuses"));
+    }
+
+    // --- Lights-off (night) presets: temperature (spec §4.9) ---
+
+    #[test]
+    fn night_temperature_corridor_covers_lit_phases_with_sourced_ranges() {
+        for phase in [
+            Phase::Germination,
+            Phase::Seedling,
+            Phase::Vegetative,
+            Phase::Flower,
+        ] {
+            let band = night_temperature_corridor(phase)
+                .unwrap_or_else(|| panic!("{} must have a lights-off range", phase.label()));
+            assert!(
+                band.min_c < band.max_c,
+                "{} lights-off range must be non-empty",
+                phase.label()
+            );
+            assert!(
+                !band.source.is_empty(),
+                "{} lights-off range must carry a source label",
+                phase.label()
+            );
+        }
+        // Drying and curing rooms have no lights, so there is no
+        // lights-off variant: the single preset applies 24/7 and the
+        // accessor says so with None.
+        for phase in [Phase::Drying, Phase::Curing] {
+            assert!(
+                night_temperature_corridor(phase).is_none(),
+                "{} must have no lights-off variant",
+                phase.label()
+            );
+        }
+    }
+
+    #[test]
+    fn night_temperature_corridor_matches_the_research_table() {
+        // Worked values from the lights-off research (°F → °C).
+        let seedling = night_temperature_corridor(Phase::Seedling).expect("seedling");
+        assert!((seedling.min_c - 20.0).abs() < 0.05);
+        assert!((seedling.max_c - 23.3).abs() < 0.05);
+        // Germination has no research row of its own: it reuses the
+        // seedling row, and the source label says so.
+        assert_eq!(
+            night_temperature_corridor(Phase::Germination),
+            Some(seedling)
+        );
+        assert!(seedling.source.contains("germination reuses"));
+        let vegetative = night_temperature_corridor(Phase::Vegetative).expect("veg");
+        assert!((vegetative.min_c - 18.3).abs() < 0.05);
+        assert!((vegetative.max_c - 23.9).abs() < 0.05);
+        let flower = night_temperature_corridor(Phase::Flower).expect("flower");
+        assert!((flower.min_c - 15.6).abs() < 0.05);
+        assert!((flower.max_c - 23.3).abs() < 0.05);
+    }
+
+    #[test]
+    fn night_temperature_sits_below_the_lights_on_corridor() {
+        // Nights run cooler than the lights-on corridor for every lit
+        // phase; the dark-room phases have no night range at all.
+        for phase in [
+            Phase::Germination,
+            Phase::Seedling,
+            Phase::Vegetative,
+            Phase::Flower,
+        ] {
+            let day = temperature_corridor(phase);
+            let night = night_temperature_corridor(phase)
+                .unwrap_or_else(|| panic!("{} must have a lights-off range", phase.label()));
+            assert!(
+                night.max_c <= day.max_c,
+                "{}: night ceiling {:.1} must not exceed the lights-on ceiling {:.1}",
+                phase.label(),
+                night.max_c,
+                day.max_c
+            );
+        }
+    }
+
+    // --- Lights-off (night) presets: VPD (spec §4.9) ---
+
+    #[test]
+    fn night_vpd_band_covers_lit_phases_with_sourced_ranges() {
+        for phase in [
+            Phase::Germination,
+            Phase::Seedling,
+            Phase::Vegetative,
+            Phase::Flower,
+        ] {
+            let band = night_vpd_band(phase)
+                .unwrap_or_else(|| panic!("{} must have a lights-off VPD band", phase.label()));
+            assert!(
+                band.min_kpa > 0.0 && band.max_kpa > band.min_kpa,
+                "{} lights-off VPD band must be a positive non-empty range",
+                phase.label()
+            );
+            assert!(
+                !band.sources.is_empty(),
+                "{} lights-off VPD band must carry a source label",
+                phase.label()
+            );
+        }
+        // No lights, no lights-off period: the single day band applies
+        // 24/7 in drying and curing.
+        for phase in [Phase::Drying, Phase::Curing] {
+            assert!(
+                night_vpd_band(phase).is_none(),
+                "{} must have no lights-off VPD variant",
+                phase.label()
+            );
+        }
+    }
+
+    #[test]
+    fn night_vpd_band_matches_the_research_table() {
+        let seedling = night_vpd_band(Phase::Seedling).expect("seedling");
+        assert!((seedling.min_kpa - 0.5).abs() < 0.01);
+        assert!((seedling.max_kpa - 0.9).abs() < 0.01);
+        // Germination shares the seedling/clones row.
+        assert_eq!(night_vpd_band(Phase::Germination), Some(seedling));
+        // The dome numbers disagree across sources; the label must say
+        // so (seed-data discipline).
+        assert!(seedling.sources.contains("sources vary"));
+
+        let vegetative = night_vpd_band(Phase::Vegetative).expect("veg");
+        assert!((vegetative.min_kpa - 0.8).abs() < 0.01);
+        assert!((vegetative.max_kpa - 1.2).abs() < 0.01);
+
+        let flower = night_vpd_band(Phase::Flower).expect("flower");
+        assert!((flower.min_kpa - 1.0).abs() < 0.01);
+        assert!((flower.max_kpa - 1.4).abs() < 0.01);
+    }
+
+    #[test]
+    fn night_vpd_band_overlaps_the_day_band() {
+        // The sources' shared rule is "keep night VPD close to the day
+        // band" (Pulse Grow, Black Dog LED), so every lights-off band
+        // must overlap its day counterpart.
+        for phase in [
+            Phase::Germination,
+            Phase::Seedling,
+            Phase::Vegetative,
+            Phase::Flower,
+        ] {
+            let night = night_vpd_band(phase)
+                .unwrap_or_else(|| panic!("{} must have a lights-off VPD band", phase.label()));
+            let NightVpdBand {
+                min_kpa: night_min,
+                max_kpa: night_max,
+                ..
+            } = night;
+            let (day_min, day_max) = vpd_band(phase);
+            assert!(
+                night_min <= day_max && day_min <= night_max,
+                "{}: night {:.1}–{:.1} must overlap day {:.1}–{:.1}",
+                phase.label(),
+                night_min,
+                night_max,
+                day_min,
+                day_max
+            );
+        }
+    }
+
+    // --- Lights-on / lights-off CO2 bands (spec §4.9) ---
+
+    #[test]
+    fn co2_bands_carry_sourced_ranges() {
+        // Lights-off: ambient only, enrichment off in darkness.
+        assert!((CO2_LIGHTS_OFF_PPM.min_ppm - 400.0).abs() < 0.5);
+        assert!((CO2_LIGHTS_OFF_PPM.max_ppm - 450.0).abs() < 0.5);
+        assert!(
+            CO2_LIGHTS_OFF_PPM.sources.contains("enrichment off"),
+            "the night label must state the enrichment-off convention"
+        );
+        // Lights-on: the enrichment range, extracted from two
+        // independent articles.
+        assert!((CO2_LIGHTS_ON_PPM.min_ppm - 800.0).abs() < 0.5);
+        assert!((CO2_LIGHTS_ON_PPM.max_ppm - 1500.0).abs() < 0.5);
+        assert!(
+            CO2_LIGHTS_ON_PPM.sources.contains("sources vary"),
+            "the two articles disagree on the ceiling; the label must say so"
+        );
+        // Ambient air never reaches the enrichment floor, so the
+        // lights-off band sits entirely below the lights-on band; the
+        // gap must be a real margin, not a shared edge.
+        let gap = CO2_LIGHTS_ON_PPM.min_ppm - CO2_LIGHTS_OFF_PPM.max_ppm;
+        assert!(
+            gap > 0.0,
+            "night ambient band must sit below the day enrichment band"
+        );
+    }
+
+    // --- Lights-off leaf offset (spec §4.9) ---
+
+    #[test]
+    fn night_leaf_offset_is_the_documented_constant() {
+        assert!((NIGHT_LEAF_OFFSET_C - -1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn night_leaf_offset_swap_is_visible_in_the_maths() {
+        // The lights-off offset assumes less transpiration cooling, so
+        // the leaf sits closer to air temperature and the computed VPD
+        // rises relative to the lights-on default. The difference must
+        // exceed rounding noise (research: ~0.2–0.3 kPa at typical
+        // setpoints).
+        let with_default = vpd_kpa(25.0, 50.0, DEFAULT_LEAF_OFFSET_C);
+        let with_night = vpd_kpa(25.0, 50.0, NIGHT_LEAF_OFFSET_C);
+        assert!(
+            with_night > with_default,
+            "less cooling at night must raise the computed VPD"
+        );
+        assert!(
+            with_night - with_default > 0.1,
+            "the offset swap must move VPD by more than {:.3}",
+            with_night - with_default
+        );
+    }
+
+    #[test]
+    fn night_rh_window_solver_round_trip() {
+        // At each lit phase's night setpoint (corridor midpoint) with
+        // the night leaf offset, the lights-off VPD band converts to a
+        // non-empty RH window whose midpoint lands back in band — the
+        // solver and the band agree on the night numbers.
+        let cases = [
+            (Phase::Seedling, 20.0, 23.3),
+            (Phase::Vegetative, 18.3, 23.9),
+            (Phase::Flower, 15.6, 23.3),
+        ];
+        for (phase, min_c, max_c) in cases {
+            let night = night_vpd_band(phase)
+                .unwrap_or_else(|| panic!("{} must have a lights-off VPD band", phase.label()));
+            let setpoint = f64::midpoint(min_c, max_c);
+            let (lo, hi) = rh_window(
+                setpoint,
+                NIGHT_LEAF_OFFSET_C,
+                (night.min_kpa, night.max_kpa),
+            );
+            assert!(
+                lo < hi,
+                "{}: lights-off RH window must be non-empty at {:.1} °C",
+                phase.label(),
+                setpoint
+            );
+            let midpoint_rh = f64::midpoint(lo, hi);
+            let back = vpd_kpa(setpoint, midpoint_rh, NIGHT_LEAF_OFFSET_C);
+            assert!(
+                (night.min_kpa..=night.max_kpa).contains(&back),
+                "{}: midpoint RH {:.1} % round-trips to VPD {:.2}, outside {:.1}–{:.1}",
+                phase.label(),
+                midpoint_rh,
+                back,
+                night.min_kpa,
+                night.max_kpa
+            );
+        }
     }
 }
