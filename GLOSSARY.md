@@ -22,6 +22,10 @@ _Avoid_: Broken sensor
 The rolling time span a history chart covers, ending now; the toggles read 24h / 7d / 30d. A Chart window is never a calendar day, and the word "day" on its own belongs to the Light Cycle.
 _Avoid_: Day, Week, Month (as toggle captions), period
 
+**Light Cycle**:
+A grow's daily lights-on local time plus hours-on per lit phase, nullable with sourced preset defaults (photoperiod 18/6 veg and 12/12 flower; autoflowers long days throughout) and reset-to-default. Charts use it for day/night bands when no light entity is bound.
+_Avoid_: Light schedule setting, lights config
+
 ### Grow lifecycle
 
 **Medium**:
