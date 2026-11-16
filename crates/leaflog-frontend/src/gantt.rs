@@ -22,6 +22,60 @@ fn phase_color(label: &str) -> &'static str {
     }
 }
 
+/// True when the forecast stops without a projected total: the
+/// open-ended photoperiod veg (no flip pin, no plan) projects no
+/// flower window, and drying and curing always follow the flower.
+fn is_open_ended(windows: &[PhaseWindowData]) -> bool {
+    !windows.iter().any(|window| window.phase == "flower")
+}
+
+/// The chart horizon in grow days: the percentage base for the bars
+/// and the today marker. With a projected total it is the last
+/// window's latest end; an open-ended forecast extends through today
+/// so the current phase's bar still reaches the marker.
+fn forecast_horizon(forecast: &Forecast) -> i64 {
+    let last_end = forecast
+        .windows
+        .last()
+        .map_or(1, |window| window.latest_end.max(window.likely_end))
+        .max(1);
+    if is_open_ended(&forecast.windows) {
+        last_end.max(forecast.today_day)
+    } else {
+        last_end
+    }
+}
+
+/// Track percentages for one row: where the light earliest/latest
+/// range starts, where the likely bar starts and ends, and where the
+/// range ends. An open-ended row (a phase with no projected end)
+/// stretches the bar and its range to the full track width so the
+/// today marker sits inside it.
+fn track_percentages(
+    window: &PhaseWindowData,
+    total_days: i64,
+    open: bool,
+) -> (f64, f64, f64, f64) {
+    let total = total_days.max(1) as f64;
+    let to_pct = |day: i64| day as f64 / total * 100.0;
+    let bar_end = if open {
+        100.0
+    } else {
+        to_pct(window.likely_end)
+    };
+    let end = if open {
+        100.0
+    } else {
+        to_pct(window.latest_end)
+    };
+    (
+        to_pct(window.earliest_start),
+        to_pct(window.likely_start),
+        bar_end,
+        end,
+    )
+}
+
 /// The Gantt timeline for one grow.
 #[component]
 #[allow(clippy::too_many_lines)]
@@ -49,18 +103,27 @@ pub fn GanttTimeline(grow_id: String) -> impl IntoView {
                 let Some(data) = forecast.get() else {
                     return view! { <p class="text-base-content/70">"Loading forecast…"</p> }.into_any();
                 };
-                let total_days = data
-                    .windows
-                    .last()
-                    .map_or(1, |w| w.latest_end.max(w.likely_end))
-                    .max(1);
+                // An open-ended photoperiod veg (no flip pin, no plan)
+                // projects no flower, drying or curing window: there is
+                // no total to count towards, so the chart horizon runs
+                // through today and the caption shows only the count.
+                let open = is_open_ended(&data.windows);
+                let total_days = forecast_horizon(&data);
                 let today_pct =
                     (data.today_day as f64 / total_days as f64 * 100.0).min(100.0);
                 let rows: Vec<_> = data
                     .windows
                     .iter()
-                    .map(|window| gantt_row(window, total_days))
+                    .enumerate()
+                    .map(|(index, window)| {
+                        gantt_row(window, total_days, open && index + 1 == data.windows.len())
+                    })
                     .collect();
+                let count_suffix = if open {
+                    String::new()
+                } else {
+                    format!(" / {total_days}")
+                };
                 view! {
                     <div class="gantt-chart" role="img"
                         aria-label="Phase forecast timeline">
@@ -81,10 +144,9 @@ pub fn GanttTimeline(grow_id: String) -> impl IntoView {
                         </div>
                     </div>
                     <p class="text-base-content/70 text-sm">
-                        "Bars show the likely window; light extensions show the                          earliest/latest range. Day count: "
+                        "Bars show the likely window; light extensions show the earliest/latest range. Day count: "
                         {data.today_day}
-                        " / "
-                        {total_days}
+                        {count_suffix}
                     </p>
                 }
                 .into_any()
@@ -93,26 +155,27 @@ pub fn GanttTimeline(grow_id: String) -> impl IntoView {
     }
 }
 
-/// Renders one row of the Gantt chart.
-fn gantt_row(window: &PhaseWindowData, total_days: i64) -> impl IntoView {
-    let total = total_days.max(1) as f64;
-    let to_pct = |day: i64| day as f64 / total * 100.0;
-
-    let start = to_pct(window.earliest_start);
-    let bar_start = to_pct(window.likely_start);
-    let bar_end = to_pct(window.likely_end);
-    let end = to_pct(window.latest_end);
+/// Renders one row of the Gantt chart. The last row of an open-ended
+/// forecast (the ongoing veg) has no projected end, so `open` is true
+/// and its bar stretches to the track end.
+fn gantt_row(window: &PhaseWindowData, total_days: i64, open: bool) -> impl IntoView {
+    let (start, bar_start, bar_end, end) = track_percentages(window, total_days, open);
     let color = phase_color(&window.phase);
-    let label = format!(
-        "{} (day {}–{})",
-        window.phase.replace('_', " "),
-        window.likely_start,
-        window.likely_end,
-    );
+    let name = window.phase.replace('_', " ");
+    let label = if open {
+        format!("{name} (day {}–ongoing)", window.likely_start)
+    } else {
+        format!("{name} (day {}–{})", window.likely_start, window.likely_end)
+    };
+    let duration = if open {
+        "ongoing".to_owned()
+    } else {
+        format!("{}d", window.likely_end - window.likely_start)
+    };
 
     view! {
         <div class="gantt-row">
-            <span class="gantt-phase-label">{window.phase.replace('_', " ")}</span>
+            <span class="gantt-phase-label">{name}</span>
             <div class="gantt-track">
                 <div class="gantt-range"
                     style=format!(
@@ -129,11 +192,100 @@ fn gantt_row(window: &PhaseWindowData, total_days: i64) -> impl IntoView {
                         title=label
                     >
                         {if window.actual_start { "✓ " } else { "" }}
-                        {window.likely_end - window.likely_start}
-                        "d"
+                        {duration}
                     </div>
                 </div>
             </div>
         </div>
+    }
+}
+
+#[cfg(test)]
+mod open_ended_forecast_tests {
+    use super::{forecast_horizon, is_open_ended, track_percentages};
+    use crate::api::{Forecast, PhaseWindowData};
+
+    fn window(phase: &str, start: i64, end: i64, latest_end: i64) -> PhaseWindowData {
+        PhaseWindowData {
+            phase: phase.to_owned(),
+            earliest_start: start,
+            likely_start: start,
+            latest_start: start,
+            earliest_end: start,
+            likely_end: end,
+            latest_end,
+            actual_start: false,
+        }
+    }
+
+    // The open-ended shape the backend now sends for an un-flipped
+    // photoperiod: the chain stops at a point window for the veg.
+    fn open_windows() -> Vec<PhaseWindowData> {
+        vec![
+            window("germination", 0, 6, 10),
+            window("seedling", 6, 23, 23),
+            window("vegetative", 23, 23, 23),
+        ]
+    }
+
+    fn full_windows() -> Vec<PhaseWindowData> {
+        vec![
+            window("germination", 0, 6, 10),
+            window("seedling", 6, 23, 23),
+            window("vegetative", 23, 37, 40),
+            window("flower", 37, 103, 114),
+            window("drying", 103, 110, 117),
+            window("curing", 110, 132, 142),
+        ]
+    }
+
+    // Percentages go through f64; compare with slack, not equality.
+    fn close(actual: f64, expected: f64) -> bool {
+        (actual - expected).abs() < 1e-9
+    }
+
+    #[test]
+    fn no_flower_window_means_no_projected_total() {
+        assert!(is_open_ended(&open_windows()));
+        assert!(!is_open_ended(&full_windows()));
+        assert!(is_open_ended(&[]));
+    }
+
+    #[test]
+    fn projected_total_comes_from_the_last_window() {
+        let forecast = Forecast {
+            today_day: 10,
+            windows: full_windows(),
+        };
+        assert_eq!(forecast_horizon(&forecast), 142);
+    }
+
+    #[test]
+    fn open_ended_horizon_extends_through_today() {
+        let late = Forecast {
+            today_day: 40,
+            windows: open_windows(),
+        };
+        assert_eq!(forecast_horizon(&late), 40);
+        let early = Forecast {
+            today_day: 5,
+            windows: open_windows(),
+        };
+        assert_eq!(forecast_horizon(&early), 23);
+    }
+
+    #[test]
+    fn open_row_stretches_to_the_track_end() {
+        let (start, bar_start, bar_end, end) = track_percentages(&open_windows()[2], 40, true);
+        assert!(close(start, 57.5) && close(bar_start, 57.5));
+        assert!(close(bar_end, 100.0) && close(end, 100.0));
+    }
+
+    #[test]
+    fn closed_row_keeps_the_window_bands() {
+        let germ = window("germination", 0, 6, 10);
+        let (start, bar_start, bar_end, end) = track_percentages(&germ, 100, false);
+        assert!(close(start, 0.0) && close(bar_start, 0.0));
+        assert!(close(bar_end, 6.0) && close(end, 10.0));
     }
 }

@@ -48,6 +48,7 @@ pub mod api_feeds;
 pub mod api_grows;
 pub mod api_ha;
 pub mod api_history;
+pub mod api_phase;
 pub mod api_seedbank;
 pub mod api_spaces;
 pub mod app;

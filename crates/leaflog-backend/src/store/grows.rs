@@ -22,14 +22,15 @@ pub fn create(conn: &Connection, input: &GrowInput) -> Result<Grow, StoreError> 
         grow_space_id: input.grow_space_id.clone(),
         seed_batch_id: input.seed_batch_id.clone(),
         feed_template_id: input.feed_template_id.clone(),
+        planned_veg_weeks: input.planned_veg_weeks,
         substrate: input.substrate.clone(),
         started_on: input.started_on.clone(),
         status: input.status,
         notes: input.notes.clone(),
     };
     conn.execute(
-        "INSERT INTO grow (id, name, strain_id, grow_space_id, seed_batch_id, feed_template_id, substrate, started_on, status, notes, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        "INSERT INTO grow (id, name, strain_id, grow_space_id, seed_batch_id, feed_template_id, planned_veg_weeks, substrate, started_on, status, notes, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
             grow.id,
             grow.name,
@@ -37,6 +38,7 @@ pub fn create(conn: &Connection, input: &GrowInput) -> Result<Grow, StoreError> 
             grow.grow_space_id,
             grow.seed_batch_id,
             grow.feed_template_id,
+            grow.planned_veg_weeks.map(i64::from),
             grow.substrate,
             grow.started_on,
             grow.status.label(),
@@ -103,14 +105,15 @@ pub fn update(conn: &Connection, id: &str, input: &GrowInput) -> Result<Grow, St
     updated.grow_space_id.clone_from(&input.grow_space_id);
     updated.seed_batch_id.clone_from(&input.seed_batch_id);
     updated.feed_template_id.clone_from(&input.feed_template_id);
+    updated.planned_veg_weeks = input.planned_veg_weeks;
     updated.substrate.clone_from(&input.substrate);
     updated.started_on.clone_from(&input.started_on);
     updated.status = input.status;
     updated.notes.clone_from(&input.notes);
     conn.execute(
         "UPDATE grow SET name = ?2, strain_id = ?3, grow_space_id = ?4, seed_batch_id = ?5,
-             feed_template_id = ?6, substrate = ?7, started_on = ?8, status = ?9,
-             notes = ?10, updated_at = ?11
+             feed_template_id = ?6, planned_veg_weeks = ?7, substrate = ?8, started_on = ?9,
+             status = ?10, notes = ?11, updated_at = ?12
          WHERE id = ?1",
         params![
             updated.id,
@@ -119,6 +122,7 @@ pub fn update(conn: &Connection, id: &str, input: &GrowInput) -> Result<Grow, St
             updated.grow_space_id,
             updated.seed_batch_id,
             updated.feed_template_id,
+            updated.planned_veg_weeks.map(i64::from),
             updated.substrate,
             updated.started_on,
             updated.status.label(),
@@ -264,6 +268,9 @@ fn map_grow(row: &rusqlite::Row<'_>) -> Result<Grow, rusqlite::Error> {
         grow_space_id: row.get("grow_space_id")?,
         seed_batch_id: row.get("seed_batch_id")?,
         feed_template_id: row.get("feed_template_id")?,
+        planned_veg_weeks: row
+            .get::<_, Option<i64>>("planned_veg_weeks")?
+            .and_then(|value| u8::try_from(value).ok()),
         substrate: row.get("substrate")?,
         started_on: row.get("started_on")?,
         status: if status == "archived" {

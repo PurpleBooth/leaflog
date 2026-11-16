@@ -65,6 +65,11 @@ impl Default for PhaseDefaults {
 }
 
 /// What actually happened (logged events, spec §4.5 re-forecast).
+///
+/// The boundary fields are pins from recorded phase events (D073): a
+/// pin moves its window's start and the chain back-fills around it.
+/// The backend resolves "latest event per boundary wins" before
+/// building this — the engine stays dumb and pure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Actuals {
     /// Grow day of the flip to 12/12 (photoperiods).
@@ -76,6 +81,17 @@ pub struct Actuals {
     /// True when germination is confirmed logged (else the engine
     /// still reserves the window).
     pub germinated: bool,
+    /// Pinned germination start (a "back to Germination" pick).
+    pub germination_start: Option<Day>,
+    /// Pinned germination → seedling boundary.
+    pub seedling_start: Option<Day>,
+    /// Pinned seedling → vegetative boundary.
+    pub vegetative_start: Option<Day>,
+    /// Pinned vegetative → flower boundary (a Flowering pick; also
+    /// fills in when a photoperiod has no flip).
+    pub flower_start: Option<Day>,
+    /// Pinned drying → curing boundary.
+    pub curing_start: Option<Day>,
 }
 
 /// The inputs to [`forecast`].
@@ -84,7 +100,9 @@ pub struct ForecastInput {
     /// Photoperiod or autoflowering (from the strain).
     pub photoperiod: PhotoperiodType,
     /// Planned vegetative weeks for photoperiods (grower's choice);
-    /// ignored for autos.
+    /// ignored for autos. When absent and no flip is logged, the
+    /// photoperiod veg window is open-ended and no flower, drying or
+    /// curing window is produced.
     pub planned_veg_weeks: Option<u8>,
     /// Autoflower total days from seed (overrides flower timing when
     /// present).
@@ -125,6 +143,10 @@ pub struct PhaseWindow {
 /// pin boundaries; the likely path threads through the pinned points
 /// and the default ranges after them.
 ///
+/// A photoperiod with neither a logged flip nor planned veg weeks has
+/// an open-ended vegetative window: the chain stops there and no
+/// flower, drying or curing window is produced.
+///
 /// # Panics
 ///
 /// Never panics: nonsensical inputs clamp to the nearest sensible
@@ -134,12 +156,12 @@ pub fn forecast(input: &ForecastInput) -> Vec<PhaseWindow> {
     let d = input.defaults;
     let mut windows: Vec<PhaseWindow> = Vec::with_capacity(6);
 
-    // --- Germination: 0 .. (likely mid, 3–10 range) ---
+    // --- Germination: pinned or 0 .. (likely mid, 3–10 range) ---
     let germ_likely = i64::midpoint(d.germination_min, d.germination_max);
     add(
         &mut windows,
         Phase::Germination,
-        0,
+        input.actuals.germination_start.unwrap_or(0),
         d.germination_min,
         germ_likely,
         d.germination_max,
@@ -148,7 +170,9 @@ pub fn forecast(input: &ForecastInput) -> Vec<PhaseWindow> {
     );
 
     // --- Seedling: 14–21 ---
-    let seed_start = windows[0].likely_end;
+    let seedling_pin = input.actuals.seedling_start;
+    let germ_end = windows[0].likely_end;
+    let seed_start = seedling_pin.map_or(germ_end, |pin| pin_start(&mut windows, pin));
     add(
         &mut windows,
         Phase::Seedling,
@@ -156,33 +180,38 @@ pub fn forecast(input: &ForecastInput) -> Vec<PhaseWindow> {
         d.seedling_min,
         i64::midpoint(d.seedling_min, d.seedling_max),
         d.seedling_max,
-        false,
+        seedling_pin.is_some(),
         None,
     );
 
     // --- Veg (photoperiod: grower weeks; auto: by age) ---
-    let (flip_day, flower_len) = add_vegetative(&mut windows, input, d);
+    let Some((flip_day, flower_len)) = add_vegetative(&mut windows, input, d) else {
+        finish_open_ended(&mut windows, input, d);
+        normalize(&mut windows);
+        return windows;
+    };
 
     let (f_min, f_max) = flower_len;
     let flower_end = flower_end_for(input, flip_day, flower_len);
     let flower_actual_end = input.actuals.harvest_day;
-    add(
+    let flower_window = add(
         &mut windows,
         Phase::Flower,
         flip_day,
         f_min,
         flower_end - flip_day,
         f_max,
-        input.actuals.flip_day.is_some() || input.photoperiod == PhotoperiodType::Auto,
+        input.actuals.flip_day.is_some()
+            || input.actuals.flower_start.is_some()
+            || input.photoperiod == PhotoperiodType::Auto,
         flower_actual_end,
     );
 
     // --- Dry: after flower end ---
-    let dry_start = windows[3].likely_end;
-    add(
+    let dry_window = add(
         &mut windows,
         Phase::Drying,
-        dry_start,
+        flower_window.likely_end,
         d.dry_min,
         i64::midpoint(d.dry_min, d.dry_max),
         d.dry_max,
@@ -190,8 +219,11 @@ pub fn forecast(input: &ForecastInput) -> Vec<PhaseWindow> {
         None,
     );
 
-    // --- Cure: after dry ---
-    let cure_start = windows[4].likely_end;
+    // --- Cure: after dry, or pinned ---
+    let cure_start = input
+        .actuals
+        .curing_start
+        .map_or(dry_window.likely_end, |pin| pin_start(&mut windows, pin));
     add(
         &mut windows,
         Phase::Curing,
@@ -199,10 +231,17 @@ pub fn forecast(input: &ForecastInput) -> Vec<PhaseWindow> {
         d.cure_min,
         i64::midpoint(d.cure_min, d.cure_max),
         d.cure_max,
-        false,
+        input.actuals.curing_start.is_some(),
         None,
     );
 
+    normalize(&mut windows);
+    windows
+}
+
+/// Forward compression and the final monotonicity pass, shared by the
+/// full chain and the open-ended prefix.
+fn normalize(windows: &mut [PhaseWindow]) {
     // Forward compression: an early actual (flip or harvest) can land
     // before the chain predicted; the phases before it are historical,
     // so they compress proportionally to fit.
@@ -219,21 +258,25 @@ pub fn forecast(input: &ForecastInput) -> Vec<PhaseWindow> {
             if previous.likely_start < start {
                 previous.likely_end = start;
             } else {
-                // Both must collapse to the same point.
-                previous.likely_end = previous.likely_start;
-                windows[index].likely_start = previous.likely_start;
+                // Both must collapse to the same point; the start band
+                // of this window clamps up with its likely start.
+                let collapsed = previous.likely_start;
+                previous.likely_end = collapsed;
+                windows[index].likely_start = collapsed;
+                windows[index].earliest_start = windows[index].earliest_start.max(collapsed);
+                windows[index].latest_start = windows[index].latest_start.max(collapsed);
+                windows[index].likely_end = windows[index].likely_end.max(collapsed);
             }
         }
     }
     // Final monotonicity pass on the end bands.
-    for window in &mut windows {
-        window.earliest_end = window
-            .earliest_end
-            .clamp(window.likely_start, window.likely_end);
+    for window in windows {
+        window.earliest_end = window.earliest_end.clamp(
+            window.likely_start,
+            window.likely_end.max(window.likely_start),
+        );
         window.latest_end = window.latest_end.max(window.likely_end);
     }
-
-    windows
 }
 
 /// Builds the forecast input from a strain + grow facts (used by the
@@ -283,21 +326,87 @@ fn flower_end_for(input: &ForecastInput, flower_start: Day, (f_min, f_max): (Day
 }
 
 /// Appends the vegetative window; returns the flip day and the flower
-/// length range (strain overrides).
+/// length range (strain overrides). `None` when nothing past veg is
+/// projectable: a photoperiod with neither a logged flip nor planned
+/// veg weeks leaves the window open-ended.
+/// Completes an open-ended chain: nothing past veg is projectable,
+/// unless a curing pin says the grow is already curing, in which case
+/// the skipped phases collapse into history at the pin.
+fn finish_open_ended(windows: &mut Vec<PhaseWindow>, input: &ForecastInput, d: PhaseDefaults) {
+    if let Some(pin) = input.actuals.curing_start {
+        let start = pin_start(windows, pin);
+        add(windows, Phase::Flower, start, 0, 0, 0, true, Some(start));
+        add(windows, Phase::Drying, start, 0, 0, 0, true, Some(start));
+        add(
+            windows,
+            Phase::Curing,
+            start,
+            d.cure_min,
+            i64::midpoint(d.cure_min, d.cure_max),
+            d.cure_max,
+            true,
+            None,
+        );
+    }
+}
+
+/// Pins the boundary between the last window and the one about to be
+/// appended: the previous phase ends where the pinned one begins.
+/// History wins in both directions — a later-than-expected pin extends
+/// the previous phase; a pin earlier than the previous phase's start
+/// clamps to that start (nearest sensible window). Returns the
+/// effective pinned start.
+fn pin_start(windows: &mut [PhaseWindow], requested: Day) -> Day {
+    let floor = windows
+        .last()
+        .map_or(requested, |previous| previous.likely_start);
+    let start = requested.max(floor);
+    if let Some(previous) = windows.last_mut() {
+        previous.likely_end = start;
+    }
+    start
+}
+
 fn add_vegetative(
     windows: &mut Vec<PhaseWindow>,
     input: &ForecastInput,
     d: PhaseDefaults,
-) -> (Day, (Day, Day)) {
-    let start = windows[1].likely_end;
+) -> Option<(Day, (Day, Day))> {
+    let seedling_end = windows[1].likely_end;
+    let start = input
+        .actuals
+        .vegetative_start
+        .map_or_else(|| seedling_end, |pin| pin_start(windows, pin));
     match input.photoperiod {
         PhotoperiodType::Photoperiod => {
-            let weeks = input.planned_veg_weeks.unwrap_or(4).max(1);
-            let veg_days = Day::from(weeks) * 7;
-            let flip = input.actuals.flip_day.unwrap_or(start + veg_days);
             let flower = input
                 .strain_flower_days
                 .unwrap_or((d.flower_min, d.flower_max));
+            let pinned = input.actuals.vegetative_start.is_some();
+            let Some(weeks) = input.planned_veg_weeks else {
+                // No plan: veg runs until the grower flips it. A
+                // logged flip (or Flowering pick) pins its end; without
+                // one there is no projected end and no downstream
+                // windows.
+                let flip = input.actuals.flip_day.or(input.actuals.flower_start);
+                add(
+                    windows,
+                    Phase::Vegetative,
+                    start,
+                    0,
+                    0,
+                    0,
+                    flip.is_some() || pinned,
+                    flip,
+                );
+                return flip.map(|flip| (flip, flower));
+            };
+            let veg_days = Day::from(weeks.max(1)) * 7;
+            let flip = input
+                .actuals
+                .flip_day
+                .or(input.actuals.flower_start)
+                .unwrap_or(start + veg_days);
             add(
                 windows,
                 Phase::Vegetative,
@@ -305,13 +414,19 @@ fn add_vegetative(
                 veg_days,
                 veg_days,
                 veg_days + 3,
-                input.actuals.flip_day.is_some(),
+                input.actuals.flip_day.is_some() || input.actuals.flower_start.is_some() || pinned,
                 Some(flip),
             );
-            (flip, flower)
+            Some((flip, flower))
         }
         PhotoperiodType::Auto => {
-            let auto_flip = 28.max(start);
+            // A Flowering pick pins the auto's flower start; otherwise
+            // the age estimate stands, never earlier than the veg
+            // start.
+            let auto_flip = input
+                .actuals
+                .flower_start
+                .map_or_else(|| 28.max(start), |pin| pin.max(start));
             add(
                 windows,
                 Phase::Vegetative,
@@ -319,16 +434,16 @@ fn add_vegetative(
                 14,
                 21,
                 28,
-                false,
+                input.actuals.vegetative_start.is_some(),
                 Some(auto_flip),
             );
-            (auto_flip, (d.flower_min, d.flower_max))
+            Some((auto_flip, (d.flower_min, d.flower_max)))
         }
     }
 }
 
-/// Appends a window; retro-truncates the previous phase when an actual
-/// start lands earlier than its predicted end.
+/// Appends a window and returns it; retro-truncates the previous phase
+/// when an actual start lands earlier than its predicted end.
 #[allow(clippy::too_many_arguments)] // grouped below in future cleanup; see docs/DECISIONS.md
 fn add(
     windows: &mut Vec<PhaseWindow>,
@@ -339,11 +454,17 @@ fn add(
     len_max: Day,
     actual_start: bool,
     actual_end: Option<Day>,
-) {
+) -> PhaseWindow {
     // When the actual end contradicts the natural start (an early
     // flip/harvest), reality wins: the phase compresses to start
     // at the actual end of the phase BEFORE it.
     let start = actual_end.map_or(start, |end| end.min(start));
+    // A pinned end can predate the natural start; the boundary never
+    // moves before the previous phase began.
+    let floor = windows
+        .last()
+        .map_or(start, |previous| previous.likely_start);
+    let start = start.max(floor);
     if let Some(previous) = windows.last_mut()
         && start < previous.likely_end
     {
@@ -354,7 +475,7 @@ fn add(
     let end_likely = actual_end.map_or(start + len_likely, |end| end.max(start));
     let end_min = start + len_min.min(end_likely - start);
     let end_max = start + len_max.max(end_likely - start);
-    windows.push(PhaseWindow {
+    let window = PhaseWindow {
         phase,
         earliest_start: start,
         likely_start: start,
@@ -363,7 +484,9 @@ fn add(
         likely_end: end_likely,
         latest_end: end_max,
         actual_start,
-    });
+    };
+    windows.push(window);
+    window
 }
 
 #[cfg(test)]
@@ -380,9 +503,11 @@ mod tests {
             Phase::Drying,
             Phase::Curing,
         ];
-        if windows.len() != expected.len() {
+        // The chain may stop early (open-ended photoperiod veg) but it
+        // never skips or reorders a phase.
+        if windows.len() > expected.len() {
             return Err(format!(
-                "expected {} phases, got {}",
+                "expected at most {} phases, got {}",
                 expected.len(),
                 windows.len()
             ));
@@ -470,12 +595,297 @@ mod tests {
                         harvest_day: harvest,
                         trichome_check_day: harvest.map(|h| h - 3),
                         germinated: true,
+                        ..Actuals::default()
                     },
                     ..base_input()
                 };
                 let windows = forecast(&input);
                 phases_ordered_and_contiguous(&windows)
                     .unwrap_or_else(|error| panic!("flip={flip} harvest={harvest:?}: {error}"));
+            }
+        }
+    }
+
+    #[test]
+    fn contiguity_with_open_ended_veg() {
+        for plan in [None, Some(1_u8), Some(8)] {
+            for flip in [None, Some(20_i64), Some(50)] {
+                let input = ForecastInput {
+                    planned_veg_weeks: plan,
+                    actuals: Actuals {
+                        flip_day: flip,
+                        ..Actuals::default()
+                    },
+                    ..base_input()
+                };
+                let windows = forecast(&input);
+                phases_ordered_and_contiguous(&windows).unwrap_or_else(|error| {
+                    panic!("plan={plan:?} flip={flip:?}: {error}");
+                });
+            }
+        }
+    }
+
+    #[test]
+    fn photoperiod_without_plan_or_pin_is_open_ended() {
+        let input = ForecastInput {
+            planned_veg_weeks: None,
+            ..base_input()
+        };
+        let windows = forecast(&input);
+        // Only the front of the chain is projected: no flower, drying
+        // or curing window exists.
+        assert_eq!(windows.len(), 3);
+        assert_eq!(windows[2].phase, Phase::Vegetative);
+        // Defaults: germ 3–10 (likely 6), seedling 14–21 (likely 17),
+        // so veg starts at day 23 and has no projected end.
+        assert_eq!(windows[2].likely_start, 23);
+        assert_eq!(windows[2].likely_end, 23);
+        assert!(!windows[2].actual_start);
+        assert!(
+            windows
+                .iter()
+                .all(|w| !matches!(w.phase, Phase::Flower | Phase::Drying | Phase::Curing))
+        );
+    }
+
+    #[test]
+    fn planned_veg_projects_the_flip() {
+        let input = ForecastInput {
+            planned_veg_weeks: Some(2),
+            ..base_input()
+        };
+        let windows = forecast(&input);
+        // 2 planned weeks = 14 days of veg from day 23 → flip at 37,
+        // and the full chain follows.
+        assert_eq!(windows.len(), 6);
+        let veg = &windows[2];
+        assert_eq!(veg.phase, Phase::Vegetative);
+        assert_eq!(veg.likely_start, 23);
+        assert_eq!(veg.likely_end, 37);
+        let flower = &windows[3];
+        assert_eq!(flower.phase, Phase::Flower);
+        assert_eq!(flower.likely_start, 37);
+        assert!(!flower.actual_start);
+    }
+
+    #[test]
+    fn flip_pin_without_plan_derives_downstream() {
+        let input = ForecastInput {
+            planned_veg_weeks: None,
+            actuals: Actuals {
+                flip_day: Some(45),
+                ..Actuals::default()
+            },
+            ..base_input()
+        };
+        let windows = forecast(&input);
+        assert_eq!(windows.len(), 6);
+        // The pinned flip ends veg and starts flower.
+        let veg = &windows[2];
+        assert_eq!(veg.likely_end, 45);
+        assert_eq!(veg.latest_end, 45);
+        let flower = &windows[3];
+        assert_eq!(flower.likely_start, 45);
+        assert!(flower.actual_start);
+        // Defaults 56–77 (likely 66) → dry starts at 111.
+        assert_eq!(flower.likely_end, 111);
+        assert_eq!(windows[4].phase, Phase::Drying);
+        assert_eq!(windows[4].likely_start, 111);
+    }
+
+    #[test]
+    fn germination_pin_moves_germ_start() {
+        // A "back to Germination" pick restarts the chain at the pinned
+        // day.
+        let input = ForecastInput {
+            actuals: Actuals {
+                germination_start: Some(5),
+                ..Actuals::default()
+            },
+            ..base_input()
+        };
+        let windows = forecast(&input);
+        assert_eq!(windows[0].phase, Phase::Germination);
+        assert_eq!(windows[0].likely_start, 5);
+        assert!(windows[0].actual_start);
+        phases_ordered_and_contiguous(&windows).unwrap();
+    }
+
+    #[test]
+    fn seedling_pin_moves_seedling_and_compresses_germ() {
+        let input = ForecastInput {
+            actuals: Actuals {
+                seedling_start: Some(10),
+                ..Actuals::default()
+            },
+            ..base_input()
+        };
+        let windows = forecast(&input);
+        assert_eq!(windows[1].phase, Phase::Seedling);
+        assert_eq!(windows[1].likely_start, 10);
+        assert!(windows[1].actual_start);
+        // Germination is history: it ends where seedling began.
+        assert_eq!(windows[0].likely_end, 10);
+        phases_ordered_and_contiguous(&windows).unwrap();
+    }
+
+    #[test]
+    fn vegetative_pin_moves_veg_start() {
+        let input = ForecastInput {
+            planned_veg_weeks: None,
+            actuals: Actuals {
+                vegetative_start: Some(30),
+                ..Actuals::default()
+            },
+            ..base_input()
+        };
+        let windows = forecast(&input);
+        assert_eq!(windows[2].phase, Phase::Vegetative);
+        assert_eq!(windows[2].likely_start, 30);
+        assert!(windows[2].actual_start);
+        assert_eq!(windows[1].likely_end, 30);
+        // Still open-ended: the pin only moved the boundary.
+        assert_eq!(windows.len(), 3);
+        phases_ordered_and_contiguous(&windows).unwrap();
+    }
+
+    #[test]
+    fn flower_pin_pins_open_photoperiod() {
+        // A Flowering pick on a photoperiod with no flip and no plan
+        // still projects the whole downstream chain.
+        let input = ForecastInput {
+            planned_veg_weeks: None,
+            actuals: Actuals {
+                flower_start: Some(45),
+                ..Actuals::default()
+            },
+            ..base_input()
+        };
+        let windows = forecast(&input);
+        assert_eq!(windows.len(), 6);
+        assert_eq!(windows[2].likely_end, 45);
+        let flower = &windows[3];
+        assert_eq!(flower.likely_start, 45);
+        assert!(flower.actual_start);
+        phases_ordered_and_contiguous(&windows).unwrap();
+    }
+
+    #[test]
+    fn autoflower_flowering_pin_beats_age_estimate() {
+        let input = ForecastInput {
+            photoperiod: crate::strain::PhotoperiodType::Auto,
+            planned_veg_weeks: None,
+            auto_total_days: Some((70, 84)),
+            actuals: Actuals {
+                flower_start: Some(35),
+                ..Actuals::default()
+            },
+            ..base_input()
+        };
+        let windows = forecast(&input);
+        assert_eq!(windows[2].likely_end, 35);
+        let flower = &windows[3];
+        assert_eq!(flower.likely_start, 35);
+        assert!(flower.actual_start);
+        phases_ordered_and_contiguous(&windows).unwrap();
+    }
+
+    #[test]
+    fn flip_beats_flower_pin_on_photoperiod() {
+        // A logged flip is the more precise record for the same
+        // boundary.
+        let input = ForecastInput {
+            planned_veg_weeks: None,
+            actuals: Actuals {
+                flip_day: Some(45),
+                flower_start: Some(40),
+                ..Actuals::default()
+            },
+            ..base_input()
+        };
+        let windows = forecast(&input);
+        assert_eq!(windows[2].likely_end, 45);
+        assert_eq!(windows[3].likely_start, 45);
+    }
+
+    #[test]
+    fn curing_pin_starts_cure_and_extends_dry() {
+        let input = ForecastInput {
+            actuals: Actuals {
+                flip_day: Some(45),
+                curing_start: Some(130),
+                ..Actuals::default()
+            },
+            ..base_input()
+        };
+        let windows = forecast(&input);
+        // Dry ran long (reality wins) and cure starts at the pin.
+        assert_eq!(windows[4].likely_end, 130);
+        let cure = &windows[5];
+        assert_eq!(cure.phase, Phase::Curing);
+        assert_eq!(cure.likely_start, 130);
+        assert!(cure.actual_start);
+        phases_ordered_and_contiguous(&windows).unwrap();
+    }
+
+    #[test]
+    fn curing_pin_on_open_chain_skips_history() {
+        // Curing pinned without a flip or plan: the skipped flower and
+        // drying phases collapse into history at the pin.
+        let input = ForecastInput {
+            planned_veg_weeks: None,
+            actuals: Actuals {
+                curing_start: Some(90),
+                ..Actuals::default()
+            },
+            ..base_input()
+        };
+        let windows = forecast(&input);
+        assert_eq!(windows.len(), 6);
+        assert_eq!(windows[2].likely_end, 90);
+        let flower = &windows[3];
+        assert_eq!(flower.phase, Phase::Flower);
+        assert_eq!(flower.likely_start, 90);
+        assert_eq!(flower.likely_end, 90);
+        let drying = &windows[4];
+        assert_eq!(drying.likely_start, 90);
+        assert_eq!(drying.likely_end, 90);
+        let cure = &windows[5];
+        assert_eq!(cure.likely_start, 90);
+        assert!(cure.likely_end > 90);
+        assert!(cure.actual_start);
+        phases_ordered_and_contiguous(&windows).unwrap();
+    }
+
+    #[test]
+    fn contiguity_with_arbitrary_boundary_pins() {
+        for germ in [None, Some(0), Some(6), Some(40)] {
+            for seed in [None, Some(2), Some(12), Some(50)] {
+                for veg in [None, Some(5), Some(28), Some(70)] {
+                    for flower in [None, Some(10), Some(45), Some(90)] {
+                        for cure in [None, Some(15), Some(120), Some(200)] {
+                            let input = ForecastInput {
+                                planned_veg_weeks: None,
+                                actuals: Actuals {
+                                    germination_start: germ,
+                                    seedling_start: seed,
+                                    vegetative_start: veg,
+                                    flower_start: flower,
+                                    curing_start: cure,
+                                    ..Actuals::default()
+                                },
+                                ..base_input()
+                            };
+                            let windows = forecast(&input);
+                            phases_ordered_and_contiguous(&windows).unwrap_or_else(|error| {
+                                panic!(
+                                    "germ={germ:?} seed={seed:?} veg={veg:?} flower={flower:?} cure={cure:?}: {error}"
+                                )
+                            });
+                        }
+                    }
+                }
             }
         }
     }

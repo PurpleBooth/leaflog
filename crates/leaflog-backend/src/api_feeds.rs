@@ -181,25 +181,9 @@ async fn fit_feed(
                 .strain_id
                 .as_deref()
                 .and_then(|sid| store::strain::get(conn, sid).ok());
-            let flip = store::actions::first_event_day(
-                conn,
-                &id,
-                leaflog_core::actions::ActionType::Flip,
-                u16::MAX,
-            )?;
-            let harvest = store::actions::first_event_day(
-                conn,
-                &id,
-                leaflog_core::actions::ActionType::Harvest,
-                u16::MAX,
-            )?;
-            let actuals = leaflog_core::forecast::Actuals {
-                flip_day: flip.map(i64::from),
-                harvest_day: harvest.map(i64::from),
-                trichome_check_day: None,
-                germinated: false,
-            };
-            let input = leaflog_core::forecast::input_for(strain.as_ref(), None, actuals);
+            let actuals = crate::api_phase::forecast_actuals(conn, &id)?;
+            let input =
+                leaflog_core::forecast::input_for(strain.as_ref(), grow.planned_veg_weeks, actuals);
             let windows = leaflog_core::forecast::forecast(&input);
             let actual = store::feeds::actual_from_forecast(&windows)
                 .ok_or_else(|| ApiError::BadRequest("forecast incomplete".to_owned()))?;
