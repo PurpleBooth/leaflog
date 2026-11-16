@@ -29,6 +29,16 @@ lifetime after the handoff.
 
 Choices worth remembering:
 
+- **The option crosses the wasm boundary as plain JSON objects.**
+  serde-wasm-bindgen's default serializes a `serde_json::Value::Object`
+  as a JS `Map`, and `setOption` reads plain objects only — a Map
+  option renders a bare frame with no complaint. The option serializes
+  with maps-as-objects, the axis/tooltip formatter closures attach to
+  the builder's single `yAxis` object (an array-indexing attach would
+  silently skip), and the time axis is pinned to the Chart window's
+  bounds so sparse data cannot zoom the axis in. The e2e suite
+  therefore asserts the rendered DOM — axis name, tick labels, line
+  path, hover tooltip — not just the Rust-side JSON.
 - **The aria-label contract moved to the SVG root.** The hand-rolled
   chart was one `<svg role="img" aria-label="<role> history">`; the
   e2e suite locates that element. `ECharts` renders its own root, so
