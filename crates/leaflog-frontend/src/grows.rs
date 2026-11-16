@@ -8,9 +8,10 @@ use gloo_timers::future::TimeoutFuture;
 use leaflog_core::Phase;
 use leaflog_core::actions::{ActionDetails, ActionType};
 use leaflog_core::grows::{
-    ActionEntry, ActionInput, Grow, GrowInput, GrowStatus, Photo, Plant, PlantInput,
+    ActionEntry, ActionInput, Grow, GrowInput, GrowStatus, Photo, PhotoperiodType, Plant,
+    PlantInput, Tolerance,
 };
-use leaflog_core::strain::{PhotoperiodType, Strain, Tolerance};
+use leaflog_core::strain::Strain;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos::web_sys::FormData;
@@ -266,24 +267,17 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
     let grow_draft = RwSignal::<GrowInput>::new(empty_grow());
     let deleted = RwSignal::<bool>::new(false);
 
-    // The phase picker (D073): the strain decides the Flowering
-    // mapping — a photoperiod records the flip, an autoflower the
-    // generic Phase-change. Unknown strain defaults to photoperiod
-    // semantics.
+    // The phase picker (D073): the grow's photoperiod toggle decides
+    // the Flowering mapping — a photoperiod grow records the flip, an
+    // autoflower the generic Phase-change. Unset defaults to
+    // photoperiod semantics.
     let pick_phase = RwSignal::<Option<Phase>>::new(None);
     let pick_date = RwSignal::<String>::new(String::new());
     let current_photoperiod = move || {
         grow.get()
             .as_ref()
-            .and_then(|current| current.strain_id.as_deref())
-            .and_then(|id| {
-                strains
-                    .get()
-                    .iter()
-                    .find(|strain| strain.id == id)
-                    .map(|strain| strain.photoperiod)
-            })
-            .unwrap_or(PhotoperiodType::Photoperiod)
+            .map(|current| current.photoperiod)
+            .unwrap_or_default()
     };
 
     let refresh = move || {

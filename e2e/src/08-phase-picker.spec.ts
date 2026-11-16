@@ -4,7 +4,6 @@
 
 import { test, expect } from '@playwright/test';
 import {
-  api,
   armNoReloadGuard,
   createGrow,
   dismissOnboarding,
@@ -21,6 +20,8 @@ test('phase picker: flowering records a flip and shows on the timeline', async (
   page,
   request,
 }) => {
+  // No photoperiod set: the grow defaults to photoperiod semantics,
+  // so Flowering maps to the flip.
   const name = uniqueName('E2E Pick');
   const growId = await createGrow(request, name);
   await page.goto(url(`/grows/${growId}`));
@@ -42,17 +43,10 @@ test('phase picker: an autoflower flowering records a phase change', async ({
   page,
   request,
 }) => {
-  const strain = await api<{ id: string }>(request, 'POST', 'api/strains', {
-    name: uniqueName('E2E Auto'),
-    photoperiod: 'auto',
-    sex: 'feminized',
-    landrace_tags: [],
-    heat_tolerance: 'average',
-    cold_tolerance: 'average',
-    light_tolerance: 'average',
-  });
+  // The auto path comes from the grow's photoperiod toggle, not a
+  // strain record.
   const name = uniqueName('E2E Pick Auto');
-  const growId = await createGrow(request, name, { strain_id: strain!.id });
+  const growId = await createGrow(request, name, { photoperiod: 'auto' });
   await page.goto(url(`/grows/${growId}`));
 
   await page.locator('#phase-picker select').selectOption({ label: 'Flowering' });
