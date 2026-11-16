@@ -26,6 +26,11 @@ daisyui_dir := frontend_dir / "tailwind"
 daisyui_sha_daisyui := "d69de07c7463bb1f41548e2688f88ee105cdadf9779fce5b3c47b3bfaa6be472"
 daisyui_sha_theme := "e48a35d8326d650181ca600560e8520cf6b44cf9242bbd9d45825607e641f251"
 
+# The ECharts npm project and its built bundle (npm + esbuild,
+# tree-shaken to the SVG renderer; D077). Build-time only — Node
+# never reaches the image.
+echarts_dir := frontend_dir / "charts"
+
 # Download and verify the daisyUI bundles into tailwind/ (idempotent).
 tailwind-daisyui:
     #!/usr/bin/env bash
@@ -40,8 +45,20 @@ tailwind-daisyui:
     mv "{{daisyui_dir}}/.daisyui-theme.mjs.tmp" "{{daisyui_dir}}/daisyui-theme.mjs"
     echo "daisyUI v{{daisyui_version}} bundles ready (sha256 verified)"
 
+# Bundle the tree-shaken ECharts build (SVG renderer, D077) and verify
+# it: composition, local-only loading, index.html wiring. npm ci from
+# the committed lockfile keeps the build reproducible.
+build-echarts:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v npm >/dev/null 2>&1 || {
+        echo "npm not found; run inside devbox: devbox run -- just build-echarts" >&2
+        exit 1
+    }
+    (cd {{echarts_dir}} && npm ci && node build.mjs && node verify.mjs)
+
 # Run backend + mock Home Assistant + frontend with simulated ingress.
-dev: tailwind-daisyui
+dev: tailwind-daisyui build-echarts
     #!/usr/bin/env bash
     set -euo pipefail
     prefix="/api/hassio_ingress/dev-${RANDOM}${RANDOM}"
@@ -89,7 +106,7 @@ e2e-install:
 # The frontend bundle builds into the run's own temp dist/, never the
 # shared {{static_dir}} — a concurrent `just dev` or second stack
 # cannot race it.
-e2e: tailwind-daisyui
+e2e: tailwind-daisyui build-echarts
     #!/usr/bin/env bash
     set -euo pipefail
     if ! command -v npm >/dev/null 2>&1; then
@@ -116,6 +133,7 @@ e2e: tailwind-daisyui
     echo "  db:  ${work} (throwaway)"
     echo "────────────────────────────────────────────────────────────"
     (cd {{frontend_dir}} && trunk build --release --dist "$work/dist")
+    (cd {{frontend_dir}} && node charts/verify.mjs "$work/dist")
     MOCK_HA_PORT={{e2e_mock_port}} ./target/debug/mock-ha &
     mock_pid=$!
     # The dev default supervisor URL is just dev's mock port (8098);
@@ -340,8 +358,8 @@ test:
     cargo test --workspace
 
 # Build the frontend bundle (relative public URL, never a baked base).
-build-frontend: tailwind-daisyui
-    cd {{frontend_dir}} && trunk build --release
+build-frontend: tailwind-daisyui build-echarts
+    cd {{frontend_dir}} && trunk build --release && node charts/verify.mjs dist
 
 # Build the HA app image locally with Podman (amd64 by default).
 arch := "amd64"
