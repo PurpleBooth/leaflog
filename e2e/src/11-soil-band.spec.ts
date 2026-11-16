@@ -1,6 +1,8 @@
 // The soil-moisture band preset (ticket 07): editable on the grow
 // overview, persisted under settings, reset back to the sourced
-// default.
+// default. Since ticket 03 the editor lives inside the Soil moisture
+// chart card, so every assertion scopes to that card — the accessible
+// field labels are unchanged.
 
 import { test, expect } from '@playwright/test';
 import { api, dismissOnboarding, url } from './helpers';
@@ -15,11 +17,15 @@ test('soil band saves, persists and resets to the default', async ({
 }) => {
   await page.goto(url('/'));
 
-  const minInput = page.getByLabel('Band min %');
+  // The editor renders inside the soil moisture card (ticket 03).
+  const soilCard = page.locator('.card', {
+    has: page.getByRole('heading', { name: 'Soil moisture' }),
+  });
+  const minInput = soilCard.getByLabel('Band min %');
   await expect(minInput).toBeVisible();
   await minInput.fill('25');
-  await page.getByLabel('Band max %').fill('45');
-  await page.getByRole('button', { name: 'Apply band' }).click();
+  await soilCard.getByLabel('Band max %').fill('45');
+  await soilCard.getByRole('button', { name: 'Apply band' }).click();
   await expect(page.getByText('Saved.')).toBeVisible();
 
   // The override is stored in settings and survives a reload.
@@ -31,7 +37,13 @@ test('soil band saves, persists and resets to the default', async ({
   const band = settings!['soil_moisture_band'] as { min: number };
   expect(band.min).toBe(25);
   await page.reload();
-  await expect(page.getByLabel('Band min %')).toHaveValue('25');
+  await expect(
+    page
+      .locator('.card', {
+        has: page.getByRole('heading', { name: 'Soil moisture' }),
+      })
+      .getByLabel('Band min %'),
+  ).toHaveValue('25');
 
   // Reset clears the override back to the sourced default.
   await page.getByRole('button', { name: 'Reset to default' }).click();

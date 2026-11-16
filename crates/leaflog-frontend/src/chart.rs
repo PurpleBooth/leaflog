@@ -1,8 +1,10 @@
 //! History charts (spec §3): a line over the shaded recommended-band
 //! corridor, fed by the grow history endpoint, with rolling chart
-//! windows (24 h / 7 d / 30 d). The temperature card renders through
-//! `ECharts` (SVG renderer, ticket 02); the other cards still use the
-//! hand-rolled SVG until ticket 03 retires it.
+//! windows (24 h / 7 d / 30 d). The continuous-role cards (temperature,
+//! humidity, VPD, CO₂, light, soil moisture) render through `ECharts`
+//! (SVG renderer) via the option-builder seam. The pH/EC event dots
+//! stay on the hand-rolled SVG until ticket 04 swaps them over and
+//! deletes this module's last SVG code.
 
 use crate::api;
 use crate::api::{GrowHistory, SoilBand};
@@ -156,23 +158,23 @@ const WIDTH: f64 = 600.0;
 const HEIGHT: f64 = 220.0;
 
 /// One windowed chart for one sensor role on the grow overview.
-/// `format_value` renders axis labels (per the HA unit system).
-/// `step` draws the series as a staircase (binary entities); `scatter`
-/// plots points instead of a line (event series such as pH/EC).
-/// `no_data` is the explicit empty state: a sensor role says no sensor
-/// is bound, an event role says nothing was logged. `echarts` routes
-/// the drawing through the `ECharts` option-builder seam (ticket 02's
-/// temperature card; the rest stay on the SVG until ticket 03).
+/// `format_value` renders axis and tooltip text (per the HA unit
+/// system). `scatter` plots points instead of a line — the temporary
+/// hand-rolled path for the event series pH/EC (ticket 04 replaces it
+/// with an `ECharts` scatter); every other role draws through the
+/// `ECharts` option-builder seam. `no_data` is the explicit empty
+/// state: a sensor role says no sensor is bound, an event role says
+/// nothing was logged. `children` render inside the card under the
+/// chart (the soil card carries its band editor).
 #[component]
 pub fn HistoryChart(
     grow_id: String,
     #[prop(default = "temperature")] role: &'static str,
     #[prop(default = "Temperature")] title: &'static str,
     format_value: fn(f64) -> String,
-    #[prop(default = false)] step: bool,
     #[prop(default = false)] scatter: bool,
     #[prop(default = "No sensor bound for this role.")] no_data: &'static str,
-    #[prop(default = false)] echarts: bool,
+    #[prop(optional)] children: Option<Children>,
 ) -> impl IntoView {
     let window = RwSignal::new("day".to_owned());
     let data = RwSignal::<Option<GrowHistory>>::new(None);
@@ -196,6 +198,10 @@ pub fn HistoryChart(
         });
     });
 
+    // The card's footer (the soil band editor) builds once; its own
+    // reactive signals stay live inside the static view slot.
+    let footer = children.map(|children| children());
+
     view! {
         <div class="card bg-base-100 shadow-sm px-4 py-3 my-3">
             <div class="flex flex-wrap items-baseline gap-2">
@@ -208,7 +214,38 @@ pub fn HistoryChart(
                     <span class="badge badge-warning badge-sm">"snapshot only"</span>
                 </Show>
             </div>
-            {if echarts {
+            {if scatter {
+                view! {
+                    <Show
+                        when=move || data.get().is_some()
+                        fallback=move || {
+                            view! {
+                                <p class="text-base-content/70 text-sm">
+                                    {move || failure.get().unwrap_or_else(|| "Loading…".to_owned())}
+                                </p>
+                            }
+                        }
+                    >
+                        {move || {
+                            let current = data.get()?;
+                            if current.bound {
+                                return Some(
+                                    // Temporary hand-rolled path (ticket 04).
+                                    view! { <ChartSvg chart=current format_value /> }
+                                        .into_any(),
+                                );
+                            }
+                            Some(
+                                view! {
+                                    <p class="text-base-content/70 text-sm">{no_data}</p>
+                                }
+                                    .into_any(),
+                            )
+                        }}
+                    </Show>
+                }
+                    .into_any()
+            } else {
                 view! {
                     <Show
                         when=move || data.get().is_some_and(|chart| chart.bound)
@@ -227,37 +264,8 @@ pub fn HistoryChart(
                     </Show>
                 }
                     .into_any()
-            } else {
-                view! {
-                    <Show
-                        when=move || data.get().is_some()
-                        fallback=move || {
-                            view! {
-                                <p class="text-base-content/70 text-sm">
-                                    {move || failure.get().unwrap_or_else(|| "Loading…".to_owned())}
-                                </p>
-                            }
-                        }
-                    >
-                        {move || {
-                            let current = data.get()?;
-                            if current.bound {
-                                return Some(
-                                    view! { <ChartSvg chart=current format_value step scatter /> }
-                                        .into_any(),
-                                );
-                            }
-                            Some(
-                                view! {
-                                    <p class="text-base-content/70 text-sm">{no_data}</p>
-                                }
-                                    .into_any(),
-                            )
-                        }}
-                    </Show>
-                }
-                    .into_any()
             }}
+            {footer}
         </div>
     }
 }
@@ -313,7 +321,8 @@ fn EChartsHistory(
     Effect::new(move |_| {
         let Some(chart) = data.get() else { return };
         let Some(el) = container.get() else { return };
-        let option = chart_option::temperature_history_option(&chart, &theme_look());
+        let style = chart_option::role_style(&chart.role);
+        let option = chart_option::history_option(&chart, &theme_look(), &style);
         // serde_wasm_bindgen's default maps `serde_json::Value::Object`
         // through `serialize_map`, which produces a JS `Map` — and
         // `setOption` reads plain objects only, so a Map option renders
@@ -511,17 +520,13 @@ fn probe_color(class: &str) -> Option<String> {
     colour
 }
 
-/// The line-and-corridor SVG for one loaded chart. `step` renders the
-/// series as a staircase (binary entities such as a lamp's on/off);
-/// `scatter` plots the points as dots instead (event series such as
-/// pH/EC), overlaying the pair's compare series in a second colour.
+/// TEMPORARY, until ticket 04 swaps the pH/EC cards to an `ECharts`
+/// scatter and deletes this component (coordinator boundary note on
+/// ticket 03): the hand-rolled event-dot plot. The pair's input dots
+/// overlay its runoff dots in a second colour, with the two corner
+/// labels the old charts carried.
 #[component]
-fn ChartSvg(
-    chart: GrowHistory,
-    format_value: fn(f64) -> String,
-    step: bool,
-    scatter: bool,
-) -> impl IntoView {
+fn ChartSvg(chart: GrowHistory, format_value: fn(f64) -> String) -> impl IntoView {
     let from = parse_epoch(&chart.series.from).unwrap_or(0);
     let to = parse_epoch(&chart.series.to).unwrap_or(from + 1);
     let points: Vec<(i64, f64)> = chart
@@ -541,45 +546,22 @@ fn ChartSvg(
                 .collect()
         })
         .unwrap_or_default();
-    let bands: Vec<(i64, i64, f64, f64)> = chart
-        .bands
-        .iter()
-        .filter_map(|band| {
-            Some((
-                parse_epoch(&band.start)?,
-                parse_epoch(&band.end)?,
-                band.min,
-                band.max,
-            ))
-        })
-        .collect();
     // The compare series shares the scale, so its values join the
     // range the axis is computed from.
-    let mut range_points = points.clone();
-    range_points.extend(compare.iter().copied());
-    let geom = geometry(&range_points, &bands, from, to, WIDTH, HEIGHT);
-    let line_points = if step {
-        step_points(&geom.line_points)
-    } else {
-        geom.line_points.clone()
-    };
-    let line = line_points
-        .iter()
-        .map(|(x, y)| format!("{x:.1},{y:.1}"))
-        .collect::<Vec<_>>()
-        .join(" ");
-    let y_max_label = format_value(geom.y_max);
-    let y_min_label = format_value(geom.y_min);
+    let mut values: Vec<f64> = points.iter().map(|(_, value)| *value).collect();
+    values.extend(compare.iter().map(|(_, value)| *value));
+    let (y_min, y_max) = padded_value_range(&values);
+    let y_max_label = format_value(y_max);
+    let y_min_label = format_value(y_min);
     let label = format!("{} history", chart.role);
     let y_min_y = format!("{:.1}", HEIGHT - 6.0);
 
-    // Scatter dots map their epochs through the same scale the line
-    // uses. Epoch seconds stay far below f64's 52-bit mantissa.
+    // Dots map their epochs and values through the same scale. Epoch
+    // seconds stay far below f64's 52-bit mantissa.
     #[allow(clippy::cast_precision_loss)]
     let x_of = |at: i64| WIDTH * (at - from) as f64 / (to - from).max(1) as f64;
     #[allow(clippy::cast_precision_loss)]
-    let y_of =
-        |value: f64| HEIGHT * (1.0 - (value - geom.y_min) / (geom.y_max - geom.y_min).max(0.001));
+    let y_of = |value: f64| HEIGHT * (1.0 - (value - y_min) / (y_max - y_min).max(0.001));
     let dot = |(at, value): (i64, f64), class: &'static str| {
         view! {
             <circle
@@ -590,43 +572,17 @@ fn ChartSvg(
             />
         }
     };
-    let main_dots = if scatter {
-        points
-            .iter()
-            .map(|&point| dot(point, "fill-primary"))
-            .collect::<Vec<_>>()
-    } else {
-        Vec::new()
-    };
-    let compare_dots = if scatter {
-        compare
-            .iter()
-            .map(|&point| dot(point, "fill-secondary"))
-            .collect::<Vec<_>>()
-    } else {
-        Vec::new()
-    };
+    let main_dots = points
+        .iter()
+        .map(|&point| dot(point, "fill-primary"))
+        .collect::<Vec<_>>();
+    let compare_dots = compare
+        .iter()
+        .map(|&point| dot(point, "fill-secondary"))
+        .collect::<Vec<_>>();
 
     view! {
         <svg viewBox=format!("0 0 {WIDTH} {HEIGHT}") class="w-full" role="img" aria-label=label>
-            {geom
-                .band_rects
-                .iter()
-                .map(|(x, w, y, h)| {
-                    view! {
-                        <rect
-                            x=format!("{x:.1}")
-                            y=format!("{y:.1}")
-                            width=format!("{w:.1}")
-                            height=format!("{h:.1}")
-                            class="fill-primary/15"
-                        />
-                    }
-                })
-                .collect::<Vec<_>>()}
-            {(!scatter).then(|| {
-                view! { <polyline points=line class="fill-none stroke-primary" stroke-width="2" /> }
-            })}
             {main_dots}
             {compare_dots}
             <text x="4" y="14" class="fill-base-content/60">{y_max_label}</text>
@@ -635,67 +591,11 @@ fn ChartSvg(
     }
 }
 
-/// Turns a line into a staircase: every horizontal run holds until the
-/// next point's x, then steps vertically. Empty input stays empty.
+/// The padded value range for the dot scale: 10 % padding, at least
+/// half a unit, so dots never sit on the frame. An empty (or
+/// non-finite) series falls back to 0..1.
 #[must_use]
-pub fn step_points(points: &[(f64, f64)]) -> Vec<(f64, f64)> {
-    let mut stepped = Vec::with_capacity(points.len().saturating_mul(2));
-    for &(x, y) in points {
-        // Exact comparison on purpose: `last_y` is the same copied
-        // value, not a computed float.
-        #[allow(clippy::float_cmp)]
-        match stepped.last().copied() {
-            Some((_, last_y)) if last_y != y => {
-                stepped.push((x, last_y));
-                stepped.push((x, y));
-            }
-            Some(_) => {}
-            None => stepped.push((x, y)),
-        }
-    }
-    stepped
-}
-
-/// The plotted geometry: screen-space points and band rects with the
-/// padded value range (for the axis labels). Pure and unit-tested —
-/// no DOM.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ChartGeometry {
-    /// Line points in canvas space.
-    pub line_points: Vec<(f64, f64)>,
-    /// Band rects as (x, width, y, height), clipped to the canvas.
-    pub band_rects: Vec<(f64, f64, f64, f64)>,
-    /// The padded lowest value (axis label).
-    pub y_min: f64,
-    /// The padded highest value (axis label).
-    pub y_max: f64,
-}
-
-/// Maps the windowed series and corridor segments into canvas space.
-///
-/// Points at the window edges land on the canvas edges; the value
-/// range is padded 10 % (at least half a unit) so the line never
-/// touches the frame. Band rects shorter than a pixel drop out.
-#[must_use]
-pub fn geometry(
-    points: &[(i64, f64)],
-    bands: &[(i64, i64, f64, f64)],
-    from: i64,
-    to: i64,
-    width: f64,
-    height: f64,
-) -> ChartGeometry {
-    // Epoch seconds (~1.7e9) sit far below f64's 52-bit mantissa.
-    #[allow(clippy::cast_precision_loss)]
-    let span = (to - from).max(1) as f64;
-    // Same bound as above; the subtraction stays within the window.
-    #[allow(clippy::cast_precision_loss)]
-    let x_of = |at: i64| width * (at - from) as f64 / span;
-    let mut values: Vec<f64> = points.iter().map(|(_, value)| *value).collect();
-    for &(_, _, min, max) in bands {
-        values.push(min);
-        values.push(max);
-    }
+fn padded_value_range(values: &[f64]) -> (f64, f64) {
     let low = values.iter().copied().fold(f64::INFINITY, f64::min);
     let high = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let (low, high) = if low.is_finite() && high.is_finite() {
@@ -704,108 +604,28 @@ pub fn geometry(
         (0.0, 1.0)
     };
     let padding = ((high - low) * 0.1).max(0.5);
-    let y_min = low - padding;
-    let y_max = high + padding;
-    let y_span = (y_max - y_min).max(0.001);
-    let y_of = |value: f64| height * (1.0 - (value - y_min) / y_span);
-    let line_points = points
-        .iter()
-        .map(|(at, value)| (x_of(*at), y_of(*value)))
-        .collect();
-    let band_rects = bands
-        .iter()
-        .map(|&(start, end, min, max)| {
-            let x = x_of(start).clamp(0.0, width);
-            let x_end = x_of(end).clamp(0.0, width);
-            let y_top = y_of(max).clamp(0.0, height);
-            let y_bottom = y_of(min).clamp(0.0, height);
-            (x, x_end - x, y_top, (y_bottom - y_top).max(1.0))
-        })
-        .filter(|&(_, w, _, _)| w > 0.5)
-        .collect();
-    ChartGeometry {
-        line_points,
-        band_rects,
-        y_min,
-        y_max,
-    }
+    (low - padding, high + padding)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::geometry;
+    use super::padded_value_range;
 
     #[test]
-    fn points_map_to_the_canvas_edges() {
-        let geom = geometry(&[(0, 10.0), (100, 20.0)], &[], 0, 100, 600.0, 220.0);
-        let (first_x, _) = geom.line_points[0];
-        let (last_x, _) = geom.line_points[1];
-        assert!((first_x - 0.0).abs() < 0.001);
-        assert!((last_x - 600.0).abs() < 0.001);
+    fn the_value_range_pads_past_both_ends() {
+        let (low, high) = padded_value_range(&[18.0, 22.0]);
+        assert!(low < 18.0, "padded below the low reading: {low}");
+        assert!(high > 22.0, "padded above the high reading: {high}");
     }
 
     #[test]
-    fn higher_values_plot_higher_on_screen() {
-        let geom = geometry(&[(0, 10.0), (100, 20.0)], &[], 0, 100, 600.0, 220.0);
-        let (_, first_y) = geom.line_points[0];
-        let (_, last_y) = geom.line_points[1];
-        assert!(last_y < first_y, "screen y grows downwards");
-    }
-
-    #[test]
-    fn band_rects_clip_to_the_window() {
-        // A corridor starting before the window clips at x = 0.
-        let geom = geometry(
-            &[(50, 20.0)],
-            &[(-500, 500, 18.0, 22.0)],
-            0,
-            100,
-            600.0,
-            220.0,
+    fn a_flat_or_empty_series_still_yields_a_usable_range() {
+        let (low, high) = padded_value_range(&[21.0, 21.0]);
+        assert!(low < high, "a flat series still gets room: {low}..{high}");
+        let (empty_low, empty_high) = padded_value_range(&[]);
+        assert!(
+            empty_low < empty_high,
+            "an empty series falls back to a default: {empty_low}..{empty_high}"
         );
-        assert_eq!(geom.band_rects.len(), 1);
-        let (x, w, _, _) = geom.band_rects[0];
-        assert!((x - 0.0).abs() < 0.001);
-        assert!((w - 600.0).abs() < 0.001);
-    }
-
-    #[test]
-    fn empty_series_still_yields_an_axis_range_from_the_bands() {
-        let geom = geometry(&[], &[(0, 100, 18.0, 22.0)], 0, 100, 600.0, 220.0);
-        assert!(geom.y_min < 18.0);
-        assert!(geom.y_max > 22.0);
-    }
-
-    #[test]
-    fn value_range_is_padded_so_the_line_never_touches_the_frame() {
-        let geom = geometry(&[(0, 18.0), (100, 18.0)], &[], 0, 100, 600.0, 220.0);
-        assert!(geom.y_max > geom.y_min);
-        for (_, y) in &geom.line_points {
-            assert!(*y > 0.0 && *y < 220.0);
-        }
-    }
-
-    use super::step_points;
-
-    #[test]
-    fn step_points_hold_each_value_until_the_next() {
-        let stepped = step_points(&[(0.0, 1.0), (10.0, 0.0), (20.0, 1.0)]);
-        assert_eq!(
-            stepped,
-            [
-                (0.0, 1.0),
-                (10.0, 1.0), // hold on, then step down at x = 10
-                (10.0, 0.0),
-                (20.0, 0.0), // hold off, then step up at x = 20
-                (20.0, 1.0),
-            ]
-        );
-    }
-
-    #[test]
-    fn step_points_pass_through_empty_and_single() {
-        assert_eq!(step_points(&[]), Vec::new());
-        let single = step_points(&[(5.0, 1.0)]);
-        assert_eq!(single, vec![(5.0, 1.0)]);
     }
 }

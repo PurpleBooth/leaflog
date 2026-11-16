@@ -1,8 +1,10 @@
-//! The `ECharts` option-builder seam (Light Cycle spec, ticket 02):
-//! pure functions from the grow history response to an `ECharts` option
-//! JSON, unit-tested without a DOM. The wasm component passes the
-//! result to `echarts.setOption` via `serde-wasm-bindgen`; `ECharts`
-//! only draws — every axis, unit, and band decision lives here.
+//! The `ECharts` option-builder seam (Light Cycle spec, tickets 02 and
+//! 03): pure functions from the grow history response to an `ECharts`
+//! option JSON, unit-tested without a DOM. The wasm component passes
+//! the result to `echarts.setOption` via `serde-wasm-bindgen`;
+//! `ECharts` only draws — every axis, unit, and band decision lives
+//! here. The pH/EC scatter cards stay on the hand-rolled SVG until
+//! ticket 04, then this seam covers every chart.
 
 use crate::api::GrowHistory;
 
@@ -20,17 +22,65 @@ pub struct ChartLook {
     pub muted: String,
 }
 
-/// The option for one temperature history chart: a time axis with tick
-/// labels, a value axis labelled with the dual °C/°F unit, horizontal
-/// gridlines, and an axis-triggered hover tooltip.
+/// How one role draws: its value-axis unit label and whether the
+/// series is a staircase.
+#[derive(Debug, Clone, Copy)]
+pub struct ChartStyle {
+    /// The value-axis name: the role's unit (`°C / °F`, `%`, `kPa`,
+    /// `ppm`) or the state pair for binary roles.
+    pub axis_name: &'static str,
+    /// Draw the series as a step line: each value holds until the next
+    /// reading arrives (`step: "end"`). Binary roles such as the light.
+    pub step: bool,
+}
+
+/// The drawing style for one history role. Unknown roles fall back to
+/// a percent axis; every real role has its own arm.
 #[must_use]
-pub fn temperature_history_option(chart: &GrowHistory, look: &ChartLook) -> serde_json::Value {
+pub fn role_style(role: &str) -> ChartStyle {
+    let axis_name = match role {
+        "temperature" => "°C / °F",
+        "vpd" => "kPa",
+        "co2" => "ppm",
+        "light" => "on / off",
+        // humidity and soil_moisture (and anything new) read percent.
+        _ => "%",
+    };
+    ChartStyle {
+        axis_name,
+        step: role == "light",
+    }
+}
+
+/// The option for one history chart: a time axis spanning the whole
+/// Chart window, a value axis labelled with the role's unit, gridlines,
+/// the Target Band regions, and an axis-triggered hover tooltip. The
+/// tick and tooltip *text* formatting is attached later, at the
+/// component layer, as wasm closures over the card's role formatter.
+#[must_use]
+pub fn history_option(
+    chart: &GrowHistory,
+    look: &ChartLook,
+    style: &ChartStyle,
+) -> serde_json::Value {
     let (y_min, y_max) = padded_range(chart);
     // The x axis spans the whole Chart window (the old SVG geometry put
     // the window edges at the canvas edges), so sparse data cannot
     // zoom the axis in and fake density. An unparseable window bound
     // would be a backend contract break; the axis then auto-scales.
     let (x_min, x_max) = window_bounds(chart);
+    let mut series = serde_json::json!({
+        "type": "line",
+        "showSymbol": false,
+        "lineStyle": { "width": 2, "color": look.accent },
+        "data": series_ms_data(chart),
+        "markArea": band_mark_area(chart, &look.accent),
+    });
+    if style.step {
+        // "end": from each reading the line holds that value until the
+        // next reading's x, then steps — the old staircase semantics.
+        series["step"] = serde_json::json!("end");
+    }
     serde_json::json!({
         "animation": false,
         "grid": { "left": 8, "right": 16, "top": 28, "bottom": 8, "containLabel": true },
@@ -44,20 +94,14 @@ pub fn temperature_history_option(chart: &GrowHistory, look: &ChartLook) -> serd
         },
         "yAxis": {
             "type": "value",
-            "name": "°C / °F",
+            "name": style.axis_name,
             "nameTextStyle": { "color": look.text, "align": "left" },
             "min": y_min,
             "max": y_max,
             "splitLine": { "show": true, "lineStyle": { "color": look.muted } },
             "axisLabel": { "hideOverlap": true, "color": look.text },
         },
-        "series": [{
-            "type": "line",
-            "showSymbol": false,
-            "lineStyle": { "width": 2, "color": look.accent },
-            "data": series_ms_data(chart),
-            "markArea": band_mark_area(chart, &look.accent),
-        }],
+        "series": [series],
     })
 }
 
@@ -146,7 +190,7 @@ fn window_bounds(chart: &GrowHistory) -> (serde_json::Value, serde_json::Value) 
 
 #[cfg(test)]
 mod tests {
-    use super::{ChartLook, temperature_history_option};
+    use super::{ChartLook, ChartStyle, history_option, role_style};
     use crate::api::{BandSegmentData, ChartPointData, ChartSeriesData, GrowHistory};
 
     /// Fixed test colours (the fallbacks the component probes for).
@@ -158,10 +202,20 @@ mod tests {
         }
     }
 
+    /// The style one role renders with.
+    fn style(role: &str) -> ChartStyle {
+        role_style(role)
+    }
+
     /// A loaded chart with two points, one band, and a 24-hour window.
     fn sample_history() -> GrowHistory {
+        sample_for_role("temperature")
+    }
+
+    /// The same window with a different role echoed back.
+    fn sample_for_role(role: &str) -> GrowHistory {
         GrowHistory {
-            role: "temperature".to_owned(),
+            role: role.to_owned(),
             window: "day".to_owned(),
             series: ChartSeriesData {
                 from: "2026-11-16T00:00:00+00:00".to_owned(),
@@ -188,7 +242,7 @@ mod tests {
 
     #[test]
     fn the_option_labels_axes_and_gridlines_and_arms_the_tooltip() {
-        let option = temperature_history_option(&sample_history(), &look());
+        let option = history_option(&sample_history(), &look(), &style("temperature"));
         assert_eq!(option["xAxis"]["type"], "time");
         assert_eq!(option["xAxis"]["axisLabel"]["hideOverlap"], true);
         assert_eq!(option["yAxis"]["type"], "value");
@@ -200,7 +254,7 @@ mod tests {
 
     #[test]
     fn the_x_axis_spans_the_whole_chart_window() {
-        let option = temperature_history_option(&sample_history(), &look());
+        let option = history_option(&sample_history(), &look(), &style("temperature"));
         assert_eq!(
             option["xAxis"]["min"].as_i64(),
             Some(1_794_787_200_000),
@@ -217,7 +271,7 @@ mod tests {
     fn an_unparseable_window_falls_back_to_auto_scaling() {
         let mut broken = sample_history();
         broken.series.from = "not-a-timestamp".to_owned();
-        let option = temperature_history_option(&broken, &look());
+        let option = history_option(&broken, &look(), &style("temperature"));
         assert!(
             option["xAxis"]["min"].is_null(),
             "broken window start auto-scales"
@@ -230,7 +284,7 @@ mod tests {
 
     #[test]
     fn the_value_range_keeps_headroom_above_the_peak() {
-        let option = temperature_history_option(&sample_history(), &look());
+        let option = history_option(&sample_history(), &look(), &style("temperature"));
         let y_max = option["yAxis"]["max"].as_f64().expect("explicit max");
         assert!(y_max > 24.5, "axis must clear the peak reading: {y_max}");
         let y_min = option["yAxis"]["min"].as_f64().expect("explicit min");
@@ -243,7 +297,7 @@ mod tests {
         for point in &mut flat.series.points {
             point.value = 21.0;
         }
-        let option = temperature_history_option(&flat, &look());
+        let option = history_option(&flat, &look(), &style("temperature"));
         let y_max = option["yAxis"]["max"].as_f64().expect("explicit max");
         let y_min = option["yAxis"]["min"].as_f64().expect("explicit min");
         assert!(
@@ -262,7 +316,7 @@ mod tests {
             max: 26.0,
             phase: "vegetative".to_owned(),
         }];
-        let option = temperature_history_option(&banded, &look());
+        let option = history_option(&banded, &look(), &style("temperature"));
         let area = &option["series"][0]["markArea"];
         let region = &area["data"][0];
         assert_eq!(
@@ -305,7 +359,7 @@ mod tests {
                 phase: "vegetative".to_owned(),
             },
         ];
-        let option = temperature_history_option(&banded, &look());
+        let option = history_option(&banded, &look(), &style("temperature"));
         let regions = option["series"][0]["markArea"]["data"]
             .as_array()
             .expect("mark area data");
@@ -328,7 +382,7 @@ mod tests {
             max: 26.0,
             phase: "vegetative".to_owned(),
         }];
-        let option = temperature_history_option(&banded, &look());
+        let option = history_option(&banded, &look(), &style("temperature"));
         let y_max = option["yAxis"]["max"].as_f64().expect("explicit max");
         let y_min = option["yAxis"]["min"].as_f64().expect("explicit min");
         assert!(
@@ -346,7 +400,7 @@ mod tests {
     fn a_window_without_data_or_bands_still_gets_a_sane_axis() {
         let mut empty = sample_history();
         empty.series.points = Vec::new();
-        let option = temperature_history_option(&empty, &look());
+        let option = history_option(&empty, &look(), &style("temperature"));
         let y_max = option["yAxis"]["max"].as_f64().expect("explicit max");
         let y_min = option["yAxis"]["min"].as_f64().expect("explicit min");
         assert!(y_min < y_max, "axis stays sane: {y_min}..{y_max}");
@@ -366,7 +420,7 @@ mod tests {
             max: 26.0,
             phase: "vegetative".to_owned(),
         }];
-        let option = temperature_history_option(&banded, &look());
+        let option = history_option(&banded, &look(), &style("temperature"));
         assert_eq!(option["series"][0]["lineStyle"]["color"], "#2e7d4f");
         assert_eq!(
             option["series"][0]["markArea"]["itemStyle"]["color"],
@@ -378,5 +432,124 @@ mod tests {
             "#1d2b1f80"
         );
         assert_eq!(option["xAxis"]["axisLabel"]["color"], "#1d2b1f");
+    }
+
+    /// A light-history sample: one off→on→off staircase across the
+    /// window (binary role, values 0/1).
+    fn light_history() -> GrowHistory {
+        let mut chart = sample_for_role("light");
+        chart.series.points = vec![
+            ChartPointData {
+                at: "2026-11-16T00:10:00+00:00".to_owned(),
+                value: 0.0,
+                source: "ha".to_owned(),
+            },
+            ChartPointData {
+                at: "2026-11-16T00:30:00+00:00".to_owned(),
+                value: 1.0,
+                source: "ha".to_owned(),
+            },
+            ChartPointData {
+                at: "2026-11-16T00:50:00+00:00".to_owned(),
+                value: 0.0,
+                source: "ha".to_owned(),
+            },
+        ];
+        chart
+    }
+
+    #[test]
+    fn each_role_labels_its_value_axis_with_its_unit() {
+        assert_eq!(style("temperature").axis_name, "°C / °F");
+        assert_eq!(style("humidity").axis_name, "%");
+        assert_eq!(style("vpd").axis_name, "kPa");
+        assert_eq!(style("co2").axis_name, "ppm");
+        assert_eq!(style("soil_moisture").axis_name, "%");
+        assert_eq!(style("light").axis_name, "on / off");
+    }
+
+    #[test]
+    fn the_axis_name_reaches_the_option() {
+        let option = history_option(&sample_for_role("vpd"), &look(), &style("vpd"));
+        assert_eq!(option["yAxis"]["name"], "kPa");
+    }
+
+    #[test]
+    fn only_the_light_role_steps() {
+        assert!(!style("temperature").step);
+        assert!(!style("humidity").step);
+        assert!(!style("vpd").step);
+        assert!(!style("co2").step);
+        assert!(!style("soil_moisture").step);
+        assert!(style("light").step);
+    }
+
+    #[test]
+    fn the_staircase_holds_each_value_until_the_next_reading() {
+        let option = history_option(&light_history(), &look(), &style("light"));
+        // `step: "end"`: from each reading the line runs horizontally
+        // at its value until the next reading's x, then jumps — the
+        // old `step_points` semantics, so an off at 00:10 draws on/1.0
+        // only from 00:30.
+        assert_eq!(option["series"][0]["step"], "end");
+    }
+
+    #[test]
+    fn a_continuous_role_draws_a_plain_line_without_a_step_marker() {
+        let option = history_option(&sample_history(), &look(), &style("humidity"));
+        assert!(
+            option["series"][0]["step"].is_null(),
+            "no step key on plain lines"
+        );
+        assert_eq!(option["series"][0]["showSymbol"], false);
+        assert_eq!(option["series"][0]["type"], "line");
+    }
+
+    #[test]
+    fn the_series_data_are_epoch_ms_value_pairs() {
+        let option = history_option(&light_history(), &look(), &style("light"));
+        let data = option["series"][0]["data"].as_array().expect("series data");
+        assert_eq!(data.len(), 3);
+        let first = &data[0];
+        assert_eq!(
+            first[0].as_f64(),
+            Some(1_794_787_800_000.0),
+            "window epoch seconds to ms"
+        );
+        assert_eq!(first[1].as_f64(), Some(0.0), "the off reading");
+    }
+
+    #[test]
+    fn a_co2_style_chart_without_bands_renders_a_clean_frame() {
+        // CO₂ has no band source today: empty bands must leave no
+        // markArea regions and still yield a sane axis.
+        let mut co2 = sample_for_role("co2");
+        co2.bands = Vec::new();
+        let option = history_option(&co2, &look(), &style("co2"));
+        assert_eq!(option["yAxis"]["name"], "ppm");
+        let regions = option["series"][0]["markArea"]["data"]
+            .as_array()
+            .expect("mark area data");
+        assert!(regions.is_empty(), "no bands, no regions");
+        let y_max = option["yAxis"]["max"].as_f64().expect("explicit max");
+        let y_min = option["yAxis"]["min"].as_f64().expect("explicit min");
+        assert!(y_min < y_max, "axis stays sane: {y_min}..{y_max}");
+    }
+
+    #[test]
+    fn the_soil_band_frames_its_corridor_on_a_percent_axis() {
+        let mut soil = sample_for_role("soil_moisture");
+        soil.bands = vec![BandSegmentData {
+            start: "2026-11-16T00:00:00+00:00".to_owned(),
+            end: "2026-11-16T01:00:00+00:00".to_owned(),
+            min: 25.0,
+            max: 45.0,
+            phase: "vegetative".to_owned(),
+        }];
+        let option = history_option(&soil, &look(), &style("soil_moisture"));
+        assert_eq!(option["yAxis"]["name"], "%");
+        let region = &option["series"][0]["markArea"]["data"][0];
+        assert_eq!(region[0]["yAxis"].as_f64(), Some(45.0), "band top");
+        assert_eq!(region[1]["yAxis"].as_f64(), Some(25.0), "band bottom");
     }
 }
