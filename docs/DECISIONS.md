@@ -6,6 +6,27 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-16 — grow overview redesign (D073 follow-up)
+
+### D074: `float_cmp` allowance in the chart's step builder
+
+`step_points` (`leaflog-frontend/src/chart.rs`) turns a plotted line
+into a staircase: each new value holds until the next point's x. The
+step fires only when the new value differs from the held one, and
+that comparison is exact on purpose — the held value is the same
+copied `f64` bit pattern, not a computed float, so there is nothing
+for a margin to absorb. `clippy::float_cmp` cannot see that, so the
+match carries `#[allow(clippy::float_cmp)]` with the reason inline.
+The paired test asserts the staircase shape without comparing
+computed floats.
+
+Also carries the planned-vegetative-weeks wiring (a nullable `grow`
+column, form field and forecast input — the missing piece ticket 01
+flagged), and the chart role extensions' small inline casts, whose
+bounds are documented at each site.
+
+---
+
 ## 2026-11-15 — phases become events (grow overview redesign)
 
 ### D073: Phase picks record transition events; the forecast re-anchors from them
