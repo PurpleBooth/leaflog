@@ -65,6 +65,11 @@ impl Default for PhaseDefaults {
 }
 
 /// What actually happened (logged events, spec §4.5 re-forecast).
+///
+/// The boundary fields are pins from recorded phase events (D073): a
+/// pin moves its window's start and the chain back-fills around it.
+/// The backend resolves "latest event per boundary wins" before
+/// building this — the engine stays dumb and pure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Actuals {
     /// Grow day of the flip to 12/12 (photoperiods).
@@ -76,6 +81,17 @@ pub struct Actuals {
     /// True when germination is confirmed logged (else the engine
     /// still reserves the window).
     pub germinated: bool,
+    /// Pinned germination start (a "back to Germination" pick).
+    pub germination_start: Option<Day>,
+    /// Pinned germination → seedling boundary.
+    pub seedling_start: Option<Day>,
+    /// Pinned seedling → vegetative boundary.
+    pub vegetative_start: Option<Day>,
+    /// Pinned vegetative → flower boundary (a Flowering pick; also
+    /// fills in when a photoperiod has no flip).
+    pub flower_start: Option<Day>,
+    /// Pinned drying → curing boundary.
+    pub curing_start: Option<Day>,
 }
 
 /// The inputs to [`forecast`].
@@ -140,12 +156,12 @@ pub fn forecast(input: &ForecastInput) -> Vec<PhaseWindow> {
     let d = input.defaults;
     let mut windows: Vec<PhaseWindow> = Vec::with_capacity(6);
 
-    // --- Germination: 0 .. (likely mid, 3–10 range) ---
+    // --- Germination: pinned or 0 .. (likely mid, 3–10 range) ---
     let germ_likely = i64::midpoint(d.germination_min, d.germination_max);
     add(
         &mut windows,
         Phase::Germination,
-        0,
+        input.actuals.germination_start.unwrap_or(0),
         d.germination_min,
         germ_likely,
         d.germination_max,
@@ -154,7 +170,11 @@ pub fn forecast(input: &ForecastInput) -> Vec<PhaseWindow> {
     );
 
     // --- Seedling: 14–21 ---
-    let seed_start = windows[0].likely_end;
+    let seedling_pin = input.actuals.seedling_start;
+    if let Some(pin) = seedling_pin {
+        pin_start(&mut windows, pin);
+    }
+    let seed_start = seedling_pin.unwrap_or(windows[0].likely_end);
     add(
         &mut windows,
         Phase::Seedling,
@@ -162,7 +182,7 @@ pub fn forecast(input: &ForecastInput) -> Vec<PhaseWindow> {
         d.seedling_min,
         i64::midpoint(d.seedling_min, d.seedling_max),
         d.seedling_max,
-        false,
+        seedling_pin.is_some(),
         None,
     );
 
@@ -299,17 +319,39 @@ fn flower_end_for(input: &ForecastInput, flower_start: Day, (f_min, f_max): (Day
 /// length range (strain overrides). `None` when nothing past veg is
 /// projectable: a photoperiod with neither a logged flip nor planned
 /// veg weeks leaves the window open-ended.
+/// Pins the boundary between the last window and the one about to be
+/// appended: the previous phase ends where the pinned one begins.
+/// History wins in both directions — a later-than-expected pin extends
+/// the previous phase, an earlier one truncates it; a pin at or before
+/// the previous start collapses it to a point.
+const fn pin_start(windows: &mut [PhaseWindow], start: Day) {
+    if let Some(previous) = windows.last_mut() {
+        previous.likely_end = if start > previous.likely_start {
+            start
+        } else {
+            previous.likely_start
+        };
+    }
+}
+
 fn add_vegetative(
     windows: &mut Vec<PhaseWindow>,
     input: &ForecastInput,
     d: PhaseDefaults,
 ) -> Option<(Day, (Day, Day))> {
-    let start = windows[1].likely_end;
+    if let Some(pin) = input.actuals.vegetative_start {
+        pin_start(windows, pin);
+    }
+    let start = input
+        .actuals
+        .vegetative_start
+        .unwrap_or_else(|| windows[1].likely_end);
     match input.photoperiod {
         PhotoperiodType::Photoperiod => {
             let flower = input
                 .strain_flower_days
                 .unwrap_or((d.flower_min, d.flower_max));
+            let pinned = input.actuals.vegetative_start.is_some();
             let Some(weeks) = input.planned_veg_weeks else {
                 // No plan: veg runs until the grower flips it. A
                 // logged flip pins its end; without one there is no
@@ -322,7 +364,7 @@ fn add_vegetative(
                     0,
                     0,
                     0,
-                    flip.is_some(),
+                    flip.is_some() || pinned,
                     flip,
                 );
                 return flip.map(|flip| (flip, flower));
@@ -336,7 +378,7 @@ fn add_vegetative(
                 veg_days,
                 veg_days,
                 veg_days + 3,
-                input.actuals.flip_day.is_some(),
+                input.actuals.flip_day.is_some() || pinned,
                 Some(flip),
             );
             Some((flip, flower))
@@ -350,7 +392,7 @@ fn add_vegetative(
                 14,
                 21,
                 28,
-                false,
+                input.actuals.vegetative_start.is_some(),
                 Some(auto_flip),
             );
             Some((auto_flip, (d.flower_min, d.flower_max)))
@@ -505,6 +547,7 @@ mod tests {
                         harvest_day: harvest,
                         trichome_check_day: harvest.map(|h| h - 3),
                         germinated: true,
+                        ..Actuals::default()
                     },
                     ..base_input()
                 };
@@ -601,6 +644,62 @@ mod tests {
         assert_eq!(flower.likely_end, 111);
         assert_eq!(windows[4].phase, Phase::Drying);
         assert_eq!(windows[4].likely_start, 111);
+    }
+
+    #[test]
+    fn germination_pin_moves_germ_start() {
+        // A "back to Germination" pick restarts the chain at the pinned
+        // day.
+        let input = ForecastInput {
+            actuals: Actuals {
+                germination_start: Some(5),
+                ..Actuals::default()
+            },
+            ..base_input()
+        };
+        let windows = forecast(&input);
+        assert_eq!(windows[0].phase, Phase::Germination);
+        assert_eq!(windows[0].likely_start, 5);
+        assert!(windows[0].actual_start);
+        phases_ordered_and_contiguous(&windows).unwrap();
+    }
+
+    #[test]
+    fn seedling_pin_moves_seedling_and_compresses_germ() {
+        let input = ForecastInput {
+            actuals: Actuals {
+                seedling_start: Some(10),
+                ..Actuals::default()
+            },
+            ..base_input()
+        };
+        let windows = forecast(&input);
+        assert_eq!(windows[1].phase, Phase::Seedling);
+        assert_eq!(windows[1].likely_start, 10);
+        assert!(windows[1].actual_start);
+        // Germination is history: it ends where seedling began.
+        assert_eq!(windows[0].likely_end, 10);
+        phases_ordered_and_contiguous(&windows).unwrap();
+    }
+
+    #[test]
+    fn vegetative_pin_moves_veg_start() {
+        let input = ForecastInput {
+            planned_veg_weeks: None,
+            actuals: Actuals {
+                vegetative_start: Some(30),
+                ..Actuals::default()
+            },
+            ..base_input()
+        };
+        let windows = forecast(&input);
+        assert_eq!(windows[2].phase, Phase::Vegetative);
+        assert_eq!(windows[2].likely_start, 30);
+        assert!(windows[2].actual_start);
+        assert_eq!(windows[1].likely_end, 30);
+        // Still open-ended: the pin only moved the boundary.
+        assert_eq!(windows.len(), 3);
+        phases_ordered_and_contiguous(&windows).unwrap();
     }
 
     #[test]
