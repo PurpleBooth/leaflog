@@ -2,7 +2,44 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
-## v0.5.1 - 2026-11-12
+## v0.6.0 - 2026-11-16
+#### Bug Fixes
+- **(frontend)** space and seed-batch selects keep their pick on refetch - (16b7b3e) - billie.codes
+#### CI
+- concurrent e2e stacks, allow-register gate, weekly drift CI - (4776985) - billie.codes
+#### Documentation
+- prose lint fixes in the grow overview notes - (7d765ff) - billie.codes
+- d074 float_cmp allowance and planned veg weeks note - (e54df5b) - billie.codes
+- d073 phases-are-events, grow-overview glossary, tracker cli notes - (9af0358) - billie.codes
+- move issue tracker to git-bug (D072) - (0f5b866) - billie.codes
+- release runbook and AGENTS.md pointer - (84a112b) - billie.codes
+#### Features
+- **(backend)** grow history chart endpoint - (fefc527) - billie.codes
+- **(core)** curing pin and collapsed history for skipped phases (d073) - (e124289) - billie.codes
+- **(core)** flower-start pin for photoperiod and auto (d073) - (c4e1993) - billie.codes
+- **(core)** forecast boundary pins for germ, seedling, veg (d073) - (dee0a56) - billie.codes
+- **(core)** phase-change action type (d073) - (f67e8ec) - billie.codes
+- **(core)** chart series merge and phase band corridor - (c0b0170) - billie.codes
+- **(core)** open-ended photoperiod veg - (5e699aa) - billie.codes
+- **(frontend)** land on the newest active grow overview - (0f3505d) - billie.codes
+- **(frontend)** long ha entity ids wrap inside their cards - (ea1bd00) - billie.codes
+- **(frontend)** environment strip spans the container - (2391745) - billie.codes
+- **(frontend)** history chart with the shaded temperature corridor - (da56745) - billie.codes
+- **(frontend)** phase picker on the grow overview (d073) - (b30e75f) - billie.codes
+- ph and ec event scatter charts - (f2f1a5e) - billie.codes
+- soil-moisture band preset with editor and chart - (c68b6ff) - billie.codes
+- role charts for humidity, vpd, co2 and light - (9c767b3) - billie.codes
+- appearance vocabulary with labels, meanings and groups - (2628245) - billie.codes
+- phase events and planned vegetative weeks through the api - (44f0807) - billie.codes
+#### Miscellaneous
+- **(release)** bump version to 0.5.1 - (7fa8226) - billie.codes
+- **(version)** 0.6.0 - (888ac46) - billie.codes
+#### Tests
+- **(e2e)** phase picker records the right transition event - (bda241f) - billie.codes
+
+- - -
+
+## v0.5.1 - 2026-11-16
 #### Bug Fixes
 - **(dashboard)** show the No-data banner only for real dead bindings - (d788fe3) - billie.codes
 - **(e2e)** point the stack at its mock; honest env poll, strain locators - (f9ce5aa) - billie.codes
@@ -25,7 +62,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.5.0 - 2026-11-12
+## v0.5.0 - 2026-11-16
 #### Bug Fixes
 - **(ci)** UI prose extraction drops Tailwind class lists (D065) - (063b515) - billie.codes
 - **(image)** fetch the daisyUI bundles inside the container build - (ca3df1f) - billie.codes
@@ -47,7 +84,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.4.1 - 2026-11-12
+## v0.4.1 - 2026-11-16
 #### Bug Fixes
 - **(frontend)** submit handlers must prevent_default themselves (D061) - (f949965) - billie.codes
 #### Miscellaneous
@@ -56,7 +93,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.4.0 - 2026-11-12
+## v0.4.0 - 2026-11-16
 #### CI
 - **(changelog)** generate CHANGELOG.md with cocogitto in CI - (fed0dea) - billie.codes
 - **(deny)** cargo-deny gate for advisories and licences (D047) - (780f227) - billie.codes
@@ -85,7 +122,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.3.0 - 2026-11-12
+## v0.3.0 - 2026-11-16
 #### Bug Fixes
 - **(backend)** add nosniff and a hash-pinned CSP to served responses - (bae8103) - billie.codes
 - **(backend)** reject traversal and interior separators in photo path builders - (e139c7e) - billie.codes
@@ -104,7 +141,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.2.0 - 2026-11-12
+## v0.2.0 - 2026-11-16
 #### Bug Fixes
 - **(backend)** normalize photos to rgb8 so non-rgb inputs cannot panic - (ebcf88e) - billie.codes
 - **(ci)** cocogitto tarball extracts to x86_64-unknown-linux-musl/cog - (726b341) - billie.codes
@@ -130,7 +167,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.1.0 - 2026-11-12
+## v0.1.0 - 2026-11-16
 #### Bug Fixes
 - **(ci)** reference arch-tagged images when merging the multi-arch manifest - (23a7e5a) - billie.codes
 - **(ha)** pin wasm-bindgen-cli in the image builder (trunk auto-fetch failed on aarch64 CI) - (d458f19) - billie.codes
