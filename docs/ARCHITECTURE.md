@@ -29,8 +29,9 @@ live in [`DECISIONS.md`](DECISIONS.md); the product spec is
 ```
 
 - **`leaflog-core`** — shared domain types and pure engines (forecast,
-  feed-fit, VPD, lamp-height, recommendations). No I/O, unit-testable,
-  compiles for native and `wasm32-unknown-unknown`.
+  feed-fit, VPD, lamp-height, recommendations, chart series merge,
+  appearance vocabulary). No I/O, unit-testable, compiles for native and
+  `wasm32-unknown-unknown`.
 - **`leaflog-backend`** — Axum server. Serves the compiled SPA, the JSON
   API, and (from M2) SQLite persistence in `/data`. The only component
   that ever holds `SUPERVISOR_TOKEN`; it must work fully with HA
@@ -103,3 +104,21 @@ Home Assistant instance.
 | M6 | feed templates + fit-to-timeline, substrate profiles |
 | M7 | VPD/env engine, lamp advisor, phase coach, dashboard |
 | M8 | hardening, docs, screenshots, accessibility |
+
+## Grow overview redesign (post-M8, spec 2fe2dcc)
+
+Three subsystems and one rule, per D073/D074:
+
+- **Phases are events.** The phase picker records Flip / Harvest /
+  Phase-change actions; the forecast pins its boundaries from the same
+  event stream (latest event per boundary wins) and re-anchors — bands,
+  coach, lamp advice and the day-count target follow. There is no
+  override state anywhere.
+- **Charts are one endpoint plus a pure core merge.**
+  `GET /api/grows/{id}/history` merges HA history with Leaflog's own
+  log-time snapshots per role; the corridor (temperature, RH window,
+  VPD, soil band) comes from phase-keyed presets in core. The frontend
+  renders hand-rolled SVG — no chart library. HA outages degrade to
+  snapshot-only, per the Dead binding rule.
+- **The app lands on the active grow's overview**, not a marketing
+  page; fresh installs still meet the onboarding wizard.

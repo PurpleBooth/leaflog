@@ -629,8 +629,8 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             <HistoryChart grow_id=grow_id.get() role="co2" title="CO₂" format_value=format_ppm />
             <HistoryChart grow_id=grow_id.get() role="light" title="Light" step=true format_value=format_on_off />
             <HistoryChart grow_id=grow_id.get() role="soil_moisture" title="Soil moisture" format_value=format_pct />
-            <HistoryChart grow_id=grow_id.get() role="ph" title="pH" scatter=true format_value=format_ph />
-            <HistoryChart grow_id=grow_id.get() role="ec" title="EC" scatter=true format_value=format_ec_us />
+            <HistoryChart grow_id=grow_id.get() role="ph" title="pH" scatter=true format_value=format_ph no_data="No pH entries logged yet." />
+            <HistoryChart grow_id=grow_id.get() role="ec" title="EC" scatter=true format_value=format_ec_us no_data="No EC entries logged yet." />
             <BandEditor />
 
             <h3>"Feed schedule"</h3>

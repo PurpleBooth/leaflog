@@ -80,6 +80,17 @@ test('env strip spans the container and wraps without overflow', async ({
   await page.goto(url(`/grows/${growId}`));
   await expect(page.getByText('RH window')).toBeVisible();
 
+  // The bound roles' charts render on the overview; unbound ones state
+  // it (ticket 05/06).
+  await expect(
+    page.locator('svg[aria-label="temperature history"]'),
+  ).toBeVisible();
+  await expect(page.locator('svg[aria-label="humidity history"]')).toBeVisible();
+  await expect(page.locator('svg[aria-label="vpd history"]')).toBeVisible();
+  await expect(
+    page.getByText('No sensor bound for this role.'),
+  ).toHaveCount(3);
+
   // Desktop: all four tiles in one row, equally wide, spanning the
   // strip edge to edge.
   const strip = await stripBox(page);

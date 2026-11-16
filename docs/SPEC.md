@@ -64,7 +64,8 @@ All checks in §13 must pass, with evidence.
 
 ### 4.2 Action log
 - Quick-add chips: Lights on/off or schedule change, Water, Feed (volume, input pH/EC/TDS, runoff pH/EC/TDS, recipe), Trim/defoliate, Train (LST/top), Transplant, Flip to 12/12, Pest/IPM, Env change, Light height/dimmer change, Measurement, Photo, Note, Trichome check, Harvest, Dry/Cure check.
-- Each entry has: timestamp, plant(s), auto-filled phase and day number, structured fields, free text, appearance tags (colour, droop, taco, bleaching, tip burn, foxtailing, etc.) and photos.
+- Each entry has: timestamp, plant(s), auto-filled phase and day number, structured fields, free text, appearance tags and photos. The appearance vocabulary ships fourteen canonical traits in five groups (overall health, colour, light stress, nutrient & water, growth shape) — taco and canoe merged into one "canoeing" entry, praying marked as usually a good sign — each with a display label and a one-line meaning; free-form tags stay allowed and render as typed.
+- **Phase picks are events** (D073): setting the phase from the overview records the transition itself — Flowering writes the flip, Drying the harvest, other boundaries a Phase-change entry — optionally backdated, and the forecast, bands, coach and lamp advice re-anchor from it. Photoperiod veg has no default length: without a flip or planned veg weeks the forecast stays open-ended.
 - **Auto-capture from HA:** snapshot bound sensors (temp, RH, VPD, soil moisture, CO₂, reservoir pH/EC/TDS, light state/dim level) into each entry.
 - **Auto-log from HA:** lights on/off transitions and bound-sensor excursions become log events, with opt-out.
 - **Snapshot retention:** auto-captured snapshots and auto-logged excursions would otherwise accumulate forever. A settings-configurable retention job (default 24 months) prunes old `sensor_snapshot` rows down to at most one per hour, always keeping the first and last row of each day and every excursion-linked row; it runs at startup and weekly. A database-size indicator sits beside the §4.3 photo-storage warning. Charts needing longer history read HA's history API on demand, so pruning costs no visible data.
@@ -100,7 +101,7 @@ All checks in §13 must pass, with evidence.
 - Inputs: start date, strain, planned veg weeks (photoperiod) or auto age, overrides.
 - Output per phase: start/end plus **earliest / likely / latest** window.
 - Seed defaults (editable, sourced): germination 3–10 days, seedling 2–3 weeks, veg 3–8+ weeks (grower-chosen), flower 8–11 weeks (strain value wins; indica-leaning ~8–9, sativa-leaning at the top of the range or beyond). Stretch weeks 1–3 add about 50–100% height. Dry ~7–14 days (until stem snap), cure ≥14 days (ideally ~30). Autos start flowering ~3–5 weeks from seed and finish ~9–11 weeks from seed (some up to 13).
-- Re-forecast from reality: logged events replace predictions. A "trichome check" entry nudges the harvest window.
+- Re-forecast from reality: logged events replace predictions. A "trichome check" entry nudges the harvest window. Phase picks (§4.2) record the boundary itself and pin it; a photoperiod veg without a flip or plan projects no flower window at all.
 - Gantt timeline with a "today" marker. Export phase dates to an `.ics` file or an HA calendar.
 
 ### 4.6 Feeding schedule stretch/shrink
@@ -147,6 +148,7 @@ A rules card per phase that lists targets, live status, and **recommended equipm
 
 ### 4.11 Dashboard
 Per grow: phase and day count, next milestone, today's feed target, lamp-height card, live sensor tiles, latest photo, last N log entries, and line charts (temp, RH, VPD, soil moisture, pH/EC/TDS) with log events overlaid as markers.
+- Shipped (grow overview): the environment tiles span one full-width strip; SVG line charts for temp, RH, derived VPD, CO₂ and soil moisture (light as a staircase; pH/EC as event scatter with the runoff overlay) render from Rust over a merged HA-history + snapshot series, each with a rolling Day/Week/Month window and the recommended band as a shaded corridor; unbound roles show an explicit no-data state and HA outages degrade to snapshot-only. The soil-moisture band is a sourced preset (settings-editable, reset-to-default). The app lands on the active grow's overview; fresh installs keep the §4.12 wizard.
 
 ### 4.12 Onboarding wizard
 - A slick first-run flow for a fresh install: when there are no grow spaces, no grows and no prior dismissal, the app opens a mobile-friendly wizard that ends with a first grow running. Every step can be skipped, progress persists across restarts, and the empty-state "set up" card restarts it.

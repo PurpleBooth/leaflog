@@ -153,7 +153,9 @@ const HEIGHT: f64 = 220.0;
 /// One windowed chart for one sensor role on the grow overview.
 /// `format_value` renders axis labels (per the HA unit system);
 /// `step` draws the series as a staircase (binary entities); `scatter`
-/// plots points instead of a line (event series such as pH/EC).
+/// plots points instead of a line (event series such as pH/EC);
+/// `no_data` is the explicit empty state (a sensor role says no sensor
+/// is bound, an event role says nothing was logged).
 #[component]
 pub fn HistoryChart(
     grow_id: String,
@@ -162,6 +164,7 @@ pub fn HistoryChart(
     format_value: fn(f64) -> String,
     #[prop(default = false)] step: bool,
     #[prop(default = false)] scatter: bool,
+    #[prop(default = "No sensor bound for this role.")] no_data: &'static str,
 ) -> impl IntoView {
     let window = RwSignal::new("day".to_owned());
     let data = RwSignal::<Option<GrowHistory>>::new(None);
@@ -240,9 +243,7 @@ pub fn HistoryChart(
                     }
                     Some(
                         view! {
-                            <p class="text-base-content/70 text-sm">
-                                "No sensor bound for this role."
-                            </p>
+                            <p class="text-base-content/70 text-sm">{no_data}</p>
                         }
                             .into_any(),
                     )
