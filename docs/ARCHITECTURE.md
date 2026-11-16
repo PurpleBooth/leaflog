@@ -112,8 +112,8 @@ Three subsystems and one rule, per D073/D074:
 - **Phases are events.** The phase picker records Flip / Harvest /
   Phase-change actions; the forecast pins its boundaries from the same
   event stream (latest event per boundary wins) and re-anchors — bands,
-  coach, lamp advice and the day-count target follow. There is no
-  override state anywhere.
+  coach, lamp advice and the day-count target follow. The design keeps
+  no override state anywhere.
 - **Charts are one endpoint plus a pure core merge.**
   `GET /api/grows/{id}/history` merges HA history with Leaflog's own
   log-time snapshots per role; the corridor (temperature, RH window,

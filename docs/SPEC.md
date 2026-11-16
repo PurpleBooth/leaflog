@@ -64,7 +64,8 @@ All checks in §13 must pass, with evidence.
 
 ### 4.2 Action log
 - Quick-add chips: Lights on/off or schedule change, Water, Feed (volume, input pH/EC/TDS, runoff pH/EC/TDS, recipe), Trim/defoliate, Train (LST/top), Transplant, Flip to 12/12, Pest/IPM, Env change, Light height/dimmer change, Measurement, Photo, Note, Trichome check, Harvest, Dry/Cure check.
-- Each entry has: timestamp, plant(s), auto-filled phase and day number, structured fields, free text, appearance tags and photos. The appearance vocabulary ships fourteen canonical traits in five groups (overall health, colour, light stress, nutrient & water, growth shape) — taco and canoe merged into one "canoeing" entry, praying marked as usually a good sign — each with a display label and a one-line meaning; free-form tags stay allowed and render as typed.
+- Each entry has: timestamp, plant(s), auto-filled phase and day number, structured fields, free text, appearance tags and photos.
+- The appearance vocabulary ships fourteen canonical traits in five groups (overall health, colour, light stress, nutrient & water, growth shape). Taco and canoe merged into one "canoeing" entry; praying is marked as usually a good sign. Each trait carries a display label and a one-line meaning; free-form tags stay allowed and render as typed.
 - **Phase picks are events** (D073): setting the phase from the overview records the transition itself — Flowering writes the flip, Drying the harvest, other boundaries a Phase-change entry — optionally backdated, and the forecast, bands, coach and lamp advice re-anchor from it. Photoperiod veg has no default length: without a flip or planned veg weeks the forecast stays open-ended.
 - **Auto-capture from HA:** snapshot bound sensors (temp, RH, VPD, soil moisture, CO₂, reservoir pH/EC/TDS, light state/dim level) into each entry.
 - **Auto-log from HA:** lights on/off transitions and bound-sensor excursions become log events, with opt-out.
