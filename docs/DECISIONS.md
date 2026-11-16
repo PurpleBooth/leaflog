@@ -6,6 +6,48 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-16 — charts move to ECharts (ticket 01, Light Cycle spec)
+
+### D075: Charts render through a build-time ECharts bundle; npm + esbuild join the toolchain
+
+The history charts leave the hand-rolled SVG path (ADR 0001 covers the
+rendering trade-off). The bundle lands as a build artifact:
+`crates/leaflog-frontend/charts/` is an npm project with exact pins
+(echarts 6.1.0, esbuild 0.28.2, committed lockfile), and
+`just build-echarts` bundles an entry module that registers line +
+scatter charts, grid + tooltip components, and the SVG renderer onto
+the `window.echarts` global. index.html loads it before the wasm
+boot; no application JavaScript is or will be hand-written — the wasm
+app will drive `echarts.init` from Rust in the chart tickets.
+
+Choices worth remembering:
+
+- **Barrels bypassed on purpose.** `echarts/charts` and
+  `echarts/components` re-export every chart type, and the package
+  marks `lib/chart/*.js` as side-effect-ful — a glob-array
+  `sideEffects` form esbuild does not apply, so a barrel import pulls
+  the whole library into the graph. The entry imports per-feature
+  install modules instead, and the bundle sits at 517 KiB minified
+  (roughly half a full-library dump).
+- **Composition checks read the output graph.** The esbuild metafile
+  lists every parsed file under `inputs`, but `outputs[...].inputs`
+  with `bytesInOutput` says what actually landed in the bundle;
+  `charts/verify.mjs` judges tree-shaking there, plus size bounds, no
+  CDN host, no Node constructs, and the index.html/dist wiring. The
+  checks run in `just build-echarts`, `just build-frontend`, `just
+  e2e`, and the Docker build.
+- **Node stays build-time.** The Dockerfile's frontend-builder stage
+  installs Debian's nodejs 18 (esbuild needs >=18) for the bundle
+  step; the app stage still copies only the backend binary with the
+  embedded dist, so the release image keeps no Node. The AGENTS.md
+  "no Node anywhere" stance is amended to "no Node in the image",
+  matching the Tailwind CLI precedent (D064).
+- **Out of scope, deliberately:** zoom/pan/brush components are not
+  in the bundle; the forecast Gantt and feed-fit bar chart stay
+  hand-rolled for now.
+
+---
+
 ## 2026-11-16 — grow overview redesign (D073 follow-up)
 
 ### D074: `float_cmp` allowance in the chart's step builder
