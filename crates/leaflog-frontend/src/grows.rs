@@ -626,9 +626,9 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             <LightCycleEditor grow_id=grow_id photoperiod=grow_photoperiod />
 
             <EnvDashboard grow_id=grow_id.get() />
-            // The continuous-role cards render through the ECharts
-            // option-builder seam (tickets 02/03); pH and EC keep the
-            // hand-rolled scatter until ticket 04.
+            // Every chart card renders through the ECharts option-builder
+            // seam (tickets 02–04); a role with no binding (or no pH/EC
+            // entries) renders no card at all.
             <HistoryChart grow_id=grow_id.get() format_value=leaflog_core::units::temp_both />
             <HistoryChart grow_id=grow_id.get() role="humidity" title="Humidity" format_value=format_pct />
             <HistoryChart grow_id=grow_id.get() role="vpd" title="VPD" format_value=format_kpa />
@@ -637,8 +637,8 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             <HistoryChart grow_id=grow_id.get() role="soil_moisture" title="Soil moisture" format_value=format_pct>
                 <BandEditor />
             </HistoryChart>
-            <HistoryChart grow_id=grow_id.get() role="ph" title="pH" scatter=true format_value=format_ph no_data="No pH entries logged yet." />
-            <HistoryChart grow_id=grow_id.get() role="ec" title="EC" scatter=true format_value=format_ec_us no_data="No EC entries logged yet." />
+            <HistoryChart grow_id=grow_id.get() role="ph" title="pH" format_value=format_ph />
+            <HistoryChart grow_id=grow_id.get() role="ec" title="EC" format_value=format_ec_us />
 
             <h3>"Feed schedule"</h3>
             <FeedPanel grow_id=grow_id.get() />
