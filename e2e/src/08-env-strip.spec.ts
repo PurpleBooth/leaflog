@@ -34,14 +34,25 @@ async function stripBox(page: Page) {
   return box!;
 }
 
-/** Asserts nothing spills past the viewport sideways. */
+/** Asserts nothing spills past the viewport sideways.
+ *
+ * Settle-tolerant on purpose: after a viewport change the chart's
+ * resize handler re-renders asynchronously, so a freshly resized ECharts
+ * SVG can still carry its pre-resize width for a frame. The poll only
+ * waits for that re-render — a chart that never shrinks still fails
+ * (the stale-width bug class this assertion guards). */
 async function expectNoHorizontalOverflow(page: Page) {
-  const overflow = await page.evaluate(
-    () =>
-      document.documentElement.scrollWidth -
-      document.documentElement.clientWidth,
-  );
-  expect(overflow, 'no horizontal overflow').toBeLessThanOrEqual(0);
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(
+          () =>
+            document.documentElement.scrollWidth -
+            document.documentElement.clientWidth,
+        ),
+      { message: 'no horizontal overflow' },
+    )
+    .toBeLessThanOrEqual(0);
 }
 
 test('env strip spans the container and wraps without overflow', async ({
@@ -90,6 +101,39 @@ test('env strip spans the container and wraps without overflow', async ({
   await expect(
     page.getByText('No sensor bound for this role.'),
   ).toHaveCount(3);
+
+  // Chart window toggles read 24h / 7d / 30d everywhere (ticket 02):
+  // rolling windows ending now, never a calendar day — all eight
+  // cards render the same toggle group, none carries the old captions.
+  const chartCards = page.locator('.card', {
+    has: page.getByRole('group', { name: 'Chart window' }),
+  });
+  await expect(chartCards).toHaveCount(8);
+  await expect(
+    page.getByRole('button', { name: /^(Day|Week|Month)$/ }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: '24h', exact: true }),
+  ).toHaveCount(8);
+  await expect(
+    page.getByRole('button', { name: '7d', exact: true }),
+  ).toHaveCount(8);
+  await expect(
+    page.getByRole('button', { name: '30d', exact: true }),
+  ).toHaveCount(8);
+
+  // Switching a Chart window refetches and re-renders (the
+  // temperature card now goes through ECharts; ticket 02).
+  const tempCard = page.locator('.card', {
+    has: page.locator('svg[aria-label="temperature history"]'),
+  });
+  await tempCard.getByRole('button', { name: '7d', exact: true }).click();
+  await expect(
+    tempCard.getByRole('button', { name: '7d', exact: true }),
+  ).toHaveClass(/btn-primary/);
+  await expect(
+    page.locator('svg[aria-label="temperature history"]'),
+  ).toBeVisible();
 
   // Desktop: all four tiles in one row, equally wide, spanning the
   // strip edge to edge.

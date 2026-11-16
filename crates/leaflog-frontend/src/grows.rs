@@ -626,7 +626,10 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             <LightCycleEditor grow_id=grow_id photoperiod=grow_photoperiod />
 
             <EnvDashboard grow_id=grow_id.get() />
-            <HistoryChart grow_id=grow_id.get() format_value=leaflog_core::units::temp_both />
+            // Ticket 02: the temperature card renders through the
+            // ECharts option-builder seam; the other cards keep the
+            // hand-rolled SVG until ticket 03.
+            <HistoryChart grow_id=grow_id.get() echarts=true format_value=leaflog_core::units::temp_both />
             <HistoryChart grow_id=grow_id.get() role="humidity" title="Humidity" format_value=format_pct />
             <HistoryChart grow_id=grow_id.get() role="vpd" title="VPD" format_value=format_kpa />
             <HistoryChart grow_id=grow_id.get() role="co2" title="CO₂" format_value=format_ppm />

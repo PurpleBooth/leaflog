@@ -30,6 +30,7 @@
 
 pub mod api;
 mod chart;
+mod chart_option;
 mod dashboard;
 mod equipment;
 mod feed;
