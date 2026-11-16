@@ -408,22 +408,10 @@ async fn v14_adds_grow_columns_without_touching_existing_grows() {
         assert_eq!(grow.name, "Pre-strip run");
         assert_eq!(grow.substrate, "soil");
         assert_eq!(grow.strain_label, "");
-        assert_eq!(
-            grow.photoperiod,
-            leaflog_core::strain::PhotoperiodType::Photoperiod
-        );
-        assert_eq!(
-            grow.heat_tolerance,
-            leaflog_core::strain::Tolerance::Average
-        );
-        assert_eq!(
-            grow.cold_tolerance,
-            leaflog_core::strain::Tolerance::Average
-        );
-        assert_eq!(
-            grow.light_tolerance,
-            leaflog_core::strain::Tolerance::Average
-        );
+        assert_eq!(grow.photoperiod, PhotoperiodType::Photoperiod);
+        assert_eq!(grow.heat_tolerance, Tolerance::Average);
+        assert_eq!(grow.cold_tolerance, Tolerance::Average);
+        assert_eq!(grow.light_tolerance, Tolerance::Average);
         assert_eq!(grow.real_watts, None);
         assert!(grow.dimmable);
         // The stored columns themselves were left NULL by the
@@ -542,8 +530,7 @@ async fn dropping_the_strain_catalogue_backfills_label_and_photoperiod() {
         // Linked grows carry the derived label and photoperiod; the
         // never-linked grow stays unlabelled; the grower's own values
         // were kept.
-        let linked =
-            store::grows::get(conn, "01GROWLINKEDNL00000000").expect("linked grow");
+        let linked = store::grows::get(conn, "01GROWLINKEDNL00000000").expect("linked grow");
         assert_eq!(linked.name, "NL run");
         assert_eq!(linked.strain_label, "Northern Lights");
         assert_eq!(linked.photoperiod, PhotoperiodType::Photoperiod);
@@ -556,7 +543,11 @@ async fn dropping_the_strain_catalogue_backfills_label_and_photoperiod() {
         assert_eq!(free.photoperiod, PhotoperiodType::default());
         let kept = store::grows::get(conn, "01GROWKEPTFIELDS0000000").expect("kept grow");
         assert_eq!(kept.strain_label, "My NL cross", "user label is kept");
-        assert_eq!(kept.photoperiod, PhotoperiodType::Auto, "user toggle is kept");
+        assert_eq!(
+            kept.photoperiod,
+            PhotoperiodType::Auto,
+            "user toggle is kept"
+        );
 
         // Tolerances were never derived from the catalogue: the unset
         // columns read back as Average (the D075 default).

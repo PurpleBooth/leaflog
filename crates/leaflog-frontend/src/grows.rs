@@ -11,7 +11,6 @@ use leaflog_core::grows::{
     ActionEntry, ActionInput, Grow, GrowInput, GrowStatus, Photo, PhotoperiodType, Plant,
     PlantInput, Tolerance,
 };
-use leaflog_core::strain::Strain;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos::web_sys::FormData;
@@ -39,7 +38,6 @@ use crate::spaces::SpaceDetail;
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
 pub fn GrowsPage() -> impl IntoView {
     let grows = RwSignal::<Vec<Grow>>::new(Vec::new());
-    let strains = RwSignal::<Vec<Strain>>::new(Vec::new());
     let spaces = RwSignal::<Vec<SpaceDetail>>::new(Vec::new());
     let error = RwSignal::<Option<String>>::new(None);
     let loading = RwSignal::<bool>::new(true);
@@ -47,25 +45,20 @@ pub fn GrowsPage() -> impl IntoView {
     let draft = RwSignal::<GrowInput>::new(empty_grow());
 
     // Each list resource fetches on its own: the grows list renders
-    // from its own request whatever the strains or spaces requests
-    // did, and every failure lands in the shared error banner.
+    // from its own request whatever the spaces request did, and every
+    // failure lands in the shared error banner.
     let refresh = move || {
         loading.set(true);
         spawn_local(async move {
-            // All three in flight at once: the list lands as soon as its
-            // own request answers, however long strains or spaces take.
-            let (grow_list, strain_list, space_list) = futures::join!(
+            // Both in flight at once: the list lands as soon as its
+            // own request answers, however long spaces take.
+            let (grow_list, space_list) = futures::join!(
                 fetch_list::<Vec<Grow>>("api/grows"),
-                fetch_list::<Vec<Strain>>("api/strains"),
                 fetch_list::<Vec<SpaceDetail>>("api/spaces"),
             );
             let mut failures = Vec::new();
             match grow_list {
                 Ok(list) => grows.set(list),
-                Err(failure) => failures.push(failure.message),
-            }
-            match strain_list {
-                Ok(list) => strains.set(list),
                 Err(failure) => failures.push(failure.message),
             }
             match space_list {
@@ -130,7 +123,7 @@ pub fn GrowsPage() -> impl IntoView {
             <Show when=move || form_open.get()>
                 <form class="card bg-base-100 shadow-sm px-5 py-4 my-4" on:submit=save>
                     <h3>"New grow"</h3>
-                    <GrowForm draft strains spaces />
+                    <GrowForm draft spaces />
                     <div class="flex flex-wrap gap-2 mt-4">
                         <button class="btn btn-primary btn-sm" type="submit">"Save"</button>
                         <button class="btn btn-sm" type="button" on:click=move |_| form_open.set(false)>"Cancel"</button>
@@ -257,7 +250,6 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
     let actions = RwSignal::<Vec<ActionEntry>>::new(Vec::new());
     let photos = RwSignal::<Vec<Photo>>::new(Vec::new());
     let spaces = RwSignal::<Vec<SpaceDetail>>::new(Vec::new());
-    let strains = RwSignal::<Vec<Strain>>::new(Vec::new());
     let error = RwSignal::<Option<String>>::new(None);
 
     let chip = RwSignal::<Option<ActionType>>::new(None);
@@ -302,10 +294,6 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             }
             match api::get::<Vec<SpaceDetail>>("api/spaces").await {
                 Ok(value) => spaces.set(value),
-                Err(failure) => error.set(Some(failure.message)),
-            }
-            match api::get::<Vec<Strain>>("api/strains").await {
-                Ok(value) => strains.set(value),
                 Err(failure) => error.set(Some(failure.message)),
             }
         });
@@ -478,21 +466,20 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                     || ().into_any(),
                     |current| {
                         let space_id = current.grow_space_id.clone();
-                        let strain_id = current.strain_id.clone();
+                        let strain_label = current.strain_label.clone();
                         let archived = current.status == GrowStatus::Archived;
                         view! {
                             <div>
                                 <div class="flex flex-wrap items-center justify-between gap-4">
                                     // One left-aligned quiet cluster:
-                                    // name · glyph + medium · strain,
-                                    // with the status and space badges
-                                    // joining it. The buttons are the
-                                    // row's second child, so
+                                    // name · glyph + medium · strain
+                                    // label, with the status and space
+                                    // badges joining it. The buttons
+                                    // are the row's second child, so
                                     // justify-between keeps them clear
-                                    // on the right. A grow with no
-                                    // strain (or an unresolvable one)
-                                    // leaves the strain slot empty —
-                                    // no placeholder.
+                                    // on the right. An unlabelled grow
+                                    // leaves the label slot empty — no
+                                    // placeholder.
                                     <div class="flex flex-wrap items-center gap-2">
                                         <h2>{current.name.clone()}</h2>
                                         <span class="badge badge-ghost">
@@ -501,21 +488,14 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                             })}
                                             {current.substrate.clone()}
                                         </span>
-                                        {move || {
-                                            strain_id
-                                                .as_ref()
-                                                .and_then(|id| {
-                                                    strains
-                                                        .get()
-                                                        .into_iter()
-                                                        .find(|strain| strain.id == *id)
-                                                })
-                                                .map(|strain| view! {
-                                                    <span class="badge badge-ghost">
-                                                        {strain.name}
-                                                    </span>
-                                                })
-                                        }}
+                                        {(!strain_label.is_empty()).then(|| {
+                                            let label = strain_label.clone();
+                                            view! {
+                                                <span class="badge badge-ghost">
+                                                    {label}
+                                                </span>
+                                            }
+                                        })}
                                         {archived
                                             .then(|| view! {
                                                 <span class="badge badge-ghost">
@@ -569,7 +549,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             <Show when=move || edit_open.get()>
                 <form class="card bg-base-100 shadow-sm px-5 py-4 my-4" on:submit=save_edit>
                     <h3>"Edit grow"</h3>
-                    <GrowForm draft=grow_draft strains spaces />
+                    <GrowForm draft=grow_draft spaces />
                     <div class="flex flex-wrap gap-2 mt-4">
                         <button class="btn btn-primary btn-sm" type="submit">"Save"</button>
                         <button class="btn btn-sm" type="button" on:click=move |_| edit_open.set(false)>
@@ -806,15 +786,12 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
 }
 
 /// The create/edit form fields for one grow (spec §4.2): identity,
-/// strain, space, substrate, start date, status and notes. Used by both
-/// the grows page (create) and the grow detail page (edit).
+/// strain label, photoperiod, space, substrate, start date, status and
+/// notes. Used by both the grows page (create) and the grow detail
+/// page (edit).
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
-fn GrowForm(
-    draft: RwSignal<GrowInput>,
-    strains: RwSignal<Vec<Strain>>,
-    spaces: RwSignal<Vec<SpaceDetail>>,
-) -> impl IntoView {
+fn GrowForm(draft: RwSignal<GrowInput>, spaces: RwSignal<Vec<SpaceDetail>>) -> impl IntoView {
     view! {
         <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
             <label class="fieldset">
@@ -832,50 +809,6 @@ fn GrowForm(
                         draft.update(|d| d.strain_label = event_target_value(&ev));
                     }
                 />
-            </label>
-            <label class="fieldset">
-                <span class="fieldset-label">"Strain"</span>
-                <select class="select"
-                    prop:value=move || draft.get().strain_id.unwrap_or_default()
-                    on:change=move |ev| {
-                        let value = event_target_value(&ev);
-                        draft.update(|d| {
-                            d.strain_id = (!value.is_empty()).then_some(value);
-                        });
-                    }
-                >
-                    <option value="">"— pick a strain —"</option>
-                    {move || {
-                        // Freshly mounted <option> nodes carry no selected
-                        // state, so an options list that arrives late (or is
-                        // refetched after a save) resets the visible pick to
-                        // the placeholder while the draft keeps the strain.
-                        // Encode the draft's pick into the rebuilt options:
-                        // the matching node mounts `selected` and the browser
-                        // honours it at insertion, whatever order the effects
-                        // run in. Untracked: `prop:value` already re-applies
-                        // the value when the draft itself changes. That
-                        // mount-time `selected` goes stale after a manual
-                        // re-pick, until the next options rebuild — inert
-                        // today (`select.value` governs, and no form reset
-                        // exists), noted so a future reset button doesn't
-                        // regress the pick.
-                        let picked = draft.get_untracked().strain_id;
-                        strains
-                            .get()
-                            .into_iter()
-                            .map(|strain| {
-                                let is_selected =
-                                    picked.as_deref() == Some(strain.id.as_str());
-                                view! {
-                                    <option value=strain.id selected=is_selected>
-                                        {strain.name}
-                                    </option>
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                    }}
-                </select>
             </label>
             <label class="fieldset">
                 <span class="fieldset-label">"Photoperiod"</span>
@@ -905,10 +838,11 @@ fn GrowForm(
                 >
                     <option value="">"— no space —"</option>
                     {move || {
-                        // Same mount-time `selected` encoding as the strain
-                        // select above: a spaces list that arrives late or is
+                        // Freshly mounted <option> nodes carry no selected
+                        // state: a spaces list that arrives late or is
                         // refetched after a save must not visibly reset the
-                        // draft's binding to the placeholder.
+                        // draft's binding to the placeholder, so the draft's
+                        // pick is encoded into the rebuilt options.
                         let picked = draft.get_untracked().grow_space_id;
                         spaces
                             .get()
@@ -1306,7 +1240,6 @@ where
 fn empty_grow() -> GrowInput {
     GrowInput {
         name: String::new(),
-        strain_id: None,
         grow_space_id: None,
         feed_template_id: None,
         planned_veg_weeks: None,
@@ -1366,8 +1299,9 @@ fn substrate_glyph(substrate: &str) -> Option<&'static str> {
 }
 
 /// The Photoperiod/Autoflower choices for a grow form select: stable
-/// enum-label values, glossary terms as the visible text.
-fn photoperiod_options() -> impl IntoView {
+/// enum-label values, glossary terms as the visible text. Shared by
+/// the grow form and the onboarding wizard's grow step.
+pub fn photoperiod_options() -> impl IntoView {
     [
         (PhotoperiodType::Photoperiod, "Photoperiod"),
         (PhotoperiodType::Auto, "Autoflower"),
@@ -1396,14 +1330,12 @@ fn tolerance_options() -> impl IntoView {
 #[cfg(test)]
 mod landing_pick_tests {
     use super::pick_landing_grow;
-    use leaflog_core::grows::{Grow, GrowStatus};
-    use leaflog_core::strain::{PhotoperiodType, Tolerance};
+    use leaflog_core::grows::{Grow, GrowStatus, PhotoperiodType, Tolerance};
 
     fn grow(id: &str, status: GrowStatus, updated_at: &str) -> Grow {
         Grow {
             id: id.to_owned(),
             name: id.to_owned(),
-            strain_id: None,
             grow_space_id: None,
             feed_template_id: None,
             planned_veg_weeks: None,

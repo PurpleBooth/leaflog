@@ -1,15 +1,17 @@
 //! First-run onboarding wizard (spec §4.12): equipment → grow space →
-//! strain → plants, ending with a first grow running. Every step can be
-//! skipped, the wizard gates nothing (all screens stay reachable), and
-//! dismissing it leaves the normal dashboard.
+//! grow and plants (the strain label and photoperiod sit inline, D075),
+//! ending with a first grow running. Every step can be skipped, the
+//! wizard gates nothing (all screens stay reachable), and dismissing it
+//! leaves the normal dashboard.
 
 use leaflog_core::equipment::EquipmentItem;
 use leaflog_core::grows::Grow;
 use leaflog_core::grows::GrowInput;
 use leaflog_core::grows::GrowStatus;
+use leaflog_core::grows::PhotoperiodType;
+use leaflog_core::grows::Tolerance;
 use leaflog_core::spaces::GrowSpace;
 use leaflog_core::spaces::GrowSpaceInput;
-use leaflog_core::strain::{PhotoperiodType, Strain, Tolerance};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::Deserialize;
@@ -17,6 +19,7 @@ use serde_json::json;
 
 use crate::api;
 use crate::equipment::ErrorIf;
+use crate::grows::photoperiod_options;
 use crate::non_empty;
 
 /// The `GET /api/onboarding` state.
@@ -55,11 +58,11 @@ pub fn OnboardingWizard() -> impl IntoView {
     let space_w = RwSignal::<String>::new(String::new());
     let space_d = RwSignal::<String>::new(String::new());
     let space_h = RwSignal::<String>::new(String::new());
-    let strains = RwSignal::<Vec<Strain>>::new(Vec::new());
-    let picked_strain = RwSignal::<String>::new(String::new());
     let plant_prefix = RwSignal::<String>::new(String::from("Plant"));
     let plant_count = RwSignal::<u32>::new(1);
     let grow_name = RwSignal::<String>::new(String::new());
+    let strain_label = RwSignal::<String>::new(String::new());
+    let photoperiod = RwSignal::<PhotoperiodType>::new(PhotoperiodType::default());
     let started_on = RwSignal::<String>::new(default_start());
 
     let refresh_state = move || {
@@ -77,9 +80,6 @@ pub fn OnboardingWizard() -> impl IntoView {
             if let Ok(list) = api::get::<Vec<EquipmentItem>>("api/equipment").await {
                 equipment.set(list);
             }
-            if let Ok(list) = api::get::<Vec<Strain>>("api/strains").await {
-                strains.set(list);
-            }
         });
     });
 
@@ -96,7 +96,7 @@ pub fn OnboardingWizard() -> impl IntoView {
     // Every step can be skipped: "skip" just advances; finishing with
     // everything skipped only dismisses the wizard.
     let skip = move |_| {
-        step.update(|current| *current = (*current).clamp(1, 3) + 1);
+        step.update(|current| *current = (*current).clamp(1, 2) + 1);
     };
 
     // prevent_default first: Leptos has no `on:submit:prevent` modifier
@@ -157,12 +157,13 @@ pub fn OnboardingWizard() -> impl IntoView {
                         let name = grow_name.get();
                         non_empty(name).unwrap_or_else(|| format!("{prefix} run"))
                     },
-                    strain_id: non_empty(picked_strain.get()),
                     grow_space_id: new_space_id,
                     feed_template_id: None,
                     planned_veg_weeks: None,
-                    strain_label: String::new(),
-                    photoperiod: PhotoperiodType::default(),
+                    // The strain label is the free text the grow
+                    // carries (D075); photoperiod sits beside it.
+                    strain_label: strain_label.get().trim().to_owned(),
+                    photoperiod: photoperiod.get_untracked(),
                     heat_tolerance: Tolerance::default(),
                     cold_tolerance: Tolerance::default(),
                     light_tolerance: Tolerance::default(),
@@ -241,14 +242,13 @@ pub fn OnboardingWizard() -> impl IntoView {
             <section class="card bg-base-100 shadow-sm px-5 py-4 my-4" aria-label="First-run setup">
                 <h2>"Welcome to Leaflog"</h2>
                 <p class="text-base-content/70">
-                    "Four quick steps to a first grow — skip any of them, everything stays
+                    "Three quick steps to a first grow — skip any of them, everything stays
                      reachable from the tabs."
                 </p>
                 <ul class="steps my-2">
                     <li class=step_class(1)>"Equipment"</li>
                     <li class=step_class(2)>"Grow space"</li>
-                    <li class=step_class(3)>"Strain"</li>
-                    <li class=step_class(4)>"Plants"</li>
+                    <li class=step_class(3)>"Plants"</li>
                 </ul>
                 <ErrorIf error />
 
@@ -348,60 +348,8 @@ pub fn OnboardingWizard() -> impl IntoView {
                 </Show>
 
                 <Show when=move || step.get() == 3>
-                    <div>
-                        <h3>"3. Strain"</h3>
-                        <p class="text-base-content/70">
-                            "Pick a strain for the grow diary — bundled presets are marked and
-                             read-only; clone one as your phenotype to tweak it."
-                        </p>
-                        <label class="fieldset">
-                            <span class="fieldset-label">"Strain"</span>
-                            <select class="select"
-                                prop:value=move || picked_strain.get()
-                                on:change=move |ev| picked_strain.set(event_target_value(&ev))
-                            >
-                                <option value="">"— none —"</option>
-                                {move || {
-                                    // Same reliability fix as the grow form's
-                                    // strain select: rebuilt <option> nodes
-                                    // mount with no selected state, so the
-                                    // pick is re-encoded from the draft
-                                    // whenever the list arrives or refetches
-                                    // (untracked — `prop:value` covers draft
-                                    // changes).
-                                    let picked = picked_strain.get_untracked();
-                                    strains
-                                        .get()
-                                        .into_iter()
-                                        .map(|strain| {
-                                            let id = strain.id.clone();
-                                            let is_selected = !picked.is_empty()
-                                                && picked == strain.id;
-                                            let label = if strain.is_builtin {
-                                                format!("{} (bundled)", strain.name)
-                                            } else {
-                                                strain.name
-                                            };
-                                            view! {
-                                                <option value=id selected=is_selected>
-                                                    {label}
-                                                </option>
-                                            }
-                                        })
-                                        .collect::<Vec<_>>()
-                                }}
-                            </select>
-                        </label>
-                        <div class="flex flex-wrap gap-2 mt-4">
-                            <button class="btn btn-sm" on:click=skip>"Skip this step"</button>
-                            <button class="btn btn-primary btn-sm" on:click=move |_| step.set(4)>"Next"</button>
-                        </div>
-                    </div>
-                </Show>
-
-                <Show when=move || step.get() == 4>
                     <form on:submit=finish>
-                        <h3>"4. Plants"</h3>
+                        <h3>"3. Plants"</h3>
                         <p class="text-base-content/70">
                             "Finishing creates a grow inside your space (today counts as day one —
                              change it if the seeds went in earlier) and opens its dashboard."
@@ -412,6 +360,25 @@ pub fn OnboardingWizard() -> impl IntoView {
                                     prop:value=move || grow_name.get()
                                     on:input=move |ev| grow_name.set(event_target_value(&ev))
                                 />
+                            </label>
+                            <label class="fieldset"><span class="fieldset-label">"Strain label"</span>
+                                <input class="input" type="text" placeholder="Northern Lights #5"
+                                    prop:value=move || strain_label.get()
+                                    on:input=move |ev| strain_label.set(event_target_value(&ev))
+                                />
+                            </label>
+                            <label class="fieldset"><span class="fieldset-label">"Photoperiod"</span>
+                                <select class="select"
+                                    prop:value=move || photoperiod.get().label().to_owned()
+                                    on:change=move |ev| {
+                                        photoperiod.set(
+                                            PhotoperiodType::from_label(&event_target_value(&ev))
+                                                .unwrap_or_default(),
+                                        );
+                                    }
+                                >
+                                    {photoperiod_options()}
+                                </select>
                             </label>
                             <label class="fieldset"><span class="fieldset-label">"Name prefix"</span>
                                 <input class="input" type="text"
@@ -435,7 +402,7 @@ pub fn OnboardingWizard() -> impl IntoView {
                             </label>
                         </div>
                         <div class="flex flex-wrap gap-2 mt-4">
-                            <button class="btn btn-sm" type="button" on:click=move |_| step.set(3)>"Back"</button>
+                            <button class="btn btn-sm" type="button" on:click=move |_| step.set(2)>"Back"</button>
                             <button class="btn btn-sm btn-error btn-outline" type="button"
                                 on:click=move |_| set_dismissed(true)
                             >

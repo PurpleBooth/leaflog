@@ -109,7 +109,10 @@ async fn history(State(state): State<AppState>) -> Result<Json<HistoryReport>, A
 
                 let plants = store::grows::list_plants(conn, &grow.id)?;
                 let summary = YieldSummary::of(&grow.id, plants);
-                by_label.push((label.unwrap_or_else(|| UNLABELLED.to_owned()), summary.clone()));
+                by_label.push((
+                    label.unwrap_or_else(|| UNLABELLED.to_owned()),
+                    summary.clone(),
+                ));
                 by_substrate.push((grow.substrate.clone(), summary.clone()));
                 let template = grow.feed_template_id.as_deref().and_then(|id| {
                     store::feeds::get_template(conn, id)

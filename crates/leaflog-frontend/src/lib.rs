@@ -40,7 +40,6 @@ mod live;
 mod onboarding;
 mod phase_pick;
 mod spaces;
-mod strains;
 
 use equipment::EquipmentPage;
 use grows::{GrowsPage, GrowsRoute, Landing};
@@ -52,7 +51,6 @@ use leptos_router::components::{A, Route, Router, Routes};
 use leptos_router::path;
 use onboarding::OnboardingWizard;
 use spaces::{SpaceDetail, SpacesPage};
-use strains::StrainsPage;
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 
 /// Reads `window.__LEAFLOG_BASE__`, injected at serve time by the
@@ -115,7 +113,6 @@ pub fn App() -> impl IntoView {
                     >
                         <A href=route_href("/") exact=true>"Home"</A>
                         <A href=route_href("/equipment")>"Equipment"</A>
-                        <A href=route_href("/strains")>"Strains"</A>
                         <A href=route_href("/spaces")>"Spaces"</A>
                         <A href=route_href("/history")>"History"</A>
                         <A href=route_href("/grows")>"Grows"</A>
@@ -126,7 +123,6 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("/") view=Landing />
                         <Route path=path!("/spike") view=Spike />
                         <Route path=path!("/equipment") view=EquipmentPage />
-                        <Route path=path!("/strains") view=StrainsPage />
                         <Route path=path!("/spaces") view=SpacesPage />
                     <Route path=path!("/history") view=HistoryPage />
                     <Route path=path!("/plants/:id") view=PlantViewPage />
@@ -170,13 +166,11 @@ pub fn Home() -> impl IntoView {
                      pH point and watt in one private place."
                 </p>
                 <p class="text-base-content/70 text-sm">
-                    "Milestone M2: the foundation — equipment inventory and the strain
-                     database (bundled records carry sources and evidence tags). More
-                     arrives with each milestone."
+                    "Milestone M2: the foundation — the equipment inventory with its
+                     bundled presets. More arrives with each milestone."
                 </p>
                 <ul class="list-disc pl-5">
                     <li><A href=route_href("/equipment")>"Equipment inventory"</A></li>
-                    <li><A href=route_href("/strains")>"Strain database"</A></li>
                 </ul>
                 <h3>"Backend health"</h3>
                 <pre aria-live="polite">{move || health.get()}</pre>

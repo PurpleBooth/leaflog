@@ -38,7 +38,6 @@ pub mod forecast;
 pub mod grows;
 pub mod history;
 pub mod spaces;
-pub mod strain;
 pub mod tz;
 pub mod units;
 

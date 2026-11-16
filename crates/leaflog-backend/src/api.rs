@@ -1,7 +1,9 @@
 //! JSON API routes for equipment and settings (spec §4.1). All routes
-//! are under `/api`; the browser is the only client. The strain
-//! catalogue left with the feature strip (D075) — the grow carries its
-//! strain label and photoperiod itself.
+//! are under `/api`; the browser is the only client.
+//!
+//! The strain catalogue left with the feature strip (D075): the grow
+//! carries its strain label and photoperiod itself, and the removed
+//! routes answer 404. See docs/DECISIONS.md for the decision record.
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
