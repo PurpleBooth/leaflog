@@ -73,6 +73,7 @@ export async function api<T = unknown>(
 export async function createGrow(
   request: APIRequestContext,
   name: string,
+  overrides: Record<string, unknown> = {},
 ): Promise<string> {
   const today = new Date().toISOString().slice(0, 10);
   const grow = await api<{ id: string }>(request, 'POST', 'api/grows', {
@@ -85,6 +86,7 @@ export async function createGrow(
     started_on: today,
     status: 'active',
     notes: null,
+    ...overrides,
   });
   return grow!.id;
 }
