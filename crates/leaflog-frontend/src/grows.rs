@@ -29,6 +29,7 @@ use crate::dashboard::EnvDashboard;
 use crate::equipment::ErrorIf;
 use crate::feed::FeedPanel;
 use crate::gantt::GanttTimeline;
+use crate::light_cycle::LightCycleEditor;
 use crate::live::LivePanel;
 use crate::route_href;
 use crate::spaces::SpaceDetail;
@@ -272,7 +273,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
     // semantics.
     let pick_phase = RwSignal::<Option<Phase>>::new(None);
     let pick_date = RwSignal::<String>::new(String::new());
-    let current_photoperiod = move || {
+    let grow_photoperiod = Signal::derive(move || {
         grow.get()
             .as_ref()
             .and_then(|current| current.strain_id.as_deref())
@@ -284,7 +285,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                     .map(|strain| strain.photoperiod)
             })
             .unwrap_or(PhotoperiodType::Photoperiod)
-    };
+    });
 
     let refresh = move || {
         let id = grow_id.get();
@@ -373,7 +374,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             return;
         };
         let id = grow_id.get();
-        let photoperiod = current_photoperiod();
+        let photoperiod = grow_photoperiod.get();
         let when = pick_date.get();
         let day = if when.is_empty() {
             datetime_local_now()
@@ -621,6 +622,8 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                 </button>
             </form>
             <GanttTimeline grow_id=grow_id.get() />
+
+            <LightCycleEditor grow_id=grow_id photoperiod=grow_photoperiod />
 
             <EnvDashboard grow_id=grow_id.get() />
             <HistoryChart grow_id=grow_id.get() format_value=leaflog_core::units::temp_both />
@@ -1272,6 +1275,7 @@ mod landing_pick_tests {
             seed_batch_id: None,
             feed_template_id: None,
             planned_veg_weeks: None,
+            light_cycle: None,
             substrate: "soil".to_owned(),
             started_on: "2026-01-01".to_owned(),
             status,

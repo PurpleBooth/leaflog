@@ -1,6 +1,7 @@
 //! Grow and plant persistence (spec §4.2, §4.5).
 
 use leaflog_core::grows::{Grow, GrowInput, GrowStatus, Plant, PlantInput};
+use leaflog_core::light_cycle::LightCycle;
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::{NotFound, StoreOrNotFound};
@@ -23,6 +24,9 @@ pub fn create(conn: &Connection, input: &GrowInput) -> Result<Grow, StoreError> 
         seed_batch_id: input.seed_batch_id.clone(),
         feed_template_id: input.feed_template_id.clone(),
         planned_veg_weeks: input.planned_veg_weeks,
+        // A new grow starts on the preset defaults; the cycle is set
+        // (and reset) through its own endpoint.
+        light_cycle: None,
         substrate: input.substrate.clone(),
         started_on: input.started_on.clone(),
         status: input.status,
@@ -91,11 +95,43 @@ pub fn list_for_space(conn: &Connection, space_id: &str) -> Result<Vec<Grow>, St
         .map_err(StoreError::from)
 }
 
+/// Stores (or clears, with `None`) the grow's Light Cycle override
+/// and returns the updated row. `None` is reset-to-default: the
+/// cited preset defaults apply again.
+///
+/// # Errors
+///
+/// Returns [`super::NotFound`] when the id does not exist.
+#[allow(clippy::missing_panics_doc)] // serializing a plain struct cannot fail
+pub fn set_light_cycle(
+    conn: &Connection,
+    id: &str,
+    cycle: Option<&LightCycle>,
+) -> Result<Grow, StoreOrNotFound> {
+    let mut updated = get(conn, id)?;
+    updated.updated_at = now_rfc3339();
+    updated.light_cycle = cycle.copied();
+    let json = updated
+        .light_cycle
+        .as_ref()
+        .map(|cycle| serde_json::to_string(cycle).expect("LightCycle serializes"));
+    conn.execute(
+        "UPDATE grow SET light_cycle = ?2, updated_at = ?3 WHERE id = ?1",
+        params![updated.id, json, updated.updated_at],
+    )?;
+    Ok(updated)
+}
+
 /// Replaces a grow (full update), preserving id and creation time.
 ///
 /// # Errors
 ///
 /// Returns [`super::NotFound`] when the id does not exist.
+///
+/// # Panics
+///
+/// Never: serializing the stored Light Cycle (a plain struct) cannot
+/// fail.
 pub fn update(conn: &Connection, id: &str, input: &GrowInput) -> Result<Grow, StoreOrNotFound> {
     let existing = get(conn, id)?;
     let mut updated = existing;
@@ -113,7 +149,7 @@ pub fn update(conn: &Connection, id: &str, input: &GrowInput) -> Result<Grow, St
     conn.execute(
         "UPDATE grow SET name = ?2, strain_id = ?3, grow_space_id = ?4, seed_batch_id = ?5,
              feed_template_id = ?6, planned_veg_weeks = ?7, substrate = ?8, started_on = ?9,
-             status = ?10, notes = ?11, updated_at = ?12
+             status = ?10, notes = ?11, updated_at = ?12, light_cycle = ?13
          WHERE id = ?1",
         params![
             updated.id,
@@ -128,6 +164,13 @@ pub fn update(conn: &Connection, id: &str, input: &GrowInput) -> Result<Grow, St
             updated.status.label(),
             updated.notes,
             updated.updated_at,
+            // The Light Cycle is not part of GrowInput; a grow edit
+            // must not disturb it, so the stored value is written
+            // straight back.
+            updated
+                .light_cycle
+                .as_ref()
+                .map(|cycle| serde_json::to_string(cycle).expect("LightCycle serializes")),
         ],
     )?;
     Ok(updated)
@@ -271,6 +314,12 @@ fn map_grow(row: &rusqlite::Row<'_>) -> Result<Grow, rusqlite::Error> {
         planned_veg_weeks: row
             .get::<_, Option<i64>>("planned_veg_weeks")?
             .and_then(|value| u8::try_from(value).ok()),
+        // Writes are validated (the PUT endpoint), so an unparseable
+        // stored document is treated like no override — same lenient
+        // read as planned_veg_weeks above.
+        light_cycle: row
+            .get::<_, Option<String>>("light_cycle")?
+            .and_then(|text| serde_json::from_str(&text).ok()),
         substrate: row.get("substrate")?,
         started_on: row.get("started_on")?,
         status: if status == "archived" {
