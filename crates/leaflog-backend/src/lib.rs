@@ -43,6 +43,7 @@
 
 pub mod alerts;
 pub mod api;
+pub mod api_chart;
 pub mod api_env;
 pub mod api_feeds;
 pub mod api_grows;

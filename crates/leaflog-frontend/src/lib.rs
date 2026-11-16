@@ -29,6 +29,7 @@
 #![allow(clippy::empty_enums)]
 
 pub mod api;
+mod chart;
 mod dashboard;
 mod equipment;
 mod feed;
