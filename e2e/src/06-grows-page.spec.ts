@@ -1,6 +1,6 @@
-// Grows page fetch resilience: the page fetches grows, strains and
-// spaces separately, so one aborted request cannot blank the list or
-// fake an empty state, and the shared error banner offers a retry.
+// Grows page fetch resilience: the page fetches grows and strains
+// separately, so one aborted request cannot blank the list or fake an
+// empty state, and the shared error banner offers a retry.
 
 import { test, expect } from '@playwright/test';
 import { createGrow, uniqueName, url } from './helpers';
@@ -12,8 +12,8 @@ test('aborted strains request keeps the grows list with an error banner', async 
   const name = uniqueName('E2E Tri-state Grow');
   await createGrow(request, name);
 
-  // Abort the strains request under the ingress prefix; the grows and
-  // spaces requests answer normally.
+  // Abort the strains request under the ingress prefix; the grows
+  // request answers normally.
   await page.route(url('api/strains'), (route) => route.abort());
   await page.goto(url('/grows'));
 

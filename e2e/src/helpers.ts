@@ -21,8 +21,8 @@ export function url(path: string): string {
 let counter = 0;
 
 /**
- * A unique per-run name, so the bundled seed records (15 strains,
- * 5 equipment items) and repeated runs can never collide.
+ * A unique per-run name, so the bundled seed records (15 strains)
+ * and repeated runs can never collide.
  */
 export function uniqueName(prefix: string): string {
   counter += 1;
@@ -79,7 +79,6 @@ export async function createGrow(
   const grow = await api<{ id: string }>(request, 'POST', 'api/grows', {
     name,
     strain_id: null,
-    grow_space_id: null,
     feed_template_id: null,
     substrate: 'soil',
     started_on: today,
@@ -103,21 +102,6 @@ export async function createPlant(
     { name },
   );
   return plant!.id;
-}
-
-/** Creates a grow space via the API and returns its id. */
-export async function createSpace(
-  request: APIRequestContext,
-  name: string,
-): Promise<string> {
-  const space = await api<{ id: string }>(request, 'POST', 'api/spaces', {
-    name,
-    width_cm: null,
-    depth_cm: null,
-    height_cm: null,
-    notes: null,
-  });
-  return space!.id;
 }
 
 /** Dismisses the onboarding wizard for this database. */

@@ -1,7 +1,7 @@
 //! Live sensor tiles fed by the HA bridge (M4).
 
+use crate::ErrorIf;
 use crate::api;
-use crate::equipment::ErrorIf;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
@@ -149,8 +149,8 @@ pub fn LivePanel(grow_id: String) -> impl IntoView {
 
             <h4>"Entity bindings"</h4>
             <p class="text-base-content/70 text-sm">
-                "A grow starts from its space's sensor items (add them on the equipment page);
-                the picks here are this grow's own overrides."
+                "Bind a Home Assistant entity to each role — bindings are the only
+                sensor setup there is, and the picks here are this grow's own."
             </p>
             <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
                 {BINDING_ROLES

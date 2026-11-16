@@ -172,9 +172,8 @@ async fn plant_view(
 }
 
 /// `POST /api/grows/{id}/next-run` — one tap creates a new grow
-/// copying strain, substrate, grow space and feed template from this
-/// one, by reference: bundled entries are never duplicated (spec
-/// §4.15).
+/// copying strain, substrate and feed template from this one, by
+/// reference: bundled entries are never duplicated (spec §4.15).
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn next_run(
@@ -192,7 +191,6 @@ async fn next_run(
             let input = GrowInput {
                 name: format!("{} (next run)", previous.name),
                 strain_id: previous.strain_id.clone(),
-                grow_space_id: previous.grow_space_id.clone(),
                 feed_template_id: previous.feed_template_id.clone(),
                 planned_veg_weeks: previous.planned_veg_weeks,
                 // The grow-carried facts (D075) travel with the rerun,

@@ -90,15 +90,6 @@ async fn create_grow(
             })
             .await?;
     }
-    if let Some(grow_space_id) = &input.grow_space_id {
-        state
-            .db
-            .with({
-                let grow_space_id = grow_space_id.clone();
-                move |conn| store::spaces::get(conn, &grow_space_id)
-            })
-            .await?;
-    }
     if let Some(feed_template_id) = &input.feed_template_id {
         state
             .db
@@ -108,20 +99,13 @@ async fn create_grow(
             })
             .await?;
     }
-    let ha = state.ha.clone();
     let grow = state
         .db
         .with(move |conn| -> Result<_, crate::db::StoreError> {
-            let grow = store::grows::create(conn, &input)?;
-            // Spec §4.1: a space's temperature + humidity sensor items
-            // are the default env bindings for a grow in it; seed only
-            // fills unbound roles, so per-grow overrides stay.
-            if !store::sensors::seed_from_space(conn, &grow)?.is_empty() {
-                // track_entities replaces the tracked set, so pass the
-                // union of every grow's bindings (as put_bindings does).
-                ha.track_entities(store::sensors::all_bound_entities(conn)?);
-            }
-            Ok(grow)
+            // A new grow binds no sensors yet; the grower picks its
+            // entities in the binding pickers (onboarding step 1 or the
+            // grow page).
+            store::grows::create(conn, &input)
         })
         .await?;
     Ok((StatusCode::CREATED, Json(grow)))
@@ -150,15 +134,6 @@ async fn update_grow(
     Json(input): Json<GrowInput>,
 ) -> Result<Json<leaflog_core::grows::Grow>, ApiError> {
     validate_grow(&input)?;
-    if let Some(grow_space_id) = &input.grow_space_id {
-        state
-            .db
-            .with({
-                let grow_space_id = grow_space_id.clone();
-                move |conn| store::spaces::get(conn, &grow_space_id)
-            })
-            .await?;
-    }
     if let Some(feed_template_id) = &input.feed_template_id {
         state
             .db
@@ -168,18 +143,12 @@ async fn update_grow(
             })
             .await?;
     }
-    let ha = state.ha.clone();
     let grow = state
         .db
         .with(move |conn| -> Result<_, store::StoreOrNotFound> {
-            let grow = store::grows::update(conn, &id, &input)?;
-            // A grow moved into (or between) spaces picks the new
-            // space's sensor defaults for any role it has not bound
-            // itself (spec §4.1, same rule as create_grow).
-            if !store::sensors::seed_from_space(conn, &grow)?.is_empty() {
-                ha.track_entities(store::sensors::all_bound_entities(conn)?);
-            }
-            Ok(grow)
+            // Bindings are the only sensor concept (feature-strip
+            // D075): editing a grow never touches them.
+            store::grows::update(conn, &id, &input)
         })
         .await?;
     Ok(Json(grow))

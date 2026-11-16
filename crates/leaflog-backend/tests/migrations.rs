@@ -6,7 +6,6 @@ use std::path::PathBuf;
 
 use leaflog_backend::db::{self, Db, StoreError};
 use leaflog_backend::store;
-use leaflog_core::equipment::EquipmentCategory;
 use leaflog_core::grows::{GrowInput, GrowStatus};
 use leaflog_core::strain::{PhotoperiodType, Tolerance};
 use refinery::Target;
@@ -275,8 +274,13 @@ async fn partially_adopted_history_is_completed() {
 /// bundled rows whose categories left the catalogue are removed (with
 /// space references cascading), and user rows in retired categories are
 /// parked in the legacy `misc` bucket where they keep deserializing.
-#[tokio::test]
-async fn catalogue_trim_recategorizes_prunes_and_parks() {
+///
+/// Asserted at V6 exactly: the equipment and space tables this
+/// migration shaped were dropped again by V16 (feature-strip), so a
+/// boot to the latest head has nothing left to inspect — the V16 drop
+/// test owns the current schema.
+#[test]
+fn catalogue_trim_recategorizes_prunes_and_parks() {
     let temp = TempDb::new("trim");
     let path = temp.path();
     {
@@ -314,49 +318,53 @@ async fn catalogue_trim_recategorizes_prunes_and_parks() {
                  ('sp-1', 'e-tray');",
         )
         .expect("pre-trim fixtures");
-    }
 
-    let db = Db::open(&path).expect("V6 applies on boot");
-    db.with(|conn| -> Result<(), StoreError> {
-        let category = |id: &str| -> Result<String, StoreError> {
-            Ok(conn.query_row(
+        db::embedded::migrations::runner()
+            .set_target(Target::Version(6))
+            .run(&mut conn)
+            .expect("V6 applies");
+
+        let category = |id: &str| -> rusqlite::Result<String> {
+            conn.query_row(
                 "SELECT category FROM equipment_item WHERE id = ?1",
                 [id],
                 |row| row.get(0),
-            )?)
+            )
         };
-        assert_eq!(category("e-filter")?, "fan", "carbon filters fold into fan");
-        assert_eq!(category("e-light")?, "light", "catalogue rows untouched");
         assert_eq!(
-            category("e-dehum")?,
+            category("e-filter").expect("filter row"),
+            "fan",
+            "carbon filters fold into fan"
+        );
+        assert_eq!(
+            category("e-light").expect("light row"),
+            "light",
+            "catalogue rows untouched"
+        );
+        assert_eq!(
+            category("e-dehum").expect("parked row"),
             "misc",
             "user rows in retired categories are parked, not deleted"
         );
-        let tray: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM equipment_item WHERE id = 'e-tray')",
-            [],
-            |row| row.get(0),
-        )?;
+        let tray: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM equipment_item WHERE id = 'e-tray')",
+                [],
+                |row| row.get(0),
+            )
+            .expect("tray existence");
         assert!(!tray, "the bundled trim-tray row is removed");
         // The space kept its reference to the recategorized filter and
         // lost (by cascade) the reference to the removed tray.
-        let refs: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM grow_space_equipment WHERE grow_space_id = 'sp-1'",
-            [],
-            |row| row.get(0),
-        )?;
+        let refs: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM grow_space_equipment WHERE grow_space_id = 'sp-1'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("space references");
         assert_eq!(refs, 1);
-        // Parked rows still deserialize through the store layer.
-        let items = store::equipment::list(conn, None)?;
-        assert!(
-            items
-                .iter()
-                .any(|item| { item.id == "e-dehum" && item.category == EquipmentCategory::Misc })
-        );
-        Ok(())
-    })
-    .await
-    .expect("trim assertions");
+    }
 }
 
 /// V14 (D075 step 01) is append-only: a database at V13 boots, its
@@ -534,7 +542,6 @@ async fn dropping_the_seed_bank_loses_tables_and_the_grow_column() {
             &GrowInput {
                 name: "Post-drop run".to_owned(),
                 strain_id: None,
-                grow_space_id: None,
                 feed_template_id: None,
                 planned_veg_weeks: None,
                 strain_label: String::new(),
@@ -557,4 +564,147 @@ async fn dropping_the_seed_bank_loses_tables_and_the_grow_column() {
     })
     .await
     .expect("seed-bank drop assertions");
+}
+
+/// V16 (spaces + equipment-catalogue removal): the `grow_space`,
+/// `grow_space_equipment` and `equipment_item` tables and the grow's
+/// `grow_space_id` column disappear on boot. The drop also pins that
+/// the grow row, its plants and its sensor bindings survive —
+/// bindings are the surviving sensor concept and never depended on
+/// equipment — and that the store still round-trips grows afterwards.
+#[tokio::test]
+async fn dropping_spaces_and_equipment_loses_tables_and_the_grow_column() {
+    let temp = TempDb::new("spaces-equipment-drop");
+    let path = temp.path();
+    {
+        let mut conn = Connection::open(&path).expect("open at the pre-drop version");
+        conn.pragma_update(None, "foreign_keys", "ON")
+            .expect("pragmas");
+        db::embedded::migrations::runner()
+            .set_target(Target::Version(15))
+            .run(&mut conn)
+            .expect("apply through the last pre-drop migration");
+        conn.execute_batch(
+            "INSERT INTO equipment_item
+                 (id, name, category, brand_model, real_watts, dimmable,
+                  purchase_date, purchase_price, currency, notes,
+                  ha_entity_id, ha_device_class, source, is_builtin,
+                  created_at, updated_at)
+             VALUES ('eq-1', 'Bound meter', 'sensor', NULL, NULL, 0,
+                     NULL, NULL, NULL, NULL,
+                     'sensor.grow_temperature', 'temperature', NULL, 0,
+                     '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+             INSERT INTO grow_space
+                 (id, name, width_cm, depth_cm, height_cm, notes, created_at, updated_at)
+             VALUES ('sp-1', 'The tent', 60, 60, 180, NULL,
+                     '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+             INSERT INTO grow_space_equipment (grow_space_id, equipment_id) VALUES
+                 ('sp-1', 'eq-1');
+             INSERT INTO grow
+                 (id, name, strain_id, substrate, started_on, status, notes,
+                  created_at, updated_at, grow_space_id, feed_template_id,
+                  planned_veg_weeks, strain_label, photoperiod,
+                  heat_tolerance, cold_tolerance, light_tolerance,
+                  real_watts, dimmable)
+             VALUES ('g-1', 'Tent run', NULL, 'soil', '2026-03-01', 'active', NULL,
+                     '2026-03-01T00:00:00Z', '2026-03-01T00:00:00Z',
+                     'sp-1', NULL, 4, 'Northern Lights', 'photoperiod',
+                     'average', 'average', 'average', NULL, 1);
+             INSERT INTO plant (id, grow_id, name, created_at, updated_at)
+             VALUES ('p-1', 'g-1', 'Plant 1',
+                     '2026-03-02T00:00:00Z', '2026-03-02T00:00:00Z');
+             INSERT INTO sensor_binding (grow_id, role, entity_id, updated_at)
+             VALUES ('g-1', 'temperature', 'sensor.grow_temperature',
+                     '2026-03-02T00:00:00Z');",
+        )
+        .expect("pre-drop fixtures");
+    }
+
+    let db = Db::open(&path).expect("the spaces/equipment drop applies on boot");
+    db.with(|conn| -> Result<(), StoreError> {
+        let table_exists = |name: &str| -> Result<bool, StoreError> {
+            Ok(conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+                [name],
+                |row| row.get(0),
+            )?)
+        };
+        assert!(
+            !table_exists("grow_space")?,
+            "the grow_space table is dropped"
+        );
+        assert!(
+            !table_exists("grow_space_equipment")?,
+            "the grow_space_equipment table is dropped"
+        );
+        assert!(
+            !table_exists("equipment_item")?,
+            "the equipment_item table is dropped"
+        );
+        let has_space_column: bool = conn.query_row(
+            "SELECT EXISTS(
+                 SELECT 1 FROM pragma_table_info('grow') WHERE name = 'grow_space_id'
+             )",
+            [],
+            |row| row.get(0),
+        )?;
+        assert!(!has_space_column, "grow loses its grow_space_id column");
+
+        // The grow row survives the drop with its data, and its child
+        // rows stay attached — plants, and the sensor bindings the
+        // live tiles, charts and auto-log run on.
+        let (name, substrate, label): (String, String, String) = conn.query_row(
+            "SELECT name, substrate, COALESCE(strain_label, '') FROM grow WHERE id = 'g-1'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        assert_eq!(name, "Tent run");
+        assert_eq!(substrate, "soil");
+        assert_eq!(label, "Northern Lights");
+        let plants: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM plant WHERE grow_id = 'g-1'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(plants, 1, "the grow's plants survive the drop");
+        let (role, entity): (String, String) = conn.query_row(
+            "SELECT role, entity_id FROM sensor_binding WHERE grow_id = 'g-1'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(
+            (role.as_str(), entity.as_str()),
+            ("temperature", "sensor.grow_temperature"),
+            "the grow's sensor bindings survive the drop"
+        );
+
+        // The store still writes and reads grows afterwards — a fresh
+        // create, and a full listing.
+        let created = store::grows::create(
+            conn,
+            &GrowInput {
+                name: "Post-drop run".to_owned(),
+                strain_id: None,
+                feed_template_id: None,
+                planned_veg_weeks: None,
+                strain_label: String::new(),
+                photoperiod: PhotoperiodType::default(),
+                heat_tolerance: Tolerance::default(),
+                cold_tolerance: Tolerance::default(),
+                light_tolerance: Tolerance::default(),
+                real_watts: None,
+                dimmable: true,
+                substrate: "coco".to_owned(),
+                started_on: "2026-04-01".to_owned(),
+                status: GrowStatus::Active,
+                notes: None,
+            },
+        )?;
+        assert_eq!(created.substrate, "coco");
+        let all = store::grows::list(conn)?;
+        assert_eq!(all.len(), 2, "the old and the new grow are listed");
+        Ok(())
+    })
+    .await
+    .expect("spaces/equipment drop assertions");
 }

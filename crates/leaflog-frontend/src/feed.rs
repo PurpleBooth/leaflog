@@ -1,8 +1,8 @@
 //! Feed schedule view (M6): template picker, fit button, and the
 //! before/after diff chart.
 
+use crate::ErrorIf;
 use crate::api;
-use crate::equipment::ErrorIf;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::Deserialize;

@@ -666,7 +666,6 @@ async fn grow_days_count_local_calendar_days_in_the_ha_timezone() {
         .json(&json!({
             "name": "TZ run",
             "strain_id": null,
-            "grow_space_id": null,
             "feed_template_id": null,
             "substrate": "soil",
             "started_on": "2026-11-10",
@@ -730,7 +729,6 @@ async fn env_alerts_route_to_ha_under_optin_rate_limited_and_quiet() {
         .json(&json!({
             "name": "Hot run",
             "strain_id": null,
-            "grow_space_id": null,
             "feed_template_id": null,
             "substrate": "soil",
             "started_on": "2026-10-01",

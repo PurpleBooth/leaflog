@@ -115,11 +115,10 @@ impl GrowStatus {
     }
 }
 
-/// One grow: a run of one or more plants of a strain in a substrate,
-/// optionally inside a grow space.
+/// One grow: a run of one or more plants of a strain in a substrate.
 ///
-/// `Eq` is not derived: `real_watts` is a `f64` (measured wall draw,
-/// like the equipment catalogue's field), and floats carry no `Eq`.
+/// `Eq` is not derived: `real_watts` is a `f64` (measured wall draw),
+/// and floats carry no `Eq`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Grow {
     /// ULID.
@@ -128,9 +127,6 @@ pub struct Grow {
     pub name: String,
     /// Strain ULID (nullable: a grow may predate the catalogue entry).
     pub strain_id: Option<String>,
-    /// Grow-space ULID (nullable: grows may run outside any space, and
-    /// deleting a space keeps its grows).
-    pub grow_space_id: Option<String>,
     /// The feed template fitted to this grow (spec §4.6/§4.15); copied
     /// by reference. Absent JSON parses as `None`.
     #[serde(default)]
@@ -194,8 +190,6 @@ pub struct GrowInput {
     pub name: String,
     /// Strain ULID.
     pub strain_id: Option<String>,
-    /// Grow-space ULID.
-    pub grow_space_id: Option<String>,
     /// The fitted feed template, copied by reference (spec §4.6).
     #[serde(default)]
     pub feed_template_id: Option<String>,
@@ -243,7 +237,6 @@ impl GrowInput {
         Self {
             name: grow.name.clone(),
             strain_id: grow.strain_id.clone(),
-            grow_space_id: grow.grow_space_id.clone(),
             feed_template_id: grow.feed_template_id.clone(),
             planned_veg_weeks: grow.planned_veg_weeks,
             strain_label: grow.strain_label.clone(),

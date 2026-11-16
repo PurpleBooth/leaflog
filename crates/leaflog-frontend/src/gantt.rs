@@ -4,8 +4,8 @@
 // pedantic here (see docs/DECISIONS.md).
 #![allow(clippy::cast_precision_loss)]
 
+use crate::ErrorIf;
 use crate::api::{Forecast, PhaseWindowData};
-use crate::equipment::ErrorIf;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 

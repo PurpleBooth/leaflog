@@ -2,14 +2,12 @@
 //! on top of [`crate::db`].
 
 pub mod actions;
-pub mod equipment;
 pub mod feeds;
 pub mod grows;
 pub mod photos;
 pub mod retention;
 pub mod sensors;
 pub mod settings;
-pub mod spaces;
 pub mod strain;
 
 use crate::db::StoreError;

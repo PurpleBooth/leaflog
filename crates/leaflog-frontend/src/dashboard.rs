@@ -1,7 +1,7 @@
 //! Environment, lamp and coach dashboard tiles (M7).
 
+use crate::ErrorIf;
 use crate::api;
-use crate::equipment::ErrorIf;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::Deserialize;
@@ -152,8 +152,16 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                             {dead
                                 .into_iter()
                                 .map(|binding| {
+                                    // The badge is where a bound entity id
+                                    // renders as text, so it carries the
+                                    // wrap-anywhere treatment (the long-id
+                                    // regression, ticket 10) and the full
+                                    // id on hover.
+                                    let entity_id = binding.entity_id.clone();
                                     view! {
-                                        <span class="badge badge-ghost">
+                                        <span class="badge badge-ghost entity-id"
+                                            title=entity_id
+                                        >
                                             {format!("{} ({})", binding.role, binding.entity_id)}
                                         </span>
                                     }
