@@ -44,7 +44,7 @@ mod spaces;
 mod strains;
 
 use equipment::EquipmentPage;
-use grows::{GrowDetail, GrowsPage};
+use grows::{GrowsPage, GrowsRoute, Landing};
 use history::{HistoryPage, PlantViewPage};
 use js_sys::{Reflect, global};
 use leptos::prelude::*;
@@ -126,7 +126,7 @@ pub fn App() -> impl IntoView {
                 </header>
                 <main id="main">
                     <Routes fallback=|| view! { <p>"Loading…"</p> }>
-                        <Route path=path!("/") view=Home />
+                        <Route path=path!("/") view=Landing />
                         <Route path=path!("/spike") view=Spike />
                         <Route path=path!("/equipment") view=EquipmentPage />
                         <Route path=path!("/strains") view=StrainsPage />
@@ -136,7 +136,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/plants/:id") view=PlantViewPage />
                         <Route path=path!("/spaces/:id") view=SpaceDetail />
                         <Route path=path!("/grows") view=GrowsPage />
-                        <Route path=path!("/grows/:id") view=GrowDetail />
+                        <Route path=path!("/grows/:id") view=GrowsRoute />
                     </Routes>
                 </main>
             </div>
@@ -145,9 +145,11 @@ pub fn App() -> impl IntoView {
 }
 
 /// Home view: quick links and the backend health payload (fetched with
-/// a *relative* URL, resolved through the injected `<base href>`).
+/// a *relative* URL, resolved through the injected `<base href>`). Now
+/// the no-grows landing fallback too (ticket 11).
 #[component]
-fn Home() -> impl IntoView {
+#[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
+pub fn Home() -> impl IntoView {
     let health = RwSignal::new(String::from("…"));
     Effect::new(move |_| {
         spawn_local(async move {

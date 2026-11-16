@@ -19,6 +19,7 @@ use leptos_router::hooks::use_params_map;
 use serde::de::DeserializeOwned;
 use std::future::Future;
 
+use crate::Home;
 use crate::api::{self, ApiFailure};
 use crate::chart::HistoryChart;
 use crate::dashboard::EnvDashboard;
@@ -186,13 +187,67 @@ pub fn GrowsPage() -> impl IntoView {
     }
 }
 
-/// The grow detail page: chips, timeline, plants and photos.
+/// The `/grows/:id` route: reads the path id and renders the overview.
+#[component]
+pub fn GrowsRoute() -> impl IntoView {
+    let params = use_params_map();
+    let grow_id = Signal::derive(move || params.get().get("id").unwrap_or_default());
+    view! { <GrowDetail grow_id /> }
+}
+
+/// The app landing page (D073 follow-up): the most recently updated
+/// active grow's overview, falling back to the most recent grow
+/// overall, and to the existing home (onboarding) with no grows at
+/// all.
+#[component]
+pub fn Landing() -> impl IntoView {
+    let picked = RwSignal::<Option<String>>::new(None);
+    Effect::new(move |_| {
+        spawn_local(async move {
+            match api::get::<Vec<Grow>>("api/grows").await {
+                Ok(grows) => picked.set(Some(pick_landing_grow(&grows))),
+                // A failed fetch is the home page's problem to show.
+                Err(_) => picked.set(None),
+            }
+        });
+    });
+    view! {
+        <Show
+            when=move || {
+                picked.get().as_deref().is_some_and(|id| !id.is_empty())
+            }
+            fallback=|| view! { <Home /> }
+        >
+            {move || {
+                let id = picked.get().unwrap_or_default();
+                view! { <GrowDetail grow_id=Signal::derive(move || id.clone()) /> }
+            }}
+        </Show>
+    }
+}
+
+/// Picks the grow the app lands on: the most recently updated grow
+/// whose status is still active; with none active, the most recently
+/// updated grow overall. Empty when there are no grows (the landing
+/// then shows the onboarding home).
+#[must_use]
+fn pick_landing_grow(grows: &[Grow]) -> String {
+    let newest = |grow: &Grow| grow.updated_at.clone();
+    let active = grows
+        .iter()
+        .filter(|grow| grow.status == GrowStatus::Active)
+        .max_by(|a, b| newest(a).cmp(&newest(b)));
+    let overall = grows.iter().max_by(|a, b| newest(a).cmp(&newest(b)));
+    active
+        .or(overall)
+        .map_or_else(String::new, |grow| grow.id.clone())
+}
+
+/// The grow overview page: environment, forecast, phase picker, feed
+/// schedule, chips, timeline, plants and photos.
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
-pub fn GrowDetail() -> impl IntoView {
-    let params = use_params_map();
-    let grow_id = move || params.get().get("id").unwrap_or_default();
-
+pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
     let grow = RwSignal::<Option<Grow>>::new(None);
     let plants = RwSignal::<Vec<Plant>>::new(Vec::new());
     let actions = RwSignal::<Vec<ActionEntry>>::new(Vec::new());
@@ -229,7 +284,7 @@ pub fn GrowDetail() -> impl IntoView {
     };
 
     let refresh = move || {
-        let id = grow_id();
+        let id = grow_id.get();
         spawn_local(async move {
             let base = format!("api/grows/{id}");
             match api::get::<Grow>(&base).await {
@@ -259,14 +314,14 @@ pub fn GrowDetail() -> impl IntoView {
         });
     };
     Effect::new(move |_| {
-        params.track();
+        grow_id.track();
         refresh();
     });
 
     // prevent_default first — see docs/DECISIONS.md D061.
     let save_action = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
-        let id = grow_id();
+        let id = grow_id.get();
         spawn_local(async move {
             let input = draft.get();
             match api::post::<ActionInput, ActionEntry>(&format!("api/grows/{id}/actions"), &input)
@@ -292,7 +347,7 @@ pub fn GrowDetail() -> impl IntoView {
     // prevent_default first — see docs/DECISIONS.md D061.
     let save_edit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
-        let id = grow_id();
+        let id = grow_id.get();
         spawn_local(async move {
             let input = grow_draft.get();
             match api::put::<GrowInput, Grow>(&format!("api/grows/{id}"), &input).await {
@@ -314,7 +369,7 @@ pub fn GrowDetail() -> impl IntoView {
         let Some(phase) = pick_phase.get() else {
             return;
         };
-        let id = grow_id();
+        let id = grow_id.get();
         let photoperiod = current_photoperiod();
         let when = pick_date.get();
         let day = if when.is_empty() {
@@ -342,7 +397,7 @@ pub fn GrowDetail() -> impl IntoView {
     // Deleting a grow takes its plants, log entries and photos with it,
     // so it asks for confirmation first.
     let delete_grow = move |_ev: leptos::ev::MouseEvent| {
-        let id = grow_id();
+        let id = grow_id.get();
         let name = grow.get().map(|current| current.name).unwrap_or_default();
         let confirmed = leptos::web_sys::window()
             .and_then(|window| {
@@ -366,7 +421,7 @@ pub fn GrowDetail() -> impl IntoView {
     };
 
     let add_plant = move |_ev: leptos::ev::MouseEvent| {
-        let id = grow_id();
+        let id = grow_id.get();
         spawn_local(async move {
             let name = format!("Plant {}", plants.get().len() + 1);
             match api::post::<PlantInput, Plant>(
@@ -387,7 +442,7 @@ pub fn GrowDetail() -> impl IntoView {
     };
 
     let upload = move |ev: leptos::ev::Event| {
-        let id = grow_id();
+        let id = grow_id.get();
         let input = event_target::<leptos::web_sys::HtmlInputElement>(&ev);
         let Some(files) = input.files() else {
             return;
@@ -562,13 +617,13 @@ pub fn GrowDetail() -> impl IntoView {
                     "Record phase"
                 </button>
             </form>
-            <GanttTimeline grow_id=grow_id() />
+            <GanttTimeline grow_id=grow_id.get() />
 
-            <EnvDashboard grow_id=grow_id() />
-            <HistoryChart grow_id=grow_id() />
+            <EnvDashboard grow_id=grow_id.get() />
+            <HistoryChart grow_id=grow_id.get() />
 
             <h3>"Feed schedule"</h3>
-            <FeedPanel grow_id=grow_id() />
+            <FeedPanel grow_id=grow_id.get() />
 
             <h3>"Quick add"</h3>
             <nav class="flex flex-wrap gap-2 my-2" aria-label="Quick add action">
@@ -687,7 +742,7 @@ pub fn GrowDetail() -> impl IntoView {
                 </div>
 
                 <div>
-                    <LivePanel grow_id=grow_id() />
+                    <LivePanel grow_id=grow_id.get() />
                     <h3>"Plants"</h3>
                     <ul class="grid gap-4 lg:grid-cols-2">
                         {move || {
@@ -1189,6 +1244,66 @@ fn substrate_glyph(substrate: &str) -> Option<&'static str> {
         "coco" => Some("🥥"),
         "hydro" => Some("💧"),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod landing_pick_tests {
+    use super::pick_landing_grow;
+    use leaflog_core::grows::{Grow, GrowStatus};
+
+    fn grow(id: &str, status: GrowStatus, updated_at: &str) -> Grow {
+        Grow {
+            id: id.to_owned(),
+            name: id.to_owned(),
+            strain_id: None,
+            grow_space_id: None,
+            seed_batch_id: None,
+            feed_template_id: None,
+            planned_veg_weeks: None,
+            substrate: "soil".to_owned(),
+            started_on: "2026-01-01".to_owned(),
+            status,
+            notes: None,
+            created_at: "2026-01-01T00:00:00Z".to_owned(),
+            updated_at: updated_at.to_owned(),
+        }
+    }
+
+    #[test]
+    fn prefers_the_newest_active_grow() {
+        let grows = [
+            grow("old-active", GrowStatus::Active, "2026-01-02T00:00:00Z"),
+            grow(
+                "newest-archived",
+                GrowStatus::Archived,
+                "2026-03-01T00:00:00Z",
+            ),
+            grow("newest-active", GrowStatus::Active, "2026-02-01T00:00:00Z"),
+        ];
+        assert_eq!(pick_landing_grow(&grows), "newest-active");
+    }
+
+    #[test]
+    fn falls_back_to_the_newest_grow_when_none_is_active() {
+        let grows = [
+            grow(
+                "older-archived",
+                GrowStatus::Archived,
+                "2026-01-01T00:00:00Z",
+            ),
+            grow(
+                "newest-archived",
+                GrowStatus::Archived,
+                "2026-03-01T00:00:00Z",
+            ),
+        ];
+        assert_eq!(pick_landing_grow(&grows), "newest-archived");
+    }
+
+    #[test]
+    fn empty_when_there_are_no_grows() {
+        assert_eq!(pick_landing_grow(&[]), "");
     }
 }
 
