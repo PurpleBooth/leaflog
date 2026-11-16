@@ -15,7 +15,8 @@ in docs/DECISIONS.md.
 
 ## Non-negotiables (violating these breaks the product)
 
-- **Rust only** for app code. No Node runtime in the final image (build-time CSS tooling is fine).
+- **Rust only** for app code. No Node runtime in the final image (build-time
+  tooling for CSS and the chart bundle is fine — Tailwind CLI, npm + esbuild).
 - **Local-first**: no telemetry, no cloud calls at runtime. Imports are user-triggered only.
 - **Ingress-correct** (app is served under `/api/hassio_ingress/<token>/`):
   - Relative URLs everywhere. Never `/static/...`, never redirect to `/login`.
@@ -41,13 +42,16 @@ Cargo workspace with:
   `http://supervisor/core/api/`, WebSocket `ws://supervisor/core/websocket`; documented
   endpoints only — isolate undocumented ones behind a trait with fallback). Must work fully
   with HA unreachable and reconnect with backoff.
-- Frontend — Leptos **0.8.x, CSR mode**, built with Trunk. No SSR/hydration. Charts as SVG
-  rendered from Rust.
+- Frontend — Leptos **0.8.x, CSR mode**, built with Trunk. No SSR/hydration. Charts render
+  with the ECharts SVG renderer, driven from Rust (js_sys/serde-wasm-bindgen builds the
+  option payload); all domain logic stays in Rust. The ECharts bundle is a build-time
+  artifact produced by npm + esbuild — no CDN, and Node never enters the image
+  (docs/adr/0001-echarts-rendering.md, D077).
 - `mock-HA` — Axum app speaking the WS protocol with fake sensor data for `just dev`.
 - Browser ↔ backend: JSON REST + one WebSocket/SSE channel. The browser never talks to HA.
 
-Record architectural decisions in `docs/ARCHITECTURE.md` and one-off choices in
-`docs/DECISIONS.md`.
+Record architectural decisions as ADRs in `docs/adr/`, referenced from
+`docs/ARCHITECTURE.md`; one-off choices go in `docs/DECISIONS.md`.
 
 ## Mandatory lint policy (never weaken)
 
