@@ -25,6 +25,11 @@ pub enum ActionType {
     Transplant,
     /// Flip to 12/12 (photoperiods) — moves the forecast.
     Flip,
+    /// A phase transition with no canonical action (into seedling,
+    /// vegetative, curing or back to germination; a Flowering pick on
+    /// an autoflower). The target phase rides in
+    /// [`ActionDetails::target_phase`] (D073).
+    PhaseChange,
     /// Pest treatment / IPM.
     PestIpm,
     /// Environment change (fan, humidity, temperature, ...).
@@ -48,7 +53,7 @@ pub enum ActionType {
 impl ActionType {
     /// All action types in chip order (spec §4.2).
     #[must_use]
-    pub const fn all() -> [Self; 16] {
+    pub const fn all() -> [Self; 17] {
         [
             Self::Lights,
             Self::Water,
@@ -66,6 +71,7 @@ impl ActionType {
             Self::TrichomeCheck,
             Self::Harvest,
             Self::DryCureCheck,
+            Self::PhaseChange,
         ]
     }
 
@@ -80,6 +86,7 @@ impl ActionType {
             Self::Train => "train",
             Self::Transplant => "transplant",
             Self::Flip => "flip",
+            Self::PhaseChange => "phase_change",
             Self::PestIpm => "pest_ipm",
             Self::EnvChange => "env_change",
             Self::LightChange => "light_change",
@@ -103,6 +110,7 @@ impl ActionType {
             Self::Train => "Train",
             Self::Transplant => "Transplant",
             Self::Flip => "Flip 12/12",
+            Self::PhaseChange => "Phase change",
             Self::PestIpm => "Pest/IPM",
             Self::EnvChange => "Env change",
             Self::LightChange => "Light change",
@@ -150,6 +158,8 @@ pub struct ActionDetails {
     pub cloudy_pct: Option<u8>,
     /// Amber trichome percentage.
     pub amber_pct: Option<u8>,
+    /// The phase a [`ActionType::PhaseChange`] moved the grow to.
+    pub target_phase: Option<Phase>,
 }
 
 /// Appearance tags commonly used on log entries (spec §4.2). Free-form
@@ -204,6 +214,18 @@ mod tests {
         assert_eq!(labels.len(), all.len());
         assert!(labels.contains(&"flip"));
         assert!(labels.contains(&"dry_cure_check"));
+    }
+
+    /// D073: a phase pick records a Phase-change event, so the type
+    /// must exist with a stable label and a short chip caption.
+    #[test]
+    fn phase_change_is_a_recordable_type() {
+        let phase_change = ActionType::all()
+            .into_iter()
+            .find(|action| action.label() == "phase_change")
+            .expect("phase_change must be one of the action types");
+        assert_eq!(phase_change.display(), "Phase change");
+        assert_eq!(ActionType::all().len(), 17);
     }
 
     #[test]
