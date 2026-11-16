@@ -1272,6 +1272,7 @@ mod landing_pick_tests {
             seed_batch_id: None,
             feed_template_id: None,
             planned_veg_weeks: None,
+            light_cycle: None,
             substrate: "soil".to_owned(),
             started_on: "2026-01-01".to_owned(),
             status,
