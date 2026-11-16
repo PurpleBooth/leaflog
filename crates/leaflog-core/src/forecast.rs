@@ -203,7 +203,9 @@ pub fn forecast(input: &ForecastInput) -> Vec<PhaseWindow> {
         f_min,
         flower_end - flip_day,
         f_max,
-        input.actuals.flip_day.is_some() || input.photoperiod == PhotoperiodType::Auto,
+        input.actuals.flip_day.is_some()
+            || input.actuals.flower_start.is_some()
+            || input.photoperiod == PhotoperiodType::Auto,
         flower_actual_end,
     );
 
@@ -354,9 +356,10 @@ fn add_vegetative(
             let pinned = input.actuals.vegetative_start.is_some();
             let Some(weeks) = input.planned_veg_weeks else {
                 // No plan: veg runs until the grower flips it. A
-                // logged flip pins its end; without one there is no
-                // projected end and no downstream windows.
-                let flip = input.actuals.flip_day;
+                // logged flip (or Flowering pick) pins its end; without
+                // one there is no projected end and no downstream
+                // windows.
+                let flip = input.actuals.flip_day.or(input.actuals.flower_start);
                 add(
                     windows,
                     Phase::Vegetative,
@@ -370,7 +373,11 @@ fn add_vegetative(
                 return flip.map(|flip| (flip, flower));
             };
             let veg_days = Day::from(weeks.max(1)) * 7;
-            let flip = input.actuals.flip_day.unwrap_or(start + veg_days);
+            let flip = input
+                .actuals
+                .flip_day
+                .or(input.actuals.flower_start)
+                .unwrap_or(start + veg_days);
             add(
                 windows,
                 Phase::Vegetative,
@@ -378,13 +385,21 @@ fn add_vegetative(
                 veg_days,
                 veg_days,
                 veg_days + 3,
-                input.actuals.flip_day.is_some() || pinned,
+                input.actuals.flip_day.is_some()
+                    || input.actuals.flower_start.is_some()
+                    || pinned,
                 Some(flip),
             );
             Some((flip, flower))
         }
         PhotoperiodType::Auto => {
-            let auto_flip = 28.max(start);
+            // A Flowering pick pins the auto's flower start; otherwise
+            // the age estimate stands, never earlier than the veg
+            // start.
+            let auto_flip = input
+                .actuals
+                .flower_start
+                .map_or_else(|| 28.max(start), |pin| pin.max(start));
             add(
                 windows,
                 Phase::Vegetative,
@@ -700,6 +715,65 @@ mod tests {
         // Still open-ended: the pin only moved the boundary.
         assert_eq!(windows.len(), 3);
         phases_ordered_and_contiguous(&windows).unwrap();
+    }
+
+    #[test]
+    fn flower_pin_pins_open_photoperiod() {
+        // A Flowering pick on a photoperiod with no flip and no plan
+        // still projects the whole downstream chain.
+        let input = ForecastInput {
+            planned_veg_weeks: None,
+            actuals: Actuals {
+                flower_start: Some(45),
+                ..Actuals::default()
+            },
+            ..base_input()
+        };
+        let windows = forecast(&input);
+        assert_eq!(windows.len(), 6);
+        assert_eq!(windows[2].likely_end, 45);
+        let flower = &windows[3];
+        assert_eq!(flower.likely_start, 45);
+        assert!(flower.actual_start);
+        phases_ordered_and_contiguous(&windows).unwrap();
+    }
+
+    #[test]
+    fn autoflower_flowering_pin_beats_age_estimate() {
+        let input = ForecastInput {
+            photoperiod: crate::strain::PhotoperiodType::Auto,
+            planned_veg_weeks: None,
+            auto_total_days: Some((70, 84)),
+            actuals: Actuals {
+                flower_start: Some(35),
+                ..Actuals::default()
+            },
+            ..base_input()
+        };
+        let windows = forecast(&input);
+        assert_eq!(windows[2].likely_end, 35);
+        let flower = &windows[3];
+        assert_eq!(flower.likely_start, 35);
+        assert!(flower.actual_start);
+        phases_ordered_and_contiguous(&windows).unwrap();
+    }
+
+    #[test]
+    fn flip_beats_flower_pin_on_photoperiod() {
+        // A logged flip is the more precise record for the same
+        // boundary.
+        let input = ForecastInput {
+            planned_veg_weeks: None,
+            actuals: Actuals {
+                flip_day: Some(45),
+                flower_start: Some(40),
+                ..Actuals::default()
+            },
+            ..base_input()
+        };
+        let windows = forecast(&input);
+        assert_eq!(windows[2].likely_end, 45);
+        assert_eq!(windows[3].likely_start, 45);
     }
 
     #[test]
