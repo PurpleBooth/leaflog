@@ -6,6 +6,55 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-16 — night presets in core (light cycle ticket 06)
+
+### D075: lights-off maths get their own leaf offset; the night presets land as sourced constants
+
+The −2 °C default leaf offset is a lights-on assumption: under the
+lamps, leaves run measurably below the air sensor's reading. In
+darkness the stomata close, transpiration cooling stops, and the leaf
+sits close to air temperature; Black Dog LED's VPD guide puts the
+lights-off span at 0 to −1 °C. Core now carries `NIGHT_LEAF_OFFSET_C`
+(−1 °C, the conservative edge) beside the default. Ticket 07's
+lights-off band segments pass it in place of the default, so night VPD
+and RH numbers stop carrying a cooling assumption that belongs to a
+lit room.
+
+The presets landed beside it, each row with its source label. Night
+temperature corridors: seedling 20.0–23.3 °C, veg 18.3–23.9 °C,
+flower 15.6–23.3 °C. Night VPD bands: germination/seedling
+0.5–0.9 kPa (sources span 0.3–1.0 and the label says so), veg
+0.8–1.2 kPa, flower 1.0–1.4 kPa. Both are Option-returning accessors:
+drying and curing rooms run without lights, their single day bands
+apply 24/7, and the accessors return `None` for them. Night CO2 is
+ambient 400–450 ppm with enrichment off; the lights-on band
+(800–1,500 ppm) comes from the two enrichment articles, which disagree
+on the ceiling (1,200 vs 1,500 ppm), so the encoded union keeps that
+disagreement visible in its label.
+
+Two open items travel with the numbers. Inside a germination dome at
+75–90 % RH the computed VPD sits far below any band, so band checks
+for dome-bound grows stay suspended until a ticket takes them up. And
+no university extension publishes cannabis lights-off setpoints — the
+strongest anchor is the peer-reviewed hemp study (Agronomy
+13(10):2636), which disagrees with hobby guides on ideal night
+temperature; the ranges keep both.
+
+### D076: the VPD derivation clamps at zero, as a tested contract
+
+The Magnus derivation in `vpd_kpa` has always applied `.max(0.0)`, so
+no consumer has seen a negative value. Nothing guaranteed it: the
+clamp was an implementation detail, one refactor away from vanishing,
+and a saturated dark period (100 % RH, leaf cooler than air) computes
+a raw difference around −0.4 kPa. The clamp is now part of the
+derivation's contract: golden-value cases pin the saturation clamp, a
+grid over realistic temperatures, humidities and offsets asserts
+VPD ≥ 0, and the chart's derived-VPD test covers both leaf offsets at
+saturation. Alert evaluation against night bands (an open item, not
+yet built) inherits the guarantee.
+
+---
+
 ## 2026-11-16 — grow overview redesign (D073 follow-up)
 
 ### D074: `float_cmp` allowance in the chart's step builder
