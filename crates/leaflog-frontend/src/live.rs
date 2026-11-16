@@ -130,7 +130,10 @@ pub fn LivePanel(grow_id: String) -> impl IntoView {
                                 .unwrap_or_default();
                             Some(
                                 view! {
-                                    <div class="rounded-box border border-base-300 bg-base-100 px-3 py-2 grid gap-0.5">
+                                    <div
+                                        class="rounded-box border border-base-300 bg-base-100 px-3 py-2 grid gap-0.5"
+                                        title={entity_id.clone()}
+                                    >
                                         <span class="text-xs uppercase tracking-wide text-base-content/60">{*label}</span>
                                         <span class="text-lg font-semibold">
                                             {format!("{} {}", entity.state, unit)}
