@@ -133,6 +133,18 @@ pub fn format_on_off(value: f64) -> String {
     }
 }
 
+/// Axis formatter: pH values (dimensionless).
+#[must_use]
+pub fn format_ph(value: f64) -> String {
+    format!("{value:.1}")
+}
+
+/// Axis formatter: EC in µS/cm (canonical, spec §5.3).
+#[must_use]
+pub fn format_ec_us(value: f64) -> String {
+    format!("{value:.0} µS/cm")
+}
+
 /// The SVG canvas width (the viewBox is fixed; the element scales).
 const WIDTH: f64 = 600.0;
 /// The SVG canvas height.
@@ -140,7 +152,8 @@ const HEIGHT: f64 = 220.0;
 
 /// One windowed chart for one sensor role on the grow overview.
 /// `format_value` renders axis labels (per the HA unit system);
-/// `step` draws the series as a staircase (binary entities).
+/// `step` draws the series as a staircase (binary entities); `scatter`
+/// plots points instead of a line (event series such as pH/EC).
 #[component]
 pub fn HistoryChart(
     grow_id: String,
@@ -148,6 +161,7 @@ pub fn HistoryChart(
     #[prop(default = "Temperature")] title: &'static str,
     format_value: fn(f64) -> String,
     #[prop(default = false)] step: bool,
+    #[prop(default = false)] scatter: bool,
 ) -> impl IntoView {
     let window = RwSignal::new("day".to_owned());
     let data = RwSignal::<Option<GrowHistory>>::new(None);
@@ -220,7 +234,8 @@ pub fn HistoryChart(
                     let current = data.get()?;
                     if current.bound {
                         return Some(
-                            view! { <ChartSvg chart=current format_value step /> }.into_any(),
+                            view! { <ChartSvg chart=current format_value step scatter /> }
+                                .into_any(),
                         );
                     }
                     Some(
@@ -238,9 +253,16 @@ pub fn HistoryChart(
 }
 
 /// The line-and-corridor SVG for one loaded chart. `step` renders the
-/// series as a staircase (binary entities such as a lamp's on/off).
+/// series as a staircase (binary entities such as a lamp's on/off);
+/// `scatter` plots the points as dots instead (event series such as
+/// pH/EC), overlaying the pair's compare series in a second colour.
 #[component]
-fn ChartSvg(chart: GrowHistory, format_value: fn(f64) -> String, step: bool) -> impl IntoView {
+fn ChartSvg(
+    chart: GrowHistory,
+    format_value: fn(f64) -> String,
+    step: bool,
+    scatter: bool,
+) -> impl IntoView {
     let from = parse_epoch(&chart.series.from).unwrap_or(0);
     let to = parse_epoch(&chart.series.to).unwrap_or(from + 1);
     let points: Vec<(i64, f64)> = chart
@@ -249,6 +271,17 @@ fn ChartSvg(chart: GrowHistory, format_value: fn(f64) -> String, step: bool) -> 
         .iter()
         .filter_map(|point| parse_epoch(&point.at).map(|at| (at, point.value)))
         .collect();
+    let compare: Vec<(i64, f64)> = chart
+        .compare
+        .as_ref()
+        .map(|series| {
+            series
+                .points
+                .iter()
+                .filter_map(|point| parse_epoch(&point.at).map(|at| (at, point.value)))
+                .collect()
+        })
+        .unwrap_or_default();
     let bands: Vec<(i64, i64, f64, f64)> = chart
         .bands
         .iter()
@@ -261,7 +294,11 @@ fn ChartSvg(chart: GrowHistory, format_value: fn(f64) -> String, step: bool) -> 
             ))
         })
         .collect();
-    let geom = geometry(&points, &bands, from, to, WIDTH, HEIGHT);
+    // The compare series shares the scale, so its values join the
+    // range the axis is computed from.
+    let mut range_points = points.clone();
+    range_points.extend(compare.iter().copied());
+    let geom = geometry(&range_points, &bands, from, to, WIDTH, HEIGHT);
     let line_points = if step {
         step_points(&geom.line_points)
     } else {
@@ -276,6 +313,40 @@ fn ChartSvg(chart: GrowHistory, format_value: fn(f64) -> String, step: bool) -> 
     let y_min_label = format_value(geom.y_min);
     let label = format!("{} history", chart.role);
     let y_min_y = format!("{:.1}", HEIGHT - 6.0);
+
+    // Scatter dots map their epochs through the same scale the line
+    // uses. Epoch seconds stay far below f64's 52-bit mantissa.
+    #[allow(clippy::cast_precision_loss)]
+    let x_of = |at: i64| WIDTH * (at - from) as f64 / (to - from).max(1) as f64;
+    #[allow(clippy::cast_precision_loss)]
+    let y_of =
+        |value: f64| HEIGHT * (1.0 - (value - geom.y_min) / (geom.y_max - geom.y_min).max(0.001));
+    let dot = |(at, value): (i64, f64), class: &'static str| {
+        view! {
+            <circle
+                cx=format!("{:.1}", x_of(at))
+                cy=format!("{:.1}", y_of(value))
+                r="3.5"
+                class=class
+            />
+        }
+    };
+    let main_dots = if scatter {
+        points
+            .iter()
+            .map(|&point| dot(point, "fill-primary"))
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    let compare_dots = if scatter {
+        compare
+            .iter()
+            .map(|&point| dot(point, "fill-secondary"))
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
 
     view! {
         <svg viewBox=format!("0 0 {WIDTH} {HEIGHT}") class="w-full" role="img" aria-label=label>
@@ -294,7 +365,11 @@ fn ChartSvg(chart: GrowHistory, format_value: fn(f64) -> String, step: bool) -> 
                     }
                 })
                 .collect::<Vec<_>>()}
-            <polyline points=line class="fill-none stroke-primary" stroke-width="2" />
+            {(!scatter).then(|| {
+                view! { <polyline points=line class="fill-none stroke-primary" stroke-width="2" /> }
+            })}
+            {main_dots}
+            {compare_dots}
             <text x="4" y="14" class="fill-base-content/60">{y_max_label}</text>
             <text x="4" y=y_min_y class="fill-base-content/60">{y_min_label}</text>
         </svg>

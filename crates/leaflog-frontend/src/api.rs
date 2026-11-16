@@ -196,6 +196,9 @@ pub struct GrowHistory {
     pub window: String,
     /// The merged windowed series (SI units, ascending by time).
     pub series: ChartSeriesData,
+    /// The pair role's second series (pH runoff next to input), when
+    /// the role has one.
+    pub compare: Option<ChartSeriesData>,
     /// Phase corridor segments clipped to the window.
     pub bands: Vec<BandSegmentData>,
     /// Home Assistant's history was unavailable, so the chart is

@@ -46,6 +46,9 @@ pub struct GrowHistory {
     pub window: String,
     /// The merged windowed series (SI units, ascending by time).
     pub series: ChartSeries,
+    /// The pair role's second series (pH runoff next to input), when
+    /// the role has one.
+    pub compare: Option<ChartSeries>,
     /// Phase corridor segments clipped to the window (empty for roles
     /// without a corridor).
     pub bands: Vec<BandSegment>,
@@ -95,13 +98,54 @@ fn parse_value(role: &str, state: &str) -> Option<f64> {
     state.parse::<f64>().ok()
 }
 
+/// The action-details field a pH/EC chart role reads, when the role
+/// is one of them.
+fn detail_field(role: &str) -> Option<&'static str> {
+    match role {
+        "input_ph" => Some("input_ph"),
+        "runoff_ph" => Some("runoff_ph"),
+        "input_ec" => Some("input_ec_us"),
+        "runoff_ec" => Some("runoff_ec_us"),
+        _ => None,
+    }
+}
+
+/// Loads a pH/EC role's points from the grow's feed and water
+/// entries' structured details. Bound means at least one point exists
+/// (there is no sensor behind this role).
+fn load_detail_role(
+    conn: &rusqlite::Connection,
+    grow_id: &str,
+    field: &str,
+) -> Result<RolePoints, ApiError> {
+    let snapshots: Vec<RawPoint> = store::actions::detail_rows(conn, grow_id)?
+        .into_iter()
+        .filter_map(|(at, details)| {
+            let value = serde_json::from_str::<Value>(&details)
+                .ok()?
+                .get(field)?
+                .as_f64()?;
+            Some(RawPoint { at, value })
+        })
+        .collect();
+    let bound = !snapshots.is_empty();
+    Ok(RolePoints {
+        bound,
+        entity_id: None,
+        snapshots,
+    })
+}
+
 /// Loads one role's storage half: the binding and the role's snapshot
-/// points.
+/// points (pH/EC roles read their points from log-entry details).
 fn load_role(
     conn: &rusqlite::Connection,
     grow_id: &str,
     role: &str,
 ) -> Result<RolePoints, ApiError> {
+    if let Some(field) = detail_field(role) {
+        return load_detail_role(conn, grow_id, field);
+    }
     let bindings = store::sensors::list(conn, grow_id)?;
     let entity_id = bindings.get(role).cloned();
     let snapshots = store::sensors::snapshots_for_role(conn, grow_id, role)?
@@ -206,6 +250,46 @@ async fn fetch_role_series(
     (series, degraded, all_bound)
 }
 
+/// Reduces the fetched per-role series to the response pair: the
+/// derived VPD from its two inputs, the input series with the runoff
+/// compare for pH/EC pairs, or the single role's series.
+fn reduce_series(
+    role: &str,
+    is_vpd: bool,
+    mut role_series: Vec<ChartSeries>,
+    now: &str,
+    window: ChartWindow,
+) -> (ChartSeries, Option<ChartSeries>) {
+    if is_vpd {
+        let mut series_iter = role_series.into_iter();
+        let temperature = series_iter
+            .next()
+            .unwrap_or_else(|| empty_series(now, window));
+        let humidity = series_iter
+            .next()
+            .unwrap_or_else(|| empty_series(now, window));
+        let derived = chart::derive_vpd_series(
+            &temperature,
+            &humidity,
+            leaflog_core::env::DEFAULT_LEAF_OFFSET_C,
+        );
+        return (derived, None);
+    }
+    if matches!(role, "ph" | "ec") {
+        let compare = role_series.pop();
+        let series = role_series
+            .pop()
+            .unwrap_or_else(|| empty_series(now, window));
+        return (series, compare);
+    }
+    (
+        role_series
+            .pop()
+            .unwrap_or_else(|| empty_series(now, window)),
+        None,
+    )
+}
+
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 #[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
@@ -217,10 +301,11 @@ async fn grow_history(
     let role = query
         .role
         .ok_or_else(|| ApiError::BadRequest("role query parameter is required".to_owned()))?;
-    // `vpd` is derived, not bound; every other role must be a sensor
-    // role.
+    // `vpd` is derived and `ph`/`ec` read log-entry details; every
+    // other role must be a sensor role.
     let is_vpd = role == "vpd";
-    if !is_vpd && !store::sensors::ROLES.contains(&role.as_str()) {
+    let is_pair = role == "ph" || role == "ec";
+    if !is_vpd && !is_pair && !store::sensors::ROLES.contains(&role.as_str()) {
         return Err(ApiError::BadRequest(format!("unknown role {role}")));
     }
     let window_label = query
@@ -231,9 +316,13 @@ async fn grow_history(
     let tz = crate::app::canonical_timezone(&state).await;
 
     // The DB pass needs the role by value; the response echoes the
-    // original afterwards.
+    // original afterwards. pH/EC pairs read [input, runoff].
     let wanted: Vec<String> = if is_vpd {
         vec!["temperature".to_owned(), "humidity".to_owned()]
+    } else if role == "ph" {
+        vec!["input_ph".to_owned(), "runoff_ph".to_owned()]
+    } else if role == "ec" {
+        vec!["input_ec".to_owned(), "runoff_ec".to_owned()]
     } else {
         vec![role.clone()]
     };
@@ -250,28 +339,16 @@ async fn grow_history(
     // Window hours are small positive constants (24 / 168 / 720).
     let hours = window.hours() as u32;
     let now = crate::db::now_rfc3339();
-    let (mut role_series, degraded, all_bound) =
+    let (role_series, degraded, mut all_bound) =
         fetch_role_series(&state, &loaded, hours, window, &now).await;
 
-    let series = if is_vpd {
-        // Roles arrived as [temperature, humidity].
-        let mut series_iter = role_series.into_iter();
-        let temperature = series_iter
-            .next()
-            .unwrap_or_else(|| empty_series(&now, window));
-        let humidity = series_iter
-            .next()
-            .unwrap_or_else(|| empty_series(&now, window));
-        chart::derive_vpd_series(
-            &temperature,
-            &humidity,
-            leaflog_core::env::DEFAULT_LEAF_OFFSET_C,
-        )
-    } else {
-        role_series
-            .pop()
-            .unwrap_or_else(|| empty_series(&now, window))
-    };
+    // Pair roles carry [input, runoff]: the input side decides the
+    // no-data state, the runoff side overlays as the compare series.
+    if is_pair {
+        all_bound = loaded.roles.first().is_some_and(|(_, points)| points.bound);
+    }
+
+    let (series, compare) = reduce_series(&role, is_vpd, role_series, &now, window);
 
     let spans: Vec<PhaseSpan> = chart::phase_spans(&loaded.grow.started_on, &tz, &loaded.windows);
     let series_points: Vec<(i64, f64)> = series
@@ -318,6 +395,7 @@ async fn grow_history(
         role,
         window: window.label().to_owned(),
         series,
+        compare,
         bands,
         degraded,
         bound: all_bound,

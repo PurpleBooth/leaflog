@@ -257,3 +257,22 @@ fn phase_from_label(label: &str) -> Option<Phase> {
         .into_iter()
         .find(|phase| phase.label() == label)
 }
+
+/// Occurred-at + details JSON for the grow's feed and water entries
+/// (the pH/EC event fields ride those entries), oldest first.
+///
+/// # Errors
+///
+/// Returns a [`StoreError`] on SQLite failures.
+pub fn detail_rows(conn: &Connection, grow_id: &str) -> Result<Vec<(String, String)>, StoreError> {
+    let mut statement = conn.prepare(
+        "SELECT occurred_at, details FROM action_log
+         WHERE grow_id = ?1 AND action_type IN ('feed', 'water')
+         ORDER BY occurred_at",
+    )?;
+    let rows = statement.query_map(params![grow_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(StoreError::from)
+}
