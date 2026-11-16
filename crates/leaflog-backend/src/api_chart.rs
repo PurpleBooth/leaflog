@@ -2,7 +2,7 @@
 //!
 //! One windowed series per sensor role, merging Home Assistant's
 //! history API with Leaflog's own log-time sensor snapshots, plus the
-//! phase-keyed temperature corridor for the chart's shaded band.
+//! phase-keyed corridor for the chart's shaded band.
 //!
 //! Degradation follows the Dead binding rule: when Home Assistant is
 //! unreachable the chart serves snapshot-only points with
@@ -13,6 +13,7 @@ use axum::extract::{Path, Query, State};
 use axum::routing::get;
 use axum::{Json, Router};
 use leaflog_core::chart::{self, BandSegment, ChartSeries, ChartWindow, PhaseSpan, RawPoint};
+use leaflog_core::grows::Grow;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -28,7 +29,9 @@ pub fn router() -> Router<AppState> {
 /// Query of `GET /api/grows/{id}/history`.
 #[derive(Debug, Default, Deserialize)]
 struct HistoryQuery {
-    /// Sensor role to chart (`temperature`, ...); required.
+    /// Sensor role to chart (`temperature`, ...); required. The
+    /// derived `vpd` role computes from the temperature and humidity
+    /// series.
     role: Option<String>,
     /// Rolling window: `day`, `week` or `month`; required.
     window: Option<String>,
@@ -49,64 +52,139 @@ pub struct GrowHistory {
     /// Home Assistant's history was unavailable, so the chart is
     /// snapshot-only (the Dead binding rule).
     pub degraded: bool,
-    /// Whether the grow binds a sensor for this role at all. False is
+    /// Whether the grow binds the sensor(s) this role needs. False is
     /// an explicit no-sensor state, never a data error.
     pub bound: bool,
 }
 
-/// Everything the chart needs from storage, fetched in one DB pass.
+/// The forecast windows and start date the corridor is built from,
+/// plus each role's storage half.
 #[derive(Debug)]
 struct LoadedGrow {
-    /// Whether the grow binds this role.
-    bound: bool,
-    /// The bound entity id, when present (drives the HA call).
-    entity_id: Option<String>,
-    /// Log-time snapshots for the role, as raw series points.
-    snapshots: Vec<RawPoint>,
+    /// The grow row (its planned veg weeks drive the forecast).
+    grow: Grow,
     /// The grow's forecast phase windows (the corridor source).
     windows: Vec<leaflog_core::forecast::PhaseWindow>,
-    /// The grow's start date (the corridor anchor).
-    started_on: String,
+    /// Per-role binding + snapshot points (VPD carries two).
+    roles: Vec<(String, RolePoints)>,
 }
 
-/// Loads the storage half of the chart: the binding, the role's
-/// snapshot points and the grow's forecast windows.
-fn load_grow(conn: &rusqlite::Connection, id: &str, role: &str) -> Result<LoadedGrow, ApiError> {
-    let grow = store::grows::get(conn, id)?;
-    let bindings = store::sensors::list(conn, &grow.id)?;
+/// One role's storage half: the binding and the role's snapshot
+/// points.
+#[derive(Debug)]
+struct RolePoints {
+    bound: bool,
+    entity_id: Option<String>,
+    snapshots: Vec<RawPoint>,
+}
+
+/// Parses one raw sensor state into a series value. The `light` role
+/// reads binary states as 1/0; everything else parses numerically
+/// (states a numeric sensor would never report drop out).
+fn parse_value(role: &str, state: &str) -> Option<f64> {
+    if role == "light" {
+        return match state.trim().to_ascii_lowercase().as_str() {
+            "on" => Some(1.0),
+            "off" => Some(0.0),
+            _ => state.parse::<f64>().ok(),
+        };
+    }
+    state.parse::<f64>().ok()
+}
+
+/// Loads one role's storage half: the binding and the role's snapshot
+/// points.
+fn load_role(
+    conn: &rusqlite::Connection,
+    grow_id: &str,
+    role: &str,
+) -> Result<RolePoints, ApiError> {
+    let bindings = store::sensors::list(conn, grow_id)?;
     let entity_id = bindings.get(role).cloned();
-    let snapshots = store::sensors::snapshots_for_role(conn, &grow.id, role)?
+    let snapshots = store::sensors::snapshots_for_role(conn, grow_id, role)?
         .into_iter()
         .filter_map(|snapshot| {
-            // Snapshot states are raw strings; anything a numeric
-            // sensor would never report ("unavailable") drops out.
-            let value = snapshot.state.parse::<f64>().ok()?;
             Some(RawPoint {
                 at: snapshot.captured_at,
-                value,
+                value: parse_value(role, &snapshot.state)?,
             })
         })
         .collect();
-    // Same actuals as the forecast endpoint (D073 resolution), so the
-    // corridor matches the Gantt: canonical events first, phase-change
-    // pins for the rest, planned veg weeks when set.
+    Ok(RolePoints {
+        bound: entity_id.is_some(),
+        entity_id,
+        snapshots,
+    })
+}
+
+/// Loads the forecast windows for a grow: the same actuals as the
+/// forecast endpoint (D073 resolution), so the corridor matches the
+/// Gantt.
+fn load_windows(
+    conn: &rusqlite::Connection,
+    grow: &Grow,
+) -> Result<Vec<leaflog_core::forecast::PhaseWindow>, ApiError> {
     let strain = grow
         .strain_id
         .as_deref()
         .and_then(|sid| store::strain::get(conn, sid).ok());
     let actuals = crate::api_phase::forecast_actuals(conn, &grow.id)?;
-    let windows = leaflog_core::forecast::forecast(&leaflog_core::forecast::input_for(
-        strain.as_ref(),
-        grow.planned_veg_weeks,
-        actuals,
-    ));
+    Ok(leaflog_core::forecast::forecast(
+        &leaflog_core::forecast::input_for(strain.as_ref(), grow.planned_veg_weeks, actuals),
+    ))
+}
+
+/// The DB half of the chart: the grow, its forecast windows and the
+/// wanted roles' points, in one connection pass.
+fn load_grow_db(
+    conn: &rusqlite::Connection,
+    grow_id: &str,
+    wanted: &[String],
+) -> Result<LoadedGrow, ApiError> {
+    let grow = store::grows::get(conn, grow_id)?;
+    let windows = load_windows(conn, &grow)?;
+    let mut roles = Vec::new();
+    for role_name in wanted {
+        let points = load_role(conn, &grow.id, role_name)?;
+        roles.push((role_name.clone(), points));
+    }
     Ok(LoadedGrow {
-        bound: entity_id.is_some(),
-        entity_id,
-        snapshots,
+        grow,
         windows,
-        started_on: grow.started_on,
+        roles,
     })
+}
+
+/// Fetches HA history per role, merges each with its snapshots, and
+/// reports whether HA degraded the chart and whether every needed
+/// role is bound.
+async fn fetch_role_series(
+    state: &AppState,
+    loaded: &LoadedGrow,
+    hours: u32,
+    window: ChartWindow,
+    now: &str,
+) -> (Vec<ChartSeries>, bool, bool) {
+    let mut degraded = false;
+    let mut series = Vec::new();
+    let mut all_bound = true;
+    for (role_name, points) in &loaded.roles {
+        let mut ha_points = Vec::new();
+        if let Some(entity_id) = &points.entity_id {
+            match state.ha.history(entity_id, hours).await {
+                Ok(value) => ha_points = ha_history_points(role_name, &value),
+                Err(_) => degraded = true,
+            }
+        }
+        all_bound &= points.bound;
+        series.push(chart::merge_series(
+            now,
+            window,
+            &ha_points,
+            &points.snapshots,
+        ));
+    }
+    (series, degraded, all_bound)
 }
 
 // Extractors are taken by value because Axum requires it.
@@ -120,7 +198,10 @@ async fn grow_history(
     let role = query
         .role
         .ok_or_else(|| ApiError::BadRequest("role query parameter is required".to_owned()))?;
-    if !store::sensors::ROLES.contains(&role.as_str()) {
+    // `vpd` is derived, not bound; every other role must be a sensor
+    // role.
+    let is_vpd = role == "vpd";
+    if !is_vpd && !store::sensors::ROLES.contains(&role.as_str()) {
         return Err(ApiError::BadRequest(format!("unknown role {role}")));
     }
     let window_label = query
@@ -132,38 +213,83 @@ async fn grow_history(
 
     // The DB pass needs the role by value; the response echoes the
     // original afterwards.
-    let role_for_db = role.clone();
+    let wanted: Vec<String> = if is_vpd {
+        vec!["temperature".to_owned(), "humidity".to_owned()]
+    } else {
+        vec![role.clone()]
+    };
+    let id_for_db = id.clone();
     let loaded = state
         .db
-        .with(move |conn| load_grow(conn, &id, &role_for_db))
+        .with(move |conn| load_grow_db(conn, &id_for_db, &wanted))
         .await?;
 
-    // HA history for the bound entity (never the token itself). A
-    // failure degrades the chart to snapshot-only points instead of
-    // surfacing an error wall (the Dead binding rule).
-    let mut degraded = false;
-    let mut ha_points = Vec::new();
-    if let Some(entity_id) = &loaded.entity_id {
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        // Window hours are small positive constants (24 / 168 / 720).
-        let hours = window.hours() as u32;
-        match state.ha.history(entity_id, hours).await {
-            Ok(value) => ha_points = ha_history_points(&value),
-            Err(_) => degraded = true,
-        }
-    }
-
+    // HA history per bound entity (never the token itself). A failure
+    // degrades the chart to snapshot-only points instead of surfacing
+    // an error wall (the Dead binding rule).
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    // Window hours are small positive constants (24 / 168 / 720).
+    let hours = window.hours() as u32;
     let now = crate::db::now_rfc3339();
-    let series = chart::merge_series(&now, window, &ha_points, &loaded.snapshots);
-    let spans: Vec<PhaseSpan> = chart::phase_spans(&loaded.started_on, &tz, &loaded.windows);
-    let bands = chart::build_bands(&series.from, &series.to, &spans, |phase| {
-        // v1 ships the temperature corridor only; other roles chart
-        // without a band until their presets land.
-        (role == "temperature").then(|| {
-            let corridor = leaflog_core::env::temperature_corridor(phase);
-            (corridor.min_c, corridor.max_c)
-        })
-    });
+    let (mut role_series, degraded, all_bound) =
+        fetch_role_series(&state, &loaded, hours, window, &now).await;
+
+    let series = if is_vpd {
+        // Roles arrived as [temperature, humidity].
+        let mut series_iter = role_series.into_iter();
+        let temperature = series_iter
+            .next()
+            .unwrap_or_else(|| empty_series(&now, window));
+        let humidity = series_iter
+            .next()
+            .unwrap_or_else(|| empty_series(&now, window));
+        chart::derive_vpd_series(
+            &temperature,
+            &humidity,
+            leaflog_core::env::DEFAULT_LEAF_OFFSET_C,
+        )
+    } else {
+        role_series
+            .pop()
+            .unwrap_or_else(|| empty_series(&now, window))
+    };
+
+    let spans: Vec<PhaseSpan> = chart::phase_spans(&loaded.grow.started_on, &tz, &loaded.windows);
+    let series_points: Vec<(i64, f64)> = series
+        .points
+        .iter()
+        .filter_map(|point| Some((chart::parse_epoch(&point.at)?, point.value)))
+        .collect();
+    let bands = chart::build_bands(
+        &series.from,
+        &series.to,
+        &series_points,
+        &spans,
+        |phase, mean| {
+            match role.as_str() {
+                "temperature" => {
+                    let corridor = leaflog_core::env::temperature_corridor(phase);
+                    Some((corridor.min_c, corridor.max_c))
+                }
+                // The RH window is the VPD band converted at the segment's
+                // mean temperature; no points, no honest window.
+                "humidity" => mean.map(|value| {
+                    leaflog_core::env::rh_window(
+                        value,
+                        leaflog_core::env::DEFAULT_LEAF_OFFSET_C,
+                        leaflog_core::env::vpd_band(phase),
+                    )
+                }),
+                "vpd" => {
+                    let (min, max) = leaflog_core::env::vpd_band(phase);
+                    Some((min, max))
+                }
+                // Soil moisture's sourced preset and the remaining roles
+                // land with their own tickets.
+                _ => None,
+            }
+        },
+    );
 
     Ok(Json(GrowHistory {
         role,
@@ -171,17 +297,23 @@ async fn grow_history(
         series,
         bands,
         degraded,
-        bound: loaded.bound,
+        bound: all_bound,
     }))
+}
+
+/// An empty series covering the requested window (a role whose
+/// storage or HA fetch produced nothing).
+fn empty_series(now: &str, window: ChartWindow) -> ChartSeries {
+    chart::merge_series(now, window, &[], &[])
 }
 
 /// Extracts (timestamp, value) points from a Home Assistant
 /// `history/period` response. The documented `minimal_response` shape
 /// is one full state object first, then short `{s, lu}` objects;
-/// non-numeric states (a sensor reporting `unavailable`) and objects
+/// unparseable states (a sensor reporting `unavailable`) and objects
 /// without a usable timestamp are skipped.
 #[must_use]
-fn ha_history_points(history: &Value) -> Vec<RawPoint> {
+fn ha_history_points(role: &str, history: &Value) -> Vec<RawPoint> {
     let Some(series_list) = history.as_array() else {
         return Vec::new();
     };
@@ -195,7 +327,7 @@ fn ha_history_points(history: &Value) -> Vec<RawPoint> {
                 .get("state")
                 .or_else(|| state.get("s"))
                 .and_then(Value::as_str)
-                .and_then(|text| text.parse::<f64>().ok());
+                .and_then(|text| parse_value(role, text));
             let at = ["lu", "last_changed", "last_updated"]
                 .iter()
                 .find_map(|key| state.get(*key).and_then(Value::as_str));
@@ -212,7 +344,7 @@ fn ha_history_points(history: &Value) -> Vec<RawPoint> {
 
 #[cfg(test)]
 mod tests {
-    use super::ha_history_points;
+    use super::{ha_history_points, parse_value};
     use serde_json::json;
 
     #[test]
@@ -235,7 +367,7 @@ mod tests {
             ],
             "not-an-array"
         ]);
-        let points = ha_history_points(&history);
+        let points = ha_history_points("temperature", &history);
         assert_eq!(points.len(), 3);
         assert_eq!(points[0].value, 24.3);
         assert_eq!(points[0].at, "2026-11-08T12:00:00.000000+00:00");
@@ -245,8 +377,19 @@ mod tests {
 
     #[test]
     fn history_points_fail_closed_on_garbage() {
-        assert_eq!(ha_history_points(&json!("nope")), Vec::new());
-        assert_eq!(ha_history_points(&json!({})), Vec::new());
-        assert_eq!(ha_history_points(&json!([[]])), Vec::new());
+        assert_eq!(ha_history_points("temperature", &json!("nope")), Vec::new());
+        assert_eq!(ha_history_points("temperature", &json!({})), Vec::new());
+        assert_eq!(ha_history_points("temperature", &json!([[]])), Vec::new());
+    }
+
+    #[test]
+    fn light_states_parse_as_one_and_zero() {
+        assert_eq!(parse_value("light", "on"), Some(1.0));
+        assert_eq!(parse_value("light", "OFF"), Some(0.0));
+        assert_eq!(parse_value("light", "unavailable"), None);
+        // Numeric light states (a dimmer's percentage) still parse.
+        assert_eq!(parse_value("light", "42"), Some(42.0));
+        // Other roles stay strictly numeric.
+        assert_eq!(parse_value("temperature", "on"), None);
     }
 }

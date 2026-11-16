@@ -9,17 +9,49 @@ use leaflog_core::chart::parse_epoch;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
+/// Axis formatter: relative humidity percent.
+#[must_use]
+pub fn format_pct(value: f64) -> String {
+    format!("{value:.0} %")
+}
+
+/// Axis formatter: VPD kilopascals.
+#[must_use]
+pub fn format_kpa(value: f64) -> String {
+    format!("{value:.2} kPa")
+}
+
+/// Axis formatter: CO₂ parts per million.
+#[must_use]
+pub fn format_ppm(value: f64) -> String {
+    format!("{value:.0} ppm")
+}
+
+/// Axis formatter: a binary entity's on/off state.
+#[must_use]
+pub fn format_on_off(value: f64) -> String {
+    if value >= 0.5 {
+        "on".to_owned()
+    } else {
+        "off".to_owned()
+    }
+}
+
 /// The SVG canvas width (the viewBox is fixed; the element scales).
 const WIDTH: f64 = 600.0;
 /// The SVG canvas height.
 const HEIGHT: f64 = 220.0;
 
 /// One windowed chart for one sensor role on the grow overview.
+/// `format_value` renders axis labels (per the HA unit system);
+/// `step` draws the series as a staircase (binary entities).
 #[component]
 pub fn HistoryChart(
     grow_id: String,
     #[prop(default = "temperature")] role: &'static str,
     #[prop(default = "Temperature")] title: &'static str,
+    format_value: fn(f64) -> String,
+    #[prop(default = false)] step: bool,
 ) -> impl IntoView {
     let window = RwSignal::new("day".to_owned());
     let data = RwSignal::<Option<GrowHistory>>::new(None);
@@ -91,7 +123,9 @@ pub fn HistoryChart(
                 {move || {
                     let current = data.get()?;
                     if current.bound {
-                        return Some(view! { <ChartSvg chart=current /> }.into_any());
+                        return Some(
+                            view! { <ChartSvg chart=current format_value step /> }.into_any(),
+                        );
                     }
                     Some(
                         view! {
@@ -107,9 +141,10 @@ pub fn HistoryChart(
     }
 }
 
-/// The line-and-corridor SVG for one loaded chart.
+/// The line-and-corridor SVG for one loaded chart. `step` renders the
+/// series as a staircase (binary entities such as a lamp's on/off).
 #[component]
-fn ChartSvg(chart: GrowHistory) -> impl IntoView {
+fn ChartSvg(chart: GrowHistory, format_value: fn(f64) -> String, step: bool) -> impl IntoView {
     let from = parse_epoch(&chart.series.from).unwrap_or(0);
     let to = parse_epoch(&chart.series.to).unwrap_or(from + 1);
     let points: Vec<(i64, f64)> = chart
@@ -131,18 +166,23 @@ fn ChartSvg(chart: GrowHistory) -> impl IntoView {
         })
         .collect();
     let geom = geometry(&points, &bands, from, to, WIDTH, HEIGHT);
-    let line = geom
-        .line_points
+    let line_points = if step {
+        step_points(&geom.line_points)
+    } else {
+        geom.line_points.clone()
+    };
+    let line = line_points
         .iter()
         .map(|(x, y)| format!("{x:.1},{y:.1}"))
         .collect::<Vec<_>>()
         .join(" ");
-    let y_max_label = leaflog_core::units::temp_both(geom.y_max);
-    let y_min_label = leaflog_core::units::temp_both(geom.y_min);
+    let y_max_label = format_value(geom.y_max);
+    let y_min_label = format_value(geom.y_min);
+    let label = format!("{} history", chart.role);
     let y_min_y = format!("{:.1}", HEIGHT - 6.0);
 
     view! {
-        <svg viewBox=format!("0 0 {WIDTH} {HEIGHT}") class="w-full" role="img" aria-label="Temperature history">
+        <svg viewBox=format!("0 0 {WIDTH} {HEIGHT}") class="w-full" role="img" aria-label=label>
             {geom
                 .band_rects
                 .iter()
@@ -163,6 +203,27 @@ fn ChartSvg(chart: GrowHistory) -> impl IntoView {
             <text x="4" y=y_min_y class="fill-base-content/60">{y_min_label}</text>
         </svg>
     }
+}
+
+/// Turns a line into a staircase: every horizontal run holds until the
+/// next point's x, then steps vertically. Empty input stays empty.
+#[must_use]
+pub fn step_points(points: &[(f64, f64)]) -> Vec<(f64, f64)> {
+    let mut stepped = Vec::with_capacity(points.len().saturating_mul(2));
+    for &(x, y) in points {
+        // Exact comparison on purpose: `last_y` is the same copied
+        // value, not a computed float.
+        #[allow(clippy::float_cmp)]
+        match stepped.last().copied() {
+            Some((_, last_y)) if last_y != y => {
+                stepped.push((x, last_y));
+                stepped.push((x, y));
+            }
+            Some(_) => {}
+            None => stepped.push((x, y)),
+        }
+    }
+    stepped
 }
 
 /// The plotted geometry: screen-space points and band rects with the
@@ -292,5 +353,29 @@ mod tests {
         for (_, y) in &geom.line_points {
             assert!(*y > 0.0 && *y < 220.0);
         }
+    }
+
+    use super::step_points;
+
+    #[test]
+    fn step_points_hold_each_value_until_the_next() {
+        let stepped = step_points(&[(0.0, 1.0), (10.0, 0.0), (20.0, 1.0)]);
+        assert_eq!(
+            stepped,
+            [
+                (0.0, 1.0),
+                (10.0, 1.0), // hold on, then step down at x = 10
+                (10.0, 0.0),
+                (20.0, 0.0), // hold off, then step up at x = 20
+                (20.0, 1.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn step_points_pass_through_empty_and_single() {
+        assert_eq!(step_points(&[]), Vec::new());
+        let single = step_points(&[(5.0, 1.0)]);
+        assert_eq!(single, vec![(5.0, 1.0)]);
     }
 }

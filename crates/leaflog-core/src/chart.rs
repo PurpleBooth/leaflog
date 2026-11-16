@@ -77,6 +77,8 @@ pub enum PointSource {
     Ha,
     /// A Leaflog `sensor_snapshot` row captured at log time.
     Snapshot,
+    /// Computed from other series (the derived VPD chart).
+    Derived,
 }
 
 /// One raw (timestamp, value) input point; SI units, RFC 3339 UTC.
@@ -236,8 +238,9 @@ pub fn merge_series(
 pub fn build_bands(
     from: &str,
     to: &str,
+    points: &[(i64, f64)],
     spans: &[PhaseSpan],
-    corridor: impl Fn(Phase) -> Option<(f64, f64)>,
+    corridor: impl Fn(Phase, Option<f64>) -> Option<(f64, f64)>,
 ) -> Vec<BandSegment> {
     let Some(from_epoch) = parse_epoch(from) else {
         return Vec::new();
@@ -263,7 +266,24 @@ pub fn build_bands(
         if segment_start > segment_end {
             continue;
         }
-        let Some((min, max)) = corridor(span.phase) else {
+        // The segment's mean point value gives context-dependent
+        // corridors their input (an RH window needs the mean
+        // temperature); None when the segment carries no points.
+        let mut sum = 0.0;
+        let mut count = 0;
+        for &(at, value) in points {
+            if at >= segment_start && at <= segment_end {
+                sum += value;
+                count += 1;
+            }
+        }
+        let mean = if count == 0 {
+            None
+        } else {
+            let mean = sum / f64::from(u32::try_from(count).unwrap_or(u32::MAX));
+            Some(mean)
+        };
+        let Some((min, max)) = corridor(span.phase, mean) else {
             continue;
         };
         bands.push(BandSegment {
@@ -275,6 +295,53 @@ pub fn build_bands(
         });
     }
     bands
+}
+
+/// Tolerance for pairing a humidity point to a temperature point when
+/// deriving the VPD series (five minutes).
+pub const VPD_PAIRING_TOLERANCE_SECS: i64 = 300;
+
+/// Derives the VPD series from the merged temperature and humidity
+/// series.
+///
+/// Each temperature point pairs with the nearest-in-time humidity
+/// point within [`VPD_PAIRING_TOLERANCE_SECS`] and converts via
+/// [`crate::env::vpd_kpa`]; unpaired points drop out. The window
+/// bounds copy the temperature series.
+#[must_use]
+pub fn derive_vpd_series(
+    temperature: &ChartSeries,
+    humidity: &ChartSeries,
+    leaf_offset_c: f64,
+) -> ChartSeries {
+    let rh_points: Vec<(i64, f64)> = humidity
+        .points
+        .iter()
+        .filter_map(|point| parse_epoch(&point.at).map(|at| (at, point.value)))
+        .collect();
+    let points = temperature
+        .points
+        .iter()
+        .filter_map(|point| {
+            let at = parse_epoch(&point.at)?;
+            let nearest = rh_points
+                .iter()
+                .min_by_key(|(rh_at, _)| (rh_at - at).abs())?;
+            if (nearest.0 - at).abs() > VPD_PAIRING_TOLERANCE_SECS {
+                return None;
+            }
+            Some(SeriesPoint {
+                at: point.at.clone(),
+                value: crate::env::vpd_kpa(point.value, nearest.1, leaf_offset_c),
+                source: PointSource::Derived,
+            })
+        })
+        .collect();
+    ChartSeries {
+        from: temperature.from.clone(),
+        to: temperature.to.clone(),
+        points,
+    }
 }
 
 /// Maps a grow's forecast windows to phase-boundary instants: each
@@ -429,12 +496,12 @@ mod tests {
         ];
         let from = "2026-11-12T00:00:00Z";
         let to = "2026-11-16T00:00:00Z";
-        let corridor = |phase: Phase| match phase {
+        let corridor = |phase: Phase, _mean: Option<f64>| match phase {
             Phase::Vegetative => Some((20.0, 28.0)),
             Phase::Flower => Some((18.0, 26.0)),
             _ => None,
         };
-        let bands = build_bands(from, to, &spans, corridor);
+        let bands = build_bands(from, to, &[], &spans, corridor);
         assert_eq!(bands.len(), 2);
         // The vegetative band is clipped to the window start; the
         // flower band starts exactly at the boundary and runs to the
@@ -462,8 +529,9 @@ mod tests {
         let bands = build_bands(
             "2026-11-12T00:00:00Z",
             "2026-11-16T00:00:00Z",
+            &[],
             &spans,
-            |_| None,
+            |_, _| None,
         );
         assert_eq!(bands, Vec::new());
     }
@@ -479,8 +547,9 @@ mod tests {
         let bands = build_bands(
             "2026-11-12T00:00:00Z",
             "2026-11-16T00:00:00Z",
+            &[],
             &spans,
-            |_| Some((10.0, 30.0)),
+            |_, _| Some((10.0, 30.0)),
         );
         assert_eq!(bands, Vec::new());
     }
@@ -491,8 +560,9 @@ mod tests {
         let bands = build_bands(
             "2026-11-12T00:00:00Z",
             "2026-11-16T00:00:00Z",
+            &[],
             &spans,
-            |_| Some((21.0, 26.7)),
+            |_, _| Some((21.0, 26.7)),
         );
         assert_eq!(bands.len(), 1);
         assert_eq!(
@@ -509,13 +579,13 @@ mod tests {
     #[test]
     fn bands_fail_closed_on_unparseable_window_edges() {
         let spans = [span("2026-11-10T00:00:00Z", Phase::Flower)];
-        let corridor = |_| Some((0.0, 1.0));
+        let corridor = |_, _| Some((0.0, 1.0));
         assert_eq!(
-            build_bands("garbage", "2026-11-16T00:00:00Z", &spans, corridor),
+            build_bands("garbage", "2026-11-16T00:00:00Z", &[], &spans, corridor),
             Vec::new()
         );
         assert_eq!(
-            build_bands("2026-11-12T00:00:00Z", "garbage", &spans, corridor),
+            build_bands("2026-11-12T00:00:00Z", "garbage", &[], &spans, corridor),
             Vec::new()
         );
     }
@@ -578,4 +648,101 @@ mod tests {
         );
         assert_eq!(phase_spans("soon", "Europe/Berlin", &windows), Vec::new());
     }
+}
+
+#[cfg(test)]
+mod vpd_derive_tests {
+    use super::{
+        ChartWindow, PointSource, RawPoint, SeriesPoint, VPD_PAIRING_TOLERANCE_SECS,
+        derive_vpd_series, merge_series, parse_epoch,
+    };
+
+    const NOW: &str = "2026-11-16T12:00:00Z";
+
+    fn point(at: &str, value: f64) -> RawPoint {
+        RawPoint {
+            at: at.to_owned(),
+            value,
+        }
+    }
+
+    #[test]
+    fn vpd_pairs_within_the_tolerance_and_drops_strays() {
+        let temp_series = merge_series(
+            NOW,
+            ChartWindow::Day,
+            &[
+                point("2026-11-15T18:00:00Z", 24.0),
+                point("2026-11-15T18:10:00Z", 25.0), // pairs with 18:08 RH
+                point("2026-11-15T18:20:00Z", 26.0), // no RH within 5 min: dropped
+            ],
+            &[],
+        );
+        let rh_series = merge_series(
+            NOW,
+            ChartWindow::Day,
+            &[
+                point("2026-11-15T17:56:00Z", 60.0), // 4 min from 18:00: pairs
+                point("2026-11-15T18:08:00Z", 50.0),
+            ],
+            &[],
+        );
+        let derived = derive_vpd_series(&temp_series, &rh_series, -2.0);
+        assert_eq!(derived.points.len(), 2);
+        assert_eq!(derived.points[0].source, PointSource::Derived);
+        assert!(derived.points[0].value > 0.0);
+        assert!(
+            derived.points[1].value > derived.points[0].value,
+            "warmer and drier is a higher vpd"
+        );
+    }
+
+    #[test]
+    fn vpd_is_zero_at_saturation() {
+        // 100 % RH with a zero leaf offset saturates the air: VPD 0.
+        let temp_series = merge_series(
+            NOW,
+            ChartWindow::Day,
+            &[point("2026-11-15T18:00:00Z", 20.0)],
+            &[],
+        );
+        let rh_series = merge_series(
+            NOW,
+            ChartWindow::Day,
+            &[point("2026-11-15T18:00:00Z", 100.0)],
+            &[],
+        );
+        let derived = derive_vpd_series(&temp_series, &rh_series, 0.0);
+        assert_eq!(derived.points.len(), 1);
+        assert_eq!(derived.points[0].value, 0.0);
+    }
+
+    #[test]
+    fn window_bounds_copy_the_temperature_series() {
+        let temp_series = merge_series(
+            NOW,
+            ChartWindow::Day,
+            &[point("2026-11-15T18:00:00Z", 24.0)],
+            &[],
+        );
+        let rh_series = merge_series(
+            NOW,
+            ChartWindow::Day,
+            &[point("2026-11-15T18:00:00Z", 60.0)],
+            &[],
+        );
+        let derived = derive_vpd_series(&temp_series, &rh_series, -2.0);
+        assert_eq!(parse_epoch(&derived.from), parse_epoch(&temp_series.from));
+        assert_eq!(parse_epoch(&derived.to), parse_epoch(&temp_series.to));
+    }
+
+    #[test]
+    fn pairing_tolerance_is_five_minutes() {
+        assert_eq!(VPD_PAIRING_TOLERANCE_SECS, 300);
+    }
+
+    // Silence the unused-import lint when SeriesPoint is only
+    // constructed inside the implementation.
+    #[allow(dead_code)]
+    fn shape_check(_: SeriesPoint) {}
 }

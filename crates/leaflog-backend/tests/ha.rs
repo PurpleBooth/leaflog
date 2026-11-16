@@ -1064,7 +1064,8 @@ async fn grow_history_serves_live_series_with_phase_bands() {
     assert_eq!(bands[0]["min"], 21.1);
     assert_eq!(bands[0]["max"], 26.7);
 
-    // Humidity has no corridor preset yet: chart the line, no band.
+    // Humidity's corridor is the phase's VPD band converted at the
+    // segment's mean temperature (a clamped RH percentage).
     let body: Value = client
         .get(format!(
             "{base}/api/grows/{grow_id}/history?role=humidity&window=month"
@@ -1077,5 +1078,12 @@ async fn grow_history_serves_live_series_with_phase_bands() {
         .unwrap();
     assert_eq!(body["degraded"], false);
     assert_eq!(body["bound"], true);
-    assert_eq!(body["bands"].as_array().unwrap().len(), 0);
+    let humidity_bands = body["bands"].as_array().unwrap();
+    assert_eq!(humidity_bands.len(), 1);
+    assert_eq!(humidity_bands[0]["phase"], "germination");
+    let humidity_min = humidity_bands[0]["min"].as_f64().unwrap();
+    let humidity_max = humidity_bands[0]["max"].as_f64().unwrap();
+    assert!((0.0..=100.0).contains(&humidity_min));
+    assert!((0.0..=100.0).contains(&humidity_max));
+    assert!(humidity_min <= humidity_max);
 }
