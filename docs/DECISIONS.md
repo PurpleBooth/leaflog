@@ -46,6 +46,26 @@ before upgrading. SPEC §4.1/§4.4/§4.13/§5.4/§13 and AGENTS.md's
 strain/equipment clauses are rewritten to match; the grow-science
 seed-data discipline stays for whatever preset data remains.
 
+### D076: V14 grow-field choices — float watts, inline UI strings
+
+Ticket 01 (the additive expand step) settles three small shapes the
+spec leaves open. The grow's `real_watts` mirrors the equipment
+catalogue's field of the same name: `REAL` in SQLite, `Option<f64>`
+in Rust, negatives rejected with the same message — same concept,
+same representation. Because `f64` carries no `Eq`, `Grow` and
+`GrowInput` drop their `Eq` derive (nothing keyed on a grow needs
+it); the later ticket that wires the lamp advisor converts to the
+`u32` its input wants. "Start next run" copies the new fields along
+with substrate and the feed template, so a rerun keeps the strain
+label, photoperiod, tolerances and lamp facts of the grow it comes
+from. The grow form's new strings ("Strain label", "Advanced
+settings", the tolerance and lamp labels) are inline English like
+every other form string: the locale-catalog system with compile-time
+key parity is still future work (the `leptos_i18n` milestone), so
+there is no catalog to join yet. V14 as shipped only *adds* the
+nullable columns — the label/photoperiod backfill from the strain
+links stays in the later drop migration, exactly as D075 describes.
+
 ---
 
 ## 2026-11-16 — grow overview redesign (D073 follow-up)

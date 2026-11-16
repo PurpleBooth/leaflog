@@ -168,6 +168,68 @@ test('grow: edit from the detail page', async ({ page, request }) => {
   await expect(page.getByRole('heading', { name: renamed, exact: true })).toBeVisible();
 });
 
+test('grow: strain label, photoperiod and advanced settings persist', async ({
+  page,
+  request,
+}) => {
+  const name = uniqueName('E2E Advanced Grow');
+  const id = await createGrow(request, name);
+  await page.goto(url(`/grows/${id}`));
+  await page.getByRole('button', { name: 'Edit grow' }).click();
+
+  // The strain facts sit with the main grow fields.
+  await page.getByLabel('Strain label', { exact: true }).fill('Moby Dick');
+  await page.getByLabel('Photoperiod').selectOption('auto');
+
+  // The tuning knobs live under Advanced settings, collapsed by
+  // default so the daily flow stays simple.
+  await expect(page.getByLabel('Heat tolerance')).toBeHidden();
+  await page.getByText('Advanced settings', { exact: true }).click();
+
+  await page.getByLabel('Heat tolerance').selectOption('sensitive');
+  await page.getByLabel('Cold tolerance').selectOption('tolerant');
+  await page.getByLabel('Light tolerance').selectOption('tolerant');
+  await page.getByLabel('Real wall watts').fill('113.5');
+  await page.getByLabel('Dimmable').uncheck();
+
+  await armNoReloadGuard(page);
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+  await expectNoReload(page);
+
+  // The API holds the persisted truth, independent of the form.
+  const stored = await api<{
+    strain_label: string;
+    photoperiod: string;
+    heat_tolerance: string;
+    cold_tolerance: string;
+    light_tolerance: string;
+    real_watts: number;
+    dimmable: boolean;
+  }>(request, 'GET', `api/grows/${id}`);
+  expect(stored!.strain_label).toBe('Moby Dick');
+  expect(stored!.photoperiod).toBe('auto');
+  expect(stored!.heat_tolerance).toBe('sensitive');
+  expect(stored!.cold_tolerance).toBe('tolerant');
+  expect(stored!.light_tolerance).toBe('tolerant');
+  expect(stored!.real_watts).toBeCloseTo(113.5);
+  expect(stored!.dimmable).toBe(false);
+
+  // Reopening the edit form shows the stored values, not defaults.
+  await page.reload();
+  await page.getByRole('button', { name: 'Edit grow' }).click();
+  await expect(page.getByLabel('Strain label', { exact: true })).toHaveValue(
+    'Moby Dick',
+  );
+  await expect(page.getByLabel('Photoperiod')).toHaveValue('auto');
+  await page.getByText('Advanced settings', { exact: true }).click();
+  await expect(page.getByLabel('Heat tolerance')).toHaveValue('sensitive');
+  await expect(page.getByLabel('Cold tolerance')).toHaveValue('tolerant');
+  await expect(page.getByLabel('Light tolerance')).toHaveValue('tolerant');
+  await expect(page.getByLabel('Real wall watts')).toHaveValue('113.5');
+  await expect(page.getByLabel('Dimmable')).not.toBeChecked();
+});
+
 test('grow: picked strain survives late options, save and reopen', async ({
   page,
   request,
@@ -207,13 +269,16 @@ test('grow: picked strain survives late options, save and reopen', async ({
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Edit grow' }).click();
-  // No `exact: true` on select labels: the wrapping label's computed
-  // text includes the <option> texts, so an exact match never resolves
-  // (true for every select in this form, not a strain quirk).
-  await expect(page.getByLabel('Strain')).toHaveValue(northern!.id);
+  // The catalogue strain select, addressed by role + name so the free
+  // text "Strain label" input beside it never collides. No `exact:
+  // true` on select names: the accessible name includes the <option>
+  // texts, so an exact match never resolves (true for every select in
+  // this form, not a strain quirk).
+  const strainSelect = page.getByRole('combobox', { name: 'Strain' });
+  await expect(strainSelect).toHaveValue(northern!.id);
 
   // Pick explicitly and save (the D061 guard: no native submit, no reload).
-  await page.getByLabel('Strain').selectOption(northern!.id);
+  await strainSelect.selectOption(northern!.id);
   await armNoReloadGuard(page);
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
@@ -222,7 +287,7 @@ test('grow: picked strain survives late options, save and reopen', async ({
   // Saving refetches the strains list; reopening the form must show the
   // pick, never reset to the placeholder.
   await page.getByRole('button', { name: 'Edit grow' }).click();
-  await expect(page.getByLabel('Strain')).toHaveValue(northern!.id);
+  await expect(strainSelect).toHaveValue(northern!.id);
 });
 
 test('grow: bound space survives late options, save and reopen', async ({
@@ -285,10 +350,13 @@ test('grow header cluster: strain shows after picking, left of the buttons', asy
   // seeded catalogue must not leak in as a placeholder.
   await expect(page.getByText('Northern Lights')).toHaveCount(0);
 
-  // Pick a bundled strain in the edit form and save (no `exact: true`,
-  // same wrapping-label option-text reason as the strain-pick case).
+  // Pick a bundled strain in the edit form and save (role + name, same
+  // reason as the strain-pick test: the accessible name carries the
+  // option texts, and the free-text "Strain label" input sits beside it).
   await page.getByRole('button', { name: 'Edit grow' }).click();
-  await page.getByLabel('Strain').selectOption({ label: 'Northern Lights' });
+  await page
+    .getByRole('combobox', { name: 'Strain' })
+    .selectOption({ label: 'Northern Lights' });
   await armNoReloadGuard(page);
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();

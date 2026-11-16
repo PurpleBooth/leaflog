@@ -831,6 +831,15 @@ fn GrowForm(
                 />
             </label>
             <label class="fieldset">
+                <span class="fieldset-label">"Strain label"</span>
+                <input class="input" type="text" placeholder="Northern Lights #5"
+                    prop:value=move || draft.get().strain_label
+                    on:input=move |ev| {
+                        draft.update(|d| d.strain_label = event_target_value(&ev));
+                    }
+                />
+            </label>
+            <label class="fieldset">
                 <span class="fieldset-label">"Strain"</span>
                 <select class="select"
                     prop:value=move || draft.get().strain_id.unwrap_or_default()
@@ -872,6 +881,21 @@ fn GrowForm(
                             })
                             .collect::<Vec<_>>()
                     }}
+                </select>
+            </label>
+            <label class="fieldset">
+                <span class="fieldset-label">"Photoperiod"</span>
+                <select class="select"
+                    prop:value=move || draft.get().photoperiod.label().to_owned()
+                    on:change=move |ev| {
+                        let value = event_target_value(&ev);
+                        draft.update(|d| {
+                            d.photoperiod = PhotoperiodType::from_label(&value)
+                                .unwrap_or_default();
+                        });
+                    }
+                >
+                    {photoperiod_options()}
                 </select>
             </label>
             <label class="fieldset">
@@ -970,6 +994,89 @@ fn GrowForm(
                     on:input=move |ev| draft.update(|d| d.notes = non_empty(event_target_value(&ev)))
                 />
             </label>
+            // The tuning knobs (D075) live collapsed under Advanced
+            // settings so the daily flow stays simple; every default
+            // is sensible, so expanding this is always optional.
+            <details class="col-span-full">
+                <summary class="cursor-pointer select-none text-sm font-medium">
+                    "Advanced settings"
+                </summary>
+                <div class="grid gap-3 mt-2 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
+                    <label class="fieldset">
+                        <span class="fieldset-label">"Heat tolerance"</span>
+                        <select class="select"
+                            prop:value=move || draft.get().heat_tolerance.label().to_owned()
+                            on:change=move |ev| {
+                                let value = event_target_value(&ev);
+                                draft.update(|d| {
+                                    d.heat_tolerance = Tolerance::from_label(&value)
+                                        .unwrap_or_default();
+                                });
+                            }
+                        >
+                            {tolerance_options()}
+                        </select>
+                    </label>
+                    <label class="fieldset">
+                        <span class="fieldset-label">"Cold tolerance"</span>
+                        <select class="select"
+                            prop:value=move || draft.get().cold_tolerance.label().to_owned()
+                            on:change=move |ev| {
+                                let value = event_target_value(&ev);
+                                draft.update(|d| {
+                                    d.cold_tolerance = Tolerance::from_label(&value)
+                                        .unwrap_or_default();
+                                });
+                            }
+                        >
+                            {tolerance_options()}
+                        </select>
+                    </label>
+                    <label class="fieldset">
+                        <span class="fieldset-label">"Light tolerance"</span>
+                        <select class="select"
+                            prop:value=move || draft.get().light_tolerance.label().to_owned()
+                            on:change=move |ev| {
+                                let value = event_target_value(&ev);
+                                draft.update(|d| {
+                                    d.light_tolerance = Tolerance::from_label(&value)
+                                        .unwrap_or_default();
+                                });
+                            }
+                        >
+                            {tolerance_options()}
+                        </select>
+                    </label>
+                    <label class="fieldset">
+                        <span class="fieldset-label">"Real wall watts"</span>
+                        <input class="input" type="number" min="0" step="0.1"
+                            placeholder="—"
+                            prop:value=move || draft
+                                .get()
+                                .real_watts
+                                .map_or(String::new(), |watts| watts.to_string())
+                            on:input=move |ev| {
+                                let text = event_target_value(&ev);
+                                draft.update(|d| {
+                                    d.real_watts = text
+                                        .parse::<f64>()
+                                        .ok()
+                                        .filter(|watts| *watts >= 0.0 && watts.is_finite());
+                                });
+                            }
+                        />
+                    </label>
+                    <label class="fieldset">
+                        <span class="fieldset-label">"Dimmable"</span>
+                        <input class="checkbox" type="checkbox"
+                            prop:checked=move || draft.get().dimmable
+                            on:change=move |ev| {
+                                draft.update(|d| d.dimmable = event_target_checked(&ev));
+                            }
+                        />
+                    </label>
+                </div>
+            </details>
         </div>
     }
 }
@@ -1265,11 +1372,39 @@ fn substrate_glyph(substrate: &str) -> Option<&'static str> {
     }
 }
 
+/// The Photoperiod/Autoflower choices for a grow form select: stable
+/// enum-label values, glossary terms as the visible text.
+fn photoperiod_options() -> impl IntoView {
+    [
+        (PhotoperiodType::Photoperiod, "Photoperiod"),
+        (PhotoperiodType::Auto, "Autoflower"),
+    ]
+    .into_iter()
+    .map(|(kind, display)| {
+        view! { <option value=kind.label()>{display}</option> }
+    })
+    .collect::<Vec<_>>()
+}
+
+/// The Sensitive/Average/Tolerant choices for a grow form select.
+fn tolerance_options() -> impl IntoView {
+    [
+        (Tolerance::Sensitive, "Sensitive"),
+        (Tolerance::Average, "Average"),
+        (Tolerance::Tolerant, "Tolerant"),
+    ]
+    .into_iter()
+    .map(|(level, display)| {
+        view! { <option value=level.label()>{display}</option> }
+    })
+    .collect::<Vec<_>>()
+}
+
 #[cfg(test)]
 mod landing_pick_tests {
     use super::pick_landing_grow;
-    use leaflog_core::strain::{PhotoperiodType, Tolerance};
     use leaflog_core::grows::{Grow, GrowStatus};
+    use leaflog_core::strain::{PhotoperiodType, Tolerance};
 
     fn grow(id: &str, status: GrowStatus, updated_at: &str) -> Grow {
         Grow {
