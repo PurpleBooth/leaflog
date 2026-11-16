@@ -186,24 +186,7 @@ pub fn forecast(input: &ForecastInput) -> Vec<PhaseWindow> {
 
     // --- Veg (photoperiod: grower weeks; auto: by age) ---
     let Some((flip_day, flower_len)) = add_vegetative(&mut windows, input, d) else {
-        // Open-ended veg: nothing past it is projectable — unless a
-        // curing pin says the grow is already curing, in which case
-        // the skipped phases collapse into history at the pin.
-        if let Some(pin) = input.actuals.curing_start {
-            let start = pin_start(&mut windows, pin);
-            add(&mut windows, Phase::Flower, start, 0, 0, 0, true, Some(start));
-            add(&mut windows, Phase::Drying, start, 0, 0, 0, true, Some(start));
-            add(
-                &mut windows,
-                Phase::Curing,
-                start,
-                d.cure_min,
-                i64::midpoint(d.cure_min, d.cure_max),
-                d.cure_max,
-                true,
-                None,
-            );
-        }
+        finish_open_ended(&mut windows, input, d);
         normalize(&mut windows);
         return windows;
     };
@@ -346,6 +329,27 @@ fn flower_end_for(input: &ForecastInput, flower_start: Day, (f_min, f_max): (Day
 /// length range (strain overrides). `None` when nothing past veg is
 /// projectable: a photoperiod with neither a logged flip nor planned
 /// veg weeks leaves the window open-ended.
+/// Completes an open-ended chain: nothing past veg is projectable,
+/// unless a curing pin says the grow is already curing, in which case
+/// the skipped phases collapse into history at the pin.
+fn finish_open_ended(windows: &mut Vec<PhaseWindow>, input: &ForecastInput, d: PhaseDefaults) {
+    if let Some(pin) = input.actuals.curing_start {
+        let start = pin_start(windows, pin);
+        add(windows, Phase::Flower, start, 0, 0, 0, true, Some(start));
+        add(windows, Phase::Drying, start, 0, 0, 0, true, Some(start));
+        add(
+            windows,
+            Phase::Curing,
+            start,
+            d.cure_min,
+            i64::midpoint(d.cure_min, d.cure_max),
+            d.cure_max,
+            true,
+            None,
+        );
+    }
+}
+
 /// Pins the boundary between the last window and the one about to be
 /// appended: the previous phase ends where the pinned one begins.
 /// History wins in both directions — a later-than-expected pin extends
@@ -410,9 +414,7 @@ fn add_vegetative(
                 veg_days,
                 veg_days,
                 veg_days + 3,
-                input.actuals.flip_day.is_some()
-                    || input.actuals.flower_start.is_some()
-                    || pinned,
+                input.actuals.flip_day.is_some() || input.actuals.flower_start.is_some() || pinned,
                 Some(flip),
             );
             Some((flip, flower))
@@ -459,7 +461,9 @@ fn add(
     let start = actual_end.map_or(start, |end| end.min(start));
     // A pinned end can predate the natural start; the boundary never
     // moves before the previous phase began.
-    let floor = windows.last().map_or(start, |previous| previous.likely_start);
+    let floor = windows
+        .last()
+        .map_or(start, |previous| previous.likely_start);
     let start = start.max(floor);
     if let Some(previous) = windows.last_mut()
         && start < previous.likely_end

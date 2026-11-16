@@ -53,6 +53,11 @@ pub struct Grow {
     /// by reference. Absent JSON parses as `None`.
     #[serde(default)]
     pub feed_template_id: Option<String>,
+    /// Planned vegetative weeks for photoperiods (spec §4.5): the
+    /// plan projects the flip until one is logged. Absent JSON parses
+    /// as `None`.
+    #[serde(default)]
+    pub planned_veg_weeks: Option<u8>,
     /// Substrate label: one of [`SUBSTRATES`] or a user-defined name.
     pub substrate: String,
     /// Seed/clone start date, `YYYY-MM-DD`. Day numbers count from here.
@@ -84,6 +89,9 @@ pub struct GrowInput {
     /// The fitted feed template, copied by reference (spec §4.6).
     #[serde(default)]
     pub feed_template_id: Option<String>,
+    /// Planned vegetative weeks for photoperiods (spec §4.5).
+    #[serde(default)]
+    pub planned_veg_weeks: Option<u8>,
     /// Substrate label.
     pub substrate: String,
     /// Seed/clone start date, `YYYY-MM-DD`.
@@ -107,6 +115,7 @@ impl GrowInput {
             grow_space_id: grow.grow_space_id.clone(),
             seed_batch_id: grow.seed_batch_id.clone(),
             feed_template_id: grow.feed_template_id.clone(),
+            planned_veg_weeks: grow.planned_veg_weeks,
             substrate: grow.substrate.clone(),
             started_on: grow.started_on.clone(),
             status: grow.status,

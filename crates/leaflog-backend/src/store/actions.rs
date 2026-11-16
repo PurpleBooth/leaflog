@@ -202,6 +202,27 @@ pub fn first_event_day(
     Ok(day.and_then(|value| u16::try_from(value).ok()))
 }
 
+/// The latest grow day of a Phase-change entry that moved the grow to
+/// `target_phase` (D073): those rows carry the target label in the
+/// `phase` column.
+///
+/// # Errors
+///
+/// Returns a [`StoreError`] on SQLite failures.
+pub fn latest_phase_change_day(
+    conn: &Connection,
+    grow_id: &str,
+    target_phase: &str,
+) -> Result<Option<u16>, StoreError> {
+    let day: Option<i64> = conn.query_row(
+        "SELECT MAX(grow_day) FROM action_log
+         WHERE grow_id = ?1 AND action_type = 'phase_change' AND phase = ?2",
+        params![grow_id, target_phase],
+        |row| row.get(0),
+    )?;
+    Ok(day.and_then(|value| u16::try_from(value).ok()))
+}
+
 /// Maps one `action_log` row. Labels are written only by this module;
 /// unknown values fall back safely rather than failing the read.
 fn map_row(row: &rusqlite::Row<'_>) -> Result<ActionEntry, rusqlite::Error> {

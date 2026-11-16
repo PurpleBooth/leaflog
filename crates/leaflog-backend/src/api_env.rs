@@ -101,24 +101,12 @@ pub(crate) fn snapshot(
             .as_deref()
             .and_then(|sid| store::strain::get(conn, sid).ok());
 
-        // Derive the current phase from the forecast.
-        let flip = store::actions::first_event_day(
-            conn,
-            id,
-            leaflog_core::actions::ActionType::Flip,
-            u16::MAX,
-        )?;
-        let harvest = store::actions::first_event_day(
-            conn,
-            id,
-            leaflog_core::actions::ActionType::Harvest,
-            u16::MAX,
-        )?;
-        // Local calendar days in the canonical zone (spec §2);
-        // UTC math is the fallback for unknown zones.
+        // The phase the grow is in today, from the re-anchored
+        // forecast (D073). Local calendar days in the canonical zone
+        // (spec §2); UTC math is the fallback for unknown zones.
         let today =
             crate::app::day_number_in(&grow.started_on, &crate::db::now_rfc3339(), tz).unwrap_or(0);
-        let phase = leaflog_core::actions::derive_phase(today, flip, harvest.is_some());
+        let phase = crate::api_phase::current_phase(conn, &grow, today)?;
 
         // Temperature and humidity from the bound sensors, with
         // each binding's drift status beside them (spec §4.1).
@@ -197,24 +185,12 @@ async fn grow_lamp(
                 .as_deref()
                 .and_then(|sid| store::strain::get(conn, sid).ok());
 
-            // Phase from the forecast.
-            let flip = store::actions::first_event_day(
-                conn,
-                &id,
-                leaflog_core::actions::ActionType::Flip,
-                u16::MAX,
-            )?;
-            let harvest = store::actions::first_event_day(
-                conn,
-                &id,
-                leaflog_core::actions::ActionType::Harvest,
-                u16::MAX,
-            )?;
+            // Phase from the re-anchored forecast (D073).
             // Local calendar days in the canonical zone (spec §2);
             // UTC math is the fallback for unknown zones.
             let today = crate::app::day_number_in(&grow.started_on, &crate::db::now_rfc3339(), &tz)
                 .unwrap_or(0);
-            let phase = leaflog_core::actions::derive_phase(today, flip, harvest.is_some());
+            let phase = crate::api_phase::current_phase(conn, &grow, today)?;
 
             // Canopy temp from the bound temperature sensor.
             let bindings = store::sensors::list(conn, &id)?;
@@ -310,23 +286,12 @@ async fn grow_coach(
         .with(move |conn| -> Result<CoachResponse, ApiError> {
             let grow = store::grows::get(conn, &id)?;
 
-            let flip = store::actions::first_event_day(
-                conn,
-                &id,
-                leaflog_core::actions::ActionType::Flip,
-                u16::MAX,
-            )?;
-            let harvest = store::actions::first_event_day(
-                conn,
-                &id,
-                leaflog_core::actions::ActionType::Harvest,
-                u16::MAX,
-            )?;
+            // Phase from the re-anchored forecast (D073).
             // Local calendar days in the canonical zone (spec §2);
             // UTC math is the fallback for unknown zones.
             let today = crate::app::day_number_in(&grow.started_on, &crate::db::now_rfc3339(), &tz)
                 .unwrap_or(0);
-            let phase = leaflog_core::actions::derive_phase(today, flip, harvest.is_some());
+            let phase = crate::api_phase::current_phase(conn, &grow, today)?;
 
             let tips = coach_tips(phase, &grow.substrate, true);
 

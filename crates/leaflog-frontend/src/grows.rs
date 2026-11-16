@@ -483,6 +483,9 @@ pub fn GrowDetail() -> impl IntoView {
             <nav class="flex flex-wrap gap-2 my-2" aria-label="Quick add action">
                 {ActionType::all()
                     .into_iter()
+                    // The Phase-change event is written by the phase
+                    // picker (D073), not from a quick-add chip.
+                    .filter(|kind| *kind != ActionType::PhaseChange)
                     .map(|kind| {
                         let current = chip;
                         view! {
@@ -767,6 +770,23 @@ fn GrowForm(
                 />
             </label>
             <label class="fieldset">
+                <span class="fieldset-label">"Planned vegetative weeks"</span>
+                <input class="input" type="number" min="1" max="52"
+                    placeholder="—"
+                    prop:value=move || draft
+                        .get()
+                        .planned_veg_weeks
+                        .map_or(String::new(), |weeks| weeks.to_string())
+                    on:input=move |ev| {
+                        let text = event_target_value(&ev);
+                        draft.update(|d| {
+                            d.planned_veg_weeks =
+                                text.parse::<u8>().ok().filter(|weeks| *weeks > 0);
+                        });
+                    }
+                />
+            </label>
+            <label class="fieldset">
                 <span class="fieldset-label">"Status"</span>
                 <select class="select"
                     prop:value=move || draft.get().status.label().to_owned()
@@ -1004,6 +1024,7 @@ fn empty_grow() -> GrowInput {
         grow_space_id: None,
         seed_batch_id: None,
         feed_template_id: None,
+        planned_veg_weeks: None,
         substrate: "soil".to_owned(),
         started_on: String::new(),
         status: GrowStatus::default(),

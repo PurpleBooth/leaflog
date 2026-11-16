@@ -83,8 +83,7 @@ async fn history(State(state): State<AppState>) -> Result<Json<HistoryReport>, A
                 let actuals = leaflog_core::forecast::Actuals {
                     flip_day: flip.map(i64::from),
                     harvest_day: harvest.map(i64::from),
-                    trichome_check_day: None,
-                    germinated: false,
+                    ..leaflog_core::forecast::Actuals::default()
                 };
                 let strain_row = grow
                     .strain_id
@@ -96,7 +95,7 @@ async fn history(State(state): State<AppState>) -> Result<Json<HistoryReport>, A
                 // delta.
                 let input = leaflog_core::forecast::input_for(
                     strain_row.as_ref(),
-                    None,
+                    grow.planned_veg_weeks,
                     leaflog_core::forecast::Actuals::default(),
                 );
                 let windows = leaflog_core::forecast::forecast(&input);
@@ -199,6 +198,7 @@ async fn next_run(
                 grow_space_id: previous.grow_space_id.clone(),
                 seed_batch_id: None,
                 feed_template_id: previous.feed_template_id.clone(),
+                planned_veg_weeks: previous.planned_veg_weeks,
                 substrate: previous.substrate,
                 started_on: today,
                 status: GrowStatus::Active,

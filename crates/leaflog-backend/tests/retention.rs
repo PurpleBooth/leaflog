@@ -52,6 +52,7 @@ async fn prune_thins_to_one_per_hour_keeping_day_edges_and_excursions() {
                     grow_space_id: None,
                     seed_batch_id: None,
                     feed_template_id: None,
+                    planned_veg_weeks: None,
                     substrate: "soil".to_owned(),
                     started_on: "2026-01-01".to_owned(),
                     status: GrowStatus::Active,

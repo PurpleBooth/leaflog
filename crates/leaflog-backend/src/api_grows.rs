@@ -363,7 +363,16 @@ async fn create_action(
             };
             let harvested = input.action_type == ActionType::Harvest
                 || store::actions::first_event_day(conn, &id, ActionType::Harvest, day)?.is_some();
-            let phase = leaflog_core::actions::derive_phase(day, flip, harvested);
+            let phase = if input.action_type == ActionType::PhaseChange {
+                // D073: the row's phase column carries the target
+                // phase so pins resolve from the log.
+                input
+                    .details
+                    .target_phase
+                    .expect("validated: phase_change requires a target phase")
+            } else {
+                leaflog_core::actions::derive_phase(day, flip, harvested)
+            };
             let entry = store::actions::from_input(&id, &input, phase, day);
             store::actions::create(conn, &entry)?;
             Ok(entry)
@@ -420,7 +429,16 @@ async fn update_action(
             let harvested = input.action_type == ActionType::Harvest
                 || store::actions::first_event_day(conn, &grow.id, ActionType::Harvest, day)?
                     .is_some();
-            let phase = leaflog_core::actions::derive_phase(day, flip, harvested);
+            let phase = if input.action_type == ActionType::PhaseChange {
+                // D073: the row's phase column carries the target
+                // phase so pins resolve from the log.
+                input
+                    .details
+                    .target_phase
+                    .expect("validated: phase_change requires a target phase")
+            } else {
+                leaflog_core::actions::derive_phase(day, flip, harvested)
+            };
             store::actions::update(conn, &id, &input, phase, day).map_err(ApiError::from)
         })
         .await?;
@@ -465,18 +483,9 @@ async fn get_forecast(
                 .strain_id
                 .as_deref()
                 .and_then(|strain_id| store::strain::get(conn, strain_id).ok());
-            let flip = store::actions::first_event_day(conn, &id, ActionType::Flip, u16::MAX)?;
-            let harvest =
-                store::actions::first_event_day(conn, &id, ActionType::Harvest, u16::MAX)?;
-            let trichome =
-                store::actions::first_event_day(conn, &id, ActionType::TrichomeCheck, u16::MAX)?;
-            let actuals = leaflog_core::forecast::Actuals {
-                flip_day: flip.map(i64::from),
-                harvest_day: harvest.map(i64::from),
-                trichome_check_day: trichome.map(i64::from),
-                germinated: false,
-            };
-            let input = leaflog_core::forecast::input_for(strain.as_ref(), None, actuals);
+            let actuals = crate::api_phase::forecast_actuals(conn, &id)?;
+            let input =
+                leaflog_core::forecast::input_for(strain.as_ref(), grow.planned_veg_weeks, actuals);
             let windows = leaflog_core::forecast::forecast(&input);
             let today_day = day_number_in(&grow.started_on, &crate::db::now_rfc3339(), &tz)
                 .ok_or_else(|| ApiError::BadRequest("invalid started_on date".to_owned()))?;
@@ -870,6 +879,11 @@ fn normalize_occurred_at(occurred_at: &str) -> Result<String, ApiError> {
 /// [`normalize_occurred_at`]) so the stored value round-trips.
 fn validate_action(input: &mut ActionInput) -> Result<(), ApiError> {
     input.occurred_at = normalize_occurred_at(&input.occurred_at)?;
+    if input.action_type == ActionType::PhaseChange && input.details.target_phase.is_none() {
+        return Err(ApiError::BadRequest(
+            "phase_change requires a target phase".to_owned(),
+        ));
+    }
     if input
         .details
         .input_ph
