@@ -214,3 +214,38 @@ pub fn snapshots_for(
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(StoreError::from)
 }
+
+/// Reads a grow's snapshots for one role across all its log entries,
+/// chronological by capture time.
+///
+/// Snapshot rows hang off log entries, not grows, so the read joins
+/// through `action_log` (this is the Leaflog-native half of the
+/// history chart).
+///
+/// # Errors
+///
+/// Returns a [`StoreError`] on SQLite failures.
+pub fn snapshots_for_role(
+    conn: &Connection,
+    grow_id: &str,
+    role: &str,
+) -> Result<Vec<SensorSnapshot>, StoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT ss.id, ss.role, ss.entity_id, ss.state, ss.captured_at
+         FROM sensor_snapshot AS ss
+         JOIN action_log AS al ON al.id = ss.action_log_id
+         WHERE al.grow_id = ?1 AND ss.role = ?2
+         ORDER BY ss.captured_at",
+    )?;
+    let rows = stmt.query_map(params![grow_id, role], |row| {
+        Ok(SensorSnapshot {
+            id: row.get("id")?,
+            role: row.get("role")?,
+            entity_id: row.get("entity_id")?,
+            state: row.get("state")?,
+            captured_at: row.get("captured_at")?,
+        })
+    })?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(StoreError::from)
+}

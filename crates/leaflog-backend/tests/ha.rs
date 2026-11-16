@@ -833,3 +833,249 @@ async fn env_alerts_route_to_ha_under_optin_rate_limited_and_quiet() {
         .unwrap();
     assert_eq!(mock.notifications.lock().await.len(), sent.len());
 }
+
+// --- Grow history chart (grow-overview ticket 05) ---
+
+#[tokio::test]
+async fn grow_history_validates_role_and_window() {
+    // The endpoint must reject unknown parameters loudly (400), while
+    // an unknown grow stays 404 — before any Home Assistant call.
+    let dead_url = "http://127.0.0.1:1".to_owned();
+    let (base, _db, _bridge) = spawn_api(&dead_url).await;
+    let client = reqwest::Client::new();
+    let grow_id = create_grow(&base).await;
+
+    for query in [
+        "window=day",                   // missing role
+        "role=temperature",             // missing window
+        "role=moisture&window=day",     // unknown role
+        "role=temperature&window=year", // unknown window
+    ] {
+        let response = client
+            .get(format!("{base}/api/grows/{grow_id}/history?{query}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            reqwest::StatusCode::BAD_REQUEST,
+            "query {query} must be rejected"
+        );
+    }
+    let response = client
+        .get(format!(
+            "{base}/api/grows/no-such-grow/history?role=temperature&window=day"
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn grow_history_degrades_to_snapshots_when_supervisor_unreachable() {
+    // Dead binding rule: HA unreachable means snapshot-only with
+    // degraded=true, never an error wall. A role without a binding is
+    // an explicit bound=false no-data state, not an error either.
+    let dead_url = "http://127.0.0.1:1".to_owned();
+    let (base, db, _bridge) = spawn_api(&dead_url).await;
+    let client = reqwest::Client::new();
+    let grow_id = create_grow(&base).await;
+
+    client
+        .put(format!("{base}/api/grows/{grow_id}/bindings"))
+        .json(&json!({ "bindings": { "temperature": "sensor.grow_temperature" } }))
+        .send()
+        .await
+        .unwrap();
+    let entry: Value = client
+        .post(format!("{base}/api/grows/{grow_id}/actions"))
+        .json(&json!({
+            "plant_ids": [], "occurred_at": "2026-11-16T10:00:00Z",
+            "action_type": "note", "details": {}, "notes": "snapshot seed",
+            "appearance_tags": [],
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let entry_id = entry["id"].as_str().unwrap().to_owned();
+
+    // Inject the snapshot the dead HA cannot provide: a log-time
+    // capture of the bound temperature sensor, taken now.
+    db.with(move |conn| {
+        leaflog_backend::store::sensors::snapshot(
+            conn,
+            &entry_id,
+            "temperature",
+            "sensor.grow_temperature",
+            "22.5",
+        )
+    })
+    .await
+    .unwrap();
+
+    let body: Value = client
+        .get(format!(
+            "{base}/api/grows/{grow_id}/history?role=temperature&window=day"
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(body["degraded"], true);
+    assert_eq!(body["bound"], true);
+    assert_eq!(body["role"], "temperature");
+    assert_eq!(body["window"], "day");
+    let points = body["series"]["points"].as_array().unwrap();
+    assert_eq!(points.len(), 1, "exactly the injected snapshot point");
+    assert_eq!(points[0]["source"], "snapshot");
+    assert_eq!(points[0]["value"], 22.5);
+    // The corridor is preset-driven and survives the outage.
+    let bands = body["bands"].as_array().unwrap();
+    assert!(!bands.is_empty(), "temperature bands must exist offline");
+    for band in bands {
+        assert!(band["min"].as_f64().unwrap() < band["max"].as_f64().unwrap());
+    }
+
+    // An unbound role is an explicit no-sensor state, not an error.
+    let body: Value = client
+        .get(format!(
+            "{base}/api/grows/{grow_id}/history?role=co2&window=week"
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(body["bound"], false);
+    assert_eq!(body["degraded"], false);
+    assert_eq!(body["series"]["points"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn grow_history_serves_live_series_with_phase_bands() {
+    // Against the mock Supervisor the endpoint answers 200 with a
+    // bound flag, snapshot points from the log-time capture, and the
+    // temperature corridor — while a role without a corridor (humidity)
+    // gets empty bands.
+    let (mock_url, _mock) = spawn_mock().await;
+    let (base, _db, bridge) = spawn_api(&mock_url).await;
+    wait_connected(&bridge).await;
+    let client = reqwest::Client::new();
+    // A grow started today keeps the band assertion clock-robust: its
+    // current phase is germination on any run date.
+    let today = time::OffsetDateTime::now_utc().date();
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&json!({
+            "name": "Chart run", "strain_id": null, "substrate": "soil",
+            "started_on": today.to_string(), "status": "active", "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let grow_id = grow["id"].as_str().unwrap().to_owned();
+
+    client
+        .put(format!("{base}/api/grows/{grow_id}/bindings"))
+        .json(&json!({
+            "bindings": {
+                "temperature": "sensor.grow_temperature",
+                "humidity": "sensor.grow_humidity",
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+    // PUT resubscribes the bridge (which clears and refills the live
+    // map); auto-capture only sees entities already in the map, so
+    // the action must wait until the bound sensors have landed.
+    for _ in 0..40 {
+        if bridge
+            .live_now()
+            .entities
+            .contains_key("sensor.grow_temperature")
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    assert!(
+        bridge
+            .live_now()
+            .entities
+            .contains_key("sensor.grow_temperature"),
+        "bound sensor never landed in the live map"
+    );
+    client
+        .post(format!("{base}/api/grows/{grow_id}/actions"))
+        .json(&json!({
+            "plant_ids": [], "occurred_at": "2026-11-16T10:00:00Z",
+            "action_type": "note", "details": {}, "notes": "capture me",
+            "appearance_tags": [],
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    // Auto-capture lands asynchronously after the binding resubscribe;
+    // poll until the merged series carries the snapshot point.
+    let mut body = Value::Null;
+    for _ in 0..40 {
+        body = client
+            .get(format!(
+                "{base}/api/grows/{grow_id}/history?role=temperature&window=month"
+            ))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let has_snapshot = body["series"]["points"]
+            .as_array()
+            .is_some_and(|points| points.iter().any(|point| point["source"] == "snapshot"));
+        if has_snapshot {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    assert_eq!(body["degraded"], false, "mock Supervisor is reachable");
+    assert_eq!(body["bound"], true);
+    let points = body["series"]["points"].as_array().unwrap();
+    assert!(
+        points.iter().any(|point| point["source"] == "snapshot"),
+        "the auto-captured snapshot must back the series"
+    );
+    // The band corridor: the grow started today, so the window's
+    // current phase is germination with the §5.2 seedling/clone range.
+    let bands = body["bands"].as_array().unwrap();
+    assert_eq!(bands.len(), 1);
+    assert_eq!(bands[0]["phase"], "germination");
+    assert_eq!(bands[0]["min"], 21.1);
+    assert_eq!(bands[0]["max"], 26.7);
+
+    // Humidity has no corridor preset yet: chart the line, no band.
+    let body: Value = client
+        .get(format!(
+            "{base}/api/grows/{grow_id}/history?role=humidity&window=month"
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(body["degraded"], false);
+    assert_eq!(body["bound"], true);
+    assert_eq!(body["bands"].as_array().unwrap().len(), 0);
+}
