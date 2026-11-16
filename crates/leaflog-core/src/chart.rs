@@ -715,6 +715,23 @@ mod vpd_derive_tests {
         let derived = derive_vpd_series(&temp_series, &rh_series, 0.0);
         assert_eq!(derived.points.len(), 1);
         assert_eq!(derived.points[0].value, 0.0);
+
+        // With a negative leaf offset the raw difference goes below
+        // zero (the leaf's saturation pressure sits under the air's
+        // actual vapour pressure); the derivation clamps at zero so no
+        // consumer can see a negative VPD.
+        let offsets = [
+            crate::env::DEFAULT_LEAF_OFFSET_C,
+            crate::env::NIGHT_LEAF_OFFSET_C,
+        ];
+        for offset in offsets {
+            let derived = derive_vpd_series(&temp_series, &rh_series, offset);
+            assert_eq!(derived.points.len(), 1);
+            assert_eq!(
+                derived.points[0].value, 0.0,
+                "saturation at offset {offset} must clamp at zero"
+            );
+        }
     }
 
     #[test]

@@ -6,7 +6,7 @@ dist = "dist"
 public_url = "./"
 
 # Tailwind v4 standalone CLI, managed by Trunk (a Node-free binary;
-# the charts bundle beside it uses npm + esbuild at build time, D075).
+# the charts bundle beside it uses npm + esbuild at build time, D077).
 # Both are build-time only — they never reach the image. CSS entry is
 # `tailwind.css`, wired via <link data-trunk rel="tailwind-css"> in
 # index.html.

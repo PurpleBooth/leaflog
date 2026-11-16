@@ -26,7 +26,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      # The frontend build runs the ECharts bundle step (D075): npm ci
+      # The frontend build runs the ECharts bundle step (D077): npm ci
       # + esbuild. Pinned like the e2e job's node; the release image
       # never sees it (the Dockerfile build stage installs its own).
       - uses: actions/setup-node@v5

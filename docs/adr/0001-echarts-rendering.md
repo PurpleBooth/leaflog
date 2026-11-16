@@ -3,7 +3,7 @@
 Status: accepted
 Date: 2026-11-16
 Decided in: ticket 01 of the Light Cycle + ECharts spec (git-bug b251a31)
-Related: D075 (build tooling entry in docs/DECISIONS.md)
+Related: D077 (build tooling entry in docs/DECISIONS.md)
 
 ## Context
 

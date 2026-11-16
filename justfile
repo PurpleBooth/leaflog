@@ -27,7 +27,7 @@ daisyui_sha_daisyui := "d69de07c7463bb1f41548e2688f88ee105cdadf9779fce5b3c47b3bf
 daisyui_sha_theme := "e48a35d8326d650181ca600560e8520cf6b44cf9242bbd9d45825607e641f251"
 
 # The ECharts npm project and its built bundle (npm + esbuild,
-# tree-shaken to the SVG renderer; D075). Build-time only — Node
+# tree-shaken to the SVG renderer; D077). Build-time only — Node
 # never reaches the image.
 echarts_dir := frontend_dir / "charts"
 
@@ -45,7 +45,7 @@ tailwind-daisyui:
     mv "{{daisyui_dir}}/.daisyui-theme.mjs.tmp" "{{daisyui_dir}}/daisyui-theme.mjs"
     echo "daisyUI v{{daisyui_version}} bundles ready (sha256 verified)"
 
-# Bundle the tree-shaken ECharts build (SVG renderer, D075) and verify
+# Bundle the tree-shaken ECharts build (SVG renderer, D077) and verify
 # it: composition, local-only loading, index.html wiring. npm ci from
 # the committed lockfile keeps the build reproducible.
 build-echarts:

@@ -1,4 +1,4 @@
-// Tree-shaken ECharts entry (D075). Imports only the chart types and
+// Tree-shaken ECharts entry (D077). Imports only the chart types and
 // components the app renders with, forces the SVG renderer, and
 // registers them at load time. esbuild bundles this file as an iife
 // under the `echarts` global name, so `window.echarts` carries the

@@ -46,7 +46,7 @@ Cargo workspace with:
   with the ECharts SVG renderer, driven from Rust (js_sys/serde-wasm-bindgen builds the
   option payload); all domain logic stays in Rust. The ECharts bundle is a build-time
   artifact produced by npm + esbuild — no CDN, and Node never enters the image
-  (docs/adr/0001-echarts-rendering.md, D075).
+  (docs/adr/0001-echarts-rendering.md, D077).
 - `mock-HA` — Axum app speaking the WS protocol with fake sensor data for `just dev`.
 - Browser ↔ backend: JSON REST + one WebSocket/SSE channel. The browser never talks to HA.
 
