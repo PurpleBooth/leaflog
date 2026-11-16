@@ -6,9 +6,9 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
-## 2026-11-16 — the per-grow Light Cycle (D073 follow-up)
+## 2026-11-16 — the per-grow Light Cycle (ticket 05)
 
-### D075: the Light Cycle is grow columns, not a settings key
+### D078: the Light Cycle is grow columns, not a settings key
 
 The Light Cycle (one lights-on local time plus hours-on per lit
 phase) belongs to one grow, like the strain or the start date, so it
