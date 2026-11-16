@@ -1,11 +1,87 @@
-//! Grow and plant domain types (spec §4.2, §4.5): a grow groups plants,
-//! log entries and photos under one strain and substrate.
+//! Grow and plant domain types (spec §4.2, §4.5).
+//!
+//! A grow groups plants, log entries and photos under one strain
+//! label and substrate, and carries the photoperiod and tolerance
+//! facts the recommendation engines read (D075).
 
 use serde::{Deserialize, Serialize};
 
 use crate::Phase;
 use crate::actions::{ActionDetails, ActionType};
-use crate::strain::{PhotoperiodType, Tolerance};
+
+/// Photoperiod behaviour of a plant (D075): a grow attribute — the
+/// recommendation engines read it from the grow, never from a strain
+/// record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PhotoperiodType {
+    /// Flowers on a 12/12 light schedule change.
+    #[default]
+    Photoperiod,
+    /// Flowers by age, regardless of light schedule.
+    Auto,
+}
+
+impl PhotoperiodType {
+    /// The stable `snake_case` label (database and API representation).
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Photoperiod => "photoperiod",
+            Self::Auto => "auto",
+        }
+    }
+
+    /// Parses a stored label. Returns `None` for labels this build
+    /// does not know.
+    #[must_use]
+    pub fn from_label(label: &str) -> Option<Self> {
+        match label {
+            "photoperiod" => Some(Self::Photoperiod),
+            "auto" => Some(Self::Auto),
+            _ => None,
+        }
+    }
+}
+
+/// A three-level environmental tolerance. These shift *alert
+/// thresholds* (spec §4.4), never the species rules. A grow attribute
+/// (D075): unset parses as [`Tolerance::Average`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Tolerance {
+    /// More sensitive than average to this stressor.
+    Sensitive,
+    /// No known deviation from average.
+    #[default]
+    Average,
+    /// Handles this stressor better than average.
+    Tolerant,
+}
+
+impl Tolerance {
+    /// The stable `snake_case` label (database and API representation).
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Sensitive => "sensitive",
+            Self::Average => "average",
+            Self::Tolerant => "tolerant",
+        }
+    }
+
+    /// Parses a stored label. Returns `None` for labels this build
+    /// does not know.
+    #[must_use]
+    pub fn from_label(label: &str) -> Option<Self> {
+        match label {
+            "sensitive" => Some(Self::Sensitive),
+            "average" => Some(Self::Average),
+            "tolerant" => Some(Self::Tolerant),
+            _ => None,
+        }
+    }
+}
 
 /// The known substrates (spec §4.8). Anything else is a user-defined
 /// label; the UI offers these three plus a free-text field.

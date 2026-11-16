@@ -799,30 +799,260 @@ async fn grows_belong_to_spaces() {
     assert_eq!(survived["grow_space_id"], Value::Null);
 }
 
-#[tokio::test]
-async fn lamp_advisor_uses_the_grow_space_light() {
-    let base = spawn_api().await;
-    let client = reqwest::Client::new();
+/// Creates a grow started today and returns the minimum advised lamp
+/// height, inches: the seedling range of the advising wattage class.
+async fn lamp_min_for_grow(client: &reqwest::Client, base: &str, body: Value) -> f64 {
+    let started_on = started_today();
+    let mut body = body;
+    body["started_on"] = json!(started_on);
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&body)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let advice: Value = client
+        .get(format!(
+            "{base}/api/grows/{}/lamp",
+            grow["id"].as_str().unwrap()
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    advice["height"]["min_in"].as_f64().unwrap()
+}
 
-    // A grow started today has no flip/harvest, so the advice reflects
-    // the seedling range of the advising wattage class: 28–30 in for
-    // the historical 330 W default, 32–36 in for a 420 W fixture.
+/// Today's date, `YYYY-MM-DD`, for grows whose forecast starts now.
+fn started_today() -> String {
     let today = time::OffsetDateTime::now_utc().date();
-    let started_on = format!(
+    format!(
         "{:04}-{:02}-{:02}",
         today.year(),
         u8::from(today.month()),
         today.day()
+    )
+}
+
+#[tokio::test]
+async fn lamp_advisor_reads_the_grow_watts_with_the_default_fallback() {
+    let base = spawn_api().await;
+    let client = reqwest::Client::new();
+
+    // Seedling ranges: 28–30 in for the D021 330 W default fixture,
+    // 32–36 in for a 420 W lamp — read from the grow's own watts.
+    let plain = json!({
+        "name": "Default run",
+        "strain_id": null,
+        "grow_space_id": null,
+        "substrate": "soil",
+        "status": "active",
+        "notes": null,
+    });
+    assert_eq!(
+        lamp_min_for_grow(&client, &base, plain).await,
+        28.0,
+        "no watts → 330 W class"
     );
 
+    let mut lit = json!({
+        "name": "Lit run",
+        "strain_id": null,
+        "grow_space_id": null,
+        "substrate": "soil",
+        "status": "active",
+        "notes": null,
+    });
+    lit["real_watts"] = json!(420.0);
+    assert_eq!(
+        lamp_min_for_grow(&client, &base, lit).await,
+        32.0,
+        "grow watts → 420 W class"
+    );
+
+    let mut fractional = json!({
+        "name": "Rounded run",
+        "strain_id": null,
+        "grow_space_id": null,
+        "substrate": "soil",
+        "status": "active",
+        "notes": null,
+    });
+    fractional["real_watts"] = json!(419.6);
+    assert_eq!(
+        lamp_min_for_grow(&client, &base, fractional).await,
+        32.0,
+        "fractional grow watts round to the nearest whole watt"
+    );
+}
+
+#[tokio::test]
+async fn env_thresholds_shift_by_grow_tolerances() {
+    let base = spawn_api().await;
+    let client = reqwest::Client::new();
+
+    let thresholds_for = |name: String, heat: Value, cold: Value| {
+        let client = &client;
+        let base = &base;
+        async move {
+            let mut body = json!({
+                "name": name,
+                "strain_id": null,
+                "grow_space_id": null,
+                "substrate": "soil",
+                "started_on": started_today(),
+                "status": "active",
+                "notes": null,
+            });
+            // Null means leave the field out: the serde default (Average)
+            // applies to absent fields only.
+            if !heat.is_null() {
+                body["heat_tolerance"] = heat;
+            }
+            if !cold.is_null() {
+                body["cold_tolerance"] = cold;
+            }
+            let grow: Value = client
+                .post(format!("{base}/api/grows"))
+                .json(&body)
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            let env: Value = client
+                .get(format!(
+                    "{base}/api/grows/{}/env",
+                    grow["id"].as_str().unwrap()
+                ))
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            env["thresholds"].clone()
+        }
+    };
+
+    let default = thresholds_for("Plain run".to_owned(), Value::Null, Value::Null).await;
+    assert!(
+        (default["ceiling_c"].as_f64().unwrap() - 26.7).abs() < 0.1,
+        "unset tolerances keep the unshifted ceiling"
+    );
+    assert!(
+        (default["floor_c"].as_f64().unwrap() - 15.6).abs() < 0.1,
+        "unset tolerances keep the unshifted floor"
+    );
+
+    let shifted = thresholds_for(
+        "Tuned run".to_owned(),
+        json!("sensitive"),
+        json!("tolerant"),
+    )
+    .await;
+    assert!(
+        shifted["ceiling_c"].as_f64().unwrap() < default["ceiling_c"].as_f64().unwrap() - 1.0,
+        "heat-sensitive grow lowers the ceiling"
+    );
+    assert!(
+        shifted["floor_c"].as_f64().unwrap() < default["floor_c"].as_f64().unwrap() - 1.0,
+        "cold-tolerant grow lowers the floor"
+    );
+}
+
+#[tokio::test]
+async fn autoflower_grow_forecasts_and_fits_without_a_strain() {
+    // The catalogue is seeded, yet the grow attaches no strain: the
+    // forecast and feed-fit must run on the grow's photoperiod alone.
+    let db = Db::open_in_memory().unwrap();
+    leaflog_backend::seed::seed_strains(&db).await.unwrap();
+    leaflog_backend::seed::seed_equipment(&db).await.unwrap();
+    let base = spawn_with(db).await;
+    let client = reqwest::Client::new();
+
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&json!({
+            "name": "Auto run",
+            "strain_id": null,
+            "grow_space_id": null,
+            "photoperiod": "auto",
+            "substrate": "soil",
+            "started_on": started_today(),
+            "status": "active",
+            "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let grow_id = grow["id"].as_str().unwrap().to_owned();
+
+    // The forecast projects the full auto chain on the default total
+    // window: age flip at day 28, harvest 63–77 days from seed.
+    let forecast: Value = client
+        .get(format!("{base}/api/grows/{grow_id}/forecast"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let flower = forecast["windows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|window| window["phase"] == "flower")
+        .expect("auto grow projects a flower window");
+    assert_eq!(flower["actual_start"], true, "autos flip by age");
+    assert_eq!(flower["earliest_end"], 63);
+    assert_eq!(flower["likely_end"], 70);
+    assert_eq!(flower["latest_end"], 77);
+
+    // Feed-fit consumes the same windows: the auto grow fits without
+    // any strain attached.
+    let templates: Vec<Value> = client
+        .get(format!("{base}/api/feeds/templates"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let fit: Value = client
+        .post(format!("{base}/api/grows/{grow_id}/feed/fit"))
+        .json(&json!({ "template_id": templates[0]["id"] }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(
+        !fit["after"]["days"].as_array().unwrap().is_empty(),
+        "the fitted plan has days"
+    );
+    assert!(fit["after"]["actual_total_days"].as_u64().unwrap() > 0);
+
+    // Contrast: an unset photoperiod grow without a plan is
+    // open-ended — no flower window, and the fit refuses.
     let plain: Value = client
         .post(format!("{base}/api/grows"))
         .json(&json!({
-            "name": "Default run",
+            "name": "Photo run",
             "strain_id": null,
             "grow_space_id": null,
             "substrate": "soil",
-            "started_on": started_on,
+            "started_on": started_today(),
             "status": "active",
             "notes": null,
         }))
@@ -832,69 +1062,26 @@ async fn lamp_advisor_uses_the_grow_space_light() {
         .json()
         .await
         .unwrap();
-    let advice: Value = client
-        .get(format!(
-            "{base}/api/grows/{}/lamp",
-            plain["id"].as_str().unwrap()
-        ))
+    let photo_id = plain["id"].as_str().unwrap();
+    let forecast: Value = client
+        .get(format!("{base}/api/grows/{photo_id}/forecast"))
         .send()
         .await
         .unwrap()
         .json()
         .await
         .unwrap();
-    assert_eq!(advice["height"]["min_in"], 28.0, "no space → 330 W class");
-
-    let light = create_equipment_at(&client, &base, "SE420", Some(420.0)).await;
-    let space: Value = client
-        .post(format!("{base}/api/spaces"))
-        .json(&sample_space("60×60 tent"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let space_id = space["id"].as_str().unwrap().to_owned();
+    let windows = forecast["windows"].as_array().unwrap();
+    assert_eq!(windows.len(), 3, "open-ended photoperiod veg");
+    assert_eq!(windows.last().unwrap()["phase"], "vegetative");
     let status = client
-        .post(format!("{base}/api/spaces/{space_id}/equipment/{light}"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
-
-    let lit: Value = client
-        .post(format!("{base}/api/grows"))
-        .json(&json!({
-            "name": "Lit run",
-            "strain_id": null,
-            "grow_space_id": space_id,
-            "substrate": "soil",
-            "started_on": started_on,
-            "status": "active",
-            "notes": null,
-        }))
+        .post(format!("{base}/api/grows/{photo_id}/feed/fit"))
+        .json(&json!({ "template_id": templates[0]["id"] }))
         .send()
         .await
         .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let advice: Value = client
-        .get(format!(
-            "{base}/api/grows/{}/lamp",
-            lit["id"].as_str().unwrap()
-        ))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(
-        advice["height"]["min_in"], 32.0,
-        "space light → 420 W class"
-    );
+        .status();
+    assert_eq!(status, reqwest::StatusCode::BAD_REQUEST);
 }
 
 /// Logs one note entry carrying `tags` and returns the lamp advice's

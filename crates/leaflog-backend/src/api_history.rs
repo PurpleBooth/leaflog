@@ -72,7 +72,10 @@ async fn history(State(state): State<AppState>) -> Result<Json<HistoryReport>, A
             let mut by_substrate: Vec<(String, YieldSummary)> = Vec::new();
             let mut by_template: Vec<(String, YieldSummary)> = Vec::new();
             for grow in &grows {
-                let strain = grow
+                // The strain name is display only (D075: never a
+                // recommendation input); the yield grouping switches
+                // to the grow's strain label in ticket 05.
+                let strain_name = grow
                     .strain_id
                     .as_deref()
                     .and_then(|id| store::strain::get(conn, id).ok().map(|strain| strain.name));
@@ -85,16 +88,12 @@ async fn history(State(state): State<AppState>) -> Result<Json<HistoryReport>, A
                     harvest_day: harvest.map(i64::from),
                     ..leaflog_core::forecast::Actuals::default()
                 };
-                let strain_row = grow
-                    .strain_id
-                    .as_deref()
-                    .and_then(|id| store::strain::get(conn, id).ok());
                 // Accuracy compares the *plan* — the forecast without
                 // actuals — against the logged days; feeding the
                 // actuals in would pin the boundaries and zero every
-                // delta.
+                // delta. The plan reads the grow's photoperiod (D075).
                 let input = leaflog_core::forecast::input_for(
-                    strain_row.as_ref(),
+                    grow.photoperiod,
                     grow.planned_veg_weeks,
                     leaflog_core::forecast::Actuals::default(),
                 );
@@ -102,16 +101,14 @@ async fn history(State(state): State<AppState>) -> Result<Json<HistoryReport>, A
                 accuracy.push(GrowAccuracy {
                     grow_id: grow.id.clone(),
                     name: grow.name.clone(),
-                    strain,
+                    strain: strain_name.clone(),
                     boundaries: boundary_accuracy(&windows, &actuals),
                 });
 
                 let plants = store::grows::list_plants(conn, &grow.id)?;
                 let summary = YieldSummary::of(&grow.id, plants);
                 by_strain.push((
-                    strain_row
-                        .as_ref()
-                        .map_or_else(|| "unknown".to_owned(), |s| s.name.clone()),
+                    strain_name.unwrap_or_else(|| "unknown".to_owned()),
                     summary.clone(),
                 ));
                 by_substrate.push((grow.substrate.clone(), summary.clone()));

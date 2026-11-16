@@ -3,43 +3,16 @@
 //! Every numeric field is a sourced *range* (or single value where
 //! sources agree); `evidence` records where each fact came from, and
 //! bundled seed records carry their `source_url` and `source_licence`.
+//!
+//! The photoperiod and tolerance types moved to [`crate::grows`]
+//! (D075: the grow carries them); they are re-exported here while the
+//! catalogue exists so existing paths keep resolving.
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-/// Photoperiod behaviour of a cultivar.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PhotoperiodType {
-    /// Flowers on a 12/12 light schedule change.
-    #[default]
-    Photoperiod,
-    /// Flowers by age, regardless of light schedule.
-    Auto,
-}
-
-impl PhotoperiodType {
-    /// The stable `snake_case` label (database and API representation).
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Photoperiod => "photoperiod",
-            Self::Auto => "auto",
-        }
-    }
-
-    /// Parses a stored label. Returns `None` for labels this build
-    /// does not know.
-    #[must_use]
-    pub fn from_label(label: &str) -> Option<Self> {
-        match label {
-            "photoperiod" => Some(Self::Photoperiod),
-            "auto" => Some(Self::Auto),
-            _ => None,
-        }
-    }
-}
+pub use crate::grows::{PhotoperiodType, Tolerance};
 
 /// Seed sex type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -82,44 +55,6 @@ impl HeightClass {
             Self::Short => "short",
             Self::Medium => "medium",
             Self::Tall => "tall",
-        }
-    }
-}
-
-/// A three-level environmental tolerance. These shift *alert
-/// thresholds* (spec §4.4), never the species rules.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Tolerance {
-    /// More sensitive than average to this stressor.
-    Sensitive,
-    /// No known deviation from average.
-    #[default]
-    Average,
-    /// Handles this stressor better than average.
-    Tolerant,
-}
-
-impl Tolerance {
-    /// The stable `snake_case` label (database and API representation).
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Sensitive => "sensitive",
-            Self::Average => "average",
-            Self::Tolerant => "tolerant",
-        }
-    }
-
-    /// Parses a stored label. Returns `None` for labels this build
-    /// does not know.
-    #[must_use]
-    pub fn from_label(label: &str) -> Option<Self> {
-        match label {
-            "sensitive" => Some(Self::Sensitive),
-            "average" => Some(Self::Average),
-            "tolerant" => Some(Self::Tolerant),
-            _ => None,
         }
     }
 }

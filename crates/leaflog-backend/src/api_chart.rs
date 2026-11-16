@@ -171,13 +171,9 @@ fn load_windows(
     conn: &rusqlite::Connection,
     grow: &Grow,
 ) -> Result<Vec<leaflog_core::forecast::PhaseWindow>, ApiError> {
-    let strain = grow
-        .strain_id
-        .as_deref()
-        .and_then(|sid| store::strain::get(conn, sid).ok());
     let actuals = crate::api_phase::forecast_actuals(conn, &grow.id)?;
     Ok(leaflog_core::forecast::forecast(
-        &leaflog_core::forecast::input_for(strain.as_ref(), grow.planned_veg_weeks, actuals),
+        &leaflog_core::forecast::input_for(grow.photoperiod, grow.planned_veg_weeks, actuals),
     ))
 }
 

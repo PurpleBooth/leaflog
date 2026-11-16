@@ -96,7 +96,7 @@ pub struct ActualTimeline {
     pub seedling_days: u16,
     /// Days the veg phase lasts (grower's choice).
     pub veg_days: u16,
-    /// Days the flower phase lasts (strain).
+    /// Days the flower phase lasts (as logged).
     pub flower_days: u16,
     /// Days the flush lasts (substrate-dependent).
     pub flush_days: u16,

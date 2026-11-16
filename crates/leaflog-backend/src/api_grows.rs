@@ -455,13 +455,12 @@ async fn get_forecast(
         .db
         .with(move |conn| -> Result<ForecastResponse, ApiError> {
             let grow = store::grows::get(conn, &id)?;
-            let strain = grow
-                .strain_id
-                .as_deref()
-                .and_then(|strain_id| store::strain::get(conn, strain_id).ok());
             let actuals = crate::api_phase::forecast_actuals(conn, &id)?;
-            let input =
-                leaflog_core::forecast::input_for(strain.as_ref(), grow.planned_veg_weeks, actuals);
+            let input = leaflog_core::forecast::input_for(
+                grow.photoperiod,
+                grow.planned_veg_weeks,
+                actuals,
+            );
             let windows = leaflog_core::forecast::forecast(&input);
             let today_day = day_number_in(&grow.started_on, &crate::db::now_rfc3339(), &tz)
                 .ok_or_else(|| ApiError::BadRequest("invalid started_on date".to_owned()))?;
