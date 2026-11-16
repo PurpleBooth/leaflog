@@ -11,6 +11,7 @@ use js_sys::{Function, Reflect};
 use leaflog_core::chart::parse_epoch;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use serde::Serialize;
 use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 
 /// Axis formatter: relative humidity percent.
@@ -313,7 +314,13 @@ fn EChartsHistory(
         let Some(chart) = data.get() else { return };
         let Some(el) = container.get() else { return };
         let option = chart_option::temperature_history_option(&chart, &theme_look());
-        let Ok(option_js) = serde_wasm_bindgen::to_value(&option) else {
+        // serde_wasm_bindgen's default maps `serde_json::Value::Object`
+        // through `serialize_map`, which produces a JS `Map` — and
+        // `setOption` reads plain objects only, so a Map option renders
+        // an empty chart. Maps become objects here; the tuple points
+        // stay `[epoch_ms, value]` arrays.
+        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+        let Ok(option_js) = option.serialize(&serializer) else {
             return;
         };
         // Fresh closures per option build: setOption replaces the
@@ -394,17 +401,15 @@ fn call_chart_method(instance: &JsValue, name: &str, argument: Option<&JsValue>)
 }
 
 /// Attaches the wasm formatter closures: the value-axis label renderer
-/// and the hover tooltip. The builder pre-creates the target objects,
-/// so a missing path would mean the builder seam broke; the skip just
-/// leaves `ECharts`' default formatting.
+/// and the hover tooltip. The builder emits one value-axis object and
+/// pre-creates the `axisLabel` and `tooltip` targets, so a missing path
+/// would mean the builder seam broke; the skip just leaves `ECharts`'s
+/// default formatting.
 fn attach_formatters(option: &JsValue, axis_labels: &JsValue, tooltip_html: &JsValue) {
-    let Ok(y_axes) = Reflect::get(option, &JsValue::from_str("yAxis")) else {
+    let Ok(y_axis) = Reflect::get(option, &JsValue::from_str("yAxis")) else {
         return;
     };
-    let Ok(first_axis) = y_axes.dyn_into::<js_sys::Array>().map(|axes| axes.get(0)) else {
-        return;
-    };
-    set_child_property(&first_axis, "axisLabel", "formatter", axis_labels);
+    set_child_property(&y_axis, "axisLabel", "formatter", axis_labels);
     set_child_property(option, "tooltip", "formatter", tooltip_html);
 }
 

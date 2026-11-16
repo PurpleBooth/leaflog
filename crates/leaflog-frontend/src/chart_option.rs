@@ -26,12 +26,19 @@ pub struct ChartLook {
 #[must_use]
 pub fn temperature_history_option(chart: &GrowHistory, look: &ChartLook) -> serde_json::Value {
     let (y_min, y_max) = padded_range(chart);
+    // The x axis spans the whole Chart window (the old SVG geometry put
+    // the window edges at the canvas edges), so sparse data cannot
+    // zoom the axis in and fake density. An unparseable window bound
+    // would be a backend contract break; the axis then auto-scales.
+    let (x_min, x_max) = window_bounds(chart);
     serde_json::json!({
         "animation": false,
         "grid": { "left": 8, "right": 16, "top": 28, "bottom": 8, "containLabel": true },
         "tooltip": { "trigger": "axis", "confine": true },
         "xAxis": {
             "type": "time",
+            "min": x_min,
+            "max": x_max,
             "axisLabel": { "hideOverlap": true, "color": look.text },
             "axisLine": { "lineStyle": { "color": look.muted } },
         },
@@ -128,6 +135,15 @@ fn window_ms(at: &str) -> Option<i64> {
     leaflog_core::chart::parse_epoch(at).map(|seconds| seconds * 1000)
 }
 
+/// The x-axis bounds: the Chart window in epoch ms, so the axis always
+/// spans the full window. `null` bounds let `ECharts` auto-scale when
+/// the backend contract breaks (unparseable window edges).
+fn window_bounds(chart: &GrowHistory) -> (serde_json::Value, serde_json::Value) {
+    let bound =
+        |at: &str| window_ms(at).map_or(serde_json::Value::Null, |ms| serde_json::json!(ms));
+    (bound(&chart.series.from), bound(&chart.series.to))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{ChartLook, temperature_history_option};
@@ -180,6 +196,36 @@ mod tests {
         assert_eq!(option["yAxis"]["splitLine"]["show"], true);
         assert_eq!(option["tooltip"]["trigger"], "axis");
         assert_eq!(option["series"][0]["type"], "line");
+    }
+
+    #[test]
+    fn the_x_axis_spans_the_whole_chart_window() {
+        let option = temperature_history_option(&sample_history(), &look());
+        assert_eq!(
+            option["xAxis"]["min"].as_i64(),
+            Some(1_794_787_200_000),
+            "window start anchors the time axis"
+        );
+        assert_eq!(
+            option["xAxis"]["max"].as_i64(),
+            Some(1_794_790_800_000),
+            "window end anchors the time axis"
+        );
+    }
+
+    #[test]
+    fn an_unparseable_window_falls_back_to_auto_scaling() {
+        let mut broken = sample_history();
+        broken.series.from = "not-a-timestamp".to_owned();
+        let option = temperature_history_option(&broken, &look());
+        assert!(
+            option["xAxis"]["min"].is_null(),
+            "broken window start auto-scales"
+        );
+        assert!(
+            option["xAxis"]["max"].as_i64().is_some(),
+            "the intact window end still pins the axis"
+        );
     }
 
     #[test]

@@ -34,14 +34,25 @@ async function stripBox(page: Page) {
   return box!;
 }
 
-/** Asserts nothing spills past the viewport sideways. */
+/** Asserts nothing spills past the viewport sideways.
+ *
+ * Settle-tolerant on purpose: after a viewport change the chart's
+ * resize handler re-renders asynchronously, so a freshly resized ECharts
+ * SVG can still carry its pre-resize width for a frame. The poll only
+ * waits for that re-render — a chart that never shrinks still fails
+ * (the stale-width bug class this assertion guards). */
 async function expectNoHorizontalOverflow(page: Page) {
-  const overflow = await page.evaluate(
-    () =>
-      document.documentElement.scrollWidth -
-      document.documentElement.clientWidth,
-  );
-  expect(overflow, 'no horizontal overflow').toBeLessThanOrEqual(0);
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(
+          () =>
+            document.documentElement.scrollWidth -
+            document.documentElement.clientWidth,
+        ),
+      { message: 'no horizontal overflow' },
+    )
+    .toBeLessThanOrEqual(0);
 }
 
 test('env strip spans the container and wraps without overflow', async ({
