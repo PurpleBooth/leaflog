@@ -37,6 +37,7 @@ pub mod feed;
 pub mod forecast;
 pub mod grows;
 pub mod history;
+pub mod light_cycle;
 pub mod seedbank;
 pub mod spaces;
 pub mod strain;
