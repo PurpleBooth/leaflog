@@ -60,6 +60,12 @@ test('grow: create from the grows page', async ({ page }) => {
   const name = uniqueName('E2E Grow');
   await page.goto(url('/grows'));
   await page.getByRole('button', { name: 'Start a grow' }).click();
+
+  // Feature-strip: a grow needs no space — the form's space select is
+  // gone with the feature that fed it.
+  await expect(page.getByLabel('Space')).toHaveCount(0);
+  await expect(page.getByText('— no space —')).toHaveCount(0);
+
   await page.getByLabel('Name *', { exact: true }).fill(name);
   await page.getByLabel('Started (seed/clone) *').fill('2026-02-01');
   await armNoReloadGuard(page);

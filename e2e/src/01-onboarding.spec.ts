@@ -1,8 +1,46 @@
 // First-run onboarding wizard (runs first: the fresh database shows it,
 // and finishing it dismisses the wizard for every later spec).
+//
+// The wizard shows exactly once per database — the first test that
+// creates a grow takes that run — so the skip path runs before the
+// happy path and resets the dismissal flag for it.
 
 import { test, expect } from '@playwright/test';
 import { api, armNoReloadGuard, expectNoReload, uniqueName, url } from './helpers';
+
+test('wizard skips clean: every step optional, nothing picked is nothing bound', async ({
+  page,
+  request,
+}) => {
+  await page.goto(url('/'));
+  const wizard = page.locator('section[aria-label="First-run setup"]');
+  await expect(wizard).toBeVisible();
+
+  // Skip the bind step, pass the optional strain step, then dismiss on
+  // plants: no grow, no bindings, and the dismissal is the only trace
+  // (every step gates nothing).
+  await wizard.getByRole('button', { name: 'Skip this step' }).click();
+  await expect(wizard.getByRole('heading', { name: '2. Strain' })).toBeVisible();
+  await wizard.getByRole('button', { name: 'Next' }).click();
+  await expect(wizard.getByRole('heading', { name: '3. Plants' })).toBeVisible();
+  await wizard
+    .getByRole('button', { name: "Dismiss — I'll explore on my own" })
+    .click();
+  await expect(wizard).toHaveCount(0);
+
+  const grows = await api<Array<{ id: string }>>(request, 'GET', 'api/grows');
+  expect(grows).toHaveLength(0);
+  const state = await api<{ dismissed: boolean; has_grows: boolean }>(
+    request,
+    'GET',
+    'api/onboarding',
+  );
+  expect(state!.dismissed).toBe(true);
+  expect(state!.has_grows).toBe(false);
+
+  // Restart for the happy path below: the empty-state card's API twin.
+  await api(request, 'PUT', 'api/settings', { onboarding_dismissed: false });
+});
 
 test('wizard happy path: sensors, grow and plants land on the dashboard', async ({
   page,
@@ -15,7 +53,12 @@ test('wizard happy path: sensors, grow and plants land on the dashboard', async 
 
   // Step 1: bind one sensor — the temperature role gets the mock's
   // entity; the pick must land on the created grow as its binding.
-  await wizard.getByLabel('Temperature').selectOption('sensor.grow_temperature');
+  // Address the select by role + anchored name: an accessible name
+  // carries the option texts, so a plain 'Temperature' substring
+  // matches every role picker once the entity list lands.
+  await wizard
+    .getByRole('combobox', { name: /^Temperature/ })
+    .selectOption('sensor.grow_temperature');
   await wizard.getByRole('button', { name: 'Next' }).click();
   await expect(wizard.getByRole('heading', { name: '2. Strain' })).toBeVisible();
 
