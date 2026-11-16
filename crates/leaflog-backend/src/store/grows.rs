@@ -20,7 +20,6 @@ pub fn create(conn: &Connection, input: &GrowInput) -> Result<Grow, StoreError> 
         created_at: now_rfc3339(),
         updated_at: now_rfc3339(),
         name: input.name.clone(),
-        grow_space_id: input.grow_space_id.clone(),
         feed_template_id: input.feed_template_id.clone(),
         planned_veg_weeks: input.planned_veg_weeks,
         strain_label: input.strain_label.clone(),
@@ -36,12 +35,11 @@ pub fn create(conn: &Connection, input: &GrowInput) -> Result<Grow, StoreError> 
         notes: input.notes.clone(),
     };
     conn.execute(
-        "INSERT INTO grow (id, name, grow_space_id, feed_template_id, planned_veg_weeks, strain_label, photoperiod, heat_tolerance, cold_tolerance, light_tolerance, real_watts, dimmable, substrate, started_on, status, notes, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+        "INSERT INTO grow (id, name, feed_template_id, planned_veg_weeks, strain_label, photoperiod, heat_tolerance, cold_tolerance, light_tolerance, real_watts, dimmable, substrate, started_on, status, notes, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
         params![
             grow.id,
             grow.name,
-            grow.grow_space_id,
             grow.feed_template_id,
             grow.planned_veg_weeks.map(i64::from),
             non_empty_label(&grow.strain_label),
@@ -87,22 +85,6 @@ pub fn get(conn: &Connection, id: &str) -> Result<Grow, StoreOrNotFound> {
         .ok_or_else(|| NotFound.into())
 }
 
-/// Lists the grows inside one grow space, active first, newest start
-/// date first.
-///
-/// # Errors
-///
-/// Returns a [`StoreError`] on SQLite failures.
-pub fn list_for_space(conn: &Connection, space_id: &str) -> Result<Vec<Grow>, StoreError> {
-    let mut stmt = conn.prepare(
-        "SELECT * FROM grow WHERE grow_space_id = ?1
-         ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, started_on DESC",
-    )?;
-    let rows = stmt.query_map(params![space_id], map_grow)?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(StoreError::from)
-}
-
 /// Replaces a grow (full update), preserving id and creation time.
 ///
 /// # Errors
@@ -113,7 +95,6 @@ pub fn update(conn: &Connection, id: &str, input: &GrowInput) -> Result<Grow, St
     let mut updated = existing;
     updated.updated_at = now_rfc3339();
     updated.name.clone_from(&input.name);
-    updated.grow_space_id.clone_from(&input.grow_space_id);
     updated.feed_template_id.clone_from(&input.feed_template_id);
     updated.planned_veg_weeks = input.planned_veg_weeks;
     updated.strain_label.clone_from(&input.strain_label);
@@ -128,16 +109,15 @@ pub fn update(conn: &Connection, id: &str, input: &GrowInput) -> Result<Grow, St
     updated.status = input.status;
     updated.notes.clone_from(&input.notes);
     conn.execute(
-        "UPDATE grow SET name = ?2, grow_space_id = ?3,
-             feed_template_id = ?4, planned_veg_weeks = ?5, strain_label = ?6, photoperiod = ?7,
-             heat_tolerance = ?8, cold_tolerance = ?9, light_tolerance = ?10,
-             real_watts = ?11, dimmable = ?12, substrate = ?13, started_on = ?14,
-             status = ?15, notes = ?16, updated_at = ?17
+        "UPDATE grow SET name = ?2,
+             feed_template_id = ?3, planned_veg_weeks = ?4, strain_label = ?5, photoperiod = ?6,
+             heat_tolerance = ?7, cold_tolerance = ?8, light_tolerance = ?9,
+             real_watts = ?10, dimmable = ?11, substrate = ?12, started_on = ?13,
+             status = ?14, notes = ?15, updated_at = ?16
          WHERE id = ?1",
         params![
             updated.id,
             updated.name,
-            updated.grow_space_id,
             updated.feed_template_id,
             updated.planned_veg_weeks.map(i64::from),
             non_empty_label(&updated.strain_label),
@@ -292,7 +272,6 @@ fn map_grow(row: &rusqlite::Row<'_>) -> Result<Grow, rusqlite::Error> {
     Ok(Grow {
         id: row.get("id")?,
         name: row.get("name")?,
-        grow_space_id: row.get("grow_space_id")?,
         feed_template_id: row.get("feed_template_id")?,
         planned_veg_weeks: row
             .get::<_, Option<i64>>("planned_veg_weeks")?

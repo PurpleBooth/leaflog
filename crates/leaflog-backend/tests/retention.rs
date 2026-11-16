@@ -48,7 +48,6 @@ async fn prune_thins_to_one_per_hour_keeping_day_edges_and_excursions() {
                 conn,
                 &GrowInput {
                     name: "Retention run".to_owned(),
-                    grow_space_id: None,
                     feed_template_id: None,
                     planned_veg_weeks: None,
                     strain_label: String::new(),

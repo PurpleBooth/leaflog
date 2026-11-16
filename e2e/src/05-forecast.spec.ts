@@ -19,7 +19,6 @@ test('today marker sits in the track area, past the label gutter', async ({
     .slice(0, 10);
   const grow = await api<{ id: string }>(request, 'POST', 'api/grows', {
     name,
-    grow_space_id: null,
     feed_template_id: null,
     substrate: 'soil',
     started_on: started,

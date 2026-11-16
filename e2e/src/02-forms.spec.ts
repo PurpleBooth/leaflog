@@ -9,7 +9,6 @@ import {
   armNoReloadGuard,
   createGrow,
   createPlant,
-  createSpace,
   dismissOnboarding,
   expectNoReload,
   uniqueName,
@@ -22,33 +21,6 @@ test.beforeAll(async ({ request }) => {
   await dismissOnboarding(request);
 });
 
-test('equipment: create, then edit', async ({ page }) => {
-  const name = uniqueName('E2E Lamp');
-  await page.goto(url('/equipment'));
-  await page.getByRole('button', { name: 'Add equipment' }).click();
-  await page.getByLabel('Name *', { exact: true }).fill(name);
-  await page.getByLabel('Brand / model').fill('E2E brand');
-  await armNoReloadGuard(page);
-  await page.getByRole('button', { name: 'Save' }).click();
-
-  const card = page.locator('li.card', { hasText: name });
-  await expect(card).toBeVisible();
-  await expect(card).toContainText('E2E brand');
-  await expectNoReload(page);
-
-  // Edit the created item: rename, no reload, persists after reload.
-  const renamed = uniqueName('E2E Lamp v2');
-  await card.getByRole('button', { name: 'Edit', exact: true }).click();
-  await page.getByLabel('Name *', { exact: true }).fill(renamed);
-  await armNoReloadGuard(page);
-  await page.getByRole('button', { name: 'Save' }).click();
-  await expect(page.locator('li.card', { hasText: renamed })).toBeVisible();
-  await expectNoReload(page);
-  await page.reload();
-  await expect(page.locator('li.card', { hasText: renamed })).toBeVisible();
-  await expect(page.locator('li.card', { hasText: name })).toHaveCount(0);
-});
-
 test('strains: the page and its nav entry are gone', async ({ page }) => {
   // Feature-strip (D075): the strain catalogue left the product — the
   // grow carries its strain label itself. No nav link, and the old
@@ -57,42 +29,6 @@ test('strains: the page and its nav entry are gone', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'Strains' })).toHaveCount(0);
   await page.goto(url('/strains'));
   await expect(page.getByRole('button', { name: 'Add strain' })).toHaveCount(0);
-});
-
-test('grow space: create from the overview page', async ({ page }) => {
-  const name = uniqueName('E2E Space');
-  await page.goto(url('/spaces'));
-  await page.getByRole('button', { name: 'New space' }).click();
-  await page.getByLabel('Name *', { exact: true }).fill(name);
-  await page.getByLabel('Width (cm)').fill('60');
-  await page.getByLabel('Depth (cm)').fill('60');
-  await page.getByLabel('Height (cm)').fill('180');
-  await armNoReloadGuard(page);
-  await page.getByRole('button', { name: 'Save' }).click();
-
-  const card = page.locator('li.card', { hasText: name });
-  await expect(card).toBeVisible();
-  await expect(card).toContainText('W 60');
-  await expectNoReload(page);
-  await page.reload();
-  await expect(page.locator('li.card', { hasText: name })).toBeVisible();
-});
-
-test('grow space: edit from the detail page', async ({ page, request }) => {
-  const name = uniqueName('E2E Space');
-  const id = await createSpace(request, name);
-  await page.goto(url(`/spaces/${id}`));
-  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
-
-  await page.getByRole('button', { name: 'Edit space' }).click();
-  const renamed = uniqueName('E2E Space v2');
-  await page.getByLabel('Name *', { exact: true }).fill(renamed);
-  await armNoReloadGuard(page);
-  await page.getByRole('button', { name: 'Save' }).click();
-  await expect(page.getByRole('heading', { name: renamed, exact: true })).toBeVisible();
-  await expectNoReload(page);
-  await page.reload();
-  await expect(page.getByRole('heading', { name: renamed, exact: true })).toBeVisible();
 });
 
 test('seedbank: the page and its nav entry are gone', async ({ page }) => {
@@ -199,51 +135,6 @@ test('grow: strain label, photoperiod and advanced settings persist', async ({
   await expect(page.getByLabel('Light tolerance')).toHaveValue('tolerant');
   await expect(page.getByLabel('Real wall watts')).toHaveValue('113.5');
   await expect(page.getByLabel('Dimmable')).not.toBeChecked();
-});
-
-test('grow: bound space survives late options, save and reopen', async ({
-  page,
-  request,
-}) => {
-  const name = uniqueName('E2E Space Grow');
-  const spaceId = await createSpace(request, uniqueName('E2E Space'));
-  const grow = await api<{ id: string }>(request, 'POST', 'api/grows', {
-    name,
-    grow_space_id: spaceId,
-    feed_template_id: null,
-    substrate: 'soil',
-    started_on: new Date().toISOString().slice(0, 10),
-    status: 'active',
-    notes: null,
-  });
-
-  // Hold the spaces list back so the <option> nodes mount after the
-  // select: the bound space must display as selected once they land,
-  // never the placeholder while the draft keeps the binding.
-  await page.route('**/api/spaces', async (route) => {
-    await new Promise((resolve) => {
-      setTimeout(resolve, 300);
-    });
-    await route.continue();
-  });
-
-  await page.goto(url(`/grows/${grow!.id}`));
-  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
-
-  await page.getByRole('button', { name: 'Edit grow' }).click();
-  await expect(page.getByLabel('Space')).toHaveValue(spaceId);
-
-  // Pick explicitly and save (the D061 guard: no native submit, no reload).
-  await page.getByLabel('Space').selectOption(spaceId);
-  await armNoReloadGuard(page);
-  await page.getByRole('button', { name: 'Save' }).click();
-  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
-  await expectNoReload(page);
-
-  // Saving refetches the spaces list; reopening the form must show the
-  // binding, never reset to the placeholder.
-  await page.getByRole('button', { name: 'Edit grow' }).click();
-  await expect(page.getByLabel('Space')).toHaveValue(spaceId);
 });
 
 test('grow header cluster: the strain label shows, left of the buttons', async ({

@@ -1,8 +1,7 @@
-//! Bundled-data upgrade acceptance tests (spec §4.1, §13): on a
-//! simulated upgrade, new bundled rows are inserted, existing bundled
-//! rows are adopted onto their stable ids, and user entries are never
-//! touched. The strain catalogue part of the chain ends in V17's drop:
-//! the adopted strain link surfaces as the grow's derived label.
+//! Bundled-data upgrade acceptance tests (spec §13): on a simulated
+//! upgrade, the pre-stable-id rows are adopted onto their stable ids
+//! without touching user data — and the adopted strain link then
+//! surfaces as the grow's derived label when V17 drops the catalogue.
 
 use std::path::PathBuf;
 
@@ -34,11 +33,11 @@ impl Drop for TempDb {
     }
 }
 
-/// Builds a "pre-stable-id" database at schema V7: bundled rows seeded
-/// with random ULIDs (the pre-V8 seeder's behaviour), a grow on the
-/// bundled strain, and a grow space referencing the bundled tent. The
-/// clip fan is absent — as if the user had deleted it back when
-/// builtins were deletable.
+/// Builds a "pre-stable-id" database at schema V7: bundled strain rows
+/// seeded with random ULIDs (the pre-V8 seeder's behaviour), a user
+/// phenotype clone pointing at one of them, and a grow on the bundled
+/// strain. (The bundled equipment catalogue left the product with V16,
+/// so the upgrade scenario covers the strain catalogue only.)
 fn pre_upgrade_database(path: &std::path::Path) {
     let mut conn = Connection::open(path).expect("open pre-upgrade db");
     conn.pragma_update(None, "foreign_keys", "ON")
@@ -62,108 +61,94 @@ fn pre_upgrade_database(path: &std::path::Path) {
               NULL, NULL, 'short', NULL, NULL, NULL, NULL, NULL,
               'average', 'average', 'average', NULL, NULL, '{}',
               'https://sensiseeds.com', 'breeder catalogue', 1,
-              NULL, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+              NULL, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'),
+             ('01STRAINMYPHENO00000000', 'Northern Lights (my phenotype)',
+              'Sensi Seeds', 'photoperiod', 'feminized', 90, '[]', 50, 58, 1.4,
+              NULL, NULL, 'short', NULL, NULL, NULL, NULL, NULL,
+              'average', 'average', 'average', 4, 'keeps growing',
+              '{}', NULL, NULL, 0,
+              '01STRAINNORTHERN0000000', '2026-01-02T00:00:00Z', '2026-01-02T00:00:00Z');
 
-         INSERT INTO equipment_item (id, name, category, brand_model,
-             real_watts, dimmable, purchase_date, purchase_price, currency,
-             notes, source, is_builtin, created_at, updated_at)
-         VALUES
-             ('01EQUIPTENTULID00000000', 'Grow tent 60x60x180', 'tent_room',
-              'Spider Farmer 60x60x180 cm', NULL, 0, NULL, NULL, NULL,
-              'user-renamed note', NULL, 0,
-              '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'),
-             ('01EQUIPUSERLIGHT0000000', 'Borrowed desk lamp', 'light',
-              NULL, 40, 0, NULL, NULL, NULL, NULL, NULL, 0,
-              '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
-
-         INSERT INTO grow_space (id, name, width_cm, depth_cm, height_cm,
-             notes, created_at, updated_at)
-         VALUES ('01SPACETENT00000000000', 'The tent', 60, 60, 180, NULL,
-                 '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
-
-         INSERT INTO grow_space_equipment (grow_space_id, equipment_id) VALUES
-             ('01SPACETENT00000000000', '01EQUIPTENTULID00000000');
-
-         INSERT INTO grow (id, name, strain_id, grow_space_id, substrate,
+         INSERT INTO grow (id, name, strain_id, substrate,
              started_on, status, notes, created_at, updated_at)
          VALUES ('01GROWNORTHERN000000000', 'NL run',
-                 '01STRAINNORTHERN0000000', NULL, 'soil', '2026-09-01',
+                 '01STRAINNORTHERN0000000', 'soil', '2026-09-01',
                  'active', NULL, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');",
     )
     .expect("pre-upgrade fixtures");
 }
 
 #[tokio::test]
-async fn upgrade_adopts_reids_and_inserts_without_touching_user_data() {
+async fn upgrade_adopts_reids_and_the_drop_surfaces_the_label() {
     let temp = TempDb::new("adopt");
     let path = temp.path();
     pre_upgrade_database(&path);
 
-    // The upgrade itself: boot applies V8 onward (V17 drops the strain
-    // catalogue the adoption repointed), then the seeder runs (the
-    // same order `serve` uses).
-    let db = Db::open(&path).expect("boot applies the migration chain");
-    let seeded_equipment = seed::seed_equipment(&db).await.expect("equipment seeder");
+    // Stage one of the upgrade: apply V8 through V16 only. The bundled
+    // strain was adopted onto its stable id (exactly one row — no
+    // duplicate), the clone's parent link and the grow's reference
+    // followed, and adoption marked it read-only.
+    {
+        let mut conn = Connection::open(&path).expect("reopen pre-drop db");
+        conn.pragma_update(None, "foreign_keys", "ON")
+            .expect("pragmas");
+        db::embedded::migrations::runner()
+            .set_target(Target::Version(16))
+            .run(&mut conn)
+            .expect("apply through the last pre-drop migration");
 
-    // "New" means new under the stable id: the tent was already present
-    // (adopted), everything else came in fresh.
-    assert_eq!(seeded_equipment, 4);
-
-    db.with(|conn| -> Result<(), StoreError> {
-        // The bundled tent was adopted (id and read-only flag) and kept
-        // its user-edited note; the space reference followed.
-        let (id, note, builtin): (String, String, i64) = conn.query_row(
-            "SELECT id, notes, is_builtin FROM equipment_item WHERE name = 'Grow tent 60x60x180'",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )?;
-        assert_eq!(id, "seed-equip-grow-tent-60x60x180");
-        assert_eq!(note, "user-renamed note", "user edits survive upgrades");
-        assert_eq!(builtin, 1);
-        let space_ref: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM grow_space_equipment
-             WHERE grow_space_id = '01SPACETENT00000000000'
-               AND equipment_id = 'seed-equip-grow-tent-60x60x180'",
-            [],
-            |row| row.get(0),
-        )?;
-        assert_eq!(space_ref, 1, "the space reference was repointed");
-
-        // The clip fan was missing pre-upgrade; the seeder inserted it
-        // (bundled rows that are new).
-        let fan: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM equipment_item WHERE id = 'seed-equip-e6-clip-fan-150-mm'",
-            [],
-            |row| row.get(0),
-        )?;
-        assert_eq!(fan, 1);
-
-        // The user's light is untouched: same id, still a user entry.
         let (id, builtin): (String, i64) = conn.query_row(
-            "SELECT id, is_builtin FROM equipment_item WHERE name = 'Borrowed desk lamp'",
+            "SELECT id, is_builtin FROM strain WHERE name = 'Northern Lights'",
             [],
             |row| Ok((row.get(0)?, row.get(1)?)),
-        )?;
-        assert_eq!(id, "01EQUIPUSERLIGHT0000000");
-        assert_eq!(builtin, 0);
+        )
+        .expect("adopted bundled strain");
+        assert_eq!(id, "seed-strain-northern-lights");
+        assert_eq!(builtin, 1, "adopted rows become read-only presets");
+        let northern: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM strain WHERE name = 'Northern Lights'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("adoption count");
+        assert_eq!(northern, 1, "no duplicate after adoption");
+        let parent: String = conn
+            .query_row(
+                "SELECT is_phenotype_of FROM strain WHERE id = '01STRAINMYPHENO00000000'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("clone parent link");
+        assert_eq!(parent, "seed-strain-northern-lights");
+        let grow_strain: String = conn
+            .query_row(
+                "SELECT strain_id FROM grow WHERE id = '01GROWNORTHERN000000000'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("grow reference repointed");
+        assert_eq!(grow_strain, "seed-strain-northern-lights");
+    }
 
-        // The strain table is gone (V17) — but the grow it anchored
-        // survives, carrying the strain's name as its derived label.
-        // The label could only come through the full chain: V8 adopted
-        // the grow onto the bundled strain's stable id, V17 backfilled
-        // label and photoperiod from that link, then dropped the table.
+    // Stage two: a plain boot applies V17. The catalogue drops — but
+    // the grow keeps its identity: the label and photoperiod are
+    // backfilled from the adopted link before the table goes.
+    let db = Db::open(&path).expect("boot applies the strain drop");
+    db.with(|conn| -> Result<(), StoreError> {
         let strain_table: bool = conn.query_row(
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'strain')",
             [],
             |row| row.get(0),
         )?;
         assert!(!strain_table, "the strain catalogue is dropped");
-        let (name, label, photoperiod): (String, Option<String>, Option<String>) = conn.query_row(
-            "SELECT name, strain_label, photoperiod FROM grow
-             WHERE id = '01GROWNORTHERN000000000'",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )?;
+        let (name, label, photoperiod): (String, Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT name, strain_label, photoperiod FROM grow
+                 WHERE id = '01GROWNORTHERN000000000'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("the upgraded grow survives");
         assert_eq!(name, "NL run");
         assert_eq!(label.as_deref(), Some("Northern Lights"));
         assert_eq!(photoperiod.as_deref(), Some("photoperiod"));
@@ -172,7 +157,15 @@ async fn upgrade_adopts_reids_and_inserts_without_touching_user_data() {
     .await
     .expect("upgrade assertions");
 
-    // And the whole thing is idempotent: a second boot seeds nothing.
-    let again_equipment = seed::seed_equipment(&db).await.expect("re-seed equipment");
-    assert_eq!(again_equipment, 0);
+    // First boot after the upgrade seeds the one thing that is still
+    // bundled data: the substrate/feed presets.
+    seed::seed_feed_presets(&db).await.expect("feed presets");
+    let templates: i64 = db
+        .with(|conn| {
+            conn.query_row("SELECT COUNT(*) FROM feed_template", [], |r| r.get(0))
+                .map_err(StoreError::from)
+        })
+        .await
+        .expect("template count");
+    assert!(templates >= 3, "the presets seeded once: {templates}");
 }

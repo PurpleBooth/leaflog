@@ -26,50 +26,34 @@ use crate::chart::{
     format_ppm,
 };
 use crate::dashboard::EnvDashboard;
-use crate::equipment::ErrorIf;
+use crate::ErrorIf;
 use crate::feed::FeedPanel;
 use crate::gantt::GanttTimeline;
 use crate::live::LivePanel;
 use crate::route_href;
-use crate::spaces::SpaceDetail;
 
 /// The grows overview page.
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
 pub fn GrowsPage() -> impl IntoView {
     let grows = RwSignal::<Vec<Grow>>::new(Vec::new());
-    let spaces = RwSignal::<Vec<SpaceDetail>>::new(Vec::new());
     let error = RwSignal::<Option<String>>::new(None);
     let loading = RwSignal::<bool>::new(true);
     let form_open = RwSignal::<bool>::new(false);
     let draft = RwSignal::<GrowInput>::new(empty_grow());
 
-    // Each list resource fetches on its own: the grows list renders
-    // from its own request whatever the spaces request did, and every
-    // failure lands in the shared error banner.
+    // One fetch: the grows list is the page's only resource, so the
+    // error banner tri-states exactly that request.
     let refresh = move || {
         loading.set(true);
         spawn_local(async move {
-            // Both in flight at once: the list lands as soon as its
-            // own request answers, however long spaces take.
-            let (grow_list, space_list) = futures::join!(
-                fetch_list::<Vec<Grow>>("api/grows"),
-                fetch_list::<Vec<SpaceDetail>>("api/spaces"),
-            );
-            let mut failures = Vec::new();
-            match grow_list {
-                Ok(list) => grows.set(list),
-                Err(failure) => failures.push(failure.message),
+            match fetch_list::<Vec<Grow>>("api/grows").await {
+                Ok(list) => {
+                    grows.set(list);
+                    error.set(None);
+                }
+                Err(failure) => error.set(Some(failure.message)),
             }
-            match space_list {
-                Ok(list) => spaces.set(list),
-                Err(failure) => failures.push(failure.message),
-            }
-            error.set(if failures.is_empty() {
-                None
-            } else {
-                Some(failures.join("; "))
-            });
             loading.set(false);
         });
     };
@@ -123,7 +107,7 @@ pub fn GrowsPage() -> impl IntoView {
             <Show when=move || form_open.get()>
                 <form class="card bg-base-100 shadow-sm px-5 py-4 my-4" on:submit=save>
                     <h3>"New grow"</h3>
-                    <GrowForm draft spaces />
+                    <GrowForm draft />
                     <div class="flex flex-wrap gap-2 mt-4">
                         <button class="btn btn-primary btn-sm" type="submit">"Save"</button>
                         <button class="btn btn-sm" type="button" on:click=move |_| form_open.set(false)>"Cancel"</button>
@@ -133,19 +117,10 @@ pub fn GrowsPage() -> impl IntoView {
 
             <ul class="grid gap-4 lg:grid-cols-2">
                 {move || {
-                    let space_of = |id: &Option<String>| {
-                        id.as_ref().and_then(|space_id| {
-                            spaces
-                                .get()
-                                .into_iter()
-                                .find(|detail| detail.space.id == *space_id)
-                        })
-                    };
                     grows
                         .get()
                         .into_iter()
                         .map(|grow| {
-                            let space = space_of(&grow.grow_space_id);
                             view! {
                                 <li class="card bg-base-100 shadow-sm px-5 py-4">
                                     <div class="flex flex-wrap items-baseline gap-2">
@@ -154,11 +129,6 @@ pub fn GrowsPage() -> impl IntoView {
                                         </A>
                                         <span class="badge badge-ghost">{grow.status.label()}</span>
                                         <span class="text-base-content/70">{grow.substrate.clone()}</span>
-                                        {space.map(|detail| view! {
-                                            <span class="badge badge-ghost">
-                                                {detail.space.name}
-                                            </span>
-                                        })}
                                     </div>
                                     <p class="text-base-content/70 text-sm">"Started "{grow.started_on}</p>
                                 </li>
@@ -249,7 +219,6 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
     let plants = RwSignal::<Vec<Plant>>::new(Vec::new());
     let actions = RwSignal::<Vec<ActionEntry>>::new(Vec::new());
     let photos = RwSignal::<Vec<Photo>>::new(Vec::new());
-    let spaces = RwSignal::<Vec<SpaceDetail>>::new(Vec::new());
     let error = RwSignal::<Option<String>>::new(None);
 
     let chip = RwSignal::<Option<ActionType>>::new(None);
@@ -290,10 +259,6 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             }
             match api::get::<Vec<Photo>>(&format!("{base}/photos")).await {
                 Ok(value) => photos.set(value),
-                Err(failure) => error.set(Some(failure.message)),
-            }
-            match api::get::<Vec<SpaceDetail>>("api/spaces").await {
-                Ok(value) => spaces.set(value),
                 Err(failure) => error.set(Some(failure.message)),
             }
         });
@@ -465,7 +430,6 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                 grow.get().map_or_else(
                     || ().into_any(),
                     |current| {
-                        let space_id = current.grow_space_id.clone();
                         let strain_label = current.strain_label.clone();
                         let archived = current.status == GrowStatus::Archived;
                         view! {
@@ -473,8 +437,8 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                 <div class="flex flex-wrap items-center justify-between gap-4">
                                     // One left-aligned quiet cluster:
                                     // name · glyph + medium · strain
-                                    // label, with the status and space
-                                    // badges joining it. The buttons
+                                    // label, with the status badge
+                                    // joining it. The buttons
                                     // are the row's second child, so
                                     // justify-between keeps them clear
                                     // on the right. An unlabelled grow
@@ -502,23 +466,6 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                                     {current.status.label()}
                                                 </span>
                                             })}
-                                        {move || {
-                                            space_id.as_ref().and_then(|id| {
-                                                spaces
-                                                    .get()
-                                                    .into_iter()
-                                                    .find(|detail| detail.space.id == *id)
-                                            })
-                                            .map(|detail| view! {
-                                                <A href=route_href(
-                                                    &format!("/spaces/{}", detail.space.id),
-                                                )>
-                                                    <span class="badge badge-ghost">
-                                                        {detail.space.name.clone()}
-                                                    </span>
-                                                </A>
-                                            })
-                                        }}
                                     </div>
                                     {let for_edit = GrowInput::from_grow(&current);
                                     view! {
@@ -549,7 +496,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             <Show when=move || edit_open.get()>
                 <form class="card bg-base-100 shadow-sm px-5 py-4 my-4" on:submit=save_edit>
                     <h3>"Edit grow"</h3>
-                    <GrowForm draft=grow_draft spaces />
+                    <GrowForm draft=grow_draft />
                     <div class="flex flex-wrap gap-2 mt-4">
                         <button class="btn btn-primary btn-sm" type="submit">"Save"</button>
                         <button class="btn btn-sm" type="button" on:click=move |_| edit_open.set(false)>
@@ -786,12 +733,12 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
 }
 
 /// The create/edit form fields for one grow (spec §4.2): identity,
-/// strain label, photoperiod, space, substrate, start date, status and
+/// strain label, photoperiod, substrate, start date, status and
 /// notes. Used by both the grows page (create) and the grow detail
 /// page (edit).
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
-fn GrowForm(draft: RwSignal<GrowInput>, spaces: RwSignal<Vec<SpaceDetail>>) -> impl IntoView {
+fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
     view! {
         <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
             <label class="fieldset">
@@ -823,41 +770,6 @@ fn GrowForm(draft: RwSignal<GrowInput>, spaces: RwSignal<Vec<SpaceDetail>>) -> i
                     }
                 >
                     {photoperiod_options()}
-                </select>
-            </label>
-            <label class="fieldset">
-                <span class="fieldset-label">"Space"</span>
-                <select class="select"
-                    prop:value=move || draft.get().grow_space_id.unwrap_or_default()
-                    on:change=move |ev| {
-                        let value = event_target_value(&ev);
-                        draft.update(|d| {
-                            d.grow_space_id = (!value.is_empty()).then_some(value);
-                        });
-                    }
-                >
-                    <option value="">"— no space —"</option>
-                    {move || {
-                        // Freshly mounted <option> nodes carry no selected
-                        // state: a spaces list that arrives late or is
-                        // refetched after a save must not visibly reset the
-                        // draft's binding to the placeholder, so the draft's
-                        // pick is encoded into the rebuilt options.
-                        let picked = draft.get_untracked().grow_space_id;
-                        spaces
-                            .get()
-                            .into_iter()
-                            .map(|detail| {
-                                let is_selected =
-                                    picked.as_deref() == Some(detail.space.id.as_str());
-                                view! {
-                                    <option value=detail.space.id selected=is_selected>
-                                        {detail.space.name}
-                                    </option>
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                    }}
                 </select>
             </label>
             <label class="fieldset">
@@ -1240,7 +1152,6 @@ where
 fn empty_grow() -> GrowInput {
     GrowInput {
         name: String::new(),
-        grow_space_id: None,
         feed_template_id: None,
         planned_veg_weeks: None,
         strain_label: String::new(),
@@ -1336,8 +1247,7 @@ mod landing_pick_tests {
         Grow {
             id: id.to_owned(),
             name: id.to_owned(),
-            grow_space_id: None,
-            feed_template_id: None,
+                feed_template_id: None,
             planned_veg_weeks: None,
             strain_label: String::new(),
             photoperiod: PhotoperiodType::default(),

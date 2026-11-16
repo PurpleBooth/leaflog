@@ -116,19 +116,16 @@ impl GrowStatus {
 }
 
 /// One grow: a run of one or more plants under one strain label in a
-/// substrate, optionally inside a grow space.
+/// substrate.
 ///
-/// `Eq` is not derived: `real_watts` is a `f64` (measured wall draw,
-/// like the equipment catalogue's field), and floats carry no `Eq`.
+/// `Eq` is not derived: `real_watts` is a `f64` (measured wall draw),
+/// and floats carry no `Eq`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Grow {
     /// ULID.
     pub id: String,
     /// User-chosen name, for example `NL closet run`.
     pub name: String,
-    /// Grow-space ULID (nullable: grows may run outside any space, and
-    /// deleting a space keeps its grows).
-    pub grow_space_id: Option<String>,
     /// The feed template fitted to this grow (spec §4.6/§4.15); copied
     /// by reference. Absent JSON parses as `None`.
     #[serde(default)]
@@ -190,8 +187,6 @@ pub struct Grow {
 pub struct GrowInput {
     /// User-chosen name.
     pub name: String,
-    /// Grow-space ULID.
-    pub grow_space_id: Option<String>,
     /// The fitted feed template, copied by reference (spec §4.6).
     #[serde(default)]
     pub feed_template_id: Option<String>,
@@ -238,7 +233,6 @@ impl GrowInput {
     pub fn from_grow(grow: &Grow) -> Self {
         Self {
             name: grow.name.clone(),
-            grow_space_id: grow.grow_space_id.clone(),
             feed_template_id: grow.feed_template_id.clone(),
             planned_veg_weeks: grow.planned_veg_weeks,
             strain_label: grow.strain_label.clone(),

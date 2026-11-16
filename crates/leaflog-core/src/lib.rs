@@ -32,12 +32,10 @@ pub mod actions;
 pub mod appearance;
 pub mod chart;
 pub mod env;
-pub mod equipment;
 pub mod feed;
 pub mod forecast;
 pub mod grows;
 pub mod history;
-pub mod spaces;
 pub mod tz;
 pub mod units;
 

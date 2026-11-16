@@ -7,8 +7,8 @@ use leptos::task::spawn_local;
 use leptos_router::components::A;
 use serde::Deserialize;
 
+use crate::ErrorIf;
 use crate::api;
-use crate::equipment::ErrorIf;
 use crate::route_href;
 use leaflog_core::grows::{Plant, PlantInput};
 

@@ -174,9 +174,9 @@ async fn plant_view(
 }
 
 /// `POST /api/grows/{id}/next-run` — one tap creates a new grow
-/// copying the strain label, photoperiod, substrate, grow space and
-/// feed template from this one (the label travels as the free text it
-/// is; there is no catalogue entry left to reference, spec §4.15).
+/// copying the strain label, photoperiod, substrate and feed
+/// template from this one (the label travels as the free text it is;
+/// there is no catalogue entry left to reference, spec §4.15).
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn next_run(
@@ -193,7 +193,6 @@ async fn next_run(
                 .to_owned();
             let input = GrowInput {
                 name: format!("{} (next run)", previous.name),
-                grow_space_id: previous.grow_space_id.clone(),
                 feed_template_id: previous.feed_template_id.clone(),
                 planned_veg_weeks: previous.planned_veg_weeks,
                 // The grow-carried facts (D075) travel with the rerun:

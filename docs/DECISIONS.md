@@ -89,7 +89,27 @@ re-exporting them until ticket 05 deletes the catalogue, so
 recommendation modules no longer name the strain module at all.
 The advisor's caution text says "plant", not "strain", to match.
 
-### D078: V17 backfill never clobbers; unlabelled grows aggregate under one key
+### D078: the onboarding bind step defers its binding writes to the created grow
+
+Ticket 04 (D075's spaces/equipment removal) collapses the wizard's
+equipment and space steps into one "Bind sensors" step. A binding
+hangs off a grow (`sensor_binding.grow_id`), and the wizard binds
+before any grow exists — so step 1 only collects role → entity picks
+locally (the same pickers the grow page renders, driven by the
+unchanged `GET /api/ha/entities`), and the finish handler applies
+them with one `PUT /api/grows/{id}/bindings` right after it creates
+the grow and its plants. The visible order matches the spec's
+"bind sensors, then create the grow" while the storage keeps its one
+owner of bindings; skipping step 1 writes nothing. The wizard state
+endpoint (`GET /api/onboarding`) shrank with the same removal: it
+reports only `show_wizard`/`dismissed`/`has_grows` — spaces and
+equipment no longer keep the wizard alive. One small side effect of
+the equipment page's deletion: the grow page's dead-binding drift
+banner is now where a bound entity id renders as text, so the
+wrap-anywhere `entity-id` treatment (the long-id overflow fix, and
+its e2e regression) moved there from the equipment card.
+
+### D079: V17 backfill never clobbers; unlabelled grows aggregate under one key
 
 Ticket 05 (the catalogue drop) settles three small shapes. First, the
 V17 backfill is a *fill*, not an overwrite: a grow linked to a strain
@@ -1594,3 +1614,4 @@ once per crate.
 | leaflog-backend | `app.rs` handler `health` | `clippy::unused_async` | Axum handlers must be `async fn` even when they never await |
 | mock-ha | handlers `root`, `ping`, `states` | `clippy::unused_async` | Same Axum contract as above |
 | leaflog-frontend | component `App` | `clippy::must_use_candidate` | The Leptos `#[component]` macro drops a hand-written `#[must_use]`, so the lint fires on the generated function |
+| leaflog-frontend | component `ErrorIf` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` |
