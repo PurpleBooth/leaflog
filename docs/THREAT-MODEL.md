@@ -136,7 +136,7 @@ not be usable to attack third parties.
 | # | Path | Status | Detail |
 |---|---|---|---|
 | 2.1 | Token theft via compromise of the Leaflog process (image-decode bug, dependency exploit) | Mitigated in depth, blast radius accepted | With the process compromised, the admin token yields all of HA. Controls: the token is sent only to the Supervisor, lives behind a redacted-`Debug` newtype, and never appears in a response or log line, asserted by an integration test that exercises every HA endpoint (D021, `tests/ha.rs`). The Supervisor surface is strictly read-only, so the token is used for nothing an attacker could not do faster from HA itself |
-| 2.2 | XSS in the SPA pivoting to HA (same origin) | Mitigated | Leptos contextual escaping everywhere; zero uses of `inner_html` or equivalent (verified). The one string the backend injects into HTML, the ingress base, is character-allowlisted, HTML-escaped and JS-escaped (`ingress.rs`, tested against markup and traversal payloads). One gap: user-authored strain `source_url` renders as an `href` with no scheme check (`strains.rs:177` in the frontend) — a `javascript:` URL is self-inflicted today, but becomes an attack vector the moment strain import (CSV/JSON, deferred) ships. Recommendation R3 |
+| 2.2 | XSS in the SPA pivoting to HA (same origin) | Mitigated | Leptos contextual escaping everywhere; zero uses of `inner_html` or equivalent (verified). The one string the backend injects into HTML, the ingress base, is character-allowlisted, HTML-escaped and JS-escaped (`ingress.rs`, tested against markup and traversal payloads). The former gap — user-authored strain `source_url` rendering as an `href` with no scheme check — closed with the strain catalogue's removal (feature strip D075, ticket 05): no user-authored URL renders as a link any more. Re-open if a data-import feature ever renders user URLs |
 | 2.3 | CSRF against Leaflog endpoints | Mitigated | Three independent blockers: HA authenticates the session before proxying anything into ingress; the per-install ingress path token is unguessable, so a hostile site cannot even address the routes; and every mutating handler requires a JSON or multipart body that a cross-site form cannot forge usefully. The app sets no cookies of its own and emits no CORS headers |
 | 2.4 | SSRF via the Supervisor link | Mitigated | The backend calls only the Supervisor base URL from the environment (`lib.rs:171`). The history passthrough interpolates a user-supplied `entity_id` into the Supervisor query (`ha.rs:181`), but the caller is already an HA administrator querying their own instance: no privilege crosses a boundary |
 | 2.5 | Container as a beachhead on the add-on network | Mitigated by packaging | No host network, no privileged mode, no Docker socket, `map: data:rw` only, no published ports (`leaflog/config.yaml`). A compromised container still has typical outbound network access; egress filtering is host-level and out of scope. Co-tenant add-ons cannot pass the ingress IP gate, and IP spoofing from another container is not possible without control of the host network namespace |
@@ -254,7 +254,7 @@ the categories above.
 | DoS | Image decompression bomb (unbounded decode) | Open | R1, see 4.6 |
 | DoS | Disk exhaustion | Open | R6, see 4.4 |
 | Elevation of privilege | No app accounts, no cookies, no secrets in the browser; the WASM bundle holds nothing but UI | Mitigated (nothing to elevate) | frontend verified |
-| XSS | Framework escaping, zero `inner_html`, escaped base injection; URL scheme gap on `source_url` | Mitigated except the URL scheme gap | R3, see 2.2 |
+| XSS | Framework escaping, zero `inner_html`, escaped base injection | Mitigated | see 2.2 (the former `source_url` gap closed with D075) |
 | CSRF | Unguessable path token + JSON/multipart bodies + no app cookies | Mitigated | see 2.3 |
 | SSRF | Fixed Supervisor URL from env only | Mitigated | see 2.4 |
 | Clickjacking / framing | Not applicable: HA ingress panels render in HA's own iframe by design | n/a | §2 |
@@ -275,7 +275,7 @@ mitigated is omitted from the table.
 |---|---|---|---|---|---|
 | TM1.3 | Diary and photos disclosed via unencrypted backups | likely | high | **High** | Open (R5) |
 | TM1.6 / TM5.4 | Photos persist in shared machines' browser cache | possible | medium | Medium | Open (R2) |
-| TM2.2b | `javascript:` URL in strain `source_url` (vector via future import) | rare today | high | Low today, High with import | Open (R3) |
+| TM2.2b | `javascript:` URL in strain `source_url` (vector via future import) | rare today | high | Low today, High with import | Closed (D075: strains removed) |
 | TM2.7 | Un-hash-pinned build-tool downloads | rare | critical | Medium | Open (R4) |
 | TM3.1 | Sensor poisoning steers advice | possible | medium | Medium | Accepted |
 | TM4.1 | One-click destructive delete, no undo | possible | high | **High** | Open (R8) |
@@ -294,7 +294,7 @@ Prioritised; none blocks v0.1.0.
 |---|---|---|
 | R1 | Cap decoded image dimensions (reject above ~40 MP) before decode, or use the `image` crate's `Limits` | TM4.6, TM7 DoS |
 | R2 | `Cache-Control: private, no-store` on photo originals (and `private, max-age=…` for thumbnails, which are small and low-detail) | TM1.6, TM5.4 |
-| R3 | Validate `source_url` scheme (`http`/`https` only) on input and render. **Hard prerequisite for the strain-import feature** | TM2.2b |
+| R3 | **Resolved** in the feature strip (D075, ticket 05): the strain catalogue — and with it every `source_url` — is gone, so the scheme validation is moot. Re-open only if a data-import feature returns and renders user URLs | TM2.2b |
 | R4 | SHA256-pin the Trunk, wasm-bindgen and cocogitto downloads in Dockerfile and release workflow | TM2.7 |
 | R5 | User-facing hardening notes (a `leaflog/DOCS.md` section or `docs/HARDENING.md`): encrypted HA backups, per-person HA accounts with MFA on admins, sign out of shared devices, FDE on x86 hosts, restraint with host-path add-ons, beware browser caches | TM1.3, TM4.3, TM4.7, TM5.2, TM6 |
 | R6 | Optional photo storage quota setting (default off) with a clear UI state when hit | TM4.4 |

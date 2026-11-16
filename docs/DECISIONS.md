@@ -89,6 +89,23 @@ re-exporting them until ticket 05 deletes the catalogue, so
 recommendation modules no longer name the strain module at all.
 The advisor's caution text says "plant", not "strain", to match.
 
+### D078: V17 backfill never clobbers; unlabelled grows aggregate under one key
+
+Ticket 05 (the catalogue drop) settles three small shapes. First, the
+V17 backfill is a *fill*, not an overwrite: a grow linked to a strain
+adopts the strain's name and photoperiod only for the fields it has
+not set itself — between V14 and V17 the grower could already edit
+`strain_label` and the toggle directly, and D075's "the migration does
+not rewrite my history" applies to those edits too. Second, the
+history aggregate's key for grows without a label changes from the old
+`"unknown"` sentinel (which named a missing catalogue lookup) to
+`"unlabelled"`, which names the actual state after D075: a grow whose
+free-text label is empty. Third, the substrate-profile and generic
+feed-template seeding moves out of the strain seeder (it used to run
+as `seed_strains`'s side effect) into its own `seed_feed_presets`
+boot step, so first boot keeps seeding feed presets after the strain
+bundle — and the seeder itself — are gone.
+
 ---
 
 ## 2026-11-16 — grow overview redesign (D073 follow-up)

@@ -82,7 +82,14 @@ All checks in §13 must pass, with evidence.
 - Optional: pull a still from a bound HA `camera.*` entity on a schedule or on demand (opt-in).
 - Put thumbnails in `backup_exclude`, and regenerate them on demand. Warn when photo storage exceeds a configurable size.
 
-### 4.4 Strain database
+### 4.4 Strain database (removed, D075)
+> **Removed in the feature strip (D075):** the catalogue, its routes,
+> the bundled strain data and the yield write-back (§4.14) are gone.
+> The grow carries a free-text **Strain label** and a
+> **Photoperiod/Autoflower** toggle itself (§4.2), history groups
+> yield by that label (§4.15), and V17 migrated former strain links
+> into the grow. The section below is kept as the historical record.
+
 - Seeded from a small curated JSON in the repo, plus a user-triggered CSV/JSON importer. Store source and licence per record. Check licences before bundling anything. Many public datasets lack cultivation parameters.
 - Fields: name, breeder, photoperiod/auto, feminized/regular, genetics (indica/sativa/hybrid % and landrace ancestry tags), **flower days (min/max)**, expected stretch factor, typical veg weeks, height class, auto total days from seed. Also yield notes, terpene/effect notes, **heat tolerance**, **cold tolerance**, **light tolerance**, user rating and notes, and an evidence tag per field (`breeder`, `grower-reported`, `inferred`).
 - **Strain → recommendation modifiers.** Strain data adjusts:

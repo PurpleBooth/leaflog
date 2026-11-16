@@ -21,8 +21,8 @@ export function url(path: string): string {
 let counter = 0;
 
 /**
- * A unique per-run name, so the bundled seed records (15 strains,
- * 5 equipment items) and repeated runs can never collide.
+ * A unique per-run name, so the bundled seed records (5 equipment
+ * items) and repeated runs can never collide.
  */
 export function uniqueName(prefix: string): string {
   counter += 1;
@@ -78,7 +78,6 @@ export async function createGrow(
   const today = new Date().toISOString().slice(0, 10);
   const grow = await api<{ id: string }>(request, 'POST', 'api/grows', {
     name,
-    strain_id: null,
     grow_space_id: null,
     feed_template_id: null,
     substrate: 'soil',

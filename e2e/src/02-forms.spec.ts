@@ -49,29 +49,14 @@ test('equipment: create, then edit', async ({ page }) => {
   await expect(page.locator('li.card', { hasText: name })).toHaveCount(0);
 });
 
-test('strain: create, then edit', async ({ page }) => {
-  const name = uniqueName('E2E Strain');
+test('strains: the page and its nav entry are gone', async ({ page }) => {
+  // Feature-strip (D075): the strain catalogue left the product — the
+  // grow carries its strain label itself. No nav link, and the old
+  // deep link renders nothing: no strain form anywhere.
+  await page.goto(url('/'));
+  await expect(page.getByRole('link', { name: 'Strains' })).toHaveCount(0);
   await page.goto(url('/strains'));
-  await page.getByRole('button', { name: 'Add strain' }).click();
-  await page.getByLabel('Name *', { exact: true }).fill(name);
-  await page.getByLabel('Breeder').fill('E2E breeder');
-  await armNoReloadGuard(page);
-  await page.getByRole('button', { name: 'Save' }).click();
-
-  const card = page.locator('li.card', { hasText: name });
-  await expect(card).toBeVisible();
-  await expect(card).toContainText('E2E breeder');
-  await expectNoReload(page);
-
-  const renamed = uniqueName('E2E Strain v2');
-  await card.getByRole('button', { name: 'Edit', exact: true }).click();
-  await page.getByLabel('Name *', { exact: true }).fill(renamed);
-  await armNoReloadGuard(page);
-  await page.getByRole('button', { name: 'Save' }).click();
-  await expect(page.locator('li.card', { hasText: renamed })).toBeVisible();
-  await expectNoReload(page);
-  await page.reload();
-  await expect(page.locator('li.card', { hasText: renamed })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add strain' })).toHaveCount(0);
 });
 
 test('grow space: create from the overview page', async ({ page }) => {
@@ -216,65 +201,6 @@ test('grow: strain label, photoperiod and advanced settings persist', async ({
   await expect(page.getByLabel('Dimmable')).not.toBeChecked();
 });
 
-test('grow: picked strain survives late options, save and reopen', async ({
-  page,
-  request,
-}) => {
-  const name = uniqueName('E2E Strain Grow');
-  // The strain id comes from the API, not the UI: the select's value is
-  // asserted against an independent source of truth.
-  const strains = await api<Array<{ id: string; name: string }>>(
-    request,
-    'GET',
-    'api/strains',
-  );
-  const northern = strains!.find((strain) => strain.name === 'Northern Lights');
-  const grow = await api<{ id: string }>(request, 'POST', 'api/grows', {
-    name,
-    strain_id: northern!.id,
-    grow_space_id: null,
-    feed_template_id: null,
-    substrate: 'soil',
-    started_on: new Date().toISOString().slice(0, 10),
-    status: 'active',
-    notes: null,
-  });
-
-  // Hold the strains list back so the <option> nodes mount after the
-  // select: the bound strain must display as selected once they land,
-  // never the placeholder while the draft keeps the pick.
-  await page.route('**/api/strains', async (route) => {
-    await new Promise((resolve) => {
-      setTimeout(resolve, 300);
-    });
-    await route.continue();
-  });
-
-  await page.goto(url(`/grows/${grow!.id}`));
-  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
-
-  await page.getByRole('button', { name: 'Edit grow' }).click();
-  // The catalogue strain select, addressed by role + name so the free
-  // text "Strain label" input beside it never collides. No `exact:
-  // true` on select names: the accessible name includes the <option>
-  // texts, so an exact match never resolves (true for every select in
-  // this form, not a strain quirk).
-  const strainSelect = page.getByRole('combobox', { name: 'Strain' });
-  await expect(strainSelect).toHaveValue(northern!.id);
-
-  // Pick explicitly and save (the D061 guard: no native submit, no reload).
-  await strainSelect.selectOption(northern!.id);
-  await armNoReloadGuard(page);
-  await page.getByRole('button', { name: 'Save' }).click();
-  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
-  await expectNoReload(page);
-
-  // Saving refetches the strains list; reopening the form must show the
-  // pick, never reset to the placeholder.
-  await page.getByRole('button', { name: 'Edit grow' }).click();
-  await expect(strainSelect).toHaveValue(northern!.id);
-});
-
 test('grow: bound space survives late options, save and reopen', async ({
   page,
   request,
@@ -283,7 +209,6 @@ test('grow: bound space survives late options, save and reopen', async ({
   const spaceId = await createSpace(request, uniqueName('E2E Space'));
   const grow = await api<{ id: string }>(request, 'POST', 'api/grows', {
     name,
-    strain_id: null,
     grow_space_id: spaceId,
     feed_template_id: null,
     substrate: 'soil',
@@ -321,34 +246,19 @@ test('grow: bound space survives late options, save and reopen', async ({
   await expect(page.getByLabel('Space')).toHaveValue(spaceId);
 });
 
-test('grow header cluster: strain shows after picking, left of the buttons', async ({
+test('grow header cluster: the strain label shows, left of the buttons', async ({
   page,
   request,
 }) => {
   const name = uniqueName('E2E Cluster Grow');
-  const id = await createGrow(request, name);
+  const label = uniqueName('E2E Cluster Label');
+  const id = await createGrow(request, name, { strain_label: label });
   await page.goto(url(`/grows/${id}`));
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
 
-  // A grow without a strain renders nothing in the strain slot: the
-  // seeded catalogue must not leak in as a placeholder.
-  await expect(page.getByText('Northern Lights')).toHaveCount(0);
-
-  // Pick a bundled strain in the edit form and save (role + name, same
-  // reason as the strain-pick test: the accessible name carries the
-  // option texts, and the free-text "Strain label" input sits beside it).
-  await page.getByRole('button', { name: 'Edit grow' }).click();
-  await page
-    .getByRole('combobox', { name: 'Strain' })
-    .selectOption({ label: 'Northern Lights' });
-  await armNoReloadGuard(page);
-  await page.getByRole('button', { name: 'Save' }).click();
-  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
-  await expectNoReload(page);
-
-  // The strain joins the quiet header cluster beside the medium glyph.
-  const strainBadge = page.getByText('Northern Lights');
-  await expect(strainBadge).toBeVisible();
+  // The label joins the quiet header cluster beside the medium glyph.
+  const labelBadge = page.getByText(label, { exact: true });
+  await expect(labelBadge).toBeVisible();
   await expect(page.locator('[aria-hidden="true"]', { hasText: '🪴' })).toBeVisible();
 
   // The action buttons sit right of the cluster — loose geometry, like
@@ -356,12 +266,31 @@ test('grow header cluster: strain shows after picking, left of the buttons', asy
   const editButton = page.getByRole('button', { name: 'Edit grow' });
   await expect(editButton).toBeVisible();
   expect((await editButton.boundingBox())!.x).toBeGreaterThan(
-    (await strainBadge.boundingBox())!.x,
+    (await labelBadge.boundingBox())!.x,
   );
 
-  // The pick persisted.
+  // The label persists across a reload.
   await page.reload();
-  await expect(page.getByText('Northern Lights')).toBeVisible();
+  await expect(page.getByText(label, { exact: true })).toBeVisible();
+});
+
+test('grow header cluster: an unlabelled grow shows no placeholder', async ({
+  page,
+  request,
+}) => {
+  // A grow without a strain label renders nothing in the label slot:
+  // there is no catalogue left that could leak in as a badge (D075).
+  const name = uniqueName('E2E Bare Grow');
+  const id = await createGrow(request, name);
+  await page.goto(url(`/grows/${id}`));
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+  await expect(page.locator('span.badge', { hasText: '🪴' })).toHaveCount(1);
+  // Exactly one badge (the medium): no strain badge beside it.
+  const badges = page
+    .locator('div.flex.flex-wrap.items-center.gap-2')
+    .first()
+    .locator('span.badge');
+  await expect(badges).toHaveCount(1);
 });
 
 test('quick add: log a watering from the grow page', async ({ page, request }) => {
@@ -403,17 +332,4 @@ test('plant: edit weights from the plant page', async ({ page, request }) => {
   await expectNoReload(page);
   await page.reload();
   await expect(page.getByText('120 g')).toBeVisible();
-});
-
-test('strains seeded from the bundle are visible', async ({ page }) => {
-  await page.goto(url('/strains'));
-  await expect(page.getByText('Northern Lights').first()).toBeVisible();
-  // Sanity for the API helper this suite leans on: the list endpoint
-  // answers under the ingress prefix.
-  const strains = await api<Array<{ id: string }>>(
-    page.context().request,
-    'GET',
-    'api/strains',
-  );
-  expect(strains!.length).toBeGreaterThan(0);
 });

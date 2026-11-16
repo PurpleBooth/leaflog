@@ -22,19 +22,20 @@ test('wizard happy path: space, grow and plants land on the dashboard', async ({
   // Step 2: name the tent.
   await page.getByLabel('Name', { exact: true }).fill(tent);
   await wizard.getByRole('button', { name: 'Next' }).click();
-  await expect(wizard.getByRole('heading', { name: '3. Strain' })).toBeVisible();
+  await expect(wizard.getByRole('heading', { name: '3. Plants' })).toBeVisible();
 
-  // Step 3: a strain is optional; skip the pick.
-  await wizard.getByRole('button', { name: 'Next' }).click();
-  await expect(wizard.getByRole('heading', { name: '4. Plants' })).toBeVisible();
-
-  // Feature-strip: the batch picker left the wizard, and the step
-  // numbering stays coherent (equipment, space, strain, plants).
+  // Feature-strip: the batch picker left the wizard, and so did the
+  // strain step (D075) — the grow's strain label and photoperiod sit
+  // inline in the plants step now, and the numbering stays coherent
+  // (equipment, space, plants).
   await expect(page.getByLabel('From seed batch')).toHaveCount(0);
+  await expect(wizard.getByText('Strain', { exact: true })).toHaveCount(0);
 
-  // Step 4: the wizard's one real form. "Start the grow" must be
+  // Step 3: the wizard's one real form. "Start the grow" must be
   // intercepted by the app, never a native submit (D061).
   await page.getByLabel('Grow name').fill(grow);
+  await page.getByLabel('Strain label').fill('Northern Lights #5');
+  await page.getByLabel('Photoperiod').selectOption('auto');
   await page.getByLabel('Name prefix').fill('Wiz');
   await page.getByLabel('Plants', { exact: true }).fill('2');
   await armNoReloadGuard(page);
@@ -46,6 +47,10 @@ test('wizard happy path: space, grow and plants land on the dashboard', async ({
   await expect(page.getByRole('link', { name: 'Wiz 1', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Wiz 2', exact: true })).toBeVisible();
   await expectNoReload(page);
+
+  // The inline strain facts carried into the created grow: the label
+  // badges the dashboard header.
+  await expect(page.getByText('Northern Lights #5')).toBeVisible();
 
   // Everything persisted: a reload of the same deep link shows the
   // grow and both plants again.
