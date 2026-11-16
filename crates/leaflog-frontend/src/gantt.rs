@@ -34,10 +34,15 @@ fn is_open_ended(windows: &[PhaseWindowData]) -> bool {
 /// window's latest end; an open-ended forecast extends through today
 /// so the current phase's bar still reaches the marker.
 fn forecast_horizon(forecast: &Forecast) -> i64 {
+    // The horizon must cover every window's latest band, not just the
+    // last one's: a compressed boundary leaves earlier phases with a
+    // wider uncertainty range that still has to fit on the track.
     let last_end = forecast
         .windows
-        .last()
-        .map_or(1, |window| window.latest_end.max(window.likely_end))
+        .iter()
+        .map(|window| window.latest_end.max(window.likely_end))
+        .max()
+        .unwrap_or(1)
         .max(1);
     if is_open_ended(&forecast.windows) {
         last_end.max(forecast.today_day)

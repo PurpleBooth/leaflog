@@ -165,7 +165,7 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                 })
             }}
 
-            <div class="grid gap-2 grid-cols-[repeat(auto-fill,minmax(9rem,1fr))]">
+            <div id="env-strip" class="grid gap-2 grid-cols-1 min-[360px]:grid-cols-2 md:grid-cols-4">
                 {move || {
                     let Some(e) = env.get() else { return Vec::<_>::new() };
                     let temp_display = e.temperature_c.map_or_else(|| "—".to_owned(), leaflog_core::units::temp_both);
