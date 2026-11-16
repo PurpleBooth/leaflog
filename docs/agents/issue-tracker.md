@@ -28,8 +28,10 @@ Verbs come **before** the bug id. Three quirks to respect:
   headings are lost.
 - `-m "<text>"` stores text verbatim, headings included. For bodies containing
   headings: create the bug, then replace its first comment with
-  `git bug bug comment edit <comment-id> -m "$(cat body.md)" --non-interactive`
-  (the comment id comes from `git bug bug comment <bug-id>`).
+  `git bug bug comment edit <comment-id> -m "$(cat body.md)"`
+  (no `--non-interactive` flag exists on `comment edit` in this build; `-m`
+  alone is non-interactive). `git bug bug comment <bug-id>` prints each
+  comment as an `Id: <shortId>` block — parse that line for the comment id.
 
 ```
 git bug bug new -F body.md --non-interactive          # create; note the shortId it prints

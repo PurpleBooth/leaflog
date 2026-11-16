@@ -6,6 +6,38 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-15 — phases become events (grow overview redesign)
+
+### D073: Phase picks record transition events; the forecast re-anchors from them
+
+Until now the derived forecast was the only source of the grow's
+current phase: `Phase` follows from the start date, the flip and
+harvest events, and the default windows, and a grower who flipped
+late, harvested early, or simply disagreed had no way to say so. The
+fix keeps one answer to that question: there is no override state at
+all. Setting the phase from the interface records the same transition
+events the forecast already consumes — Flowering records a Flip,
+Drying records a Harvest, and boundaries with no canonical action
+(into Seedling, Vegetative, Curing, or back to Germination) record a
+new Phase-change action. The forecast re-anchors its windows from
+those pins, and the environment bands, phase coach, lamp advice, and
+the day-count target follow.
+
+An override layer on top of the derived phase was the runner-up and
+was rejected: it creates two answers to "what phase is this grow in"
+that can disagree, and every consumer would have to pick a winner.
+It also needs its own store, its own backdating rules, and its own
+clearing rules — the event stream already has all three.
+
+With picks being events, the silent four-week vegetative default for
+photoperiods goes too. A photoperiod grow stays in vegetative until a
+pin or a planned veg length says otherwise; the default made the
+forecast show flower windows nobody planned. Autoflowers keep their
+age-based flip estimate. GLOSSARY.md now carries Phase pick,
+Photoperiod, Autoflower, and Grow overview.
+
+---
+
 ## 2026-11-14 — issue tracker moves to git-bug
 
 ### D072: git-bug as the issue tracker, synced to origin
