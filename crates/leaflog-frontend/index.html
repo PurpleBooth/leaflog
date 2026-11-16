@@ -6,6 +6,12 @@
     <meta name="color-scheme" content="dark light" />
     <title>Leaflog</title>
     <link data-trunk rel="tailwind-css" href="tailwind.css" />
+    <!-- ECharts bundle (D075): built by `just build-echarts`, copied
+         into dist by Trunk, loaded before the wasm app boots so the
+         window.echarts global exists. Relative src: the backend
+         injects <base href> at serve time. -->
+    <link data-trunk rel="copy-file" href="charts/echarts.js" />
+    <script src="echarts.js"></script>
     <link data-trunk rel="rust" />
   </head>
   <body>
