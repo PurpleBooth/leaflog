@@ -6,6 +6,46 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-16 — every continuous-role chart on ECharts (ticket 03)
+
+### D080: the option builder serves every continuous role; the band editor moved into the soil card
+
+_Renumber note: if a sibling ticket claims D080 first, the merge
+renumbers this entry and fixes the reference here._
+
+All six continuous-role cards (temperature, humidity, VPD, CO₂, light,
+soil moisture) render through the same pure option builder
+(ticket 02's seam, D079). `role_style` maps the history response's
+role to the value-axis unit name (`°C / °F`, `%`, `kPa`, `ppm`, and
+`on / off` for the binary light), so a card's mount passes only its
+formatter; the axis-name choice and the formatter can no longer
+disagree. The per-role value formatting is unchanged: `58 %`,
+`0.85 kPa`, `900 ppm`, `on`/`off`.
+
+Choices worth remembering:
+
+- **The light staircase is a native step series.** The option sets
+  `step: "end"`, which holds each value until the next reading's x,
+  then jumps — the exact semantics of the deleted `step_points`
+  vertex expansion. No points are invented; the series data stay the
+  raw `[epoch ms, value]` pairs.
+- **CO₂ keeps no bands, and that renders cleanly.** The backend ships
+  no CO₂ band source today, so the builder emits zero `markArea`
+  regions and frames the axis on the readings alone (unit-tested).
+  Ticket 07 adds the stepped day/night bands.
+- **The soil band editor lives inside the soil card.** `HistoryChart`
+  grew an optional `children` slot rendered under the chart, and the
+  soil mount passes `<BandEditor />`. The accessible field labels
+  ("Band min %" / "Band max %") are untouched; the e2e flow scopes to
+  the card by its heading, so the relocation is what the test pins.
+- **The hand-rolled SVG is gone except the pH/EC scatter.**
+  `geometry()`, `ChartGeometry`, `step_points` and their tests are
+  deleted. The coordinator's boundary note keeps the event-dot
+  component alive until ticket 04 swaps pH/EC to an `ECharts` scatter
+  and removes the last SVG code; it is marked as temporary at the
+  component. The scatter's dot scale keeps the same padding rule in a
+  small `padded_value_range` helper that dies with the rest.
+
 ## 2026-11-16 — temperature chart on ECharts (ticket 02)
 
 ### D079: the option-builder seam replaces the SVG geometry seam; the chart window vocabulary changes
