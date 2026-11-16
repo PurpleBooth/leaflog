@@ -45,10 +45,6 @@ pub struct Grow {
     /// Grow-space ULID (nullable: grows may run outside any space, and
     /// deleting a space keeps its grows).
     pub grow_space_id: Option<String>,
-    /// Seed batch the plants came from (spec §4.13); nullable and
-    /// `None` when absent JSON parses (payloads predate the link).
-    #[serde(default)]
-    pub seed_batch_id: Option<String>,
     /// The feed template fitted to this grow (spec §4.6/§4.15); copied
     /// by reference. Absent JSON parses as `None`.
     #[serde(default)]
@@ -81,11 +77,6 @@ pub struct GrowInput {
     pub strain_id: Option<String>,
     /// Grow-space ULID.
     pub grow_space_id: Option<String>,
-    /// Seed batch the plants came from (spec §4.13): linked plant
-    /// starts decrement the batch count. Absent JSON parses as `None`
-    /// (payloads predate the link).
-    #[serde(default)]
-    pub seed_batch_id: Option<String>,
     /// The fitted feed template, copied by reference (spec §4.6).
     #[serde(default)]
     pub feed_template_id: Option<String>,
@@ -113,7 +104,6 @@ impl GrowInput {
             name: grow.name.clone(),
             strain_id: grow.strain_id.clone(),
             grow_space_id: grow.grow_space_id.clone(),
-            seed_batch_id: grow.seed_batch_id.clone(),
             feed_template_id: grow.feed_template_id.clone(),
             planned_veg_weeks: grow.planned_veg_weeks,
             substrate: grow.substrate.clone(),

@@ -414,7 +414,6 @@ async fn sensors_replace_is_atomic_when_an_insert_fails() {
                         name: "Closet run".to_owned(),
                         strain_id: None,
                         grow_space_id: None,
-                        seed_batch_id: None,
                         feed_template_id: None,
                         planned_veg_weeks: None,
                         substrate: "soil".to_owned(),
@@ -1223,285 +1222,41 @@ async fn sensor_items_come_from_ha_entities_only() {
     assert_eq!(created["ha_entity_id"], "light.grow_led");
 }
 
-fn sample_batch(strain_id: Option<&str>, acquisition_on: &str) -> Value {
-    json!({
-        "strain_id": strain_id,
-        "quantity": 10,
-        "acquired_from": "Royal Queen Seeds",
-        "acquisition_on": acquisition_on,
-        "storage_method": "cool_dark_dry",
-        "notes": null,
-    })
-}
-
+/// Feature-strip (ticket fb99a14): the seed bank is gone end to end —
+/// batch and germination routes answer 404, so a stale bookmark or an
+/// old client gets a clean "not found", never a half-working endpoint.
 #[tokio::test]
-async fn seedbank_lists_oldest_first_with_viability() {
+async fn seed_bank_routes_are_gone() {
     let base = spawn_api().await;
     let client = reqwest::Client::new();
-
-    let strain: Value = client
-        .post(format!("{base}/api/strains"))
-        .json(&sample_strain("Royal Cookies"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let strain_id = strain["id"].as_str().unwrap().to_owned();
-
-    // Three batches: newest and oldest share the strain, one is
-    // unstrained.
-    let fresh: Value = client
-        .post(format!("{base}/api/seed-batches"))
-        .json(&sample_batch(Some(&strain_id), "2026-06-01"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(fresh["quantity"], 10);
-    assert_eq!(fresh["viability"]["window_months"], json!([12, 36]));
-    assert_eq!(fresh["viability"]["past_prime"], false);
-    assert!(
-        fresh["viability"]["source"]
-            .as_str()
-            .is_some_and(|source| !source.is_empty()),
-        "the preset window carries its source label"
-    );
-
-    let mut old = sample_batch(Some(&strain_id), "2024-01-01");
-    old["storage_method"] = json!("room_temp_dark");
-    old["quantity"] = json!(3);
-    let old: Value = client
-        .post(format!("{base}/api/seed-batches"))
-        .json(&old)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    // Room temp, dark drawer: 6-12 month window, acquired nearly three
-    // years ago — well past prime.
-    assert_eq!(old["viability"]["window_months"], json!([6, 12]));
-    assert_eq!(old["viability"]["past_prime"], true);
-
-    let unstrained: Value = client
-        .post(format!("{base}/api/seed-batches"))
-        .json(&sample_batch(None, "2025-03-01"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-
-    // Oldest first within the strain; the unstrained batch trails.
-    let list: Vec<Value> = client
-        .get(format!("{base}/api/seed-batches"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(list.len(), 3);
-    assert_eq!(list[0]["id"], old["id"], "oldest seeds listed first");
-    assert_eq!(list[1]["id"], fresh["id"]);
-    assert_eq!(list[2]["id"], unstrained["id"], "unstrained batches last");
-
-    // Update rewrites the payload; delete clears the batch.
-    let mut edited = sample_batch(Some(&strain_id), "2026-06-01");
-    edited["quantity"] = json!(7);
-    edited["storage_method"] = json!("refrigerated");
-    let updated: Value = client
-        .put(format!(
-            "{}/api/seed-batches/{}",
-            base,
-            fresh["id"].as_str().unwrap()
-        ))
-        .json(&edited)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(updated["quantity"], 7);
-    assert_eq!(updated["viability"]["window_months"], json!([60, 120]));
-
-    let status = client
-        .delete(format!(
-            "{}/api/seed-batches/{}",
-            base,
-            fresh["id"].as_str().unwrap()
-        ))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
-    let missing = client
-        .get(format!(
-            "{}/api/seed-batches/{}",
-            base,
-            fresh["id"].as_str().unwrap()
-        ))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(missing.status(), reqwest::StatusCode::NOT_FOUND);
-
-    // Validation: a bad date and an unknown strain.
-    let mut bad_date = sample_batch(None, "last summer");
-    bad_date["acquisition_on"] = json!("last summer");
-    let response = client
-        .post(format!("{base}/api/seed-batches"))
-        .json(&bad_date)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
-    let response = client
-        .post(format!("{base}/api/seed-batches"))
-        .json(&sample_batch(Some("nope"), "2026-01-01"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn linked_plant_starts_decrement_the_batch() {
-    let base = spawn_api().await;
-    let client = reqwest::Client::new();
-
-    let strain: Value = client
-        .post(format!("{base}/api/strains"))
-        .json(&sample_strain("Euforia"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let strain_id = strain["id"].as_str().unwrap().to_owned();
-    let mut batch = sample_batch(Some(&strain_id), "2026-09-01");
-    batch["quantity"] = json!(5);
-    let batch: Value = client
-        .post(format!("{base}/api/seed-batches"))
-        .json(&batch)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let batch_id = batch["id"].as_str().unwrap().to_owned();
-
-    // A grow names its batch; the link round-trips.
-    let grow: Value = client
-        .post(format!("{base}/api/grows"))
-        .json(&json!({
-            "name": "Euforia run",
-            "strain_id": strain_id,
-            "grow_space_id": null,
-            "seed_batch_id": batch_id,
-            "substrate": "soil",
-            "started_on": "2026-10-01",
-            "status": "active",
-            "notes": null,
-        }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let grow_id = grow["id"].as_str().unwrap().to_owned();
-    assert_eq!(grow["seed_batch_id"], batch_id.as_str());
-
-    // Two plants started: 5 -> 3, floored at zero, never raised.
-    for name in ["Plant A", "Plant B"] {
-        let status = client
-            .post(format!("{base}/api/grows/{grow_id}/plants"))
-            .json(&json!({ "name": name }))
+    let routes = [
+        (reqwest::Method::GET, "/api/seed-batches"),
+        (reqwest::Method::POST, "/api/seed-batches"),
+        (reqwest::Method::GET, "/api/seed-batches/nope"),
+        (reqwest::Method::PUT, "/api/seed-batches/nope"),
+        (reqwest::Method::DELETE, "/api/seed-batches/nope"),
+        (
+            reqwest::Method::GET,
+            "/api/seed-batches/nope/germination-tests",
+        ),
+        (
+            reqwest::Method::POST,
+            "/api/seed-batches/nope/germination-tests",
+        ),
+    ];
+    for (method, path) in routes {
+        let response = client
+            .request(method, format!("{base}{path}"))
+            .json(&json!({}))
             .send()
             .await
             .unwrap();
-        assert_eq!(status.status(), reqwest::StatusCode::CREATED);
+        assert_eq!(
+            response.status(),
+            reqwest::StatusCode::NOT_FOUND,
+            "{path} must be gone"
+        );
     }
-    let after: Value = client
-        .get(format!("{base}/api/seed-batches/{batch_id}"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(after["quantity"], 3, "each started plant decrements once");
-
-    // Manual edits always win: resetting to 10 makes the next plant
-    // start land on 9.
-    let mut edited = sample_batch(Some(&strain_id), "2026-09-01");
-    edited["quantity"] = json!(10);
-    client
-        .put(format!("{base}/api/seed-batches/{batch_id}"))
-        .json(&edited)
-        .send()
-        .await
-        .unwrap();
-    client
-        .post(format!("{base}/api/grows/{grow_id}/plants"))
-        .json(&json!({ "name": "Plant C" }))
-        .send()
-        .await
-        .unwrap();
-    let after: Value = client
-        .get(format!("{base}/api/seed-batches/{batch_id}"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(after["quantity"], 9);
-
-    // An unknown batch on grow creation is rejected...
-    let response = client
-        .post(format!("{base}/api/grows"))
-        .json(&json!({
-            "name": "Nowhere run",
-            "strain_id": null,
-            "grow_space_id": null,
-            "seed_batch_id": "nope",
-            "substrate": "soil",
-            "started_on": "2026-10-01",
-            "status": "active",
-            "notes": null,
-        }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
-
-    // ...and deleting the batch keeps the grow running, unlinked.
-    client
-        .delete(format!("{base}/api/seed-batches/{batch_id}"))
-        .send()
-        .await
-        .unwrap();
-    let survived: Value = client
-        .get(format!("{base}/api/grows/{grow_id}"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(survived["name"], "Euforia run");
-    assert_eq!(survived["seed_batch_id"], Value::Null);
 }
 
 #[tokio::test]
@@ -1609,7 +1364,6 @@ async fn onboarding_wizard_appears_runs_and_stays_dismissable() {
             "name": "First run",
             "strain_id": strain_id,
             "grow_space_id": space_id,
-            "seed_batch_id": null,
             "substrate": "soil",
             "started_on": "2026-11-10",
             "status": "active",
@@ -1667,7 +1421,6 @@ async fn harvest_weights_round_trip_summarise_and_write_back() {
             "name": "Harvest run",
             "strain_id": strain["id"],
             "grow_space_id": null,
-            "seed_batch_id": null,
             "feed_template_id": null,
             "substrate": "soil",
             "started_on": "2026-08-01",
@@ -1830,7 +1583,6 @@ async fn harvest_weights_round_trip_summarise_and_write_back() {
             "name": "Preset run",
             "strain_id": bundled_id,
             "grow_space_id": null,
-            "seed_batch_id": null,
             "feed_template_id": null,
             "substrate": "soil",
             "started_on": "2026-08-01",
@@ -1860,110 +1612,6 @@ async fn harvest_weights_round_trip_summarise_and_write_back() {
         .await
         .unwrap();
     assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn germination_tests_show_an_observed_rate_beside_the_window() {
-    let base = spawn_api().await;
-    let client = reqwest::Client::new();
-
-    let batch: Value = client
-        .post(format!("{base}/api/seed-batches"))
-        .json(&sample_batch(None, "2026-09-01"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(batch["observed"], Value::Null, "no tests, no observed rate");
-
-    let batch_id = batch["id"].as_str().unwrap().to_owned();
-    // Two tests: 3/4 and 6/6 — observed 9/10 overall, sitting beside
-    // (never overwriting) the §5.4 preset window.
-    for (sown, sprouted) in [(4, 3), (6, 6)] {
-        let view: Value = client
-            .post(format!(
-                "{base}/api/seed-batches/{batch_id}/germination-tests"
-            ))
-            .json(&json!({
-                "tested_on": "2026-10-0".to_owned() + if sprouted == 3 { "1" } else { "8" },
-                "sown": sown,
-                "sprouted": sprouted,
-                "notes": "paper towel",
-            }))
-            .send()
-            .await
-            .unwrap()
-            .json()
-            .await
-            .unwrap();
-        assert!(
-            view["viability"]["window_months"].is_array(),
-            "preset stays"
-        );
-    }
-    let view: Value = client
-        .get(format!("{base}/api/seed-batches/{batch_id}"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(view["observed"]["sprouted"], 9);
-    assert_eq!(view["observed"]["sown"], 10);
-
-    let tests: Vec<Value> = client
-        .get(format!(
-            "{base}/api/seed-batches/{batch_id}/germination-tests"
-        ))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(tests.len(), 2, "tests list oldest first");
-
-    // Validation: sprouted above sown and a bad date are rejected; an
-    // unknown batch is a 404.
-    let response = client
-        .post(format!(
-            "{base}/api/seed-batches/{batch_id}/germination-tests"
-        ))
-        .json(&json!({ "tested_on": "2026-10-01", "sown": 2, "sprouted": 5, "notes": null }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
-    let response = client
-        .post(format!(
-            "{base}/api/seed-batches/{batch_id}/germination-tests"
-        ))
-        .json(&json!({ "tested_on": "soon", "sown": 2, "sprouted": 1, "notes": null }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
-    let response = client
-        .post(format!("{base}/api/seed-batches/nope/germination-tests"))
-        .json(&json!({ "tested_on": "2026-10-01", "sown": 2, "sprouted": 1, "notes": null }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
-
-    // The listing carries the observed rate too.
-    let list: Vec<Value> = client
-        .get(format!("{base}/api/seed-batches"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(list[0]["observed"]["sown"], 10);
 }
 
 #[tokio::test]
@@ -2016,7 +1664,6 @@ async fn history_accuracy_on_a_golden_grow_and_next_run_by_reference() {
             "name": "NL golden run",
             "strain_id": northern["id"],
             "grow_space_id": space["id"],
-            "seed_batch_id": null,
             "feed_template_id": template["id"],
             "planned_veg_weeks": 4,
             "substrate": "soil",
@@ -2159,7 +1806,6 @@ async fn history_accuracy_on_a_golden_grow_and_next_run_by_reference() {
     assert_eq!(next["grow_space_id"], space["id"]);
     assert_eq!(next["feed_template_id"], template["id"]);
     assert_eq!(next["substrate"], "soil");
-    assert_eq!(next["seed_batch_id"], Value::Null);
     assert_eq!(next["status"], "active");
 
     let strains_after: Vec<Value> = client
@@ -2196,7 +1842,6 @@ async fn unavailable_bound_entities_render_no_data_and_can_rebind() {
             "name": "Drift run",
             "strain_id": null,
             "grow_space_id": null,
-            "seed_batch_id": null,
             "feed_template_id": null,
             "substrate": "soil",
             "started_on": "2026-10-01",

@@ -80,7 +80,6 @@ export async function createGrow(
     name,
     strain_id: null,
     grow_space_id: null,
-    seed_batch_id: null,
     feed_template_id: null,
     substrate: 'soil',
     started_on: today,

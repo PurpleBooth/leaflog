@@ -164,6 +164,20 @@ impl Db {
             |row| row.get(0),
         )?)
     }
+
+    /// The highest version in the embedded migration set — the version
+    /// a fully migrated database reports. Version numbers may carry
+    /// gaps (a reserved slot that another change owns), so this is not
+    /// the migration count.
+    #[must_use]
+    pub fn latest_embedded_version() -> i64 {
+        embedded::migrations::runner()
+            .get_migrations()
+            .iter()
+            .map(|migration| i64::from(migration.version()))
+            .max()
+            .unwrap_or(0)
+    }
 }
 
 /// Opens (creating directories and file as needed) a connection without
@@ -368,11 +382,15 @@ mod tests {
             .expect("migration count fits in i64")
     }
 
+    fn latest_version() -> i64 {
+        Db::latest_embedded_version()
+    }
+
     #[tokio::test]
     async fn in_memory_database_migrates_to_the_latest_version() -> Result<(), StoreError> {
         let db = Db::open_in_memory()?;
         db.with(|conn| -> Result<(), StoreError> {
-            assert_eq!(Db::version(conn)?, embedded_count());
+            assert_eq!(Db::version(conn)?, latest_version());
             let applied: i64 =
                 conn.query_row("SELECT COUNT(*) FROM refinery_schema_history", [], |row| {
                     row.get(0)
@@ -389,7 +407,7 @@ mod tests {
         let path = dir.join("nested").join("leaflog.db");
         let db = Db::open(&path)?;
         db.with(|conn| -> Result<(), StoreError> {
-            assert_eq!(Db::version(conn)?, embedded_count());
+            assert_eq!(Db::version(conn)?, latest_version());
             Ok(())
         })
         .await?;
@@ -405,7 +423,7 @@ mod tests {
         drop(Db::open(&path)?);
         let db = Db::open(&path)?;
         db.with(|conn| -> Result<(), StoreError> {
-            assert_eq!(Db::version(conn)?, embedded_count());
+            assert_eq!(Db::version(conn)?, latest_version());
             let applied: i64 =
                 conn.query_row("SELECT COUNT(*) FROM refinery_schema_history", [], |row| {
                     row.get(0)

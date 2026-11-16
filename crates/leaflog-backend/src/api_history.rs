@@ -196,7 +196,6 @@ async fn next_run(
                 name: format!("{} (next run)", previous.name),
                 strain_id: previous.strain_id.clone(),
                 grow_space_id: previous.grow_space_id.clone(),
-                seed_batch_id: None,
                 feed_template_id: previous.feed_template_id.clone(),
                 planned_veg_weeks: previous.planned_veg_weeks,
                 substrate: previous.substrate,

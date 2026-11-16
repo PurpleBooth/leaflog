@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use leaflog_backend::db::{self, Db, StoreError};
 use leaflog_backend::store;
 use leaflog_core::equipment::EquipmentCategory;
+use leaflog_core::grows::{GrowInput, GrowStatus};
 use refinery::Target;
 use rusqlite::Connection;
 
@@ -81,11 +82,9 @@ async fn boot_applies_pending_migrations() {
 
     let db = Db::open(&path).expect("boot opens and migrates");
     db.with(|conn| -> Result<(), StoreError> {
-        assert_eq!(
-            Db::version(conn)?,
-            i64::try_from(db::embedded::migrations::runner().get_migrations().len())
-                .expect("count fits")
-        );
+        // Version numbers, not the migration count: the numbering may
+        // carry a gap (a reserved V slot another change owns).
+        assert_eq!(Db::version(conn)?, Db::latest_embedded_version());
         Ok(())
     })
     .await
@@ -156,7 +155,7 @@ fn status_reports_legacy_pending_and_then_applies() {
     assert!(after.legacy_version.is_none());
     assert_eq!(
         after.applied.last().map(|m| m.version),
-        i64::try_from(db::embedded::migrations::runner().get_migrations().len()).ok(),
+        Some(Db::latest_embedded_version())
     );
 }
 
@@ -357,4 +356,113 @@ async fn catalogue_trim_recategorizes_prunes_and_parks() {
     })
     .await
     .expect("trim assertions");
+}
+
+/// V15 (seed-bank removal): the `seed_batch` and `germination_log`
+/// tables and the grow's `seed_batch_id` column disappear on boot.
+/// The drop rebuilds `grow` (SQLite cannot drop a column that carries
+/// a foreign key), so the test also pins that the grow row, its plants
+/// and its log survive — and that the store still round-trips grows
+/// against the rebuilt table.
+#[tokio::test]
+async fn dropping_the_seed_bank_loses_tables_and_the_grow_column() {
+    let temp = TempDb::new("seedbank-drop");
+    let path = temp.path();
+    {
+        let mut conn = Connection::open(&path).expect("open at the pre-drop version");
+        conn.pragma_update(None, "foreign_keys", "ON")
+            .expect("pragmas");
+        db::embedded::migrations::runner()
+            .set_target(Target::Version(13))
+            .run(&mut conn)
+            .expect("apply through the last pre-drop migration");
+        conn.execute_batch(
+            "INSERT INTO seed_batch
+                 (id, strain_id, quantity, acquired_from, acquisition_on,
+                  storage_method, notes, created_at, updated_at)
+             VALUES ('sb-1', NULL, 7, 'E2E bank', '2026-01-15', 'cool_dark_dry', NULL,
+                     '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+             INSERT INTO germination_log
+                 (id, seed_batch_id, tested_on, sown, sprouted, notes, created_at, updated_at)
+             VALUES ('gl-1', 'sb-1', '2026-02-01', 4, 3, 'paper towel',
+                     '2026-02-01T00:00:00Z', '2026-02-01T00:00:00Z');
+             INSERT INTO grow
+                 (id, name, strain_id, substrate, started_on, status, notes,
+                  created_at, updated_at, grow_space_id, seed_batch_id, feed_template_id,
+                  planned_veg_weeks)
+             VALUES ('g-1', 'Linked run', NULL, 'soil', '2026-03-01', 'active', NULL,
+                     '2026-03-01T00:00:00Z', '2026-03-01T00:00:00Z',
+                     NULL, 'sb-1', NULL, 4);
+             INSERT INTO plant (id, grow_id, name, created_at, updated_at)
+             VALUES ('p-1', 'g-1', 'Plant 1',
+                     '2026-03-02T00:00:00Z', '2026-03-02T00:00:00Z');",
+        )
+        .expect("pre-drop fixtures");
+    }
+
+    let db = Db::open(&path).expect("the seed-bank drop applies on boot");
+    db.with(|conn| -> Result<(), StoreError> {
+        let table_exists = |name: &str| -> Result<bool, StoreError> {
+            Ok(conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+                [name],
+                |row| row.get(0),
+            )?)
+        };
+        assert!(
+            !table_exists("seed_batch")?,
+            "the seed_batch table is dropped"
+        );
+        assert!(
+            !table_exists("germination_log")?,
+            "the germination_log table is dropped"
+        );
+        let has_batch_column: bool = conn.query_row(
+            "SELECT EXISTS(
+                 SELECT 1 FROM pragma_table_info('grow') WHERE name = 'seed_batch_id'
+             )",
+            [],
+            |row| row.get(0),
+        )?;
+        assert!(!has_batch_column, "grow loses its seed_batch_id column");
+
+        // The grow row survives the rebuild with its data, and its
+        // child rows stay attached.
+        let (name, substrate): (String, String) = conn.query_row(
+            "SELECT name, substrate FROM grow WHERE id = 'g-1'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(name, "Linked run");
+        assert_eq!(substrate, "soil");
+        let plants: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM plant WHERE grow_id = 'g-1'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(plants, 1, "the grow's plants survive the rebuild");
+
+        // The store still writes and reads grows against the rebuilt
+        // table — including a fresh create and a full listing.
+        let created = store::grows::create(
+            conn,
+            &GrowInput {
+                name: "Post-drop run".to_owned(),
+                strain_id: None,
+                grow_space_id: None,
+                feed_template_id: None,
+                planned_veg_weeks: None,
+                substrate: "coco".to_owned(),
+                started_on: "2026-04-01".to_owned(),
+                status: GrowStatus::Active,
+                notes: None,
+            },
+        )?;
+        assert_eq!(created.substrate, "coco");
+        let all = store::grows::list(conn)?;
+        assert_eq!(all.len(), 2, "the old and the new grow are listed");
+        Ok(())
+    })
+    .await
+    .expect("seed-bank drop assertions");
 }

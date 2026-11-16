@@ -39,7 +39,6 @@ mod history;
 mod live;
 mod onboarding;
 mod phase_pick;
-mod seedbank;
 mod spaces;
 mod strains;
 
@@ -52,7 +51,6 @@ use leptos::task::spawn_local;
 use leptos_router::components::{A, Route, Router, Routes};
 use leptos_router::path;
 use onboarding::OnboardingWizard;
-use seedbank::SeedbankPage;
 use spaces::{SpaceDetail, SpacesPage};
 use strains::StrainsPage;
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
@@ -119,7 +117,6 @@ pub fn App() -> impl IntoView {
                         <A href=route_href("/equipment")>"Equipment"</A>
                         <A href=route_href("/strains")>"Strains"</A>
                         <A href=route_href("/spaces")>"Spaces"</A>
-                        <A href=route_href("/seedbank")>"Seedbank"</A>
                         <A href=route_href("/history")>"History"</A>
                         <A href=route_href("/grows")>"Grows"</A>
                     </nav>
@@ -131,7 +128,6 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("/equipment") view=EquipmentPage />
                         <Route path=path!("/strains") view=StrainsPage />
                         <Route path=path!("/spaces") view=SpacesPage />
-                    <Route path=path!("/seedbank") view=SeedbankPage />
                     <Route path=path!("/history") view=HistoryPage />
                     <Route path=path!("/plants/:id") view=PlantViewPage />
                         <Route path=path!("/spaces/:id") view=SpaceDetail />
