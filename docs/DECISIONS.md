@@ -6,6 +6,49 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-16 — temperature chart on ECharts (ticket 02)
+
+### D079: the option-builder seam replaces the SVG geometry seam; the chart window vocabulary changes
+
+Renumbered from D078 in the ticket 02 branch: ticket 05's Light Cycle
+decision claimed D078 on its branch first, so this is the authoritative
+number; renumber again at the integration merge if siblings claim more.
+
+The temperature card now renders through `ECharts` (ADR 0001, D077).
+A pure function in `chart_option.rs` turns the history response into
+the option JSON: axes, the dual °C/°F unit label, gridlines, the
+hover tooltip, explicit padded axis bounds (the headroom rule,
+carried over from the old `geometry()`), and the Target Band regions
+as `markArea` pairs clipped to the window. The Leptos side only
+mounts: it probes the active daisyUI theme's computed colours for the
+option, passes the JSON with `serde-wasm-bindgen`, and drives
+`window.echarts` with `js_sys` calls — no hand-written application
+JavaScript. The value-axis and tooltip formatters are wasm closures
+handed over with `Closure::into_js_value`, so the JS GC owns their
+lifetime after the handoff.
+
+Choices worth remembering:
+
+- **The aria-label contract moved to the SVG root.** The hand-rolled
+  chart was one `<svg role="img" aria-label="<role> history">`; the
+  e2e suite locates that element. `ECharts` renders its own root, so
+  the component stamps `role="img"` and the same label onto the
+  rendered root after init — the contract survives the migration.
+- **Colours are probed, not hard-coded.** Both daisyUI themes are
+  active by `prefers-color-scheme`; the option's colours come from
+  `getComputedStyle` on throwaway probes carrying `text-primary` /
+  `text-base-content` classes, so the chart follows the theme. The
+  band tint rides on `opacity` instead of an alpha colour, because
+  SVG attributes (where zrender paints) do not resolve `var()`.
+- **Chart window toggles read 24h / 7d / 30d everywhere.** The old
+  "Day" collided with the Light Cycle's day (new GLOSSARY entry
+  "Chart window"). API labels stay `day` / `week` / `month`.
+- **The i18n gap is real but empty.** The ticket's "locale catalogs
+  keep key parity" criterion has no runtime target: the locale-catalog
+  effort is still spec-side, and the app ships inline English strings
+  (the BandEditor precedent). The renamed captions are plain English
+  strings; when catalogs land, these keys migrate with the rest.
+
 ## 2026-11-16 — night presets in core (light cycle ticket 06)
 
 ### D075: lights-off maths get their own leaf offset; the night presets land as sourced constants

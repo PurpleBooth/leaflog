@@ -18,6 +18,10 @@ _Avoid_: Sensor type, channel kind
 A binding whose entity Home Assistant currently reports as unavailable or unknown. Dead bindings are the only ones the grow page may call "no data".
 _Avoid_: Broken sensor
 
+**Chart window**:
+The rolling time span a history chart covers, ending now; the toggles read 24h / 7d / 30d. A Chart window is never a calendar day, and the word "day" on its own belongs to the Light Cycle.
+_Avoid_: Day, Week, Month (as toggle captions), period
+
 ### Grow lifecycle
 
 **Medium**:
