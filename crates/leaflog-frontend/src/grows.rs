@@ -21,7 +21,7 @@ use std::future::Future;
 
 use crate::Home;
 use crate::api::{self, ApiFailure};
-use crate::chart::{HistoryChart, format_kpa, format_on_off, format_pct, format_ppm};
+use crate::chart::{BandEditor, HistoryChart, format_kpa, format_on_off, format_pct, format_ppm};
 use crate::dashboard::EnvDashboard;
 use crate::equipment::ErrorIf;
 use crate::feed::FeedPanel;
@@ -625,6 +625,8 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             <HistoryChart grow_id=grow_id.get() role="vpd" title="VPD" format_value=format_kpa />
             <HistoryChart grow_id=grow_id.get() role="co2" title="CO₂" format_value=format_ppm />
             <HistoryChart grow_id=grow_id.get() role="light" title="Light" step=true format_value=format_on_off />
+            <HistoryChart grow_id=grow_id.get() role="soil_moisture" title="Soil moisture" format_value=format_pct />
+            <BandEditor />
 
             <h3>"Feed schedule"</h3>
             <FeedPanel grow_id=grow_id.get() />

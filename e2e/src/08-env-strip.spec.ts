@@ -11,9 +11,11 @@ import { api, createGrow, uniqueName, url } from './helpers';
 /** The four tile labels, in strip order. */
 const LABELS = ['Temp', 'RH', 'VPD', 'RH window'];
 
-/** The bounding box of one tile, found by its exact label. */
+/** The bounding box of one tile, found by its exact label. Scoped to
+ * the strip — role charts carry the same labels ("VPD", "RH"). */
 async function tileBox(page: Page, label: string) {
   const box = await page
+    .locator('#env-strip')
     .getByText(label, { exact: true })
     .locator('xpath=..')
     .boundingBox();
@@ -24,6 +26,7 @@ async function tileBox(page: Page, label: string) {
 /** The bounding box of the strip (the tiles' shared grid parent). */
 async function stripBox(page: Page) {
   const box = await page
+    .locator('#env-strip')
     .getByText(LABELS[0], { exact: true })
     .locator('xpath=../..')
     .boundingBox();

@@ -128,6 +128,32 @@ pub fn rh_window(air_temperature_c: f64, leaf_offset_c: f64, band: (f64, f64)) -
     (rh_min, rh_max)
 }
 
+/// A recommended value band in volumetric percent, with the sources
+/// behind its numbers (≥2 sources per the seed-data discipline).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BandPct {
+    /// Lower edge, percent.
+    pub min: f64,
+    /// Upper edge, percent.
+    pub max: f64,
+    /// Where the numbers come from.
+    pub sources: &'static str,
+}
+
+/// The soil-moisture recommended band default.
+///
+/// Container substrates irrigate around 40 % VWC and hold 50–60 % at
+/// container capacity. Capacitive meters are calibration-dependent —
+/// this is a default, user-editable with reset-to-default, not
+/// gospel.
+pub const SOIL_MOISTURE_BAND: BandPct = BandPct {
+    min: 40.0,
+    max: 60.0,
+    sources: "HortScience 47(1):98 — peat substrates hold 50–60 % VWC \
+        at container capacity; AcuRite soil-moisture guide — 40 %+ \
+        for heavy-feeding plantings",
+};
+
 // ---------------------------------------------------------------------------
 // Strain-tolerance threshold shifts (spec §4.4)
 // ---------------------------------------------------------------------------

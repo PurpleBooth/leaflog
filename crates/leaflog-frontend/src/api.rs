@@ -177,6 +177,16 @@ pub struct Forecast {
     pub windows: Vec<PhaseWindowData>,
 }
 
+/// The soil-moisture band override (settings key
+/// `soil_moisture_band`), volumetric percent.
+#[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize)]
+pub struct SoilBand {
+    /// Lower edge, percent.
+    pub min: f64,
+    /// Upper edge, percent.
+    pub max: f64,
+}
+
 /// The history chart payload (`GET /api/grows/{id}/history`).
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct GrowHistory {

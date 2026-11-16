@@ -67,6 +67,9 @@ struct LoadedGrow {
     windows: Vec<leaflog_core::forecast::PhaseWindow>,
     /// Per-role binding + snapshot points (VPD carries two).
     roles: Vec<(String, RolePoints)>,
+    /// The user's soil-moisture band override, when stored (else the
+    /// core default applies).
+    soil_band: Option<(f64, f64)>,
 }
 
 /// One role's storage half: the binding and the role's snapshot
@@ -134,6 +137,18 @@ fn load_windows(
     ))
 }
 
+/// Parses a stored soil-moisture band override: an object with
+/// 0 ≤ min ≤ max ≤ 100. Anything else (including `null` — the reset
+/// value) falls back to the core default.
+fn parse_soil_band(value: &Value) -> Option<(f64, f64)> {
+    let min = value.get("min")?.as_f64()?;
+    let max = value.get("max")?.as_f64()?;
+    if !(0.0..=100.0).contains(&min) || !(min..=100.0).contains(&max) {
+        return None;
+    }
+    Some((min, max))
+}
+
 /// The DB half of the chart: the grow, its forecast windows and the
 /// wanted roles' points, in one connection pass.
 fn load_grow_db(
@@ -148,10 +163,14 @@ fn load_grow_db(
         let points = load_role(conn, &grow.id, role_name)?;
         roles.push((role_name.clone(), points));
     }
+    let soil_band = store::settings::get(conn, "soil_moisture_band")
+        .ok()
+        .and_then(|value| parse_soil_band(&value));
     Ok(LoadedGrow {
         grow,
         windows,
         roles,
+        soil_band,
     })
 }
 
@@ -284,8 +303,12 @@ async fn grow_history(
                     let (min, max) = leaflog_core::env::vpd_band(phase);
                     Some((min, max))
                 }
-                // Soil moisture's sourced preset and the remaining roles
-                // land with their own tickets.
+                // The user's override, else the sourced default preset.
+                "soil_moisture" => {
+                    let default = leaflog_core::env::SOIL_MOISTURE_BAND;
+                    Some(loaded.soil_band.unwrap_or((default.min, default.max)))
+                }
+                // The remaining roles land with their own tickets.
                 _ => None,
             }
         },
@@ -391,5 +414,20 @@ mod tests {
         assert_eq!(parse_value("light", "42"), Some(42.0));
         // Other roles stay strictly numeric.
         assert_eq!(parse_value("temperature", "on"), None);
+    }
+
+    #[test]
+    fn soil_band_overrides_validate_and_reset_to_default() {
+        use super::parse_soil_band;
+        assert_eq!(
+            parse_soil_band(&json!({"min": 25.0, "max": 45.0})),
+            Some((25.0, 45.0))
+        );
+        // Out of range, inverted, null (the reset value) and garbage
+        // all fall back to the sourced default.
+        assert_eq!(parse_soil_band(&json!({"min": 45.0, "max": 25.0})), None);
+        assert_eq!(parse_soil_band(&json!({"min": -1.0, "max": 45.0})), None);
+        assert_eq!(parse_soil_band(&json!(null)), None);
+        assert_eq!(parse_soil_band(&json!("nope")), None);
     }
 }

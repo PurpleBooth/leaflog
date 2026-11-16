@@ -4,7 +4,7 @@
 //! library — the SVG is composed from Rust views.
 
 use crate::api;
-use crate::api::GrowHistory;
+use crate::api::{GrowHistory, SoilBand};
 use leaflog_core::chart::parse_epoch;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -13,6 +13,102 @@ use leptos::task::spawn_local;
 #[must_use]
 pub fn format_pct(value: f64) -> String {
     format!("{value:.0} %")
+}
+
+/// The soil-moisture band editor: two percent inputs with save and
+/// reset-to-default, stored under the `soil_moisture_band` settings
+/// key. The chart card reads the same override for its corridor.
+#[component]
+pub fn BandEditor() -> impl IntoView {
+    let min = RwSignal::<String>::new(String::new());
+    let max = RwSignal::<String>::new(String::new());
+    let stored = RwSignal::<bool>::new(false);
+    let status = RwSignal::<Option<String>>::new(None);
+
+    Effect::new(move |_| {
+        spawn_local(async move {
+            match api::get::<serde_json::Value>("api/settings").await {
+                Ok(settings) => {
+                    let parsed = settings
+                        .get("soil_moisture_band")
+                        .and_then(|value| serde_json::from_value::<SoilBand>(value.clone()).ok());
+                    stored.set(parsed.is_some());
+                    if let Some(band) = parsed {
+                        min.set(format!("{}", band.min));
+                        max.set(format!("{}", band.max));
+                    }
+                }
+                Err(failure) => status.set(Some(failure.message)),
+            }
+        });
+    });
+
+    let save = move |reset: bool| {
+        let payload = if reset {
+            serde_json::json!({ "soil_moisture_band": null })
+        } else {
+            match (min.get().parse::<f64>().ok(), max.get().parse::<f64>().ok()) {
+                (Some(min_value), Some(max_value))
+                    if (0.0..=100.0).contains(&min_value)
+                        && min_value <= max_value
+                        && max_value <= 100.0 =>
+                {
+                    serde_json::json!({
+                        "soil_moisture_band": { "min": min_value, "max": max_value }
+                    })
+                }
+                _ => {
+                    status.set(Some("Enter 0–100 with min ≤ max.".to_owned()));
+                    return;
+                }
+            }
+        };
+        spawn_local(async move {
+            match api::put::<serde_json::Value, serde_json::Value>("api/settings", &payload).await {
+                Ok(_) => {
+                    stored.set(!reset);
+                    status.set(Some(if reset {
+                        "Reset to default.".to_owned()
+                    } else {
+                        "Saved.".to_owned()
+                    }));
+                }
+                Err(failure) => status.set(Some(failure.message)),
+            }
+        });
+    };
+
+    view! {
+        <div class="flex flex-wrap items-end gap-2 my-1">
+            <label class="fieldset">
+                <span class="fieldset-label">"Band min %"</span>
+                <input class="input input-sm w-24" type="number" min="0" max="100"
+                    prop:value=move || min.get()
+                    on:input=move |ev| min.set(event_target_value(&ev))
+                />
+            </label>
+            <label class="fieldset">
+                <span class="fieldset-label">"Band max %"</span>
+                <input class="input input-sm w-24" type="number" min="0" max="100"
+                    prop:value=move || max.get()
+                    on:input=move |ev| max.set(event_target_value(&ev))
+                />
+            </label>
+            <button class="btn btn-sm self-end" on:click=move |_| save(false)>
+                "Apply band"
+            </button>
+            <Show when=move || stored.get() fallback=|| ()>
+                <button class="btn btn-sm btn-ghost self-end" on:click=move |_| save(true)>
+                    "Reset to default"
+                </button>
+            </Show>
+            {move || {
+                status.get().map(|message| {
+                    view! { <span class="text-base-content/60 text-sm">{message}</span> }
+                })
+            }}
+        </div>
+    }
 }
 
 /// Axis formatter: VPD kilopascals.
