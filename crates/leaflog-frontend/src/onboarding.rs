@@ -7,7 +7,6 @@ use leaflog_core::equipment::EquipmentItem;
 use leaflog_core::grows::Grow;
 use leaflog_core::grows::GrowInput;
 use leaflog_core::grows::GrowStatus;
-use leaflog_core::seedbank::SeedBatchView;
 use leaflog_core::spaces::GrowSpace;
 use leaflog_core::spaces::GrowSpaceInput;
 use leaflog_core::strain::{PhotoperiodType, Strain, Tolerance};
@@ -58,8 +57,6 @@ pub fn OnboardingWizard() -> impl IntoView {
     let space_h = RwSignal::<String>::new(String::new());
     let strains = RwSignal::<Vec<Strain>>::new(Vec::new());
     let picked_strain = RwSignal::<String>::new(String::new());
-    let batches = RwSignal::<Vec<SeedBatchView>>::new(Vec::new());
-    let picked_batch = RwSignal::<String>::new(String::new());
     let plant_prefix = RwSignal::<String>::new(String::from("Plant"));
     let plant_count = RwSignal::<u32>::new(1);
     let grow_name = RwSignal::<String>::new(String::new());
@@ -82,9 +79,6 @@ pub fn OnboardingWizard() -> impl IntoView {
             }
             if let Ok(list) = api::get::<Vec<Strain>>("api/strains").await {
                 strains.set(list);
-            }
-            if let Ok(list) = api::get::<Vec<SeedBatchView>>("api/seed-batches").await {
-                batches.set(list);
             }
         });
     });
@@ -165,7 +159,6 @@ pub fn OnboardingWizard() -> impl IntoView {
                     },
                     strain_id: non_empty(picked_strain.get()),
                     grow_space_id: new_space_id,
-                    seed_batch_id: non_empty(picked_batch.get()),
                     feed_template_id: None,
                     planned_veg_weeks: None,
                     strain_label: String::new(),
@@ -440,37 +433,6 @@ pub fn OnboardingWizard() -> impl IntoView {
                                     on:input=move |ev| started_on.set(event_target_value(&ev))
                                 />
                             </label>
-                            <label class="fieldset"><span class="fieldset-label">"From seed batch"</span>
-                                <select class="select"
-                                    prop:value=move || picked_batch.get()
-                                    on:change=move |ev| picked_batch.set(event_target_value(&ev))
-                                >
-                                    <option value="">"— none —"</option>
-                                    {move || {
-                                        // Mount-time `selected`, as in the grow
-                                        // form's list selects: freshly rebuilt
-                                        // options must not reset the pick that
-                                        // `picked_batch` already holds.
-                                        let picked = picked_batch.get_untracked();
-                                        batches
-                                            .get()
-                                            .into_iter()
-                                            .map(|batch| {
-                                                let id = batch.batch.id.clone();
-                                                let label = format!(
-                                                    "{} × {}",
-                                                    batch.batch.quantity,
-                                                    strain_label(&strains, batch.batch.strain_id.as_ref()),
-                                                );
-                                                let is_selected = picked == id;
-                                                view! {
-                                                    <option value=id selected=is_selected>{label}</option>
-                                                }
-                                            })
-                                            .collect::<Vec<_>>()
-                                    }}
-                                </select>
-                            </label>
                         </div>
                         <div class="flex flex-wrap gap-2 mt-4">
                             <button class="btn btn-sm" type="button" on:click=move |_| step.set(3)>"Back"</button>
@@ -498,20 +460,6 @@ pub fn OnboardingWizard() -> impl IntoView {
             </section>
         </Show>
     }
-}
-
-/// The strain name for a batch option (unlinked batches say so).
-fn strain_label(strains: &RwSignal<Vec<Strain>>, strain_id: Option<&String>) -> String {
-    strain_id.map_or_else(
-        || "unlinked seeds".to_owned(),
-        |id| {
-            strains
-                .get_untracked()
-                .iter()
-                .find(|strain| &strain.id == id)
-                .map_or_else(|| "unknown strain".to_owned(), |strain| strain.name.clone())
-        },
-    )
 }
 
 /// Today as `YYYY-MM-DD`: germination defaults to today (editable).

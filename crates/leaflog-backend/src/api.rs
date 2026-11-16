@@ -39,7 +39,6 @@ pub fn router() -> Router<AppState> {
         .merge(crate::api_feeds::router())
         .merge(crate::api_env::router())
         .merge(crate::api_spaces::router())
-        .merge(crate::api_seedbank::router())
         .merge(crate::api_chart::router())
         .merge(crate::api_history::router())
 }

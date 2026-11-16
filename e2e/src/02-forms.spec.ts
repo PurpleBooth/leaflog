@@ -110,28 +110,14 @@ test('grow space: edit from the detail page', async ({ page, request }) => {
   await expect(page.getByRole('heading', { name: renamed, exact: true })).toBeVisible();
 });
 
-test('seed batch: create, then edit', async ({ page }) => {
+test('seedbank: the page and its nav entry are gone', async ({ page }) => {
+  // Feature-strip: the seed bank left the product. No nav link, and
+  // the old deep link renders nothing — no batch form anywhere.
+  await page.goto(url('/'));
+  await expect(page.getByRole('link', { name: 'Seedbank' })).toHaveCount(0);
   await page.goto(url('/seedbank'));
-  await page.getByRole('button', { name: 'Add batch' }).click();
-  await page.getByLabel('Seeds *', { exact: true }).fill('5');
-  await page.getByLabel('Acquired (YYYY-MM-DD) *').fill('2026-01-15');
-  await page.getByLabel('Acquired from').fill('E2E bank');
-  await armNoReloadGuard(page);
-  await page.getByRole('button', { name: 'Save' }).click();
-
-  const card = page.locator('li.card', { hasText: 'E2E bank' });
-  await expect(card).toBeVisible();
-  await expect(card).toContainText('5 ×');
-  await expectNoReload(page);
-
-  await card.getByRole('button', { name: 'Edit', exact: true }).click();
-  await page.getByLabel('Seeds *', { exact: true }).fill('7');
-  await armNoReloadGuard(page);
-  await page.getByRole('button', { name: 'Save' }).click();
-  await expect(page.locator('li.card', { hasText: 'E2E bank' })).toContainText('7 ×');
-  await expectNoReload(page);
-  await page.reload();
-  await expect(page.locator('li.card', { hasText: 'E2E bank' })).toContainText('7 ×');
+  await expect(page.getByRole('button', { name: 'Add batch' })).toHaveCount(0);
+  await expect(page.getByLabel('Seeds *', { exact: true })).toHaveCount(0);
 });
 
 test('grow: create from the grows page', async ({ page }) => {
@@ -247,7 +233,6 @@ test('grow: picked strain survives late options, save and reopen', async ({
     name,
     strain_id: northern!.id,
     grow_space_id: null,
-    seed_batch_id: null,
     feed_template_id: null,
     substrate: 'soil',
     started_on: new Date().toISOString().slice(0, 10),
@@ -300,7 +285,6 @@ test('grow: bound space survives late options, save and reopen', async ({
     name,
     strain_id: null,
     grow_space_id: spaceId,
-    seed_batch_id: null,
     feed_template_id: null,
     substrate: 'soil',
     started_on: new Date().toISOString().slice(0, 10),

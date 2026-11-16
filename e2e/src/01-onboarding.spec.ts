@@ -28,6 +28,10 @@ test('wizard happy path: space, grow and plants land on the dashboard', async ({
   await wizard.getByRole('button', { name: 'Next' }).click();
   await expect(wizard.getByRole('heading', { name: '4. Plants' })).toBeVisible();
 
+  // Feature-strip: the batch picker left the wizard, and the step
+  // numbering stays coherent (equipment, space, strain, plants).
+  await expect(page.getByLabel('From seed batch')).toHaveCount(0);
+
   // Step 4: the wizard's one real form. "Start the grow" must be
   // intercepted by the app, never a native submit (D061).
   await page.getByLabel('Grow name').fill(grow);
