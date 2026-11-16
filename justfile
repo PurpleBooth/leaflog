@@ -26,12 +26,9 @@ daisyui_dir := frontend_dir / "tailwind"
 daisyui_sha_daisyui := "d69de07c7463bb1f41548e2688f88ee105cdadf9779fce5b3c47b3bfaa6be472"
 daisyui_sha_theme := "e48a35d8326d650181ca600560e8520cf6b44cf9242bbd9d45825607e641f251"
 
-# Bundle the ECharts chart library into charts/echarts.js (npm +
-# esbuild, tree-shaken to the SVG renderer and the chart types the
-# app uses; D075). Build-time only — Node never reaches the image.
-# The recipe runs the same verification every consumer of the bundle
-# relies on (charts/verify.mjs): module composition, no CDN host, no
-# Node constructs, and the index.html wiring.
+# The ECharts npm project and its built bundle (npm + esbuild,
+# tree-shaken to the SVG renderer; D075). Build-time only — Node
+# never reaches the image.
 echarts_dir := frontend_dir / "charts"
 
 # Download and verify the daisyUI bundles into tailwind/ (idempotent).

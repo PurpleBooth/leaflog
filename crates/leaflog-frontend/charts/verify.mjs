@@ -34,11 +34,22 @@ const cdnHosts = [
 ];
 
 // Size guard for the tree-shaken bundle (line + scatter + grid +
-// tooltip + SVG renderer). Floor: the bundle is populated, not an
-// empty stub. Ceiling: a silent regression to the full library dump
-// (~1.1 MB minified) fails instead of shipping.
-const minBundleBytes = 100 * 1024;
+// tooltip + SVG renderer), measured at 517 KiB. Floor: the bundle
+// keeps the chart machinery, not a stub. Ceiling: a silent regression
+// to the full library dump (~1.1 MB minified) fails instead of
+// shipping.
+const minBundleBytes = 400 * 1024;
 const maxBundleBytes = 900 * 1024;
+
+// The SVG painter pulls three zrender/lib/canvas files as shared draw
+// utilities (dash patterns, text/graphic helpers). Any other canvas
+// file means the canvas painter sneaked back in.
+const allowedZrenderCanvasFiles = ["helper.js", "dashStyle.js", "graphic.js"];
+
+// Chart directories allowed to contribute to the output. `custom` is
+// registered by echarts core itself (customSeriesRegister), `helper`
+// holds line/scatter shared helpers; neither can be tree-shaken away.
+const allowedChartDirs = new Set(["line", "scatter", "custom", "helper"]);
 
 const failures = [];
 function check(name, ok, detail = "") {
@@ -84,40 +95,56 @@ function verifyComposition() {
   if (!exists) return;
 
   const metafile = JSON.parse(readFileSync(metafilePath, "utf8"));
-  const inputs = Object.keys(metafile.inputs);
+  const output = metafile.outputs["echarts.js"];
+  if (output === undefined) {
+    check("esbuild metafile names the echarts.js output", false);
+    return;
+  }
+  // Composition must be judged on the OUTPUT graph: files whose code
+  // actually landed in the bundle (bytesInOutput > 0), never on the
+  // input graph, which lists every file esbuild merely parsed.
+  const contributing = Object.entries(output.inputs)
+    .filter(([, info]) => info.bytesInOutput > 0)
+    .map(([p]) => p);
 
   const chartDirs = new Set(
-    inputs
+    contributing
       .filter((p) => p.includes("/echarts/lib/chart/"))
       .map((p) => p.split("/echarts/lib/chart/")[1].split("/")[0]),
   );
-  const expectedCharts = new Set(["line", "scatter"]);
-  const unexpectedCharts = [...chartDirs].filter((c) => !expectedCharts.has(c));
-  const missingCharts = [...expectedCharts].filter((c) => !chartDirs.has(c));
+  const unexpectedCharts = [...chartDirs].filter((c) => !allowedChartDirs.has(c));
+  const missingCharts = ["line", "scatter"].filter((c) => !chartDirs.has(c));
   check(
-    "tree-shaken to exactly the line and scatter chart types",
+    "output tree-shaken to the line and scatter chart types",
     unexpectedCharts.length === 0 && missingCharts.length === 0,
-    `included: [${[...chartDirs].join(", ")}]`,
+    `included: [${[...chartDirs].sort().join(", ")}]`,
   );
 
-  const hasInput = (needle) => inputs.some((p) => p.includes(needle));
-  check("grid component included", hasInput("/echarts/lib/component/grid/"));
-  check(
-    "tooltip component included",
-    hasInput("/echarts/lib/component/tooltip/"),
-  );
-  check("svg renderer included", hasInput("/echarts/lib/renderer/"));
-  check("echarts core included", hasInput("/echarts/lib/"));
+  const contributingComponent = (dir) =>
+    contributing.some((p) => p.includes(`/echarts/lib/component/${dir}/`));
+  check("grid component included", contributingComponent("grid"));
+  check("tooltip component included", contributingComponent("tooltip"));
 
+  const contributingCanvas = contributing
+    .filter((p) => p.includes("/zrender/lib/canvas/"))
+    .map((p) => p.split("/zrender/lib/canvas/")[1]);
+  const strayCanvas = contributingCanvas.filter(
+    (f) => !allowedZrenderCanvasFiles.includes(f),
+  );
   check(
     "zrender svg renderer included",
-    hasInput("/zrender/lib/svg/"),
+    contributing.some((p) => p.includes("/zrender/lib/svg/")),
     "SVG rendering is the only supported renderer (local-first, theme-following)",
   );
   check(
     "zrender canvas renderer excluded",
-    !hasInput("/zrender/lib/canvas/"),
-    "canvas doubles the bundle for a renderer the app never selects",
+    strayCanvas.length === 0,
+    `unexpected canvas files: [${strayCanvas.join(", ")}]`,
+  );
+  check(
+    "echarts canvas renderer excluded",
+    !contributing.some((p) => p.includes("installCanvasRenderer")),
+    "the bundle must keep only installSVGRenderer",
   );
 }
 
