@@ -11,8 +11,9 @@ test('aborted photos request keeps the grow page with an error banner', async ({
   request,
 }) => {
   const name = uniqueName('E2E Tri-state Grow');
+  const plantName = uniqueName('E2E Tri-state Plant');
   const growId = await createGrow(request, name);
-  await createPlant(request, growId, uniqueName('E2E Tri-state Plant'));
+  await createPlant(request, growId, plantName);
 
   // Abort the photos request under the ingress prefix; the grow,
   // plants and actions requests answer normally.
@@ -23,7 +24,7 @@ test('aborted photos request keeps the grow page with an error banner', async ({
   // plant are there…
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
   await expect(
-    page.getByRole('link', { name: 'E2E Tri-state Plant', exact: true }),
+    page.getByRole('link', { name: plantName, exact: true }),
   ).toBeVisible();
   // …and the shared error banner shows for the aborted request.
   await expect(page.locator('p[role="alert"]')).toBeVisible();
