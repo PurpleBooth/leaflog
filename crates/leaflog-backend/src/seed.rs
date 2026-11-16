@@ -213,23 +213,23 @@ mod tests {
         let db = Db::open_in_memory()?;
         seed_feed_presets(&db).await?;
         let rows: Vec<(Option<String>, i64)> = db
-            .with(|conn| -> Result<Vec<(Option<String>, i64)>, crate::db::StoreError> {
-                let mut stmt = conn.prepare(
-                    "SELECT source, is_builtin FROM feed_template ORDER BY name",
-                )?;
-                let rows = stmt
-                    .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
-                    .collect::<Result<Vec<_>, _>>()?;
-                Ok(rows)
-            })
+            .with(
+                |conn| -> Result<Vec<(Option<String>, i64)>, crate::db::StoreError> {
+                    let mut stmt =
+                        conn.prepare("SELECT source, is_builtin FROM feed_template ORDER BY name")?;
+                    let rows = stmt
+                        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(rows)
+                },
+            )
             .await?;
         assert!(!rows.is_empty(), "templates seeded");
         assert!(
-            rows.iter()
-                .all(|(source, builtin)| *builtin == 1
-                    && source
-                        .as_deref()
-                        .is_some_and(|source| source.contains("§5.3"))),
+            rows.iter().all(|(source, builtin)| *builtin == 1
+                && source
+                    .as_deref()
+                    .is_some_and(|source| source.contains("§5.3"))),
             "the generated presets state where they come from"
         );
         Ok(())

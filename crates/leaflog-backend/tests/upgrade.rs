@@ -97,20 +97,22 @@ async fn upgrade_adopts_reids_and_the_drop_surfaces_the_label() {
             .run(&mut conn)
             .expect("apply through the last pre-drop migration");
 
-        let (id, builtin): (String, i64) = conn.query_row(
-            "SELECT id, is_builtin FROM strain WHERE name = 'Northern Lights'",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .expect("adopted bundled strain");
+        let (id, builtin): (String, i64) = conn
+            .query_row(
+                "SELECT id, is_builtin FROM strain WHERE name = 'Northern Lights'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("adopted bundled strain");
         assert_eq!(id, "seed-strain-northern-lights");
         assert_eq!(builtin, 1, "adopted rows become read-only presets");
-        let northern: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM strain WHERE name = 'Northern Lights'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("adoption count");
+        let northern: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM strain WHERE name = 'Northern Lights'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("adoption count");
         assert_eq!(northern, 1, "no duplicate after adoption");
         let parent: String = conn
             .query_row(

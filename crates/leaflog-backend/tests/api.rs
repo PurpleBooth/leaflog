@@ -254,7 +254,6 @@ fn offline_bridge() -> std::sync::Arc<leaflog_backend::ha::HaBridge> {
     ))
 }
 
-
 async fn lamp_min_for_grow(client: &reqwest::Client, base: &str, body: Value) -> f64 {
     let started_on = started_today();
     let mut body = body;

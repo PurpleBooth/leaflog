@@ -19,6 +19,7 @@ use leptos_router::hooks::use_params_map;
 use serde::de::DeserializeOwned;
 use std::future::Future;
 
+use crate::ErrorIf;
 use crate::Home;
 use crate::api::{self, ApiFailure};
 use crate::chart::{
@@ -26,7 +27,6 @@ use crate::chart::{
     format_ppm,
 };
 use crate::dashboard::EnvDashboard;
-use crate::ErrorIf;
 use crate::feed::FeedPanel;
 use crate::gantt::GanttTimeline;
 use crate::live::LivePanel;
@@ -1247,7 +1247,7 @@ mod landing_pick_tests {
         Grow {
             id: id.to_owned(),
             name: id.to_owned(),
-                feed_template_id: None,
+            feed_template_id: None,
             planned_veg_weeks: None,
             strain_label: String::new(),
             photoperiod: PhotoperiodType::default(),
