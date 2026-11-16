@@ -205,7 +205,7 @@ pub fn LightCycleEditor(
                             <span class="fieldset-label">
                                 {phase_display(phase)}" hours on"
                             </span>
-                            <input class="input input-sm w-24" type="number" min="1" max="24"
+                            <input class="input input-sm w-24" type="number"
                                 prop:placeholder=move || {
                                     default_hours_on(phase, photoperiod.get())
                                         .map_or_else(String::new, |default| {
@@ -222,9 +222,9 @@ pub fn LightCycleEditor(
                     }
                 })
                 .collect::<Vec<_>>()}
-            <button class="btn btn-sm btn-primary self-end" type="submit">"Save cycle"</button>
+            <button class="btn btn-sm btn-primary self-end" type="submit">"Apply cycle"</button>
             <Show when=move || stored.get() fallback=|| ()>
-                <button class="btn btn-sm btn-ghost self-end" on:click=reset>
+                <button class="btn btn-sm btn-ghost self-end" type="button" on:click=reset>
                     "Reset to default"
                 </button>
             </Show>

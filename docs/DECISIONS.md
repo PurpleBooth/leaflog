@@ -6,6 +6,43 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-16 — the per-grow Light Cycle (D073 follow-up)
+
+### D075: the Light Cycle is grow columns, not a settings key
+
+The Light Cycle (one lights-on local time plus hours-on per lit
+phase) belongs to one grow, like the strain or the start date, so it
+is stored as a nullable JSON column on `grow`
+(`light_cycle`, V14) — not as a key under `settings`, which is
+global. The soil-moisture band override kept its settings key
+because it is app-wide; a Light Cycle per grow under settings would
+have meant grown-up key names (`light_cycle.<grow-id>`) and no
+foreign-key integrity. `NULL` means "the preset defaults apply",
+which makes reset-to-default a `DELETE` on the cycle endpoint that
+writes `NULL` — the same cleared-override shape the soil band uses.
+
+The whole document is validated in Rust
+(`leaflog-core::light_cycle`): a bad time or out-of-range hours
+answers a clear 400. The defaults are pure functions of the phase
+and the strain's photoperiod type, shared by backend, editor
+placeholders and the phase picker's derived signal. Photoperiod
+defaults are 18/6 from germination through veg and 12/12 flower
+(SPEC §5.1; GrowWeedEasy's light-schedules guide — seedlings start
+in the vegetative stage on the same 18/6). Autoflowers get 18 h long
+days throughout (SPEC §5.1 "commonly 18–20 h", low end kept so a
+dark period remains; research caveat C6). The 06:00 default
+lights-on time is marked unverified in its source label: no
+published standard anchors a wall-clock on-time — it is a grower
+preference.
+
+Editor strings are plain English inline, like every existing form:
+the locale catalogs the spec's Language section describes do not
+exist in the codebase yet, so key parity has nothing to compile
+against. When the localization layer lands, these labels convert
+with the rest of the forms.
+
+---
+
 ## 2026-11-16 — grow overview redesign (D073 follow-up)
 
 ### D074: `float_cmp` allowance in the chart's step builder
