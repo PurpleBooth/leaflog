@@ -60,6 +60,57 @@ pub fn vpd_in_band(vpd: f64, phase: Phase) -> bool {
     (min..=max).contains(&vpd)
 }
 
+/// One phase's temperature corridor: the lights-on range the chart
+/// draws as a shaded band behind the temperature line (spec §5.2).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct TemperatureCorridor {
+    /// Lower edge of the lights-on range, °C.
+    pub min_c: f64,
+    /// Upper edge of the lights-on range, °C.
+    pub max_c: f64,
+    /// Where the range comes from (preset discipline: every row is
+    /// labelled).
+    pub source: &'static str,
+}
+
+/// The per-phase lights-on temperature corridor (spec §5.2 table, °F
+/// converted to °C).
+///
+/// Germination has no row of its own in §5.2, so it reuses the
+/// seedling/clone range. Curing is "room temp" in §5.2; the 18–25 °C
+/// fill-in is the common room-temperature convention and marked
+/// unverified.
+#[must_use]
+pub const fn temperature_corridor(phase: Phase) -> TemperatureCorridor {
+    match phase {
+        Phase::Germination | Phase::Seedling => TemperatureCorridor {
+            min_c: 21.1,
+            max_c: 26.7,
+            source: "spec §5.2 seedling/clone 70–80 °F (germination reuses the row)",
+        },
+        Phase::Vegetative => TemperatureCorridor {
+            min_c: 21.1,
+            max_c: 29.4,
+            source: "spec §5.2 veg 70–85 °F",
+        },
+        Phase::Flower => TemperatureCorridor {
+            min_c: 18.3,
+            max_c: 26.7,
+            source: "spec §5.2 flower 65–80 °F",
+        },
+        Phase::Drying => TemperatureCorridor {
+            min_c: 15.6,
+            max_c: 20.0,
+            source: "spec §5.2 dry 60–68 °F",
+        },
+        Phase::Curing => TemperatureCorridor {
+            min_c: 18.0,
+            max_c: 25.0,
+            source: "spec §5.2 room temp; 18–25 °C convention, unverified",
+        },
+    }
+}
+
 /// The RH window that keeps VPD in band at the given temperature.
 ///
 /// Returns `(rh_min, rh_max)` in %; the range may be empty (no RH can
@@ -80,8 +131,6 @@ pub fn rh_window(air_temperature_c: f64, leaf_offset_c: f64, band: (f64, f64)) -
 // ---------------------------------------------------------------------------
 // Strain-tolerance threshold shifts (spec §4.4)
 // ---------------------------------------------------------------------------
-
-/// Default temperature alert thresholds in °C.
 ///
 /// Spec §5.2: cold stress below ~15.6 °C / 60 °F; above ~29.4 °C /
 /// 85 °F tolerable under strong light with low RH; above ~26.7 °C /
@@ -486,7 +535,7 @@ pub fn coach_tips(phase: Phase, substrate_label: &str, light_on: bool) -> Vec<Co
 mod tests {
     use super::{
         LampInput, Phase, TempThresholds, Tolerance, advise_lamp, coach_tips, rh_window,
-        saturation_vp_kpa, vpd_band, vpd_kpa, wattage_classes,
+        saturation_vp_kpa, temperature_corridor, vpd_band, vpd_kpa, wattage_classes,
     };
     use crate::strain::PhotoperiodType;
 
@@ -755,5 +804,43 @@ mod tests {
     #[test]
     fn photoperiod_type_available() {
         let _ = PhotoperiodType::Photoperiod;
+    }
+
+    // --- Temperature corridor (spec §5.2, chart band) ---
+
+    #[test]
+    fn temperature_corridor_covers_every_phase_with_sourced_ranges() {
+        for phase in Phase::all() {
+            let band = temperature_corridor(phase);
+            assert!(
+                band.min_c < band.max_c,
+                "{} range must be non-empty",
+                phase.label()
+            );
+            assert!(
+                !band.source.is_empty(),
+                "{} must carry a source label",
+                phase.label()
+            );
+        }
+    }
+
+    #[test]
+    fn temperature_corridor_matches_the_spec_section_5_2_table() {
+        // Worked values from the §5.2 lights-on ranges (°F → °C).
+        let seedling = temperature_corridor(Phase::Seedling);
+        assert!((seedling.min_c - 21.1).abs() < 0.05);
+        assert!((seedling.max_c - 26.7).abs() < 0.05);
+        assert!((temperature_corridor(Phase::Vegetative).max_c - 29.4).abs() < 0.05);
+        let flower = temperature_corridor(Phase::Flower);
+        assert!((flower.min_c - 18.3).abs() < 0.05);
+        assert!((flower.max_c - 26.7).abs() < 0.05);
+        let drying = temperature_corridor(Phase::Drying);
+        assert!((drying.min_c - 15.6).abs() < 0.05);
+        assert!((drying.max_c - 20.0).abs() < 0.05);
+        // Germination has no §5.2 row: it reuses the seedling/clone
+        // range, and the source label says so.
+        assert_eq!(temperature_corridor(Phase::Germination), seedling);
+        assert!(seedling.source.contains("germination reuses"));
     }
 }
