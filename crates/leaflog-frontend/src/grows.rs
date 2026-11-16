@@ -18,6 +18,7 @@ use serde::de::DeserializeOwned;
 use std::future::Future;
 
 use crate::api::{self, ApiFailure};
+use crate::chart::HistoryChart;
 use crate::dashboard::EnvDashboard;
 use crate::equipment::ErrorIf;
 use crate::feed::FeedPanel;
@@ -475,6 +476,7 @@ pub fn GrowDetail() -> impl IntoView {
             <GanttTimeline grow_id=grow_id() />
 
             <EnvDashboard grow_id=grow_id() />
+            <HistoryChart grow_id=grow_id() />
 
             <h3>"Feed schedule"</h3>
             <FeedPanel grow_id=grow_id() />

@@ -177,6 +177,64 @@ pub struct Forecast {
     pub windows: Vec<PhaseWindowData>,
 }
 
+/// The history chart payload (`GET /api/grows/{id}/history`).
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct GrowHistory {
+    /// The requested role (echoed).
+    pub role: String,
+    /// The requested window label (echoed).
+    pub window: String,
+    /// The merged windowed series (SI units, ascending by time).
+    pub series: ChartSeriesData,
+    /// Phase corridor segments clipped to the window.
+    pub bands: Vec<BandSegmentData>,
+    /// Home Assistant's history was unavailable, so the chart is
+    /// snapshot-only (the Dead binding rule).
+    pub degraded: bool,
+    /// The grow binds a sensor for this role. False is an explicit
+    /// no-sensor state, never a data error.
+    pub bound: bool,
+}
+
+/// The merged series for one chart: window bounds plus ascending
+/// points.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct ChartSeriesData {
+    /// Window start, RFC 3339 UTC, inclusive.
+    pub from: String,
+    /// Window end, RFC 3339 UTC, inclusive.
+    pub to: String,
+    /// Points ascending by time.
+    pub points: Vec<ChartPointData>,
+}
+
+/// One merged chart point.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct ChartPointData {
+    /// When the value was recorded, RFC 3339 UTC.
+    pub at: String,
+    /// The value in SI units.
+    pub value: f64,
+    /// Which capture path produced it (`ha` or `snapshot`).
+    pub source: String,
+}
+
+/// One corridor segment: the phase's min/max range between two
+/// instants, already clipped to the window.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct BandSegmentData {
+    /// Segment start, RFC 3339 UTC, inclusive.
+    pub start: String,
+    /// Segment end, RFC 3339 UTC.
+    pub end: String,
+    /// Lower band edge in SI units.
+    pub min: f64,
+    /// Upper band edge in SI units.
+    pub max: f64,
+    /// The phase the segment belongs to.
+    pub phase: String,
+}
+
 /// One phase window as the API serializes it.
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct PhaseWindowData {
