@@ -1,13 +1,17 @@
-//! Hand-rolled SVG history chart (spec §3): a line over the shaded
-//! recommended-band corridor, fed by the grow history endpoint, with
-//! rolling Day / Week / Month windows (24 h / 7 d / 30 d). No chart
-//! library — the SVG is composed from Rust views.
+//! History charts (spec §3): a line over the shaded recommended-band
+//! corridor, fed by the grow history endpoint, with rolling chart
+//! windows (24 h / 7 d / 30 d). The temperature card renders through
+//! `ECharts` (SVG renderer, ticket 02); the other cards still use the
+//! hand-rolled SVG until ticket 03 retires it.
 
 use crate::api;
 use crate::api::{GrowHistory, SoilBand};
+use crate::chart_option;
+use js_sys::{Function, Reflect};
 use leaflog_core::chart::parse_epoch;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 
 /// Axis formatter: relative humidity percent.
 #[must_use]
@@ -151,11 +155,13 @@ const WIDTH: f64 = 600.0;
 const HEIGHT: f64 = 220.0;
 
 /// One windowed chart for one sensor role on the grow overview.
-/// `format_value` renders axis labels (per the HA unit system);
+/// `format_value` renders axis labels (per the HA unit system).
 /// `step` draws the series as a staircase (binary entities); `scatter`
-/// plots points instead of a line (event series such as pH/EC);
-/// `no_data` is the explicit empty state (a sensor role says no sensor
-/// is bound, an event role says nothing was logged).
+/// plots points instead of a line (event series such as pH/EC).
+/// `no_data` is the explicit empty state: a sensor role says no sensor
+/// is bound, an event role says nothing was logged. `echarts` routes
+/// the drawing through the `ECharts` option-builder seam (ticket 02's
+/// temperature card; the rest stay on the SVG until ticket 03).
 #[component]
 pub fn HistoryChart(
     grow_id: String,
@@ -165,6 +171,7 @@ pub fn HistoryChart(
     #[prop(default = false)] step: bool,
     #[prop(default = false)] scatter: bool,
     #[prop(default = "No sensor bound for this role.")] no_data: &'static str,
+    #[prop(default = false)] echarts: bool,
 ) -> impl IntoView {
     let window = RwSignal::new("day".to_owned());
     let data = RwSignal::<Option<GrowHistory>>::new(None);
@@ -192,30 +199,7 @@ pub fn HistoryChart(
         <div class="card bg-base-100 shadow-sm px-4 py-3 my-3">
             <div class="flex flex-wrap items-baseline gap-2">
                 <h4 class="m-0">{title}</h4>
-                <div class="flex gap-1" role="group" aria-label="Chart window">
-                    {["day", "week", "month"]
-                        .into_iter()
-                        .map(|label| {
-                            let caption = match label {
-                                "day" => "Day",
-                                "week" => "Week",
-                                _ => "Month",
-                            };
-                            view! {
-                                <button
-                                    class=move || if window.get() == label {
-                                        "btn btn-xs btn-primary"
-                                    } else {
-                                        "btn btn-xs"
-                                    }
-                                    on:click=move |_| window.set(label.to_owned())
-                                >
-                                    {caption}
-                                </button>
-                            }
-                        })
-                        .collect::<Vec<_>>()}
-                </div>
+                <WindowToggles window=window />
                 <Show
                     when=move || data.get().is_some_and(|chart| chart.degraded)
                     fallback=|| ()
@@ -223,34 +207,303 @@ pub fn HistoryChart(
                     <span class="badge badge-warning badge-sm">"snapshot only"</span>
                 </Show>
             </div>
-            <Show
-                when=move || data.get().is_some()
-                fallback=move || {
-                    view! {
-                        <p class="text-base-content/70 text-sm">
-                            {move || failure.get().unwrap_or_else(|| "Loading…".to_owned())}
-                        </p>
-                    }
-                }
-            >
-                {move || {
-                    let current = data.get()?;
-                    if current.bound {
-                        return Some(
-                            view! { <ChartSvg chart=current format_value step scatter /> }
-                                .into_any(),
-                        );
-                    }
-                    Some(
-                        view! {
-                            <p class="text-base-content/70 text-sm">{no_data}</p>
+            {if echarts {
+                view! {
+                    <Show
+                        when=move || data.get().is_some_and(|chart| chart.bound)
+                        fallback=move || {
+                            let message = failure.get().unwrap_or_else(|| {
+                                if data.get().is_some_and(|chart| !chart.bound) {
+                                    no_data.to_owned()
+                                } else {
+                                    "Loading…".to_owned()
+                                }
+                            });
+                            view! { <p class="text-base-content/70 text-sm">{message}</p> }
                         }
-                            .into_any(),
-                    )
-                }}
-            </Show>
+                    >
+                        <EChartsHistory data=data format_value=format_value />
+                    </Show>
+                }
+                    .into_any()
+            } else {
+                view! {
+                    <Show
+                        when=move || data.get().is_some()
+                        fallback=move || {
+                            view! {
+                                <p class="text-base-content/70 text-sm">
+                                    {move || failure.get().unwrap_or_else(|| "Loading…".to_owned())}
+                                </p>
+                            }
+                        }
+                    >
+                        {move || {
+                            let current = data.get()?;
+                            if current.bound {
+                                return Some(
+                                    view! { <ChartSvg chart=current format_value step scatter /> }
+                                        .into_any(),
+                                );
+                            }
+                            Some(
+                                view! {
+                                    <p class="text-base-content/70 text-sm">{no_data}</p>
+                                }
+                                    .into_any(),
+                            )
+                        }}
+                    </Show>
+                }
+                    .into_any()
+            }}
         </div>
     }
+}
+
+/// The Chart window toggle group: three rolling windows ending now,
+/// labelled 24h / 7d / 30d (the old "Day" collided with the Light
+/// Cycle's day). The API labels stay `day` / `week` / `month`.
+#[component]
+fn WindowToggles(window: RwSignal<String>) -> impl IntoView {
+    view! {
+        <div class="flex gap-1" role="group" aria-label="Chart window">
+            {["day", "week", "month"]
+                .into_iter()
+                .map(|label| {
+                    let caption = match label {
+                        "day" => "24h",
+                        "week" => "7d",
+                        _ => "30d",
+                    };
+                    view! {
+                        <button
+                            class=move || if window.get() == label {
+                                "btn btn-xs btn-primary"
+                            } else {
+                                "btn btn-xs"
+                            }
+                            on:click=move |_| window.set(label.to_owned())
+                        >
+                            {caption}
+                        </button>
+                    }
+                })
+                .collect::<Vec<_>>()}
+        </div>
+    }
+}
+
+/// The `ECharts`-drawn chart (ticket 02): a stable container div plus a
+/// mount effect that feeds each loaded history response through the
+/// pure option builder and drives `window.echarts` (SVG renderer) over
+/// it. The axis and tooltip formatters are wasm closures handed to
+/// `ECharts` through `Closure::into_js_value`, so the JS side owns their
+/// lifetime and the GC reclaims them when the chart is disposed. No
+/// application JavaScript exists — `js_sys` carries every call.
+#[component]
+fn EChartsHistory(
+    data: RwSignal<Option<GrowHistory>>,
+    format_value: fn(f64) -> String,
+) -> impl IntoView {
+    let container = NodeRef::<leptos::html::Div>::new();
+    let instance = StoredValue::new_local(None::<JsValue>);
+
+    Effect::new(move |_| {
+        let Some(chart) = data.get() else { return };
+        let Some(el) = container.get() else { return };
+        let option = chart_option::temperature_history_option(&chart, &theme_look());
+        let Ok(option_js) = serde_wasm_bindgen::to_value(&option) else {
+            return;
+        };
+        // Fresh closures per option build: setOption replaces the
+        // previous references, and `into_js_value` lets the JS GC
+        // reclaim each one once nothing points at it any more.
+        let axis_labels = axis_label_closure(format_value).into_js_value();
+        let tooltip_html = tooltip_closure(format_value).into_js_value();
+        attach_formatters(&option_js, &axis_labels, &tooltip_html);
+        if let Some(existing) = instance.get_value() {
+            call_chart_method(&existing, "setOption", Some(&option_js));
+        } else {
+            let Some(echarts) = echarts_global() else {
+                return;
+            };
+            let mounted = init_svg_chart(&echarts, el.as_ref());
+            instance.set_value(Some(mounted.clone()));
+            call_chart_method(&mounted, "setOption", Some(&option_js));
+            label_svg_root(el.as_ref(), &format!("{} history", chart.role));
+        }
+    });
+
+    let resize = window_event_listener(leptos::ev::resize, move |_| {
+        if let Some(existing) = instance.get_value() {
+            call_chart_method(&existing, "resize", None);
+        }
+    });
+    on_cleanup(move || {
+        if let Some(existing) = instance.get_value() {
+            call_chart_method(&existing, "dispose", None);
+        }
+        instance.set_value(None);
+        resize.remove();
+    });
+
+    view! { <div node_ref=container class="h-56 w-full" /> }
+}
+
+/// Reads `window.echarts`; `None` when the bundle script did not load
+/// (the build pipeline wires it, so this is a degraded fallback).
+fn echarts_global() -> Option<js_sys::Object> {
+    Reflect::get(&js_sys::global(), &JsValue::from_str("echarts"))
+        .ok()
+        .and_then(|value| value.dyn_into::<js_sys::Object>().ok())
+}
+
+/// Calls `echarts.init` with the SVG renderer forced (the only
+/// supported renderer; the canvas painter is excluded at bundle level).
+fn init_svg_chart(echarts: &js_sys::Object, el: &JsValue) -> JsValue {
+    let Some(init) = Reflect::get(echarts, &JsValue::from_str("init"))
+        .ok()
+        .and_then(|value| value.dyn_into::<Function>().ok())
+    else {
+        return JsValue::UNDEFINED;
+    };
+    let options = js_sys::Object::new();
+    let _ = js_sys::Reflect::set(
+        &options,
+        &JsValue::from_str("renderer"),
+        &JsValue::from_str("svg"),
+    );
+    init.call3(&JsValue::UNDEFINED, el, &JsValue::UNDEFINED, &options)
+        .unwrap_or(JsValue::UNDEFINED)
+}
+
+/// Calls a no/one-argument method on the chart instance, ignoring
+/// failures (a disposed instance must not panic the app).
+fn call_chart_method(instance: &JsValue, name: &str, argument: Option<&JsValue>) {
+    let Ok(method) = Reflect::get(instance, &JsValue::from_str(name)) else {
+        return;
+    };
+    let Some(function) = method.dyn_ref::<Function>() else {
+        return;
+    };
+    let _ = argument.map_or_else(
+        || function.call0(instance),
+        |value| function.call1(instance, value),
+    );
+}
+
+/// Attaches the wasm formatter closures: the value-axis label renderer
+/// and the hover tooltip. The builder pre-creates the target objects,
+/// so a missing path would mean the builder seam broke; the skip just
+/// leaves `ECharts`' default formatting.
+fn attach_formatters(option: &JsValue, axis_labels: &JsValue, tooltip_html: &JsValue) {
+    let Ok(y_axes) = Reflect::get(option, &JsValue::from_str("yAxis")) else {
+        return;
+    };
+    let Ok(first_axis) = y_axes.dyn_into::<js_sys::Array>().map(|axes| axes.get(0)) else {
+        return;
+    };
+    set_child_property(&first_axis, "axisLabel", "formatter", axis_labels);
+    set_child_property(option, "tooltip", "formatter", tooltip_html);
+}
+
+/// Sets `target[child_key].[property] = value`, skipping silently when
+/// the builder's structure is missing (`ECharts` then keeps defaults).
+fn set_child_property(target: &JsValue, child_key: &str, property: &str, value: &JsValue) {
+    if let Ok(child) = Reflect::get(target, &JsValue::from_str(child_key)) {
+        let _ = js_sys::Reflect::set(&child, &JsValue::from_str(property), value);
+    }
+}
+
+/// Marks the SVG root `ECharts` rendered as the chart's accessible
+/// image, preserving the aria-label contract the hand-rolled SVG held.
+fn label_svg_root(container: &JsValue, label: &str) {
+    let Ok(element) = container.clone().dyn_into::<web_sys::Element>() else {
+        return;
+    };
+    if let Ok(Some(svg)) = element.query_selector("svg") {
+        let _ = svg.set_attribute("role", "img");
+        let _ = svg.set_attribute("aria-label", label);
+    }
+}
+
+/// The value-axis label closure: raw tick value in, dual-unit string
+/// out (`format_value` is the HA-unit-system formatter the card gets
+/// as a prop).
+fn axis_label_closure(
+    format_value: fn(f64) -> String,
+) -> Closure<dyn Fn(JsValue, JsValue) -> JsValue> {
+    Closure::new(move |value: JsValue, _index: JsValue| {
+        JsValue::from_str(&format_value(value.as_f64().unwrap_or(0.0)))
+    })
+}
+
+/// The hover tooltip closure: one line of `value — time (UTC)` with
+/// the unit. With the axis trigger `ECharts` passes one array of series
+/// entries; the series data are `[epoch ms, value]` pairs.
+fn tooltip_closure(
+    format_value: fn(f64) -> String,
+) -> Closure<dyn Fn(JsValue, JsValue, JsValue) -> JsValue> {
+    Closure::new(
+        move |params: JsValue, _ticket: JsValue, _callback: JsValue| {
+            let text = params
+                .dyn_into::<js_sys::Array>()
+                .ok()
+                .map(|entries| entries.get(0))
+                .and_then(|first| Reflect::get(&first, &JsValue::from_str("value")).ok())
+                .and_then(|value| value.dyn_into::<js_sys::Array>().ok())
+                .map(|pair| {
+                    let at = pair.get(0).as_f64().unwrap_or(0.0);
+                    let reading = pair.get(1).as_f64().unwrap_or(0.0);
+                    format!("{} — {}", format_value(reading), utc_minutes(at))
+                })
+                .unwrap_or_default();
+            JsValue::from_str(&text)
+        },
+    )
+}
+
+/// Formats an epoch-ms tooltip timestamp: `2026-11-16 14:03 UTC`.
+#[must_use]
+fn utc_minutes(epoch_ms: f64) -> String {
+    let iso = js_sys::Date::new(&JsValue::from_f64(epoch_ms))
+        .to_iso_string()
+        .as_string()
+        .unwrap_or_default();
+    let date = iso.get(..16).unwrap_or_default().replace('T', " ");
+    format!("{date} UTC")
+}
+
+/// Reads the active theme's colours off hidden probe elements so the
+/// chart matches whichever daisyUI theme the browser picked. The
+/// fallbacks are the light `leaflog` palette.
+#[must_use]
+fn theme_look() -> chart_option::ChartLook {
+    chart_option::ChartLook {
+        accent: probe_color("text-primary").unwrap_or_else(|| "#2e7d4f".to_owned()),
+        text: probe_color("text-base-content").unwrap_or_else(|| "#1d2b1f".to_owned()),
+        muted: probe_color("text-base-content/50").unwrap_or_else(|| "#1d2b1f80".to_owned()),
+    }
+}
+
+/// Resolves one Tailwind colour class to its computed CSS colour by
+/// mounting a throwaway probe span; `None` outside a browser context.
+fn probe_color(class: &str) -> Option<String> {
+    let window = web_sys::window()?;
+    let document = window.document()?;
+    let probe = document.create_element("span").ok()?;
+    probe.set_class_name(class);
+    let parent = document.body()?;
+    parent.append_child(&probe).ok()?;
+    let colour = window
+        .get_computed_style(&probe)
+        .ok()
+        .flatten()
+        .and_then(|style| style.get_property_value("color").ok())
+        .filter(|colour| !colour.is_empty());
+    let _ = parent.remove_child(&probe);
+    colour
 }
 
 /// The line-and-corridor SVG for one loaded chart. `step` renders the

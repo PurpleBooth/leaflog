@@ -124,6 +124,11 @@ function verifyComposition() {
     contributing.some((p) => p.includes(`/echarts/lib/component/${dir}/`));
   check("grid component included", contributingComponent("grid"));
   check("tooltip component included", contributingComponent("tooltip"));
+  check(
+    "markArea component included",
+    contributing.some((p) => p.includes("/echarts/lib/component/marker/")),
+    "the band regions render as markArea (ticket 02)",
+  );
 
   const contributingCanvas = contributing
     .filter((p) => p.includes("/zrender/lib/canvas/"))

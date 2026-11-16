@@ -21,8 +21,16 @@ import { install as LineChart } from "echarts/lib/chart/line/install.js";
 import { install as ScatterChart } from "echarts/lib/chart/scatter/install.js";
 import { install as GridComponent } from "echarts/lib/component/grid/install.js";
 import { install as TooltipComponent } from "echarts/lib/component/tooltip/install.js";
+import { install as MarkAreaComponent } from "echarts/lib/component/marker/installMarkArea.js";
 import { install as SVGRenderer } from "echarts/lib/renderer/installSVGRenderer.js";
 
-echarts.use([LineChart, ScatterChart, GridComponent, TooltipComponent, SVGRenderer]);
+echarts.use([
+  LineChart,
+  ScatterChart,
+  GridComponent,
+  TooltipComponent,
+  MarkAreaComponent,
+  SVGRenderer,
+]);
 
 export * from "echarts/core";
