@@ -91,8 +91,8 @@ test('env strip spans the container and wraps without overflow', async ({
   await page.goto(url(`/grows/${growId}`));
   await expect(page.getByText('RH window')).toBeVisible();
 
-  // The bound roles' charts render on the overview; unbound ones state
-  // it (ticket 05/06).
+  // The bound roles' charts render on the overview; unbound roles
+  // render no card at all (ticket 04), so no placeholder text either.
   await expect(
     page.locator('svg[aria-label="temperature history"]'),
   ).toBeVisible();
@@ -100,27 +100,28 @@ test('env strip spans the container and wraps without overflow', async ({
   await expect(page.locator('svg[aria-label="vpd history"]')).toBeVisible();
   await expect(
     page.getByText('No sensor bound for this role.'),
-  ).toHaveCount(3);
+  ).toHaveCount(0);
 
-  // Chart window toggles read 24h / 7d / 30d everywhere (ticket 02):
-  // rolling windows ending now, never a calendar day — all eight
-  // cards render the same toggle group, none carries the old captions.
+  // Chart window toggles read 24h / 7d / 30d (ticket 02): rolling
+  // windows ending now, never a calendar day. Only the bound roles
+  // carry cards (temperature, humidity, and VPD derived from both —
+  // ticket 04's visibility rule), so three toggle groups.
   const chartCards = page.locator('.card', {
     has: page.getByRole('group', { name: 'Chart window' }),
   });
-  await expect(chartCards).toHaveCount(8);
+  await expect(chartCards).toHaveCount(3);
   await expect(
     page.getByRole('button', { name: /^(Day|Week|Month)$/ }),
   ).toHaveCount(0);
   await expect(
     page.getByRole('button', { name: '24h', exact: true }),
-  ).toHaveCount(8);
+  ).toHaveCount(3);
   await expect(
     page.getByRole('button', { name: '7d', exact: true }),
-  ).toHaveCount(8);
+  ).toHaveCount(3);
   await expect(
     page.getByRole('button', { name: '30d', exact: true }),
-  ).toHaveCount(8);
+  ).toHaveCount(3);
 
   // Switching a Chart window refetches and re-renders (the
   // temperature card now goes through ECharts; ticket 02).
