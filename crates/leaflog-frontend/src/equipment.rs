@@ -211,7 +211,11 @@ pub fn EquipmentPage() -> impl IntoView {
                                     let for_pick = candidate.clone();
                                     view! {
                                         <li>
-                                            <button class="btn btn-sm" on:click=move |_| pick_entity(&for_pick)>
+                                            <button
+                                                class="btn btn-sm entity-id"
+                                                title=for_pick.0.clone()
+                                                on:click=move |_| pick_entity(&for_pick)
+                                            >
                                                 {format!(
                                                     "{} ({})",
                                                     for_pick.1,
@@ -271,7 +275,7 @@ pub fn EquipmentPage() -> impl IntoView {
                         {item.dimmable.then(|| view! { <div><dt>"Dimmable"</dt><dd>"yes"</dd></div> })}
                         {item.ha_entity_id.clone().map(|entity| view! {
                             <div><dt>"HA entity"</dt>
-                                <dd>{format!(
+                                <dd class="entity-id" title={entity}>{format!(
                                     "{entity}{}",
                                     item.ha_device_class
                                         .map(|class| format!(" ({class})"))

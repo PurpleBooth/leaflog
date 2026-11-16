@@ -337,3 +337,9 @@ pre {
   border-radius: 2px;
   min-height: 1px;
 }
+
+/* HA entity ids are one long lowercase token; allow breaks inside the
+   word so cards never overflow — the full id stays on hover (title). */
+.entity-id {
+  overflow-wrap: anywhere;
+}
