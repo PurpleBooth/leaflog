@@ -2,13 +2,15 @@
 //! page with quick-add action chips, the timeline, plant management and
 //! the photo gallery with uploads.
 
+use crate::phase_pick::{self, phase_display, phase_from_label, picker_phases};
 use futures::future::Either;
 use gloo_timers::future::TimeoutFuture;
+use leaflog_core::Phase;
 use leaflog_core::actions::{ActionDetails, ActionType};
 use leaflog_core::grows::{
     ActionEntry, ActionInput, Grow, GrowInput, GrowStatus, Photo, Plant, PlantInput,
 };
-use leaflog_core::strain::Strain;
+use leaflog_core::strain::{PhotoperiodType, Strain};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos::web_sys::FormData;
@@ -205,6 +207,26 @@ pub fn GrowDetail() -> impl IntoView {
     let grow_draft = RwSignal::<GrowInput>::new(empty_grow());
     let deleted = RwSignal::<bool>::new(false);
 
+    // The phase picker (D073): the strain decides the Flowering
+    // mapping — a photoperiod records the flip, an autoflower the
+    // generic Phase-change. Unknown strain defaults to photoperiod
+    // semantics.
+    let pick_phase = RwSignal::<Option<Phase>>::new(None);
+    let pick_date = RwSignal::<String>::new(String::new());
+    let current_photoperiod = move || {
+        grow.get()
+            .as_ref()
+            .and_then(|current| current.strain_id.as_deref())
+            .and_then(|id| {
+                strains
+                    .get()
+                    .iter()
+                    .find(|strain| strain.id == id)
+                    .map(|strain| strain.photoperiod)
+            })
+            .unwrap_or(PhotoperiodType::Photoperiod)
+    };
+
     let refresh = move || {
         let id = grow_id();
         spawn_local(async move {
@@ -275,6 +297,39 @@ pub fn GrowDetail() -> impl IntoView {
             match api::put::<GrowInput, Grow>(&format!("api/grows/{id}"), &input).await {
                 Ok(_) => {
                     edit_open.set(false);
+                    error.set(None);
+                    refresh();
+                }
+                Err(failure) => error.set(Some(failure.message)),
+            }
+        });
+    };
+
+    // Recording a phase pick writes the transition event (D073); the
+    // forecast, bands, coach, lamp advice and day-count target follow
+    // on the next refresh.
+    let save_pick = move |ev: leptos::ev::SubmitEvent| {
+        ev.prevent_default();
+        let Some(phase) = pick_phase.get() else {
+            return;
+        };
+        let id = grow_id();
+        let photoperiod = current_photoperiod();
+        let when = pick_date.get();
+        let day = if when.is_empty() {
+            datetime_local_now()
+        } else {
+            when
+        };
+        let date = day.get(..10).unwrap_or_default().to_owned();
+        let input = phase_pick::pick_input(phase, photoperiod, format!("{date}T12:00:00"));
+        spawn_local(async move {
+            match api::post::<ActionInput, ActionEntry>(&format!("api/grows/{id}/actions"), &input)
+                .await
+            {
+                Ok(_) => {
+                    pick_phase.set(None);
+                    pick_date.set(String::new());
                     error.set(None);
                     refresh();
                 }
@@ -472,6 +527,40 @@ pub fn GrowDetail() -> impl IntoView {
             </Show>
 
             <h3>"Forecast"</h3>
+            <form id="phase-picker" class="flex flex-wrap gap-2 items-end my-2" on:submit=save_pick>
+                <label class="fieldset">
+                    <span class="fieldset-label">"Set phase"</span>
+                    <select class="select" required
+                        prop:value=move || pick_phase
+                            .get()
+                            .map_or(String::new(), |phase| phase.label().to_owned())
+                        on:change=move |ev| {
+                            let value = event_target_value(&ev);
+                            pick_phase.set(phase_from_label(&value));
+                        }
+                    >
+                        <option value="">"— set phase —"</option>
+                        {picker_phases()
+                            .into_iter()
+                            .map(|(phase, name)| {
+                                view! { <option value=phase.label()>{name}</option> }
+                            })
+                            .collect::<Vec<_>>()}
+                    </select>
+                </label>
+                <label class="fieldset">
+                    <span class="fieldset-label">"When"</span>
+                    <input class="input" type="date"
+                        prop:value=move || pick_date.get()
+                        on:input=move |ev| pick_date.set(event_target_value(&ev))
+                    />
+                </label>
+                <button class="btn btn-sm btn-primary self-end" type="submit"
+                    disabled=move || pick_phase.get().is_none()
+                >
+                    "Record phase"
+                </button>
+            </form>
             <GanttTimeline grow_id=grow_id() />
 
             <EnvDashboard grow_id=grow_id() />
@@ -543,7 +632,7 @@ pub fn GrowDetail() -> impl IntoView {
                                                 <strong>{entry.action_type.display()}</strong>
                                                 <span class="badge badge-ghost">{"day "}{entry.grow_day}</span>
                                                 {entry.phase.map(|phase| view! {
-                                                    <span class="badge badge-ghost">{phase.label()}</span>
+                                                    <span class="badge badge-ghost">{phase_display(phase)}</span>
                                                 })}
                                             </div>
                                             <dl class="facts">

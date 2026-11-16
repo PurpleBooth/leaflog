@@ -222,7 +222,15 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                 coach.get().map(|c| {
                     view! {
                         <div class="card bg-base-100 shadow-sm px-4 py-3 my-3">
-                            <h4>{format!("Phase coach ({})", c.phase)}</h4>
+                            <h4>{move || {
+                                let raw_phase = c.phase.clone();
+                                let spelled = crate::phase_pick::phase_from_label(&raw_phase)
+                                    .map_or_else(
+                                        || raw_phase.clone(),
+                                        |phase| crate::phase_pick::phase_display(phase).to_owned(),
+                                    );
+                                format!("Phase coach ({spelled})")
+                            }}</h4>
                             <ul class="list-none m-0 p-0 grid gap-2">
                                 {c.tips.iter().map(|tip| {
                                     view! {

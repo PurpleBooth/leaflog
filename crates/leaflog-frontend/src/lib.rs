@@ -37,6 +37,7 @@ mod grows;
 mod history;
 mod live;
 mod onboarding;
+mod phase_pick;
 mod seedbank;
 mod spaces;
 mod strains;

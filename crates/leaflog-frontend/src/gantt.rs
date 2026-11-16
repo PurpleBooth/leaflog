@@ -161,7 +161,10 @@ pub fn GanttTimeline(grow_id: String) -> impl IntoView {
 fn gantt_row(window: &PhaseWindowData, total_days: i64, open: bool) -> impl IntoView {
     let (start, bar_start, bar_end, end) = track_percentages(window, total_days, open);
     let color = phase_color(&window.phase);
-    let name = window.phase.replace('_', " ");
+    let name = crate::phase_pick::phase_from_label(&window.phase).map_or_else(
+        || window.phase.replace('_', " "),
+        |phase| crate::phase_pick::phase_display(phase).to_owned(),
+    );
     let label = if open {
         format!("{name} (day {}–ongoing)", window.likely_start)
     } else {
