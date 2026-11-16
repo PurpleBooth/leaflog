@@ -18,6 +18,10 @@ _Avoid_: Sensor type, channel kind
 A binding whose entity Home Assistant currently reports as unavailable or unknown. Dead bindings are the only ones the grow page may call "no data".
 _Avoid_: Broken sensor
 
+**Light Cycle**:
+A grow's daily lights-on local time plus hours-on per lit phase, nullable with sourced preset defaults (photoperiod 18/6 veg and 12/12 flower; autoflowers long days throughout) and reset-to-default. Charts use it for day/night bands when no light entity is bound.
+_Avoid_: Light schedule setting, lights config
+
 ### Grow lifecycle
 
 **Medium**:
