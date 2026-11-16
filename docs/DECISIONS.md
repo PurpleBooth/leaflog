@@ -6,6 +6,48 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-16 — feature strip: strains, seed bank, spaces, equipment catalogue
+
+### D075: the grow carries strain, tolerance and lamp facts; catalogue features are removed
+
+Stripping the app back to a single-grower diary removes four features
+outright: the strain database (and its 15 bundled records), the seed
+bank (batches + germination log), grow spaces, and the equipment
+catalogue (lights/tents/fans plus the bundled equipment seed data).
+What replaced them lives on the grow itself:
+
+- `grow` gains `strain_label` (free text), a photoperiod toggle
+  (Photoperiod/Autoflower), `heat/cold/light_tolerance`
+  (Sensitive/Average/Tolerant, default Average), `real_watts` and
+  `dimmable` — the last five presented as an Advanced Settings section
+  in the UI.
+- Forecast, feed-fit and the phase picker read the photoperiod from
+  the grow. The tolerance threshold shifts (D030's `shifted` logic)
+  and the lamp advisor (D021's 330 W fallback) keep their logic and
+  change only their source: the grow, not a strain record or the
+  space's strongest light.
+- History's yield aggregate keys on `strain_label`. The yield
+  write-back (D055, SPEC §4.14) has no destination and is deleted.
+- HA entities enter the app only as per-grow sensor bindings (the
+  existing `sensor_binding` rows). The space-seeded binding defaults
+  (D067) disappear; sensors are bound on the grow page, and onboarding
+  step 1 becomes exactly that.
+
+Supersedes D012, D014, D015, D043, D044, D045, D049, D050, D051,
+D052, D053, D056, D067 — their subject matter is deleted. THREAT-MODEL
+R3 (the strain `source_url` link) closes with the catalogue, and the
+third-party licence burden of the bundled strain records goes with it.
+Migration V14 hard-drops `strain`, `seed_batch`, `germination_log`,
+`grow_space`, `grow_space_equipment`, `equipment_item` and the dead
+`grow` columns, deriving each surviving grow's `strain_label` and
+photoperiod from its former strain link (tolerances default to
+Average); dropped rows are unrecoverable, so `/data` is backed up
+before upgrading. SPEC §4.1/§4.4/§4.13/§5.4/§13 and AGENTS.md's
+strain/equipment clauses are rewritten to match; the grow-science
+seed-data discipline stays for whatever preset data remains.
+
+---
+
 ## 2026-11-16 — grow overview redesign (D073 follow-up)
 
 ### D074: `float_cmp` allowance in the chart's step builder

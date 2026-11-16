@@ -18,6 +18,22 @@ _Avoid_: Sensor type, channel kind
 A binding whose entity Home Assistant currently reports as unavailable or unknown. Dead bindings are the only ones the grow page may call "no data".
 _Avoid_: Broken sensor
 
+**Light Cycle**:
+The recurring pattern of grow-light state in a grow: a Lights-On Period followed by a Lights-Off Period. Not the grow's Photoperiod, and not a chart window.
+_Avoid_: Day/night schedule, lights timer
+
+**Lights-On Period** / **Lights-Off Period**:
+The stretches of a Light Cycle with grow lights on and off. Environment targets may differ between the two.
+_Avoid_: Day/night (collides with chart windows and calendar days)
+
+**Target Band**:
+The shaded recommended range drawn on an environment chart.
+_Avoid_: Safe zone, corridor (in UI text), banding
+
+**Chart window**:
+The rolling time range an environment chart covers (24 h, 7 days, 30 days), always ending at now.
+_Avoid_: Day/Week/Month as toggle labels ("Day" reads as the Light Cycle's day)
+
 ### Grow lifecycle
 
 **Medium**:
@@ -41,12 +57,16 @@ Setting the grow's current phase from the interface. A pick records the same tra
 _Avoid_: Stage, phase override
 
 **Photoperiod**:
-A strain that flowers only when light hours drop. Its vegetative time is whatever the grower allows — there is no default length.
+A grow whose plant flowers only when light hours drop. Its vegetative time is whatever the grower allows — there is no default length.
 _Avoid_: Photo strain, regular
 
 **Autoflower**:
-A strain that flowers by age regardless of light; its flip date is estimated, never chosen.
+A grow whose plant flowers by age regardless of light; its flip date is estimated, never chosen.
 _Avoid_: Auto strain
+
+**Strain label**:
+The free-text name of the cultivar a grow was grown from. No catalogue stands behind it: it labels the diary and groups yield history, and it is never a recommendation input.
+_Avoid_: Strain database, strain record
 
 ### Languages
 
