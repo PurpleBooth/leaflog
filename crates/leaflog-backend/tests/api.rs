@@ -8,7 +8,7 @@ use std::path::Path;
 
 use leaflog_backend::{AppState, Assets, Db, Mode};
 use leaflog_core::equipment::EquipmentInput;
-use leaflog_core::strain::StrainInput;
+use leaflog_core::strain::{PhotoperiodType, StrainInput, Tolerance};
 use serde_json::{Value, json};
 
 /// Spawns the API on an ephemeral port with an empty in-memory database.
@@ -417,6 +417,13 @@ async fn sensors_replace_is_atomic_when_an_insert_fails() {
                         seed_batch_id: None,
                         feed_template_id: None,
                         planned_veg_weeks: None,
+                        strain_label: String::new(),
+                        photoperiod: PhotoperiodType::default(),
+                        heat_tolerance: Tolerance::default(),
+                        cold_tolerance: Tolerance::default(),
+                        light_tolerance: Tolerance::default(),
+                        real_watts: None,
+                        dimmable: true,
                         substrate: "soil".to_owned(),
                         started_on: "2026-10-01".to_owned(),
                         status: GrowStatus::Active,

@@ -10,7 +10,7 @@ use leaflog_core::actions::{ActionDetails, ActionType};
 use leaflog_core::grows::{
     ActionEntry, ActionInput, Grow, GrowInput, GrowStatus, Photo, Plant, PlantInput,
 };
-use leaflog_core::strain::{PhotoperiodType, Strain};
+use leaflog_core::strain::{PhotoperiodType, Strain, Tolerance};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos::web_sys::FormData;
@@ -1210,6 +1210,13 @@ fn empty_grow() -> GrowInput {
         seed_batch_id: None,
         feed_template_id: None,
         planned_veg_weeks: None,
+        strain_label: String::new(),
+        photoperiod: PhotoperiodType::default(),
+        heat_tolerance: Tolerance::default(),
+        cold_tolerance: Tolerance::default(),
+        light_tolerance: Tolerance::default(),
+        real_watts: None,
+        dimmable: true,
         substrate: "soil".to_owned(),
         started_on: String::new(),
         status: GrowStatus::default(),
@@ -1261,6 +1268,7 @@ fn substrate_glyph(substrate: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod landing_pick_tests {
     use super::pick_landing_grow;
+    use leaflog_core::strain::{PhotoperiodType, Tolerance};
     use leaflog_core::grows::{Grow, GrowStatus};
 
     fn grow(id: &str, status: GrowStatus, updated_at: &str) -> Grow {
@@ -1272,6 +1280,13 @@ mod landing_pick_tests {
             seed_batch_id: None,
             feed_template_id: None,
             planned_veg_weeks: None,
+            strain_label: String::new(),
+            photoperiod: PhotoperiodType::default(),
+            heat_tolerance: Tolerance::default(),
+            cold_tolerance: Tolerance::default(),
+            light_tolerance: Tolerance::default(),
+            real_watts: None,
+            dimmable: true,
             substrate: "soil".to_owned(),
             started_on: "2026-01-01".to_owned(),
             status,

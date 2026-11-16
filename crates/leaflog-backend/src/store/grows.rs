@@ -1,6 +1,7 @@
 //! Grow and plant persistence (spec §4.2, §4.5).
 
 use leaflog_core::grows::{Grow, GrowInput, GrowStatus, Plant, PlantInput};
+use leaflog_core::strain::{PhotoperiodType, Tolerance};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::{NotFound, StoreOrNotFound};
@@ -23,14 +24,21 @@ pub fn create(conn: &Connection, input: &GrowInput) -> Result<Grow, StoreError> 
         seed_batch_id: input.seed_batch_id.clone(),
         feed_template_id: input.feed_template_id.clone(),
         planned_veg_weeks: input.planned_veg_weeks,
+        strain_label: input.strain_label.clone(),
+        photoperiod: input.photoperiod,
+        heat_tolerance: input.heat_tolerance,
+        cold_tolerance: input.cold_tolerance,
+        light_tolerance: input.light_tolerance,
+        real_watts: input.real_watts,
+        dimmable: input.dimmable,
         substrate: input.substrate.clone(),
         started_on: input.started_on.clone(),
         status: input.status,
         notes: input.notes.clone(),
     };
     conn.execute(
-        "INSERT INTO grow (id, name, strain_id, grow_space_id, seed_batch_id, feed_template_id, planned_veg_weeks, substrate, started_on, status, notes, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+        "INSERT INTO grow (id, name, strain_id, grow_space_id, seed_batch_id, feed_template_id, planned_veg_weeks, strain_label, photoperiod, heat_tolerance, cold_tolerance, light_tolerance, real_watts, dimmable, substrate, started_on, status, notes, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
         params![
             grow.id,
             grow.name,
@@ -39,6 +47,13 @@ pub fn create(conn: &Connection, input: &GrowInput) -> Result<Grow, StoreError> 
             grow.seed_batch_id,
             grow.feed_template_id,
             grow.planned_veg_weeks.map(i64::from),
+            non_empty_label(&grow.strain_label),
+            grow.photoperiod.label(),
+            grow.heat_tolerance.label(),
+            grow.cold_tolerance.label(),
+            grow.light_tolerance.label(),
+            grow.real_watts,
+            i64::from(grow.dimmable),
             grow.substrate,
             grow.started_on,
             grow.status.label(),
@@ -106,14 +121,23 @@ pub fn update(conn: &Connection, id: &str, input: &GrowInput) -> Result<Grow, St
     updated.seed_batch_id.clone_from(&input.seed_batch_id);
     updated.feed_template_id.clone_from(&input.feed_template_id);
     updated.planned_veg_weeks = input.planned_veg_weeks;
+    updated.strain_label.clone_from(&input.strain_label);
+    updated.photoperiod = input.photoperiod;
+    updated.heat_tolerance = input.heat_tolerance;
+    updated.cold_tolerance = input.cold_tolerance;
+    updated.light_tolerance = input.light_tolerance;
+    updated.real_watts = input.real_watts;
+    updated.dimmable = input.dimmable;
     updated.substrate.clone_from(&input.substrate);
     updated.started_on.clone_from(&input.started_on);
     updated.status = input.status;
     updated.notes.clone_from(&input.notes);
     conn.execute(
         "UPDATE grow SET name = ?2, strain_id = ?3, grow_space_id = ?4, seed_batch_id = ?5,
-             feed_template_id = ?6, planned_veg_weeks = ?7, substrate = ?8, started_on = ?9,
-             status = ?10, notes = ?11, updated_at = ?12
+             feed_template_id = ?6, planned_veg_weeks = ?7, strain_label = ?8, photoperiod = ?9,
+             heat_tolerance = ?10, cold_tolerance = ?11, light_tolerance = ?12,
+             real_watts = ?13, dimmable = ?14, substrate = ?15, started_on = ?16,
+             status = ?17, notes = ?18, updated_at = ?19
          WHERE id = ?1",
         params![
             updated.id,
@@ -123,6 +147,13 @@ pub fn update(conn: &Connection, id: &str, input: &GrowInput) -> Result<Grow, St
             updated.seed_batch_id,
             updated.feed_template_id,
             updated.planned_veg_weeks.map(i64::from),
+            non_empty_label(&updated.strain_label),
+            updated.photoperiod.label(),
+            updated.heat_tolerance.label(),
+            updated.cold_tolerance.label(),
+            updated.light_tolerance.label(),
+            updated.real_watts,
+            i64::from(updated.dimmable),
             updated.substrate,
             updated.started_on,
             updated.status.label(),
@@ -259,8 +290,12 @@ pub fn delete_plant(conn: &Connection, id: &str) -> Result<(), StoreOrNotFound> 
 }
 
 /// Maps one `grow` row.
+#[allow(clippy::too_many_lines)] // flat row-to-struct mapping, not logic
 fn map_grow(row: &rusqlite::Row<'_>) -> Result<Grow, rusqlite::Error> {
     let status: String = row.get("status")?;
+    // The V14 columns are nullable: a row written before them (or with
+    // an unknown label) reads back as the field's default (D075).
+    let dimmable: i64 = row.get("dimmable")?;
     Ok(Grow {
         id: row.get("id")?,
         name: row.get("name")?,
@@ -271,6 +306,15 @@ fn map_grow(row: &rusqlite::Row<'_>) -> Result<Grow, rusqlite::Error> {
         planned_veg_weeks: row
             .get::<_, Option<i64>>("planned_veg_weeks")?
             .and_then(|value| u8::try_from(value).ok()),
+        strain_label: row
+            .get::<_, Option<String>>("strain_label")?
+            .unwrap_or_default(),
+        photoperiod: label_or_default(row, "photoperiod", PhotoperiodType::from_label)?,
+        heat_tolerance: label_or_default(row, "heat_tolerance", Tolerance::from_label)?,
+        cold_tolerance: label_or_default(row, "cold_tolerance", Tolerance::from_label)?,
+        light_tolerance: label_or_default(row, "light_tolerance", Tolerance::from_label)?,
+        real_watts: row.get("real_watts")?,
+        dimmable: dimmable != 0,
         substrate: row.get("substrate")?,
         started_on: row.get("started_on")?,
         status: if status == "archived" {
@@ -282,6 +326,27 @@ fn map_grow(row: &rusqlite::Row<'_>) -> Result<Grow, rusqlite::Error> {
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
     })
+}
+
+/// Reads one nullable enum-label column and parses it; `NULL` (a row
+/// predating V14) and an unknown label fall back to the type's
+/// default, so old rows keep loading.
+fn label_or_default<T>(
+    row: &rusqlite::Row<'_>,
+    column: &str,
+    parse: fn(&str) -> Option<T>,
+) -> Result<T, rusqlite::Error>
+where
+    T: Default,
+{
+    let label: Option<String> = row.get(column)?;
+    Ok(label.and_then(|text| parse(&text)).unwrap_or_default())
+}
+
+/// Stores an empty strain label as `NULL` so "unlabelled" has one
+/// representation in the database.
+const fn non_empty_label(label: &str) -> Option<&str> {
+    if label.is_empty() { None } else { Some(label) }
 }
 
 /// Maps one `plant` row.

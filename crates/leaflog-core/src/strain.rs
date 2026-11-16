@@ -9,10 +9,11 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 /// Photoperiod behaviour of a cultivar.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PhotoperiodType {
     /// Flowers on a 12/12 light schedule change.
+    #[default]
     Photoperiod,
     /// Flowers by age, regardless of light schedule.
     Auto,
@@ -25,6 +26,17 @@ impl PhotoperiodType {
         match self {
             Self::Photoperiod => "photoperiod",
             Self::Auto => "auto",
+        }
+    }
+
+    /// Parses a stored label. Returns `None` for labels this build
+    /// does not know.
+    #[must_use]
+    pub fn from_label(label: &str) -> Option<Self> {
+        match label {
+            "photoperiod" => Some(Self::Photoperiod),
+            "auto" => Some(Self::Auto),
+            _ => None,
         }
     }
 }
@@ -96,6 +108,18 @@ impl Tolerance {
             Self::Sensitive => "sensitive",
             Self::Average => "average",
             Self::Tolerant => "tolerant",
+        }
+    }
+
+    /// Parses a stored label. Returns `None` for labels this build
+    /// does not know.
+    #[must_use]
+    pub fn from_label(label: &str) -> Option<Self> {
+        match label {
+            "sensitive" => Some(Self::Sensitive),
+            "average" => Some(Self::Average),
+            "tolerant" => Some(Self::Tolerant),
+            _ => None,
         }
     }
 }

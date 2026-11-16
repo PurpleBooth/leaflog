@@ -10,7 +10,7 @@ use leaflog_core::grows::GrowStatus;
 use leaflog_core::seedbank::SeedBatchView;
 use leaflog_core::spaces::GrowSpace;
 use leaflog_core::spaces::GrowSpaceInput;
-use leaflog_core::strain::Strain;
+use leaflog_core::strain::{PhotoperiodType, Strain, Tolerance};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::Deserialize;
@@ -168,6 +168,13 @@ pub fn OnboardingWizard() -> impl IntoView {
                     seed_batch_id: non_empty(picked_batch.get()),
                     feed_template_id: None,
                     planned_veg_weeks: None,
+                    strain_label: String::new(),
+                    photoperiod: PhotoperiodType::default(),
+                    heat_tolerance: Tolerance::default(),
+                    cold_tolerance: Tolerance::default(),
+                    light_tolerance: Tolerance::default(),
+                    real_watts: None,
+                    dimmable: true,
                     substrate: "soil".to_owned(),
                     started_on: started_on.get(),
                     status: GrowStatus::Active,

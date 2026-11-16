@@ -358,3 +358,84 @@ async fn catalogue_trim_recategorizes_prunes_and_parks() {
     .await
     .expect("trim assertions");
 }
+
+/// V14 (D075 step 01) is append-only: a database at V13 boots, its
+/// grow rows survive byte-for-byte, the new columns read back as the
+/// fields' defaults, and the history records the new version without
+/// touching the old entries.
+#[tokio::test]
+async fn v14_adds_grow_columns_without_touching_existing_grows() {
+    let temp = TempDb::new("v14-columns");
+    let path = temp.path();
+    {
+        let mut conn = Connection::open(&path).expect("open at V13");
+        conn.pragma_update(None, "foreign_keys", "ON")
+            .expect("pragmas");
+        db::embedded::migrations::runner()
+            .set_target(Target::Version(13))
+            .run(&mut conn)
+            .expect("apply through V13");
+        // A grow written by the pre-strip binary: no V14 columns.
+        conn.execute_batch(
+            "INSERT INTO grow (id, name, strain_id, substrate, started_on,
+                 status, notes, created_at, updated_at)
+             VALUES ('01GROWPRESTRIP00000000', 'Pre-strip run', NULL, 'soil',
+                     '2026-09-01', 'active', NULL,
+                     '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');",
+        )
+        .expect("pre-V14 grow row");
+    }
+
+    let db = Db::open(&path).expect("V14 applies on boot");
+    let status = db::migrate_status(&path).expect("migration status");
+    assert!(
+        status.pending.is_empty(),
+        "nothing left pending after boot: {:?}",
+        status.pending
+    );
+    let last = status.applied.last().expect("applied history");
+    assert_eq!(last.version, 14, "V14 is the newest applied migration");
+    assert_eq!(last.name, "grow_strain_lamp_fields");
+
+    db.with(|conn| -> Result<(), StoreError> {
+        // The old row still loads, keeps its old values, and reads the
+        // defaults for every new field (D075 defaults: empty label,
+        // photoperiod, average tolerances, unset watts, dimmable).
+        let grow =
+            store::grows::get(conn, "01GROWPRESTRIP00000000").expect("pre-strip grow still loads");
+        assert_eq!(grow.name, "Pre-strip run");
+        assert_eq!(grow.substrate, "soil");
+        assert_eq!(grow.strain_label, "");
+        assert_eq!(
+            grow.photoperiod,
+            leaflog_core::strain::PhotoperiodType::Photoperiod
+        );
+        assert_eq!(
+            grow.heat_tolerance,
+            leaflog_core::strain::Tolerance::Average
+        );
+        assert_eq!(
+            grow.cold_tolerance,
+            leaflog_core::strain::Tolerance::Average
+        );
+        assert_eq!(
+            grow.light_tolerance,
+            leaflog_core::strain::Tolerance::Average
+        );
+        assert_eq!(grow.real_watts, None);
+        assert!(grow.dimmable);
+        // The stored columns themselves were left NULL by the
+        // migration (append-only, no rewrite of old rows); only the
+        // dimmable default was filled in by the column default.
+        let (label, watts): (Option<String>, Option<f64>) = conn.query_row(
+            "SELECT strain_label, real_watts FROM grow WHERE id = '01GROWPRESTRIP00000000'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert!(label.is_none(), "migration must not rewrite old rows");
+        assert!(watts.is_none(), "migration must not rewrite old rows");
+        Ok(())
+    })
+    .await
+    .expect("V14 column assertions");
+}

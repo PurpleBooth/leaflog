@@ -852,6 +852,13 @@ fn validate_grow(input: &GrowInput) -> Result<(), ApiError> {
             "substrate must not be empty".to_owned(),
         ));
     }
+    // Same rule as the equipment catalogue's field of the same name:
+    // a negative wall draw is nonsense, everything else is accepted.
+    if input.real_watts.is_some_and(|watts| watts < 0.0) {
+        return Err(ApiError::BadRequest(
+            "real_watts must not be negative".to_owned(),
+        ));
+    }
     Ok(())
 }
 

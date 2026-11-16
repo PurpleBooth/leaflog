@@ -5,10 +5,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::Phase;
 use crate::actions::{ActionDetails, ActionType};
+use crate::strain::{PhotoperiodType, Tolerance};
 
 /// The known substrates (spec §4.8). Anything else is a user-defined
 /// label; the UI offers these three plus a free-text field.
 pub const SUBSTRATES: &[&str] = &["soil", "coco", "hydro"];
+
+/// Serde default for `dimmable` (D075): a lamp is dimmable unless the
+/// grower says otherwise.
+const fn default_true() -> bool {
+    true
+}
 
 /// Life-cycle status of a grow.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
@@ -34,7 +41,10 @@ impl GrowStatus {
 
 /// One grow: a run of one or more plants of a strain in a substrate,
 /// optionally inside a grow space.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// `Eq` is not derived: `real_watts` is a `f64` (measured wall draw,
+/// like the equipment catalogue's field), and floats carry no `Eq`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Grow {
     /// ULID.
     pub id: String,
@@ -58,6 +68,38 @@ pub struct Grow {
     /// as `None`.
     #[serde(default)]
     pub planned_veg_weeks: Option<u8>,
+    /// Free-text strain label (D075): what this grow was grown from.
+    /// Labels the diary and groups yield history; never a
+    /// recommendation input. Absent JSON parses as empty.
+    #[serde(default)]
+    pub strain_label: String,
+    /// Photoperiod behaviour (D075): flowers when light hours drop,
+    /// or by age regardless of light. Absent JSON parses as
+    /// [`PhotoperiodType::Photoperiod`].
+    #[serde(default)]
+    pub photoperiod: PhotoperiodType,
+    /// Heat tolerance level (D075); shifts the heat alert threshold.
+    /// Absent JSON parses as [`Tolerance::Average`].
+    #[serde(default)]
+    pub heat_tolerance: Tolerance,
+    /// Cold tolerance level (D075); shifts the cold alert threshold.
+    /// Absent JSON parses as [`Tolerance::Average`].
+    #[serde(default)]
+    pub cold_tolerance: Tolerance,
+    /// Light tolerance level (D075); shifts the light advice.
+    /// Absent JSON parses as [`Tolerance::Average`].
+    #[serde(default)]
+    pub light_tolerance: Tolerance,
+    /// The lamp's measured wall watts (D075, same concept as the
+    /// equipment catalogue's field); `None` = unknown, and the lamp
+    /// advisor falls back to its default fixture. Absent JSON parses
+    /// as `None`.
+    #[serde(default)]
+    pub real_watts: Option<f64>,
+    /// Whether the lamp's output is dimmable (D075). Absent JSON
+    /// parses as `true`.
+    #[serde(default = "default_true")]
+    pub dimmable: bool,
     /// Substrate label: one of [`SUBSTRATES`] or a user-defined name.
     pub substrate: String,
     /// Seed/clone start date, `YYYY-MM-DD`. Day numbers count from here.
@@ -72,8 +114,9 @@ pub struct Grow {
     pub updated_at: String,
 }
 
-/// Payload to create or replace a grow.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// Payload to create or replace a grow (`Eq` is not derived, same
+/// reason as [`Grow`]).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GrowInput {
     /// User-chosen name.
     pub name: String,
@@ -92,6 +135,27 @@ pub struct GrowInput {
     /// Planned vegetative weeks for photoperiods (spec §4.5).
     #[serde(default)]
     pub planned_veg_weeks: Option<u8>,
+    /// Free-text strain label (D075); empty when unlabelled.
+    #[serde(default)]
+    pub strain_label: String,
+    /// Photoperiod behaviour (D075); defaults to photoperiod.
+    #[serde(default)]
+    pub photoperiod: PhotoperiodType,
+    /// Heat tolerance level (D075); defaults to average.
+    #[serde(default)]
+    pub heat_tolerance: Tolerance,
+    /// Cold tolerance level (D075); defaults to average.
+    #[serde(default)]
+    pub cold_tolerance: Tolerance,
+    /// Light tolerance level (D075); defaults to average.
+    #[serde(default)]
+    pub light_tolerance: Tolerance,
+    /// The lamp's measured wall watts (D075); `None` = unknown.
+    #[serde(default)]
+    pub real_watts: Option<f64>,
+    /// Whether the lamp is dimmable (D075); defaults to `true`.
+    #[serde(default = "default_true")]
+    pub dimmable: bool,
     /// Substrate label.
     pub substrate: String,
     /// Seed/clone start date, `YYYY-MM-DD`.
@@ -116,6 +180,13 @@ impl GrowInput {
             seed_batch_id: grow.seed_batch_id.clone(),
             feed_template_id: grow.feed_template_id.clone(),
             planned_veg_weeks: grow.planned_veg_weeks,
+            strain_label: grow.strain_label.clone(),
+            photoperiod: grow.photoperiod,
+            heat_tolerance: grow.heat_tolerance,
+            cold_tolerance: grow.cold_tolerance,
+            light_tolerance: grow.light_tolerance,
+            real_watts: grow.real_watts,
+            dimmable: grow.dimmable,
             substrate: grow.substrate.clone(),
             started_on: grow.started_on.clone(),
             status: grow.status,
