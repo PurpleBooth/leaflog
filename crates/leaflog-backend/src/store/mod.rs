@@ -10,7 +10,6 @@ pub mod retention;
 pub mod sensors;
 pub mod settings;
 pub mod spaces;
-pub mod strain;
 
 use crate::db::StoreError;
 

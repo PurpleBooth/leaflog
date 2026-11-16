@@ -6,8 +6,7 @@ use leaflog_backend::db::{Db, StoreError};
 use leaflog_backend::store::retention;
 use leaflog_backend::store::{actions, grows};
 use leaflog_core::actions::ActionType;
-use leaflog_core::grows::{GrowInput, GrowStatus};
-use leaflog_core::strain::{PhotoperiodType, Tolerance};
+use leaflog_core::grows::{GrowInput, GrowStatus, PhotoperiodType, Tolerance};
 
 /// Inserts one log entry (returning its id) and one snapshot of it.
 fn snapshot(conn: &rusqlite::Connection, grow_id: &str, at: &str, auto: bool) -> String {
@@ -49,7 +48,6 @@ async fn prune_thins_to_one_per_hour_keeping_day_edges_and_excursions() {
                 conn,
                 &GrowInput {
                     name: "Retention run".to_owned(),
-                    strain_id: None,
                     grow_space_id: None,
                     feed_template_id: None,
                     planned_veg_weeks: None,

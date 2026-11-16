@@ -1,7 +1,8 @@
 //! Grow and plant persistence (spec §4.2, §4.5).
 
-use leaflog_core::grows::{Grow, GrowInput, GrowStatus, Plant, PlantInput};
-use leaflog_core::strain::{PhotoperiodType, Tolerance};
+use leaflog_core::grows::{
+    Grow, GrowInput, GrowStatus, PhotoperiodType, Plant, PlantInput, Tolerance,
+};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::{NotFound, StoreOrNotFound};
@@ -19,7 +20,6 @@ pub fn create(conn: &Connection, input: &GrowInput) -> Result<Grow, StoreError> 
         created_at: now_rfc3339(),
         updated_at: now_rfc3339(),
         name: input.name.clone(),
-        strain_id: input.strain_id.clone(),
         grow_space_id: input.grow_space_id.clone(),
         feed_template_id: input.feed_template_id.clone(),
         planned_veg_weeks: input.planned_veg_weeks,
@@ -36,12 +36,11 @@ pub fn create(conn: &Connection, input: &GrowInput) -> Result<Grow, StoreError> 
         notes: input.notes.clone(),
     };
     conn.execute(
-        "INSERT INTO grow (id, name, strain_id, grow_space_id, feed_template_id, planned_veg_weeks, strain_label, photoperiod, heat_tolerance, cold_tolerance, light_tolerance, real_watts, dimmable, substrate, started_on, status, notes, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+        "INSERT INTO grow (id, name, grow_space_id, feed_template_id, planned_veg_weeks, strain_label, photoperiod, heat_tolerance, cold_tolerance, light_tolerance, real_watts, dimmable, substrate, started_on, status, notes, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
         params![
             grow.id,
             grow.name,
-            grow.strain_id,
             grow.grow_space_id,
             grow.feed_template_id,
             grow.planned_veg_weeks.map(i64::from),
@@ -114,7 +113,6 @@ pub fn update(conn: &Connection, id: &str, input: &GrowInput) -> Result<Grow, St
     let mut updated = existing;
     updated.updated_at = now_rfc3339();
     updated.name.clone_from(&input.name);
-    updated.strain_id.clone_from(&input.strain_id);
     updated.grow_space_id.clone_from(&input.grow_space_id);
     updated.feed_template_id.clone_from(&input.feed_template_id);
     updated.planned_veg_weeks = input.planned_veg_weeks;
@@ -130,16 +128,15 @@ pub fn update(conn: &Connection, id: &str, input: &GrowInput) -> Result<Grow, St
     updated.status = input.status;
     updated.notes.clone_from(&input.notes);
     conn.execute(
-        "UPDATE grow SET name = ?2, strain_id = ?3, grow_space_id = ?4,
-             feed_template_id = ?5, planned_veg_weeks = ?6, strain_label = ?7, photoperiod = ?8,
-             heat_tolerance = ?9, cold_tolerance = ?10, light_tolerance = ?11,
-             real_watts = ?12, dimmable = ?13, substrate = ?14, started_on = ?15,
-             status = ?16, notes = ?17, updated_at = ?18
+        "UPDATE grow SET name = ?2, grow_space_id = ?3,
+             feed_template_id = ?4, planned_veg_weeks = ?5, strain_label = ?6, photoperiod = ?7,
+             heat_tolerance = ?8, cold_tolerance = ?9, light_tolerance = ?10,
+             real_watts = ?11, dimmable = ?12, substrate = ?13, started_on = ?14,
+             status = ?15, notes = ?16, updated_at = ?17
          WHERE id = ?1",
         params![
             updated.id,
             updated.name,
-            updated.strain_id,
             updated.grow_space_id,
             updated.feed_template_id,
             updated.planned_veg_weeks.map(i64::from),
@@ -295,7 +292,6 @@ fn map_grow(row: &rusqlite::Row<'_>) -> Result<Grow, rusqlite::Error> {
     Ok(Grow {
         id: row.get("id")?,
         name: row.get("name")?,
-        strain_id: row.get("strain_id")?,
         grow_space_id: row.get("grow_space_id")?,
         feed_template_id: row.get("feed_template_id")?,
         planned_veg_weeks: row

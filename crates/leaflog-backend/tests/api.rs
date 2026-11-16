@@ -1,5 +1,5 @@
-//! Integration tests for the M2 JSON API: equipment CRUD, strain CRUD
-//! and clone, seeding, settings, and validation errors.
+//! Integration tests for the JSON API: equipment CRUD, seeding,
+//! settings, grows and validation errors.
 
 use std::net::SocketAddr;
 
@@ -7,8 +7,6 @@ use axum::ServiceExt as _;
 use std::path::Path;
 
 use leaflog_backend::{AppState, Assets, Db, Mode};
-use leaflog_core::equipment::EquipmentInput;
-use leaflog_core::strain::{PhotoperiodType, StrainInput, Tolerance};
 use serde_json::{Value, json};
 
 /// Spawns the API on an ephemeral port with an empty in-memory database.
@@ -48,33 +46,6 @@ fn sample_equipment(name: &str) -> Value {
         "purchase_date": "2026-05-01",
         "purchase_price": 289.99,
         "currency": "EUR",
-        "notes": null,
-    })
-}
-
-fn sample_strain(name: &str) -> Value {
-    json!({
-        "name": name,
-        "breeder": "Test Breeder",
-        "photoperiod": "photoperiod",
-        "sex": "feminized",
-        "indica_pct": 55,
-        "landrace_tags": ["haze"],
-        "flower_days_min": 56,
-        "flower_days_max": 63,
-        "stretch_factor": 1.5,
-        "veg_weeks_min": null,
-        "veg_weeks_max": null,
-        "height_class": "medium",
-        "auto_total_days_min": null,
-        "auto_total_days_max": null,
-        "yield_notes": null,
-        "terpene_notes": null,
-        "effect_notes": null,
-        "heat_tolerance": "average",
-        "cold_tolerance": "average",
-        "light_tolerance": "average",
-        "user_rating": null,
         "notes": null,
     })
 }
@@ -215,99 +186,36 @@ async fn equipment_validation_rejects_bad_input() {
     assert_eq!(response.status(), reqwest::StatusCode::UNPROCESSABLE_ENTITY);
 }
 
+/// The strain catalogue routes are gone (D075 feature strip, step 05):
+/// list, create, read, update, delete, clone-as-phenotype and the
+/// grow's yield write-back all answer 404, so a stale bookmark or an
+/// old client gets a clean "not found", never a half-working endpoint.
 #[tokio::test]
-async fn strain_crud_and_clone_as_phenotype() {
+async fn strain_routes_are_gone() {
     let base = spawn_api().await;
     let client = reqwest::Client::new();
-
-    let created: Value = client
-        .post(format!("{base}/api/strains"))
-        .json(&sample_strain("Test Haze"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let id = created["id"].as_str().unwrap().to_owned();
-    assert_eq!(created["flower_days_min"], 56);
-    // User-entered numbers are tagged grower-reported; tolerances inferred.
-    assert_eq!(created["evidence"]["flower_days_min"], "grower_reported");
-    assert_eq!(created["evidence"]["heat_tolerance"], "inferred");
-    // No provenance on user records.
-    assert!(created["source_url"].is_null());
-
-    // Update.
-    let mut updated_input = sample_strain("Test Haze v2");
-    updated_input["flower_days_max"] = json!(70);
-    let updated: Value = client
-        .put(format!("{base}/api/strains/{id}"))
-        .json(&updated_input)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(updated["name"], "Test Haze v2");
-    assert_eq!(updated["flower_days_max"], 70);
-
-    // Clone as phenotype.
-    let clone: Value = client
-        .post(format!("{base}/api/strains/{id}/clone"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(clone["name"], "Test Haze v2 (my phenotype)");
-    assert_eq!(clone["is_phenotype_of"], id.as_str());
-    assert!(clone["source_url"].is_null());
-
-    // Strain validation: inverted range.
-    let mut inverted = sample_strain("Bad range");
-    inverted["flower_days_min"] = json!(70);
-    inverted["flower_days_max"] = json!(56);
-    let response = client
-        .post(format!("{base}/api/strains"))
-        .json(&inverted)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
-
-    // Delete both.
-    for strain_id in [&id, clone["id"].as_str().unwrap()] {
+    let routes = [
+        (reqwest::Method::GET, "/api/strains"),
+        (reqwest::Method::POST, "/api/strains"),
+        (reqwest::Method::GET, "/api/strains/nope"),
+        (reqwest::Method::PUT, "/api/strains/nope"),
+        (reqwest::Method::DELETE, "/api/strains/nope"),
+        (reqwest::Method::POST, "/api/strains/nope/clone"),
+        (reqwest::Method::POST, "/api/grows/nope/writeback"),
+    ];
+    for (method, path) in routes {
         let response = client
-            .delete(format!("{base}/api/strains/{strain_id}"))
+            .request(method, format!("{base}{path}"))
+            .json(&json!({}))
             .send()
             .await
             .unwrap();
-        assert_eq!(response.status(), reqwest::StatusCode::NO_CONTENT);
+        assert_eq!(
+            response.status(),
+            reqwest::StatusCode::NOT_FOUND,
+            "{path} must be gone"
+        );
     }
-    let empty: Vec<Value> = client
-        .get(format!("{base}/api/strains"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert!(empty.is_empty());
-}
-
-#[tokio::test]
-async fn strain_inputs_round_trip_through_core_types() {
-    // Proves the JSON the API accepts deserializes into the shared
-    // domain type and back without loss (frontend uses the same shape).
-    let payload = sample_strain("Round Trip");
-    let parsed: StrainInput = serde_json::from_value(payload.clone()).unwrap();
-    assert_eq!(parsed.name, "Round Trip");
-    assert_eq!(parsed.flower_days_max, Some(63));
-    let equipment_payload = sample_equipment("Round Trip Light");
-    let parsed: EquipmentInput = serde_json::from_value(equipment_payload).unwrap();
-    assert_eq!(parsed.real_watts, Some(285.0));
 }
 
 #[tokio::test]
@@ -359,38 +267,30 @@ async fn settings_round_trip() {
 }
 
 #[tokio::test]
-async fn seeds_arrive_once_and_carry_provenance() {
+async fn seeded_equipment_carries_provenance() {
     let db = Db::open_in_memory().unwrap();
-    leaflog_backend::seed::seed_strains(&db).await.unwrap();
+    leaflog_backend::seed::seed_equipment(&db).await.unwrap();
     let base = spawn_with(db).await;
 
-    let strains: Vec<Value> = reqwest::get(format!("{base}/api/strains"))
+    // The bundled equipment catalogue is seeded on boot, with a source
+    // note on every record (the strain bundle left with the catalogue,
+    // D075).
+    let items: Vec<Value> = reqwest::get(format!("{base}/api/equipment"))
         .await
         .unwrap()
         .json()
         .await
         .unwrap();
-    assert!(strains.len() >= 5, "five bundled records expected");
-    for strain in &strains {
-        assert!(strain["source_url"].as_str().is_some_and(|u| !u.is_empty()));
+    assert!(!items.is_empty(), "bundled presets are seeded");
+    for item in &items {
         assert!(
-            strain["source_licence"]
+            item["source"]
                 .as_str()
-                .is_some_and(|l| !l.is_empty())
+                .is_some_and(|source| !source.is_empty()),
+            "bundled records carry a provenance note"
         );
+        assert_eq!(item["is_builtin"], json!(true));
     }
-    let northern_lights = strains
-        .iter()
-        .find(|s| s["name"] == "Northern Lights")
-        .expect("Northern Lights is bundled");
-    assert_eq!(northern_lights["flower_days_min"], 45);
-    assert_eq!(northern_lights["evidence"]["flower_days_min"], "breeder");
-    let auto = strains
-        .iter()
-        .find(|s| s["name"] == "GG4 Auto")
-        .expect("an autoflower is bundled");
-    assert_eq!(auto["photoperiod"], "auto");
-    assert_eq!(auto["auto_total_days_max"], 84);
 }
 
 #[tokio::test]
@@ -400,7 +300,7 @@ async fn sensors_replace_is_atomic_when_an_insert_fails() {
     use leaflog_backend::db::StoreError;
     use leaflog_backend::store::grows;
     use leaflog_backend::store::sensors::{BindingsInput, list, replace};
-    use leaflog_core::grows::{GrowInput, GrowStatus};
+    use leaflog_core::grows::{GrowInput, GrowStatus, PhotoperiodType, Tolerance};
 
     let db = Db::open_in_memory().unwrap();
 
@@ -412,7 +312,6 @@ async fn sensors_replace_is_atomic_when_an_insert_fails() {
                     conn,
                     &GrowInput {
                         name: "Closet run".to_owned(),
-                        strain_id: None,
                         grow_space_id: None,
                         feed_template_id: None,
                         planned_veg_weeks: None,
@@ -699,7 +598,6 @@ async fn grows_belong_to_spaces() {
         .post(format!("{base}/api/grows"))
         .json(&json!({
             "name": "RC #1",
-            "strain_id": null,
             "grow_space_id": space_id,
             "substrate": "soil",
             "started_on": "2026-10-01",
@@ -733,7 +631,6 @@ async fn grows_belong_to_spaces() {
         .post(format!("{base}/api/grows"))
         .json(&json!({
             "name": "Nowhere run",
-            "strain_id": null,
             "grow_space_id": "nope",
             "substrate": "soil",
             "started_on": "2026-10-01",
@@ -750,7 +647,6 @@ async fn grows_belong_to_spaces() {
         .put(format!("{base}/api/grows/{grow_id}"))
         .json(&json!({
             "name": "RC #1",
-            "strain_id": null,
             "grow_space_id": null,
             "substrate": "soil",
             "started_on": "2026-10-01",
@@ -770,7 +666,6 @@ async fn grows_belong_to_spaces() {
         .put(format!("{base}/api/grows/{grow_id}"))
         .json(&json!({
             "name": "RC #1",
-            "strain_id": null,
             "grow_space_id": space_id,
             "substrate": "soil",
             "started_on": "2026-10-01",
@@ -848,7 +743,6 @@ async fn lamp_advisor_reads_the_grow_watts_with_the_default_fallback() {
     // 32–36 in for a 420 W lamp — read from the grow's own watts.
     let plain = json!({
         "name": "Default run",
-        "strain_id": null,
         "grow_space_id": null,
         "substrate": "soil",
         "status": "active",
@@ -862,7 +756,6 @@ async fn lamp_advisor_reads_the_grow_watts_with_the_default_fallback() {
 
     let mut lit = json!({
         "name": "Lit run",
-        "strain_id": null,
         "grow_space_id": null,
         "substrate": "soil",
         "status": "active",
@@ -877,7 +770,6 @@ async fn lamp_advisor_reads_the_grow_watts_with_the_default_fallback() {
 
     let mut fractional = json!({
         "name": "Rounded run",
-        "strain_id": null,
         "grow_space_id": null,
         "substrate": "soil",
         "status": "active",
@@ -902,7 +794,6 @@ async fn env_thresholds_shift_by_grow_tolerances() {
         async move {
             let mut body = json!({
                 "name": name,
-                "strain_id": null,
                 "grow_space_id": null,
                 "substrate": "soil",
                 "started_on": started_today(),
@@ -969,10 +860,11 @@ async fn env_thresholds_shift_by_grow_tolerances() {
 
 #[tokio::test]
 async fn autoflower_grow_forecasts_and_fits_without_a_strain() {
-    // The catalogue is seeded, yet the grow attaches no strain: the
-    // forecast and feed-fit must run on the grow's photoperiod alone.
+    // The grow attaches no strain record — there is no catalogue left
+    // (D075): the forecast and feed-fit must run on the grow's
+    // photoperiod alone.
     let db = Db::open_in_memory().unwrap();
-    leaflog_backend::seed::seed_strains(&db).await.unwrap();
+    leaflog_backend::seed::seed_feed_presets(&db).await.unwrap();
     leaflog_backend::seed::seed_equipment(&db).await.unwrap();
     let base = spawn_with(db).await;
     let client = reqwest::Client::new();
@@ -981,7 +873,6 @@ async fn autoflower_grow_forecasts_and_fits_without_a_strain() {
         .post(format!("{base}/api/grows"))
         .json(&json!({
             "name": "Auto run",
-            "strain_id": null,
             "grow_space_id": null,
             "photoperiod": "auto",
             "substrate": "soil",
@@ -1018,8 +909,8 @@ async fn autoflower_grow_forecasts_and_fits_without_a_strain() {
     assert_eq!(flower["likely_end"], 70);
     assert_eq!(flower["latest_end"], 77);
 
-    // Feed-fit consumes the same windows: the auto grow fits without
-    // any strain attached.
+    // Feed-fit consumes the same windows: the auto grow fits on the
+    // toggle alone, no record consulted.
     let templates: Vec<Value> = client
         .get(format!("{base}/api/feeds/templates"))
         .send()
@@ -1049,7 +940,6 @@ async fn autoflower_grow_forecasts_and_fits_without_a_strain() {
         .post(format!("{base}/api/grows"))
         .json(&json!({
             "name": "Photo run",
-            "strain_id": null,
             "grow_space_id": null,
             "substrate": "soil",
             "started_on": started_today(),
@@ -1097,7 +987,6 @@ async fn lamp_dim_pct_with_tags(
         .post(format!("{base}/api/grows"))
         .json(&json!({
             "name": name,
-            "strain_id": null,
             "grow_space_id": null,
             "substrate": "soil",
             "started_on": started_on,
@@ -1186,7 +1075,6 @@ async fn lamp_advisor_reacts_to_merged_and_old_stress_tags() {
 #[tokio::test]
 async fn bundled_records_are_read_only_and_clone_to_user_entries() {
     let db = Db::open_in_memory().unwrap();
-    leaflog_backend::seed::seed_strains(&db).await.unwrap();
     leaflog_backend::seed::seed_equipment(&db).await.unwrap();
     let base = spawn_with(db).await;
     let client = reqwest::Client::new();
@@ -1259,70 +1147,6 @@ async fn bundled_records_are_read_only_and_clone_to_user_entries() {
         .unwrap();
     assert_eq!(second["real_watts"], 150.0);
     assert_ne!(second["id"], user.as_str());
-
-    // -- Bundled strains: same contract.
-    let strains: Vec<Value> = client
-        .get(format!("{base}/api/strains"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let bundled_strain = strains
-        .iter()
-        .find(|strain| strain["is_builtin"] == json!(true))
-        .expect("bundled strain is seeded")
-        .clone();
-    let strain_id = bundled_strain["id"].as_str().unwrap().to_owned();
-
-    let response = client
-        .put(format!("{base}/api/strains/{strain_id}"))
-        .json(&sample_strain("Rewritten history"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
-    let response = client
-        .delete(format!("{base}/api/strains/{strain_id}"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
-
-    let phenotype: Value = client
-        .post(format!("{base}/api/strains/{strain_id}/clone"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(phenotype["is_builtin"], json!(false));
-    assert_eq!(phenotype["is_phenotype_of"], strain_id.as_str());
-
-    // User strains stay fully mutable.
-    let own: Value = client
-        .post(format!("{base}/api/strains"))
-        .json(&sample_strain("My own cross"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(own["is_builtin"], json!(false));
-    let response = client
-        .put(format!(
-            "{}/api/strains/{}",
-            base,
-            own["id"].as_str().unwrap()
-        ))
-        .json(&sample_strain("My own cross v2"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::OK);
 }
 
 #[tokio::test]
@@ -1459,7 +1283,6 @@ async fn onboarding_wizard_appears_runs_and_stays_dismissable() {
     // shows (spec §4.12). The catalogue carries the bundled presets a
     // fresh boot seeds.
     let db = Db::open_in_memory().unwrap();
-    leaflog_backend::seed::seed_strains(&db).await.unwrap();
     leaflog_backend::seed::seed_equipment(&db).await.unwrap();
     let base = spawn_with(db).await;
     let client = reqwest::Client::new();
@@ -1508,7 +1331,8 @@ async fn onboarding_wizard_appears_runs_and_stays_dismissable() {
     assert_eq!(restarted["show_wizard"], true, "the restart card works");
 
     // The wizard's own call sequence, exactly as the frontend drives
-    // it: equipment → space → strain → plants → grow.
+    // it: equipment → space → grow (label and photoperiod inline,
+    // D075) → plants.
     let equipment: Vec<Value> = client
         .get(format!("{base}/api/equipment"))
         .send()
@@ -1540,23 +1364,12 @@ async fn onboarding_wizard_appears_runs_and_stays_dismissable() {
         .await
         .unwrap();
 
-    let strains: Vec<Value> = client
-        .get(format!("{base}/api/strains"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    // The wizard offers the bundled records; step 3 may also be skipped
-    // entirely (a grow without a strain is valid).
-    let strain_id = strains[0]["id"].as_str().unwrap().to_owned();
-
     let grow: Value = client
         .post(format!("{base}/api/grows"))
         .json(&json!({
             "name": "First run",
-            "strain_id": strain_id,
+            "strain_label": "Northern Lights #5",
+            "photoperiod": "photoperiod",
             "grow_space_id": space_id,
             "substrate": "soil",
             "started_on": "2026-11-10",
@@ -1594,26 +1407,17 @@ async fn onboarding_wizard_appears_runs_and_stays_dismissable() {
 }
 
 #[tokio::test]
-async fn harvest_weights_round_trip_summarise_and_write_back() {
+async fn harvest_weights_round_trip_and_summarise() {
     let base = spawn_api().await;
     let client = reqwest::Client::new();
 
-    // A grow with a user strain and two plants, plus a second grow on a
-    // bundled strain for the write-back rejection.
-    let strain: Value = client
-        .post(format!("{base}/api/strains"))
-        .json(&sample_strain("My own cross"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
+    // A grow with two plants (the yield write-back left with the
+    // catalogue, D075 — the per-plant weights are the record).
     let grow: Value = client
         .post(format!("{base}/api/grows"))
         .json(&json!({
             "name": "Harvest run",
-            "strain_id": strain["id"],
+            "strain_label": "My own cross",
             "grow_space_id": null,
             "feed_template_id": null,
             "substrate": "soil",
@@ -1713,126 +1517,18 @@ async fn harvest_weights_round_trip_summarise_and_write_back() {
         .await
         .unwrap();
     assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
-
-    // Write-back reaches the user strain exactly once per grow.
-    let written: Value = client
-        .post(format!("{base}/api/grows/{grow_id}/writeback"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let notes = written["yield_notes"].as_str().unwrap();
-    assert!(notes.contains("achieved"), "notes: {notes}");
-    assert!(notes.contains("30 g dry"), "notes: {notes}");
-    assert!(notes.contains(&format!("[grow:{grow_id}]")));
-    client
-        .post(format!("{base}/api/grows/{grow_id}/writeback"))
-        .send()
-        .await
-        .unwrap();
-    let strain_after: Value = client
-        .get(format!(
-            "{}/api/strains/{}",
-            base,
-            strain["id"].as_str().unwrap()
-        ))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let notes = strain_after["yield_notes"].as_str().unwrap();
-    assert_eq!(
-        notes.matches("achieved").count(),
-        1,
-        "re-writing replaces the line, it does not pile up: {notes}"
-    );
-
-    // A grow on a bundled strain never writes back (§4.4), and a
-    // strainless grow says so.
-    let db_seeded = Db::open_in_memory().unwrap();
-    leaflog_backend::seed::seed_strains(&db_seeded)
-        .await
-        .unwrap();
-    let seeded_base = spawn_with(db_seeded).await;
-    let bundled: Vec<Value> = reqwest::get(format!("{seeded_base}/api/strains"))
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let bundled_id = bundled
-        .iter()
-        .find(|s| s["is_builtin"] == json!(true))
-        .unwrap()["id"]
-        .as_str()
-        .unwrap()
-        .to_owned();
-    let bundled_grow: Value = reqwest::Client::new()
-        .post(format!("{seeded_base}/api/grows"))
-        .json(&json!({
-            "name": "Preset run",
-            "strain_id": bundled_id,
-            "grow_space_id": null,
-            "feed_template_id": null,
-            "substrate": "soil",
-            "started_on": "2026-08-01",
-            "status": "active",
-            "notes": null,
-        }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let response = reqwest::Client::new()
-        .post(format!(
-            "{}/api/grows/{}/writeback",
-            seeded_base,
-            bundled_grow["id"].as_str().unwrap()
-        ))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
-
-    let response = client
-        .post(format!("{base}/api/grows/nope/writeback"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
 async fn history_accuracy_on_a_golden_grow_and_next_run_by_reference() {
     let db = Db::open_in_memory().unwrap();
-    leaflog_backend::seed::seed_strains(&db).await.unwrap();
+    leaflog_backend::seed::seed_feed_presets(&db).await.unwrap();
     leaflog_backend::seed::seed_equipment(&db).await.unwrap();
     let base = spawn_with(db).await;
     let client = reqwest::Client::new();
 
-    // A grow of bundled Northern Lights (45–55 flower days) in a space
-    // with a generic feed template fitted.
-    let strains: Vec<Value> = client
-        .get(format!("{base}/api/strains"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let northern = strains
-        .iter()
-        .find(|strain| strain["name"] == "Northern Lights")
-        .unwrap()
-        .clone();
-    let strain_count = strains.len();
-
+    // A labelled grow (free-text strain label, D075) in a space with a
+    // generic feed template fitted.
     let space: Value = client
         .post(format!("{base}/api/spaces"))
         .json(&sample_space("Golden tent"))
@@ -1856,7 +1552,8 @@ async fn history_accuracy_on_a_golden_grow_and_next_run_by_reference() {
         .post(format!("{base}/api/grows"))
         .json(&json!({
             "name": "NL golden run",
-            "strain_id": northern["id"],
+            "strain_label": "Northern Lights",
+            "photoperiod": "photoperiod",
             "grow_space_id": space["id"],
             "feed_template_id": template["id"],
             "planned_veg_weeks": 4,
@@ -1872,6 +1569,25 @@ async fn history_accuracy_on_a_golden_grow_and_next_run_by_reference() {
         .await
         .unwrap();
     let grow_id = grow["id"].as_str().unwrap().to_owned();
+
+    // A second grow with no label: its yield groups under the shared
+    // unlabelled key instead of a strain.
+    let unlabelled: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&json!({
+            "name": "Unlabelled run",
+            "substrate": "hydro",
+            "started_on": "2026-08-02",
+            "status": "archived",
+            "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let unlabelled_id = unlabelled["id"].as_str().unwrap().to_owned();
 
     // Flip on grow day 42 (2026-09-12), harvest on day 100
     // (2026-11-09).
@@ -1894,7 +1610,8 @@ async fn history_accuracy_on_a_golden_grow_and_next_run_by_reference() {
             .unwrap();
     }
 
-    // One plant with a dry weight feeds the yield aggregates.
+    // One plant with a dry weight feeds the yield aggregates; the
+    // unlabelled grow carries a second weighed plant.
     let plant: Value = client
         .post(format!("{base}/api/grows/{grow_id}/plants"))
         .json(&json!({ "name": "NL #1", "wet_g": null, "dry_g": null, "trimmed_g": null }))
@@ -1910,6 +1627,24 @@ async fn history_accuracy_on_a_golden_grow_and_next_run_by_reference() {
             plant["id"].as_str().unwrap()
         ))
         .json(&json!({ "name": "NL #1", "wet_g": 100.0, "dry_g": 25.0, "trimmed_g": 23.0 }))
+        .send()
+        .await
+        .unwrap();
+    let loose_plant: Value = client
+        .post(format!("{base}/api/grows/{unlabelled_id}/plants"))
+        .json(&json!({ "name": "Loose #1", "wet_g": null, "dry_g": null, "trimmed_g": null }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    client
+        .put(format!(
+            "{base}/api/plants/{}",
+            loose_plant["id"].as_str().unwrap()
+        ))
+        .json(&json!({ "name": "Loose #1", "wet_g": 40.0, "dry_g": 8.0, "trimmed_g": 2.0 }))
         .send()
         .await
         .unwrap();
@@ -1942,16 +1677,26 @@ async fn history_accuracy_on_a_golden_grow_and_next_run_by_reference() {
     assert_eq!(boundaries[1]["actual_day"], 100);
     assert_eq!(boundaries[1]["delta_days"], 100 - predicted_harvest);
     // The plan's flip sits after germination + seedling + default veg;
-    // the harvest after the strain's 45–55 day flower.
+    // the harvest lands inside the default photoperiod flower window.
     assert!(predicted_flip > 0 && predicted_harvest > predicted_flip);
 
-    let nl_yield = report["yield_by_strain"]
+    // Yields group by the grow's strain label; the unlabelled grow
+    // groups under the shared key, never under a strain name.
+    let nl_yield = report["yield_by_label"]
         .as_array()
         .unwrap()
         .iter()
         .find(|row| row["label"] == "Northern Lights")
-        .expect("yield grouped by strain");
+        .expect("yield grouped by strain label");
     assert_eq!(nl_yield["total_dry_g"], 25.0);
+    assert_eq!(nl_yield["grows"], 1);
+    let unlabelled_yield = report["yield_by_label"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["label"] == "unlabelled")
+        .expect("unlabelled grows group together");
+    assert_eq!(unlabelled_yield["total_dry_g"], 8.0);
     let soil_yield = report["yield_by_substrate"]
         .as_array()
         .unwrap()
@@ -1982,8 +1727,9 @@ async fn history_accuracy_on_a_golden_grow_and_next_run_by_reference() {
     assert_eq!(view["plant"]["name"], "NL #1");
     assert_eq!(view["yield_g"]["total_dry_g"], 25.0);
 
-    // One-tap next run: everything copied by reference — the bundled
-    // strain is not duplicated.
+    // One-tap next run: the label and photoperiod travel verbatim (the
+    // label is free text now — there is no catalogue entry to
+    // reference), and the space is reused by reference, not copied.
     let next: Value = client
         .post(format!("{base}/api/grows/{grow_id}/next-run"))
         .send()
@@ -1993,24 +1739,12 @@ async fn history_accuracy_on_a_golden_grow_and_next_run_by_reference() {
         .await
         .unwrap();
     assert_eq!(next["name"], "NL golden run (next run)");
-    assert_eq!(
-        next["strain_id"], northern["id"],
-        "strain copied by reference"
-    );
+    assert_eq!(next["strain_label"], "Northern Lights");
+    assert_eq!(next["photoperiod"], "photoperiod");
     assert_eq!(next["grow_space_id"], space["id"]);
     assert_eq!(next["feed_template_id"], template["id"]);
     assert_eq!(next["substrate"], "soil");
     assert_eq!(next["status"], "active");
-
-    let strains_after: Vec<Value> = client
-        .get(format!("{base}/api/strains"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(strains_after.len(), strain_count, "no bundled duplication");
     let spaces_after: Vec<Value> = client
         .get(format!("{base}/api/spaces"))
         .send()
@@ -2034,7 +1768,6 @@ async fn unavailable_bound_entities_render_no_data_and_can_rebind() {
         .post(format!("{base}/api/grows"))
         .json(&json!({
             "name": "Drift run",
-            "strain_id": null,
             "grow_space_id": null,
             "feed_template_id": null,
             "substrate": "soil",
@@ -2162,7 +1895,6 @@ async fn create_grow_at(
         .post(format!("{base}/api/grows"))
         .json(&json!({
             "name": name,
-            "strain_id": null,
             "grow_space_id": space_id,
             "substrate": "soil",
             "started_on": "2026-10-01",
@@ -2291,7 +2023,6 @@ async fn grow_moved_into_space_picks_up_sensor_defaults() {
         .put(format!("{base}/api/grows/{grow_id}"))
         .json(&json!({
             "name": "Nomad",
-            "strain_id": null,
             "grow_space_id": space_id,
             "substrate": "soil",
             "started_on": "2026-10-01",

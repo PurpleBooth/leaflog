@@ -36,7 +36,7 @@ pub struct GrowAccuracy {
     pub grow_id: String,
     /// Grow name.
     pub name: String,
-    /// Strain name, when the grow has one.
+    /// The grow's strain label (display only, D075), when it has one.
     pub strain: Option<String>,
     /// The logged-boundary comparisons (empty until a flip or harvest
     /// is logged).
@@ -44,18 +44,23 @@ pub struct GrowAccuracy {
 }
 
 /// The whole history section (spec §4.15): per-grow accuracy plus
-/// yield aggregates by strain, substrate and feed template.
+/// yield aggregates by strain label, substrate and feed template.
 #[derive(Debug, Serialize)]
 pub struct HistoryReport {
     /// One row per grow, oldest start first.
     pub accuracy: Vec<GrowAccuracy>,
-    /// Dry/wet/trimmed totals grouped by strain name.
-    pub yield_by_strain: Vec<YieldAggregate>,
+    /// Dry/wet/trimmed totals grouped by the grow's strain label;
+    /// unlabelled grows group together under one label.
+    pub yield_by_label: Vec<YieldAggregate>,
     /// Totals grouped by substrate label.
     pub yield_by_substrate: Vec<YieldAggregate>,
     /// Totals grouped by feed-template name.
     pub yield_by_feed_template: Vec<YieldAggregate>,
 }
+
+/// The aggregate key for grows without a strain label: they group
+/// together so cross-label totals never hide them.
+const UNLABELLED: &str = "unlabelled";
 
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
@@ -68,17 +73,14 @@ async fn history(State(state): State<AppState>) -> Result<Json<HistoryReport>, A
             grows.sort_by(|a, b| a.started_on.cmp(&b.started_on));
 
             let mut accuracy = Vec::new();
-            let mut by_strain: Vec<(String, YieldSummary)> = Vec::new();
+            let mut by_label: Vec<(String, YieldSummary)> = Vec::new();
             let mut by_substrate: Vec<(String, YieldSummary)> = Vec::new();
             let mut by_template: Vec<(String, YieldSummary)> = Vec::new();
             for grow in &grows {
-                // The strain name is display only (D075: never a
-                // recommendation input); the yield grouping switches
-                // to the grow's strain label in ticket 05.
-                let strain_name = grow
-                    .strain_id
-                    .as_deref()
-                    .and_then(|id| store::strain::get(conn, id).ok().map(|strain| strain.name));
+                // The strain label is display only (D075: never a
+                // recommendation input); yields group by it across
+                // grows, unlabelled grows together.
+                let label = (!grow.strain_label.is_empty()).then(|| grow.strain_label.clone());
                 let flip =
                     store::actions::first_event_day(conn, &grow.id, ActionType::Flip, u16::MAX)?;
                 let harvest =
@@ -101,16 +103,13 @@ async fn history(State(state): State<AppState>) -> Result<Json<HistoryReport>, A
                 accuracy.push(GrowAccuracy {
                     grow_id: grow.id.clone(),
                     name: grow.name.clone(),
-                    strain: strain_name.clone(),
+                    strain: label.clone(),
                     boundaries: boundary_accuracy(&windows, &actuals),
                 });
 
                 let plants = store::grows::list_plants(conn, &grow.id)?;
                 let summary = YieldSummary::of(&grow.id, plants);
-                by_strain.push((
-                    strain_name.unwrap_or_else(|| "unknown".to_owned()),
-                    summary.clone(),
-                ));
+                by_label.push((label.unwrap_or_else(|| UNLABELLED.to_owned()), summary.clone()));
                 by_substrate.push((grow.substrate.clone(), summary.clone()));
                 let template = grow.feed_template_id.as_deref().and_then(|id| {
                     store::feeds::get_template(conn, id)
@@ -121,7 +120,7 @@ async fn history(State(state): State<AppState>) -> Result<Json<HistoryReport>, A
             }
             Ok(HistoryReport {
                 accuracy,
-                yield_by_strain: aggregate_yields(&by_strain),
+                yield_by_label: aggregate_yields(&by_label),
                 yield_by_substrate: aggregate_yields(&by_substrate),
                 yield_by_feed_template: aggregate_yields(&by_template),
             })
@@ -172,9 +171,9 @@ async fn plant_view(
 }
 
 /// `POST /api/grows/{id}/next-run` — one tap creates a new grow
-/// copying strain, substrate, grow space and feed template from this
-/// one, by reference: bundled entries are never duplicated (spec
-/// §4.15).
+/// copying the strain label, photoperiod, substrate, grow space and
+/// feed template from this one (the label travels as the free text it
+/// is; there is no catalogue entry left to reference, spec §4.15).
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn next_run(
@@ -191,12 +190,12 @@ async fn next_run(
                 .to_owned();
             let input = GrowInput {
                 name: format!("{} (next run)", previous.name),
-                strain_id: previous.strain_id.clone(),
                 grow_space_id: previous.grow_space_id.clone(),
                 feed_template_id: previous.feed_template_id.clone(),
                 planned_veg_weeks: previous.planned_veg_weeks,
-                // The grow-carried facts (D075) travel with the rerun,
-                // like substrate and the feed template already do.
+                // The grow-carried facts (D075) travel with the rerun:
+                // label and photoperiod verbatim, like substrate and
+                // the feed template already do.
                 strain_label: previous.strain_label.clone(),
                 photoperiod: previous.photoperiod,
                 heat_tolerance: previous.heat_tolerance,

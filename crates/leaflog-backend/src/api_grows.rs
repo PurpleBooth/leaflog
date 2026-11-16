@@ -4,7 +4,7 @@
 use axum::extract::{Multipart, Path, Query, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::get;
 use axum::{Json, Router};
 use leaflog_core::actions::ActionType;
 use leaflog_core::grows::ActionInput;
@@ -58,7 +58,6 @@ pub fn router() -> Router<AppState> {
         )
         .route("/api/grows/{id}/forecast", get(get_forecast))
         .route("/api/grows/{id}/yield", get(get_yield))
-        .route("/api/grows/{id}/writeback", post(writeback_grow))
         .route("/api/photos/{id}", axum::routing::delete(delete_photo))
         .route("/api/photos/{id}/original", get(photo_original))
         .route("/api/photos/{id}/thumbnail", get(photo_thumbnail))
@@ -81,15 +80,6 @@ async fn create_grow(
     Json(input): Json<GrowInput>,
 ) -> Result<(StatusCode, Json<leaflog_core::grows::Grow>), ApiError> {
     validate_grow(&input)?;
-    if let Some(strain_id) = &input.strain_id {
-        state
-            .db
-            .with({
-                let strain_id = strain_id.clone();
-                move |conn| store::strain::get(conn, &strain_id)
-            })
-            .await?;
-    }
     if let Some(grow_space_id) = &input.grow_space_id {
         state
             .db
@@ -503,69 +493,6 @@ async fn get_yield(
         )
         .await?;
     Ok(Json(summary))
-}
-
-/// `POST /api/grows/{id}/writeback` — copies the grow's achieved yield
-/// into its strain's yield notes (spec §4.4, §4.14). User-owned strains
-/// only: a bundled strain is read-only and answers 409.
-// Extractors are taken by value because Axum requires it.
-#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-async fn writeback_grow(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> Result<Json<leaflog_core::strain::Strain>, ApiError> {
-    let strain = state
-        .db
-        .with(
-            move |conn| -> Result<leaflog_core::strain::Strain, ApiError> {
-                let grow = store::grows::get(conn, &id)?;
-                let plants = store::grows::list_plants(conn, &grow.id)?;
-                let summary = leaflog_core::grows::YieldSummary::of(&grow.id, plants);
-                let strain_id = grow.strain_id.clone().ok_or_else(|| {
-                    ApiError::BadRequest("the grow has no strain to write back to".to_owned())
-                })?;
-                let mut strain = store::strain::get(conn, &strain_id)?;
-                if strain.is_builtin {
-                    return Err(ApiError::Conflict(
-                        "bundled strain is read-only; clone it as your phenotype and write back \
-                     there"
-                            .to_owned(),
-                    ));
-                }
-                // One line per grow, replaced on re-write so the write-back
-                // is idempotent.
-                let line = format!(
-                    "achieved: {} g dry, {} g wet, {} g trimmed over {} plant(s) [grow:{}]",
-                    summary
-                        .total_dry_g
-                        .map_or_else(|| "-".to_owned(), |grams| format!("{grams:.0}")),
-                    summary
-                        .total_wet_g
-                        .map_or_else(|| "-".to_owned(), |grams| format!("{grams:.0}")),
-                    summary
-                        .total_trimmed_g
-                        .map_or_else(|| "-".to_owned(), |grams| format!("{grams:.0}")),
-                    summary.plants.len(),
-                    grow.id
-                );
-                let marker = format!("[grow:{}]", grow.id);
-                let notes = strain.yield_notes.clone().unwrap_or_default();
-                let updated_lines: Vec<String> = notes
-                    .lines()
-                    .filter(|existing| !existing.contains(&marker))
-                    .map(str::to_owned)
-                    .chain([line])
-                    .collect();
-                strain.yield_notes = Some(updated_lines.join("\n"));
-                // Rebuild the update payload from the strain and keep the
-                // evidence map the grower curated.
-                let mut input = leaflog_core::strain::StrainInput::from_strain(&strain);
-                input.yield_notes.clone_from(&strain.yield_notes);
-                Ok(store::strain::update(conn, &strain.id, &input)?)
-            },
-        )
-        .await?;
-    Ok(Json(strain))
 }
 
 // Extractors are taken by value because Axum requires it.

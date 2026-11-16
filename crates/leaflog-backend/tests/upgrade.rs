@@ -1,7 +1,8 @@
 //! Bundled-data upgrade acceptance tests (spec §4.1, §13): on a
 //! simulated upgrade, new bundled rows are inserted, existing bundled
-//! rows are adopted onto their stable ids, and user entries and clones
-//! are never touched.
+//! rows are adopted onto their stable ids, and user entries are never
+//! touched. The strain catalogue part of the chain ends in V17's drop:
+//! the adopted strain link surfaces as the grow's derived label.
 
 use std::path::PathBuf;
 
@@ -34,10 +35,10 @@ impl Drop for TempDb {
 }
 
 /// Builds a "pre-stable-id" database at schema V7: bundled rows seeded
-/// with random ULIDs (the pre-V8 seeder's behaviour), a user phenotype
-/// clone pointing at one of them, a grow on the bundled strain, and a
-/// grow space referencing the bundled tent. The clip fan is absent —
-/// as if the user had deleted it back when builtins were deletable.
+/// with random ULIDs (the pre-V8 seeder's behaviour), a grow on the
+/// bundled strain, and a grow space referencing the bundled tent. The
+/// clip fan is absent — as if the user had deleted it back when
+/// builtins were deletable.
 fn pre_upgrade_database(path: &std::path::Path) {
     let mut conn = Connection::open(path).expect("open pre-upgrade db");
     conn.pragma_update(None, "foreign_keys", "ON")
@@ -61,13 +62,7 @@ fn pre_upgrade_database(path: &std::path::Path) {
               NULL, NULL, 'short', NULL, NULL, NULL, NULL, NULL,
               'average', 'average', 'average', NULL, NULL, '{}',
               'https://sensiseeds.com', 'breeder catalogue', 1,
-              NULL, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'),
-             ('01STRAINMYPHENO00000000', 'Northern Lights (my phenotype)',
-              'Sensi Seeds', 'photoperiod', 'feminized', 90, '[]', 50, 58, 1.4,
-              NULL, NULL, 'short', NULL, NULL, NULL, NULL, NULL,
-              'average', 'average', 'average', 4, 'keeps growing',
-              '{}', NULL, NULL, 0,
-              '01STRAINNORTHERN0000000', '2026-01-02T00:00:00Z', '2026-01-02T00:00:00Z');
+              NULL, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
 
          INSERT INTO equipment_item (id, name, category, brand_model,
              real_watts, dimmable, purchase_date, purchase_price, currency,
@@ -104,47 +99,17 @@ async fn upgrade_adopts_reids_and_inserts_without_touching_user_data() {
     let path = temp.path();
     pre_upgrade_database(&path);
 
-    // The upgrade itself: boot applies V8, then the seeder runs (the
+    // The upgrade itself: boot applies V8 onward (V17 drops the strain
+    // catalogue the adoption repointed), then the seeder runs (the
     // same order `serve` uses).
-    let db = Db::open(&path).expect("boot applies V8");
-    let seeded_strains = seed::seed_strains(&db).await.expect("strain seeder");
+    let db = Db::open(&path).expect("boot applies the migration chain");
     let seeded_equipment = seed::seed_equipment(&db).await.expect("equipment seeder");
 
-    // "New" means new under the stable id: Northern Lights and the tent
-    // were already present (adopted), everything else came in fresh.
-    assert_eq!(seeded_strains, 14);
+    // "New" means new under the stable id: the tent was already present
+    // (adopted), everything else came in fresh.
     assert_eq!(seeded_equipment, 4);
 
     db.with(|conn| -> Result<(), StoreError> {
-        // The bundled strain was adopted onto its stable id...
-        let (id, builtin): (String, i64) = conn.query_row(
-            "SELECT id, is_builtin FROM strain WHERE name = 'Northern Lights'",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )?;
-        assert_eq!(id, "seed-strain-northern-lights");
-        assert_eq!(builtin, 1, "adopted rows become read-only presets");
-        // ...exactly one such row, and the clone's parent link followed.
-        let northern: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM strain WHERE name = 'Northern Lights'",
-            [],
-            |row| row.get(0),
-        )?;
-        assert_eq!(northern, 1, "no duplicate after adoption");
-        let parent: String = conn.query_row(
-            "SELECT is_phenotype_of FROM strain WHERE id = '01STRAINMYPHENO00000000'",
-            [],
-            |row| row.get(0),
-        )?;
-        assert_eq!(parent, "seed-strain-northern-lights");
-        // The grow's strain reference followed too.
-        let grow_strain: String = conn.query_row(
-            "SELECT strain_id FROM grow WHERE id = '01GROWNORTHERN000000000'",
-            [],
-            |row| row.get(0),
-        )?;
-        assert_eq!(grow_strain, "seed-strain-northern-lights");
-
         // The bundled tent was adopted (id and read-only flag) and kept
         // its user-edited note; the space reference followed.
         let (id, note, builtin): (String, String, i64) = conn.query_row(
@@ -182,20 +147,32 @@ async fn upgrade_adopts_reids_and_inserts_without_touching_user_data() {
         assert_eq!(id, "01EQUIPUSERLIGHT0000000");
         assert_eq!(builtin, 0);
 
-        // Every other bundled strain inserted as new.
-        let bundled_strains: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM strain WHERE is_builtin = 1",
+        // The strain table is gone (V17) — but the grow it anchored
+        // survives, carrying the strain's name as its derived label.
+        // The label could only come through the full chain: V8 adopted
+        // the grow onto the bundled strain's stable id, V17 backfilled
+        // label and photoperiod from that link, then dropped the table.
+        let strain_table: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'strain')",
             [],
             |row| row.get(0),
         )?;
-        assert_eq!(bundled_strains, 15);
+        assert!(!strain_table, "the strain catalogue is dropped");
+        let (name, label, photoperiod): (String, Option<String>, Option<String>) = conn.query_row(
+            "SELECT name, strain_label, photoperiod FROM grow
+             WHERE id = '01GROWNORTHERN000000000'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        assert_eq!(name, "NL run");
+        assert_eq!(label.as_deref(), Some("Northern Lights"));
+        assert_eq!(photoperiod.as_deref(), Some("photoperiod"));
         Ok(())
     })
     .await
     .expect("upgrade assertions");
 
     // And the whole thing is idempotent: a second boot seeds nothing.
-    let again_strains = seed::seed_strains(&db).await.expect("re-seed strains");
     let again_equipment = seed::seed_equipment(&db).await.expect("re-seed equipment");
-    assert_eq!((again_strains, again_equipment), (0, 0));
+    assert_eq!(again_equipment, 0);
 }

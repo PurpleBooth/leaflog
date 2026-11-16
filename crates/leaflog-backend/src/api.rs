@@ -1,5 +1,7 @@
-//! JSON API routes for equipment, strains and settings (spec §4.1,
-//! §4.4). All routes are under `/api`; the browser is the only client.
+//! JSON API routes for equipment and settings (spec §4.1). All routes
+//! are under `/api`; the browser is the only client. The strain
+//! catalogue left with the feature strip (D075) — the grow carries its
+//! strain label and photoperiod itself.
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -7,7 +9,6 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use leaflog_core::equipment::{EquipmentCategory, EquipmentInput, EquipmentItem};
-use leaflog_core::strain::{Strain, StrainInput};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -26,12 +27,6 @@ pub fn router() -> Router<AppState> {
                 .delete(delete_equipment),
         )
         .route("/api/equipment/{id}/clone", post(clone_equipment))
-        .route("/api/strains", get(list_strains).post(create_strain))
-        .route(
-            "/api/strains/{id}",
-            get(get_strain).put(update_strain).delete(delete_strain),
-        )
-        .route("/api/strains/{id}/clone", post(clone_strain))
         .route("/api/settings", get(get_settings).put(put_settings))
         .route("/api/onboarding", get(onboarding_state))
         .merge(crate::api_grows::router())
@@ -206,121 +201,6 @@ fn reject_immutable_equipment(
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 #[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
-async fn list_strains(State(state): State<AppState>) -> Result<Json<Vec<Strain>>, ApiError> {
-    let strains = state.db.with(store::strain::list).await?;
-    Ok(Json(strains))
-}
-
-// Extractors are taken by value because Axum requires it.
-#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-async fn create_strain(
-    State(state): State<AppState>,
-    Json(input): Json<StrainInput>,
-) -> Result<(StatusCode, Json<Strain>), ApiError> {
-    validate_strain(&input)?;
-    let strain = state
-        .db
-        .with(move |conn| -> Result<Strain, ApiError> {
-            let strain = store::strain::from_input(&input);
-            store::strain::create(conn, &strain)?;
-            Ok(strain)
-        })
-        .await?;
-    Ok((StatusCode::CREATED, Json(strain)))
-}
-
-// Extractors are taken by value because Axum requires it.
-#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
-async fn get_strain(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> Result<Json<Strain>, ApiError> {
-    let strain = state
-        .db
-        .with(move |conn| store::strain::get(conn, &id))
-        .await?;
-    Ok(Json(strain))
-}
-
-// Extractors are taken by value because Axum requires it.
-#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-async fn update_strain(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    Json(input): Json<StrainInput>,
-) -> Result<Json<Strain>, ApiError> {
-    validate_strain(&input)?;
-    let updated = state
-        .db
-        .with(move |conn| -> Result<Strain, ApiError> {
-            reject_immutable_strain(conn, &id)?;
-            Ok(store::strain::update(conn, &id, &input)?)
-        })
-        .await?;
-    Ok(Json(updated))
-}
-
-// Extractors are taken by value because Axum requires it.
-#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
-async fn delete_strain(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> Result<StatusCode, ApiError> {
-    state
-        .db
-        .with(move |conn| -> Result<(), ApiError> {
-            reject_immutable_strain(conn, &id)?;
-            store::strain::delete(conn, &id)?;
-            Ok(())
-        })
-        .await?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
-// Extractors are taken by value because Axum requires it.
-#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-async fn clone_strain(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> Result<(StatusCode, Json<Strain>), ApiError> {
-    let clone = state
-        .db
-        .with(move |conn| -> Result<Strain, ApiError> {
-            let parent = store::strain::get(conn, &id)?;
-            let mut phenotype = parent.clone();
-            phenotype.id = crate::db::new_id();
-            phenotype.name = format!("{} (my phenotype)", parent.name);
-            phenotype.is_builtin = false;
-            phenotype.is_phenotype_of = Some(parent.id);
-            phenotype.source_url = None;
-            phenotype.source_licence = None;
-            phenotype.created_at = crate::db::now_rfc3339();
-            phenotype.updated_at = phenotype.created_at.clone();
-            store::strain::create(conn, &phenotype)?;
-            Ok(phenotype)
-        })
-        .await?;
-    Ok((StatusCode::CREATED, Json(clone)))
-}
-
-/// Fails with [`ApiError::Conflict`] when the addressed strain is
-/// bundled: bundled records are read-only, and modifying one is a
-/// phenotype clone away (spec §4.4).
-fn reject_immutable_strain(conn: &rusqlite::Connection, id: &str) -> Result<Strain, ApiError> {
-    let existing = store::strain::get(conn, id)?;
-    if existing.is_builtin {
-        return Err(ApiError::Conflict(
-            "bundled strain is read-only; clone it as your phenotype instead".to_owned(),
-        ));
-    }
-    Ok(existing)
-}
-
-// Extractors are taken by value because Axum requires it.
-#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
 async fn get_settings(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let settings = state.db.with(store::settings::list).await?;
     Ok(Json(settings))
@@ -484,38 +364,4 @@ fn valid_entity_id(entity: &str) -> bool {
         && object
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
-}
-
-/// Validates strain input shared by create and update.
-fn validate_strain(input: &StrainInput) -> Result<(), ApiError> {
-    if input.name.trim().is_empty() {
-        return Err(ApiError::BadRequest("name must not be empty".to_owned()));
-    }
-    if input.indica_pct.is_some_and(|pct| pct > 100) {
-        return Err(ApiError::BadRequest(
-            "indica_pct must be between 0 and 100".to_owned(),
-        ));
-    }
-    if matches!(
-        (input.flower_days_min, input.flower_days_max),
-        (Some(min), Some(max)) if min > max
-    ) {
-        return Err(ApiError::BadRequest(
-            "flower_days_min must not exceed flower_days_max".to_owned(),
-        ));
-    }
-    if matches!(
-        (input.auto_total_days_min, input.auto_total_days_max),
-        (Some(min), Some(max)) if min > max
-    ) {
-        return Err(ApiError::BadRequest(
-            "auto_total_days_min must not exceed auto_total_days_max".to_owned(),
-        ));
-    }
-    if input.user_rating.is_some_and(|rating| rating > 5) {
-        return Err(ApiError::BadRequest(
-            "user_rating must be between 0 and 5".to_owned(),
-        ));
-    }
-    Ok(())
 }

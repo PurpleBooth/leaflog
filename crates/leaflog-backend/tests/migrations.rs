@@ -7,8 +7,7 @@ use std::path::PathBuf;
 use leaflog_backend::db::{self, Db, StoreError};
 use leaflog_backend::store;
 use leaflog_core::equipment::EquipmentCategory;
-use leaflog_core::grows::{GrowInput, GrowStatus};
-use leaflog_core::strain::{PhotoperiodType, Tolerance};
+use leaflog_core::grows::{GrowInput, GrowStatus, PhotoperiodType, Tolerance};
 use refinery::Target;
 use rusqlite::Connection;
 
@@ -443,6 +442,166 @@ async fn v14_adds_grow_columns_without_touching_existing_grows() {
     .expect("V14 column assertions");
 }
 
+/// V17 (strain-catalogue removal): every grow formerly linked to a
+/// strain emerges from the migration with the strain's name as its
+/// free-text label and the strain's photoperiod behaviour; labels and
+/// toggles the grower already set are not overwritten. The strain
+/// table and the grow's `strain_id` column disappear, tolerances read
+/// back as Average, and the grow row with its plants survives.
+#[tokio::test]
+async fn dropping_the_strain_catalogue_backfills_label_and_photoperiod() {
+    let temp = TempDb::new("strain-drop");
+    let path = temp.path();
+    {
+        let mut conn = Connection::open(&path).expect("open at the pre-drop version");
+        conn.pragma_update(None, "foreign_keys", "ON")
+            .expect("pragmas");
+        db::embedded::migrations::runner()
+            // V16 (spaces and equipment) is ticket 04's drop; absent in
+            // this tree it simply leaves the fixture one version
+            // earlier — the assertions are about the state after V17.
+            .set_target(Target::Version(16))
+            .run(&mut conn)
+            .expect("apply through the last pre-drop migration");
+        conn.execute_batch(
+            "INSERT INTO strain
+                 (id, name, breeder, photoperiod, sex, indica_pct, landrace_tags,
+                  flower_days_min, flower_days_max, stretch_factor, veg_weeks_min,
+                  veg_weeks_max, height_class, auto_total_days_min, auto_total_days_max,
+                  yield_notes, terpene_notes, effect_notes, heat_tolerance,
+                  cold_tolerance, light_tolerance, user_rating, notes, evidence,
+                  source_url, source_licence, is_phenotype_of, created_at, updated_at)
+             VALUES
+                 ('01STRAINNL000000000000', 'Northern Lights', 'Sensi Seeds',
+                  'photoperiod', 'feminized', 90, '[]', 45, 55, 1.5, NULL, NULL,
+                  'short', NULL, NULL, NULL, NULL, NULL, 'average', 'average',
+                  'average', NULL, NULL, '{}', NULL, NULL, NULL,
+                  '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'),
+                 ('01STRAINGGAUTO00000000', 'GG4 Auto', NULL,
+                  'auto', 'feminized', 60, '[]', NULL, NULL, NULL, NULL, NULL,
+                  NULL, 63, 77, NULL, NULL, NULL, 'average', 'average',
+                  'average', NULL, NULL, '{}', NULL, NULL, NULL,
+                  '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+             INSERT INTO grow
+                 (id, name, strain_id, substrate, started_on, status, notes,
+                  created_at, updated_at)
+             VALUES
+                 ('01GROWLINKEDNL00000000', 'NL run', '01STRAINNL000000000000',
+                  'soil', '2026-03-01', 'active', NULL,
+                  '2026-03-01T00:00:00Z', '2026-03-01T00:00:00Z'),
+                 ('01GROWLINKEDAUTO0000000', 'Auto run', '01STRAINGGAUTO00000000',
+                  'coco', '2026-03-02', 'active', NULL,
+                  '2026-03-02T00:00:00Z', '2026-03-02T00:00:00Z'),
+                 ('01GROWNEVERLINKED000000', 'Free run', NULL,
+                  'soil', '2026-03-03', 'active', NULL,
+                  '2026-03-03T00:00:00Z', '2026-03-03T00:00:00Z');
+             -- The grower set label and toggle by hand after V14: the
+             -- backfill must keep them.
+             INSERT INTO grow
+                 (id, name, strain_id, substrate, started_on, status, notes,
+                  created_at, updated_at, strain_label, photoperiod)
+             VALUES
+                 ('01GROWKEPTFIELDS0000000', 'Kept run', '01STRAINNL000000000000',
+                  'soil', '2026-03-04', 'active', NULL,
+                  '2026-03-04T00:00:00Z', '2026-03-04T00:00:00Z',
+                  'My NL cross', 'auto');
+             INSERT INTO plant (id, grow_id, name, created_at, updated_at)
+             VALUES ('01PLANTOFNL0000000000', '01GROWLINKEDNL00000000', 'Plant 1',
+                     '2026-03-02T00:00:00Z', '2026-03-02T00:00:00Z');",
+        )
+        .expect("pre-drop fixtures");
+    }
+
+    let db = Db::open(&path).expect("the strain drop applies on boot");
+    let status = db::migrate_status(&path).expect("migration status");
+    let v17 = status
+        .applied
+        .iter()
+        .find(|migration| migration.version == 17)
+        .expect("V17 is in the applied history");
+    assert_eq!(v17.name, "drop_strains");
+
+    db.with(|conn| -> Result<(), StoreError> {
+        let table_exists = |name: &str| -> Result<bool, StoreError> {
+            Ok(conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+                [name],
+                |row| row.get(0),
+            )?)
+        };
+        assert!(!table_exists("strain")?, "the strain table is dropped");
+        let has_strain_column: bool = conn.query_row(
+            "SELECT EXISTS(
+                 SELECT 1 FROM pragma_table_info('grow') WHERE name = 'strain_id'
+             )",
+            [],
+            |row| row.get(0),
+        )?;
+        assert!(!has_strain_column, "grow loses its strain_id column");
+
+        // Linked grows carry the derived label and photoperiod; the
+        // never-linked grow stays unlabelled; the grower's own values
+        // were kept.
+        let linked =
+            store::grows::get(conn, "01GROWLINKEDNL00000000").expect("linked grow");
+        assert_eq!(linked.name, "NL run");
+        assert_eq!(linked.strain_label, "Northern Lights");
+        assert_eq!(linked.photoperiod, PhotoperiodType::Photoperiod);
+        assert_eq!(linked.substrate, "soil");
+        let auto = store::grows::get(conn, "01GROWLINKEDAUTO0000000").expect("auto grow");
+        assert_eq!(auto.strain_label, "GG4 Auto");
+        assert_eq!(auto.photoperiod, PhotoperiodType::Auto);
+        let free = store::grows::get(conn, "01GROWNEVERLINKED000000").expect("free grow");
+        assert_eq!(free.strain_label, "", "an unlinked grow stays unlabelled");
+        assert_eq!(free.photoperiod, PhotoperiodType::default());
+        let kept = store::grows::get(conn, "01GROWKEPTFIELDS0000000").expect("kept grow");
+        assert_eq!(kept.strain_label, "My NL cross", "user label is kept");
+        assert_eq!(kept.photoperiod, PhotoperiodType::Auto, "user toggle is kept");
+
+        // Tolerances were never derived from the catalogue: the unset
+        // columns read back as Average (the D075 default).
+        assert_eq!(linked.heat_tolerance, Tolerance::Average);
+        assert_eq!(linked.cold_tolerance, Tolerance::Average);
+        assert_eq!(linked.light_tolerance, Tolerance::Average);
+
+        // The grow row and its children survive the rebuild.
+        let plants: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM plant WHERE grow_id = '01GROWLINKEDNL00000000'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(plants, 1, "the grow's plants survive the drop");
+
+        // The store still writes and reads grows afterwards, without a
+        // strain reference.
+        let created = store::grows::create(
+            conn,
+            &GrowInput {
+                name: "Post-drop run".to_owned(),
+                grow_space_id: None,
+                feed_template_id: None,
+                planned_veg_weeks: None,
+                strain_label: "Moby Dick".to_owned(),
+                photoperiod: PhotoperiodType::Auto,
+                heat_tolerance: Tolerance::default(),
+                cold_tolerance: Tolerance::default(),
+                light_tolerance: Tolerance::default(),
+                real_watts: None,
+                dimmable: true,
+                substrate: "coco".to_owned(),
+                started_on: "2026-04-01".to_owned(),
+                status: GrowStatus::Active,
+                notes: None,
+            },
+        )?;
+        assert_eq!(created.strain_label, "Moby Dick");
+        assert_eq!(created.photoperiod, PhotoperiodType::Auto);
+        Ok(())
+    })
+    .await
+    .expect("strain-drop assertions");
+}
+
 /// V15 (seed-bank removal): the `seed_batch` and `germination_log`
 /// tables and the grow's `seed_batch_id` column disappear on boot.
 /// The drop also pins that the grow row, its plants and its log
@@ -533,7 +692,6 @@ async fn dropping_the_seed_bank_loses_tables_and_the_grow_column() {
             conn,
             &GrowInput {
                 name: "Post-drop run".to_owned(),
-                strain_id: None,
                 grow_space_id: None,
                 feed_template_id: None,
                 planned_veg_weeks: None,

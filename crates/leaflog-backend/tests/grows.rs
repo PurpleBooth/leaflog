@@ -37,7 +37,6 @@ async fn spawn() -> (String, PathBuf) {
 fn grow_payload(name: &str) -> Value {
     json!({
         "name": name,
-        "strain_id": null,
         "substrate": "soil",
         "started_on": "2026-10-01",
         "status": "active",
