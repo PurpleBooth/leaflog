@@ -2,10 +2,13 @@
 // overview, persisted under settings, reset back to the sourced
 // default. Since ticket 03 the editor lives inside the Soil moisture
 // chart card, so every assertion scopes to that card — the accessible
-// field labels are unchanged.
+// field labels are unchanged. Since ticket 04 the card only renders
+// when the role is bound, so the flow runs on a dedicated grow with
+// the mock sensor bound (the landing page's pick is not deterministic
+// under the parallel suite).
 
 import { test, expect } from '@playwright/test';
-import { api, dismissOnboarding, url } from './helpers';
+import { api, createGrow, dismissOnboarding, url } from './helpers';
 
 test.beforeAll(async ({ request }) => {
   await dismissOnboarding(request);
@@ -15,7 +18,11 @@ test('soil band saves, persists and resets to the default', async ({
   page,
   request,
 }) => {
-  await page.goto(url('/'));
+  const growId = await createGrow(request, 'E2E Soil Band');
+  await api(request, 'PUT', `api/grows/${growId}/bindings`, {
+    bindings: { soil_moisture: 'sensor.grow_soil_moisture' },
+  });
+  await page.goto(url(`/grows/${growId}`));
 
   // The editor renders inside the soil moisture card (ticket 03).
   const soilCard = page.locator('.card', {

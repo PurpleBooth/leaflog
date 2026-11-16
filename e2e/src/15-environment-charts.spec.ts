@@ -2,9 +2,9 @@
 // and soil moisture render through the ECharts option-builder seam —
 // a value axis named with the role's unit, time tick labels, and a
 // hover tooltip with value, unit, and UTC time. CO₂ has no mock
-// sensor, so it asserts its explicit unbound state; its no-band
-// option rendering is unit-tested in Rust. The pH/EC event cards stay
-// on the hand-rolled scatter until ticket 04 (12-ph-ec.spec.ts).
+// sensor, so it asserts the ticket 04 card-visibility rule: an
+// unbound role renders no card at all. The pH/EC pair scatters are
+// ticket 04's own flow (12-ph-ec.spec.ts).
 
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { api, createGrow, dismissOnboarding, url } from './helpers';
@@ -45,7 +45,7 @@ test('humidity, vpd, light and soil charts draw axes and tooltips', async ({
         bindings: Array<{ role: string; available: boolean }>;
       }>(request, 'GET', `api/grows/${growId}/env`);
       return env!.bindings.every((binding) => binding.available);
-    })
+    }, { timeout: 10_000 })
     .toBe(true);
 
   // Three log entries auto-capture every bound role (spec §4.2), so
@@ -113,14 +113,15 @@ test('humidity, vpd, light and soil charts draw axes and tooltips', async ({
     cardOf('soil_moisture history').getByLabel('Band min %'),
   ).toBeVisible();
 
-  // CO₂ has no mock sensor: the card states the unbound state instead
-  // of drawing a chart (and carries no svg).
-  const co2Card = page.locator('.card', {
-    has: page.getByRole('heading', { name: 'CO₂' }),
-  });
-  await expect(co2Card).toBeVisible();
+  // CO₂ has no mock sensor: the card-visibility rule (ticket 04)
+  // renders no card at all for the unbound role — no heading, no
+  // svg, no placeholder text anywhere on the page.
   await expect(
-    co2Card.getByText('No sensor bound for this role.'),
-  ).toBeVisible();
-  await expect(co2Card.locator('svg')).toHaveCount(0);
+    page.locator('.card', {
+      has: page.getByRole('heading', { name: 'CO₂' }),
+    }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText('No sensor bound for this role.'),
+  ).toHaveCount(0);
 });

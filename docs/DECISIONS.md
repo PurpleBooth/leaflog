@@ -6,6 +6,71 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-17 — the pair scatters move onto ECharts; unbound cards stop rendering (ticket 04)
+
+### D081: every chart is an option-built chart; the card-visibility rule lands
+
+_Renumber note: if a sibling ticket claims D081 first, the merge
+renumbers this entry and fixes the reference here._
+
+The pH/EC pair cards now render through the same pure option builder as
+every other chart (D079): `role_style` maps the pair roles to a
+`SeriesKind::Scatter` drawing mode, and the builder emits two named dot
+series — `Input` in the theme accent (`text-primary` probe, the old
+`fill-primary`) and `Runoff` in a second, distinct colour probed from
+`text-secondary` (the old `fill-secondary`). The runoff values join the
+value-axis range so the compare dots can never sit off-axis. With the
+pair migrated, the hand-rolled SVG renderer is gone entirely: ticket 03
+kept `ChartSvg` alive for pH/EC behind a `TEMPORARY` marker, and its
+small `padded_value_range` helper dies with it. No hand-rolled chart
+code remains; the Gantt and feed-fit bars stay inline-styled by design
+(out of the charts overhaul's scope).
+
+Choices worth remembering:
+
+- **`step: bool` became a `SeriesKind` enum.** A third drawing mode
+  (scatter) arrived, and two booleans with a never-both invariant is
+  worse than an honest enum: `Line`, `StepLine` (the light staircase),
+  `Scatter` (the pair roles).
+- **The scatter series carry names; the line series stay unnamed.** The
+  tooltip closure now renders one line per axis-trigger entry and
+  prefixes the series name when there is one, so the pair tooltip reads
+  `Input: 6.2 — 2026-11-16 14:03 UTC` over `Runoff: 6.8 — …`, while the
+  continuous charts keep the exact `value — time` line they always had.
+- **The compare colour's probe class lives in a string literal.** The
+  Tailwind scan picks tokens out of the Rust sources, and
+  `text-secondary` appears nowhere else, so the probe call itself is
+  what gets the utility compiled (the same accident `text-primary`
+  already relies on through its doc comment).
+- **A black probe result now means "styles not ready".** Writing the
+  distinct-colour e2e exposed a latent bug from ticket 02: if the chart
+  effect runs before the stylesheet applies, `getComputedStyle` returns
+  the unstyled initial `rgb(0, 0, 0)` and the option baked black chrome
+  (dots and axes) into every first paint. Black is never a leaflog
+  theme colour, so the probe now rejects it and the chart draws with
+  the light-palette fallbacks instead; once styles are loaded the
+  probes resolve the real theme colours as before.
+- **The card-visibility rule: `bound` decides, nothing else renders.**
+  `HistoryChart` gates the whole card on the loaded response's
+  `bound` flag — no sensor, or no pH/EC entries, means no card, no
+  placeholder. A dead binding is `bound: true` (the binding exists), so
+  its card stays and the env dashboard's No-data banner names it; a
+  failed history fetch also leaves the card hidden (a missing chart is
+  honest, and the dashboard still reports its own fetch failures).
+- **The visibility gate is a reactive block, not `Show`.** A `Show`
+  children closure must be `Fn`, and the card carries the children slot
+  (the soil band editor, D080) — building it inside a `Fn` closure does
+  not type-check. The gate is `{move || data.get().filter(bound)}`,
+  the same declarative pattern the env dashboard uses; the editor
+  re-mounts with its card and its signals re-run.
+- **11-soil-band e2e runs on a dedicated bound grow.** The landing
+  page's grow pick is not deterministic under the parallel suite, and
+  an unbound grow would now legitimately hide the soil card, so the
+  flow binds `sensor.grow_soil_moisture` and navigates to its own grow
+  page instead of `/`.
+
+---
+
 ## 2026-11-16 — every continuous-role chart on ECharts (ticket 03)
 
 ### D080: the option builder serves every continuous role; the band editor moved into the soil card

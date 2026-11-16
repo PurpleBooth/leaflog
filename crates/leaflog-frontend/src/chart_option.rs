@@ -1,20 +1,23 @@
-//! The `ECharts` option-builder seam (Light Cycle spec, tickets 02 and
-//! 03): pure functions from the grow history response to an `ECharts`
+//! The `ECharts` option-builder seam (Light Cycle spec, tickets 02–04):
+//! pure functions from the grow history response to an `ECharts`
 //! option JSON, unit-tested without a DOM. The wasm component passes
 //! the result to `echarts.setOption` via `serde-wasm-bindgen`;
-//! `ECharts` only draws — every axis, unit, and band decision lives
-//! here. The pH/EC scatter cards stay on the hand-rolled SVG until
-//! ticket 04, then this seam covers every chart.
+//! `ECharts` only draws — every axis, unit, colour, and band decision
+//! lives here, and this seam serves every chart in the app.
 
-use crate::api::GrowHistory;
+use crate::api::{ChartSeriesData, GrowHistory};
 
 /// The chart's colours, resolved from the app theme at runtime
-/// (probe `text-primary` / `text-base-content` / a 50 % faded variant)
-/// so both daisyUI themes render natively.
+/// (probe `text-primary` / `text-secondary` / `text-base-content` / a
+/// 50 % faded variant) so both daisyUI themes render natively.
 #[derive(Debug, Clone)]
 pub struct ChartLook {
-    /// The series line and band fill (`text-primary`).
+    /// The main series line, the band fill, and the pair input dots
+    /// (`text-primary`).
     pub accent: String,
+    /// The pair runoff dots' second colour (`text-secondary`), kept
+    /// distinct from the input series so the two are tellable apart.
+    pub compare: String,
     /// Axis labels and the axis name (`text-base-content`).
     pub text: String,
     /// Axis lines, ticks, and gridlines (a faded variant) — subtle,
@@ -22,16 +25,28 @@ pub struct ChartLook {
     pub muted: String,
 }
 
-/// How one role draws: its value-axis unit label and whether the
-/// series is a staircase.
+/// How one role draws its series.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SeriesKind {
+    /// A plain line through the readings.
+    Line,
+    /// A staircase: each value holds until the next reading arrives
+    /// (`step: "end"`). The binary light role.
+    StepLine,
+    /// Event dots: the input readings as dots plus the pair's runoff
+    /// compare series as a second dot colour. The pH/EC pair roles.
+    Scatter,
+}
+
+/// How one role draws: its value-axis unit label and series kind.
 #[derive(Debug, Clone, Copy)]
 pub struct ChartStyle {
     /// The value-axis name: the role's unit (`°C / °F`, `%`, `kPa`,
-    /// `ppm`) or the state pair for binary roles.
+    /// `ppm`, `µS/cm`), the dimensionless scale (`pH`), or the state
+    /// pair for binary roles.
     pub axis_name: &'static str,
-    /// Draw the series as a step line: each value holds until the next
-    /// reading arrives (`step: "end"`). Binary roles such as the light.
-    pub step: bool,
+    /// Which series shape the role draws with.
+    pub kind: SeriesKind,
 }
 
 /// The drawing style for one history role. Unknown roles fall back to
@@ -43,13 +58,19 @@ pub fn role_style(role: &str) -> ChartStyle {
         "vpd" => "kPa",
         "co2" => "ppm",
         "light" => "on / off",
+        // The pH scale is dimensionless; EC is canonical in µS/cm
+        // (spec §5.3; TDS stays derived and labelled elsewhere).
+        "ph" => "pH",
+        "ec" => "µS/cm",
         // humidity and soil_moisture (and anything new) read percent.
         _ => "%",
     };
-    ChartStyle {
-        axis_name,
-        step: role == "light",
-    }
+    let kind = match role {
+        "light" => SeriesKind::StepLine,
+        "ph" | "ec" => SeriesKind::Scatter,
+        _ => SeriesKind::Line,
+    };
+    ChartStyle { axis_name, kind }
 }
 
 /// The option for one history chart: a time axis spanning the whole
@@ -69,18 +90,11 @@ pub fn history_option(
     // zoom the axis in and fake density. An unparseable window bound
     // would be a backend contract break; the axis then auto-scales.
     let (x_min, x_max) = window_bounds(chart);
-    let mut series = serde_json::json!({
-        "type": "line",
-        "showSymbol": false,
-        "lineStyle": { "width": 2, "color": look.accent },
-        "data": series_ms_data(chart),
-        "markArea": band_mark_area(chart, &look.accent),
-    });
-    if style.step {
-        // "end": from each reading the line holds that value until the
-        // next reading's x, then steps — the old staircase semantics.
-        series["step"] = serde_json::json!("end");
-    }
+    let series = match style.kind {
+        SeriesKind::Scatter => scatter_series(chart, look),
+        SeriesKind::StepLine => vec![line_series(chart, look, true)],
+        SeriesKind::Line => vec![line_series(chart, look, false)],
+    };
     serde_json::json!({
         "animation": false,
         "grid": { "left": 8, "right": 16, "top": 28, "bottom": 8, "containLabel": true },
@@ -101,15 +115,72 @@ pub fn history_option(
             "splitLine": { "show": true, "lineStyle": { "color": look.muted } },
             "axisLabel": { "hideOverlap": true, "color": look.text },
         },
-        "series": [series],
+        "series": series,
     })
+}
+
+/// The main series as a line: width-2 accent stroke, the Target Band
+/// regions as `markArea`, and (stepped) the staircase semantics — each
+/// value holds until the next reading's x, then jumps.
+fn line_series(chart: &GrowHistory, look: &ChartLook, step: bool) -> serde_json::Value {
+    let mut series = serde_json::json!({
+        "type": "line",
+        "showSymbol": false,
+        "lineStyle": { "width": 2, "color": look.accent },
+        "data": series_ms_data(chart),
+        "markArea": band_mark_area(chart, &look.accent),
+    });
+    if step {
+        // "end": from each reading the line holds that value until the
+        // next reading's x, then steps — the old staircase semantics.
+        series["step"] = serde_json::json!("end");
+    }
+    series
+}
+
+/// The pair role's two dot series: the input readings in the accent
+/// colour and the runoff compare beside them in the distinct compare
+/// colour (the old `fill-primary` / `fill-secondary` pair). Named, so
+/// the hover tooltip tells the two apart.
+fn scatter_series(chart: &GrowHistory, look: &ChartLook) -> Vec<serde_json::Value> {
+    let compare_data = chart
+        .compare
+        .as_ref()
+        .map_or_else(Vec::new, compare_ms_data);
+    vec![
+        serde_json::json!({
+            "name": "Input",
+            "type": "scatter",
+            "symbolSize": 8,
+            "itemStyle": { "color": look.accent },
+            "data": series_ms_data(chart),
+            "markArea": band_mark_area(chart, &look.accent),
+        }),
+        serde_json::json!({
+            "name": "Runoff",
+            "type": "scatter",
+            "symbolSize": 8,
+            "itemStyle": { "color": look.compare },
+            "data": compare_data,
+        }),
+    ]
 }
 
 /// The series data as `[epoch ms, value]` pairs; points with
 /// unparseable timestamps drop out (the same rule the merge applies).
 fn series_ms_data(chart: &GrowHistory) -> Vec<(i64, f64)> {
-    chart
-        .series
+    points_ms_data(&chart.series)
+}
+
+/// The compare series' data as `[epoch ms, value]` pairs.
+fn compare_ms_data(series: &ChartSeriesData) -> Vec<(i64, f64)> {
+    points_ms_data(series)
+}
+
+/// Maps one series' points to `[epoch ms, value]` pairs; points with
+/// unparseable timestamps drop out.
+fn points_ms_data(series: &ChartSeriesData) -> Vec<(i64, f64)> {
+    series
         .points
         .iter()
         .filter_map(|point| {
@@ -120,9 +191,10 @@ fn series_ms_data(chart: &GrowHistory) -> Vec<(i64, f64)> {
         .collect()
 }
 
-/// The axis bounds: the series (and band) range padded 10 % — at
-/// least half a unit — so the line never touches the frame. The old
-/// SVG geometry used the same padding.
+/// The axis bounds: the series (and pair compare) plus band range
+/// padded 10 % — at least half a unit — so nothing touches the frame.
+/// The old SVG geometry used the same padding, and the compare series
+/// shares the scale (the runoff dots must never sit off-axis).
 fn padded_range(chart: &GrowHistory) -> (f64, f64) {
     let mut values: Vec<f64> = chart
         .series
@@ -130,6 +202,9 @@ fn padded_range(chart: &GrowHistory) -> (f64, f64) {
         .iter()
         .map(|point| point.value)
         .collect();
+    if let Some(compare) = &chart.compare {
+        values.extend(compare.points.iter().map(|point| point.value));
+    }
     for band in &chart.bands {
         values.push(band.min);
         values.push(band.max);
@@ -190,13 +265,14 @@ fn window_bounds(chart: &GrowHistory) -> (serde_json::Value, serde_json::Value) 
 
 #[cfg(test)]
 mod tests {
-    use super::{ChartLook, ChartStyle, history_option, role_style};
+    use super::{ChartLook, ChartStyle, SeriesKind, history_option, role_style};
     use crate::api::{BandSegmentData, ChartPointData, ChartSeriesData, GrowHistory};
 
     /// Fixed test colours (the fallbacks the component probes for).
     fn look() -> ChartLook {
         ChartLook {
             accent: "#2e7d4f".to_owned(),
+            compare: "#4c5f4e".to_owned(),
             text: "#1d2b1f".to_owned(),
             muted: "#1d2b1f80".to_owned(),
         }
@@ -475,13 +551,106 @@ mod tests {
     }
 
     #[test]
-    fn only_the_light_role_steps() {
-        assert!(!style("temperature").step);
-        assert!(!style("humidity").step);
-        assert!(!style("vpd").step);
-        assert!(!style("co2").step);
-        assert!(!style("soil_moisture").step);
-        assert!(style("light").step);
+    fn each_role_maps_to_its_drawing_kind() {
+        assert_eq!(style("temperature").kind, SeriesKind::Line);
+        assert_eq!(style("humidity").kind, SeriesKind::Line);
+        assert_eq!(style("vpd").kind, SeriesKind::Line);
+        assert_eq!(style("co2").kind, SeriesKind::Line);
+        assert_eq!(style("soil_moisture").kind, SeriesKind::Line);
+        assert_eq!(style("light").kind, SeriesKind::StepLine);
+        assert_eq!(style("ph").kind, SeriesKind::Scatter);
+        assert_eq!(style("ec").kind, SeriesKind::Scatter);
+    }
+
+    /// A pH pair sample: one input reading and one runoff reading in
+    /// the same window (the feed-entry detail fields).
+    fn pair_history() -> GrowHistory {
+        let mut chart = sample_for_role("ph");
+        chart.series.points = vec![ChartPointData {
+            at: "2026-11-16T00:10:00+00:00".to_owned(),
+            value: 6.2,
+            source: "ha".to_owned(),
+        }];
+        chart.compare = Some(ChartSeriesData {
+            from: "2026-11-16T00:00:00+00:00".to_owned(),
+            to: "2026-11-16T01:00:00+00:00".to_owned(),
+            points: vec![ChartPointData {
+                at: "2026-11-16T00:10:00+00:00".to_owned(),
+                value: 6.8,
+                source: "ha".to_owned(),
+            }],
+        });
+        chart
+    }
+
+    #[test]
+    fn the_pair_roles_draw_two_named_scatter_series_in_distinct_colours() {
+        for role in ["ph", "ec"] {
+            let option = history_option(&pair_history(), &look(), &style(role));
+            let input = &option["series"][0];
+            let runoff = &option["series"][1];
+            assert_eq!(input["type"], "scatter", "{role} input series is dots");
+            assert_eq!(input["name"], "Input");
+            assert_eq!(runoff["type"], "scatter", "{role} runoff series is dots");
+            assert_eq!(runoff["name"], "Runoff");
+            assert_eq!(
+                input["itemStyle"]["color"], "#2e7d4f",
+                "{role} input dots carry the accent"
+            );
+            assert_eq!(
+                runoff["itemStyle"]["color"], "#4c5f4e",
+                "{role} runoff dots carry the distinct compare colour"
+            );
+        }
+    }
+
+    #[test]
+    fn the_pair_scatter_data_are_epoch_ms_value_pairs() {
+        let option = history_option(&pair_history(), &look(), &style("ph"));
+        let input = &option["series"][0]["data"][0];
+        assert_eq!(
+            input[0].as_f64(),
+            Some(1_794_787_800_000.0),
+            "input reading, epoch ms"
+        );
+        assert_eq!(input[1].as_f64(), Some(6.2), "the input pH");
+        let runoff = &option["series"][1]["data"][0];
+        assert_eq!(runoff[0].as_f64(), Some(1_794_787_800_000.0));
+        assert_eq!(runoff[1].as_f64(), Some(6.8), "the runoff pH");
+    }
+
+    #[test]
+    fn runoff_values_join_the_value_axis_range() {
+        let option = history_option(&pair_history(), &look(), &style("ph"));
+        let y_max = option["yAxis"]["max"].as_f64().expect("explicit max");
+        let y_min = option["yAxis"]["min"].as_f64().expect("explicit min");
+        assert!(
+            y_max > 6.8,
+            "the axis must clear the runoff peak, not just the input: {y_max}"
+        );
+        assert!(
+            y_min < 6.2,
+            "the axis sits under the input reading: {y_min}"
+        );
+    }
+
+    #[test]
+    fn a_pair_without_runoff_still_draws_the_input_series() {
+        let mut alone = pair_history();
+        alone.compare = None;
+        let option = history_option(&alone, &look(), &style("ph"));
+        let runoff = option["series"][1]["data"].as_array().expect("runoff data");
+        assert!(runoff.is_empty(), "no runoff, no runoff dots");
+        let input = option["series"][0]["data"].as_array().expect("input data");
+        assert_eq!(input.len(), 1, "the input dots survive alone");
+    }
+
+    #[test]
+    fn each_pair_role_labels_its_axis_with_its_unit() {
+        assert_eq!(style("ph").axis_name, "pH", "pH is dimensionless");
+        assert_eq!(style("ec").axis_name, "µS/cm", "EC is canonical µS/cm");
+        let option = history_option(&pair_history(), &look(), &style("ec"));
+        assert_eq!(option["yAxis"]["name"], "µS/cm");
     }
 
     #[test]

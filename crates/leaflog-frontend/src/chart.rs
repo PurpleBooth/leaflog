@@ -1,16 +1,17 @@
-//! History charts (spec §3): a line over the shaded recommended-band
+//! History charts (spec §3): a series over the shaded recommended-band
 //! corridor, fed by the grow history endpoint, with rolling chart
-//! windows (24 h / 7 d / 30 d). The continuous-role cards (temperature,
-//! humidity, VPD, CO₂, light, soil moisture) render through `ECharts`
-//! (SVG renderer) via the option-builder seam. The pH/EC event dots
-//! stay on the hand-rolled SVG until ticket 04 swaps them over and
-//! deletes this module's last SVG code.
+//! windows (24 h / 7 d / 30 d). Every card — the continuous-role
+//! lines (temperature, humidity, VPD, CO₂, light, soil moisture) and
+//! the pH/EC pair scatters — renders through `ECharts` (SVG renderer)
+//! via the option-builder seam. The card-visibility rule: a role with
+//! no binding (or, for the pH/EC log-detail roles, no entries) renders
+//! no card at all; a dead binding is `bound: true`, so its card stays
+//! and the env dashboard's No-data banner names it.
 
 use crate::api;
 use crate::api::{GrowHistory, SoilBand};
 use crate::chart_option;
 use js_sys::{Function, Reflect};
-use leaflog_core::chart::parse_epoch;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::Serialize;
@@ -152,121 +153,76 @@ pub fn format_ec_us(value: f64) -> String {
     format!("{value:.0} µS/cm")
 }
 
-/// The SVG canvas width (the viewBox is fixed; the element scales).
-const WIDTH: f64 = 600.0;
-/// The SVG canvas height.
-const HEIGHT: f64 = 220.0;
-
 /// One windowed chart for one sensor role on the grow overview.
 /// `format_value` renders axis and tooltip text (per the HA unit
-/// system). `scatter` plots points instead of a line — the temporary
-/// hand-rolled path for the event series pH/EC (ticket 04 replaces it
-/// with an `ECharts` scatter); every other role draws through the
-/// `ECharts` option-builder seam. `no_data` is the explicit empty
-/// state: a sensor role says no sensor is bound, an event role says
-/// nothing was logged. `children` render inside the card under the
-/// chart (the soil card carries its band editor).
+/// system). Every role draws through the `ECharts` option-builder
+/// seam: lines for the continuous roles, the staircase for the light,
+/// and the pair scatter (input plus runoff) for pH/EC. The
+/// card-visibility rule: while the first response is in flight, or
+/// when it says the role is unbound (no sensor, or no pH/EC entries),
+/// the card renders nothing at all — the overview shows only what the
+/// grow has. A failed history fetch leaves the card hidden too (a
+/// missing chart is honest; the env dashboard still reports its own
+/// fetch failures). `children` render inside the card under the chart
+/// (the soil card carries its band editor).
 #[component]
 pub fn HistoryChart(
     grow_id: String,
     #[prop(default = "temperature")] role: &'static str,
     #[prop(default = "Temperature")] title: &'static str,
     format_value: fn(f64) -> String,
-    #[prop(default = false)] scatter: bool,
-    #[prop(default = "No sensor bound for this role.")] no_data: &'static str,
-    #[prop(optional)] children: Option<Children>,
+    #[prop(optional)] children: Option<ChildrenFn>,
 ) -> impl IntoView {
     let window = RwSignal::new("day".to_owned());
     let data = RwSignal::<Option<GrowHistory>>::new(None);
-    let failure = RwSignal::<Option<String>>::new(None);
+    // The visibility bit: the card mounts once `bound` flips true and
+    // unmounts if it ever flips false, without re-mounting on every
+    // in-card refetch (a window switch keeps the card in place).
+    let bound = Memo::new(move |_| data.get().is_some_and(|chart| chart.bound));
 
     Effect::new(move |_| {
         let id = grow_id.clone();
         let window_label = window.get();
         spawn_local(async move {
-            match api::get::<GrowHistory>(&format!(
+            if let Ok(value) = api::get::<GrowHistory>(&format!(
                 "api/grows/{id}/history?role={role}&window={window_label}"
             ))
             .await
             {
-                Ok(value) => {
-                    data.set(Some(value));
-                    failure.set(None);
-                }
-                Err(error) => failure.set(Some(error.message)),
+                data.set(Some(value));
             }
         });
     });
 
-    // The card's footer (the soil band editor) builds once; its own
-    // reactive signals stay live inside the static view slot.
-    let footer = children.map(|children| children());
-
     view! {
-        <div class="card bg-base-100 shadow-sm px-4 py-3 my-3">
-            <div class="flex flex-wrap items-baseline gap-2">
-                <h4 class="m-0">{title}</h4>
-                <WindowToggles window=window />
-                <Show
-                    when=move || data.get().is_some_and(|chart| chart.degraded)
-                    fallback=|| ()
-                >
-                    <span class="badge badge-warning badge-sm">"snapshot only"</span>
-                </Show>
-            </div>
-            {if scatter {
+        // The card-visibility gate is a reactive block, not `Show`: the
+        // card carries the children slot (the soil band editor), and a
+        // `Show` children closure cannot call a children builder while
+        // staying `Fn`. Returning `None` unmounts the card entirely.
+        {move || {
+            bound.get().then(|| {
+                // The card builds per visibility activation; the
+                // footer (the soil band editor) re-mounts with it
+                // and its own signals re-run.
+                let footer = children.clone().map(|build| build());
                 view! {
-                    <Show
-                        when=move || data.get().is_some()
-                        fallback=move || {
-                            view! {
-                                <p class="text-base-content/70 text-sm">
-                                    {move || failure.get().unwrap_or_else(|| "Loading…".to_owned())}
-                                </p>
-                            }
-                        }
-                    >
-                        {move || {
-                            let current = data.get()?;
-                            if current.bound {
-                                return Some(
-                                    // Temporary hand-rolled path (ticket 04).
-                                    view! { <ChartSvg chart=current format_value /> }
-                                        .into_any(),
-                                );
-                            }
-                            Some(
-                                view! {
-                                    <p class="text-base-content/70 text-sm">{no_data}</p>
-                                }
-                                    .into_any(),
-                            )
-                        }}
-                    </Show>
-                }
-                    .into_any()
-            } else {
-                view! {
-                    <Show
-                        when=move || data.get().is_some_and(|chart| chart.bound)
-                        fallback=move || {
-                            let message = failure.get().unwrap_or_else(|| {
-                                if data.get().is_some_and(|chart| !chart.bound) {
-                                    no_data.to_owned()
-                                } else {
-                                    "Loading…".to_owned()
-                                }
-                            });
-                            view! { <p class="text-base-content/70 text-sm">{message}</p> }
-                        }
-                    >
+                    <div class="card bg-base-100 shadow-sm px-4 py-3 my-3">
+                        <div class="flex flex-wrap items-baseline gap-2">
+                            <h4 class="m-0">{title}</h4>
+                            <WindowToggles window=window />
+                            <Show
+                                when=move || data.get().is_some_and(|chart| chart.degraded)
+                                fallback=|| ()
+                            >
+                                <span class="badge badge-warning badge-sm">"snapshot only"</span>
+                            </Show>
+                        </div>
                         <EChartsHistory data=data format_value=format_value />
-                    </Show>
+                        {footer}
+                    </div>
                 }
-                    .into_any()
-            }}
-            {footer}
-        </div>
+            })
+        }}
     }
 }
 
@@ -453,29 +409,47 @@ fn axis_label_closure(
     })
 }
 
-/// The hover tooltip closure: one line of `value — time (UTC)` with
-/// the unit. With the axis trigger `ECharts` passes one array of series
-/// entries; the series data are `[epoch ms, value]` pairs.
+/// The hover tooltip closure: one line of `value — time (UTC)` per
+/// series entry, joined with line breaks. With the axis trigger
+/// `ECharts` passes an array of series entries; the series data are
+/// `[epoch ms, value]` pairs. Named entries (the pair scatter's input
+/// and runoff) get a `name:` prefix; unnamed single-series charts keep
+/// the plain `value — time` line they always showed.
 fn tooltip_closure(
     format_value: fn(f64) -> String,
 ) -> Closure<dyn Fn(JsValue, JsValue, JsValue) -> JsValue> {
     Closure::new(
         move |params: JsValue, _ticket: JsValue, _callback: JsValue| {
-            let text = params
-                .dyn_into::<js_sys::Array>()
-                .ok()
-                .map(|entries| entries.get(0))
-                .and_then(|first| Reflect::get(&first, &JsValue::from_str("value")).ok())
-                .and_then(|value| value.dyn_into::<js_sys::Array>().ok())
-                .map(|pair| {
-                    let at = pair.get(0).as_f64().unwrap_or(0.0);
-                    let reading = pair.get(1).as_f64().unwrap_or(0.0);
-                    format!("{} — {}", format_value(reading), utc_minutes(at))
-                })
-                .unwrap_or_default();
-            JsValue::from_str(&text)
+            let mut lines: Vec<String> = Vec::new();
+            if let Ok(entries) = params.dyn_into::<js_sys::Array>() {
+                entries.for_each(&mut |entry: JsValue, _index, _array| {
+                    if let Some(line) = tooltip_line(&entry, format_value) {
+                        lines.push(line);
+                    }
+                });
+            }
+            JsValue::from_str(&lines.join("<br/>"))
         },
     )
+}
+
+/// One tooltip line for one series entry: `name: value — time` when
+/// the series carries a name, `value — time` otherwise. Entries
+/// without a usable `[epoch ms, value]` pair drop out.
+fn tooltip_line(entry: &JsValue, format_value: fn(f64) -> String) -> Option<String> {
+    let value = Reflect::get(entry, &JsValue::from_str("value")).ok()?;
+    let pair = value.dyn_into::<js_sys::Array>().ok()?;
+    let at = pair.get(0).as_f64().unwrap_or(0.0);
+    let reading = pair.get(1).as_f64().unwrap_or(0.0);
+    let body = format!("{} — {}", format_value(reading), utc_minutes(at));
+    let name = Reflect::get(entry, &JsValue::from_str("seriesName"))
+        .ok()
+        .and_then(|name| name.as_string())
+        .filter(|name| !name.is_empty());
+    Some(match name {
+        Some(name) => format!("{name}: {body}"),
+        None => body,
+    })
 }
 
 /// Formats an epoch-ms tooltip timestamp: `2026-11-16 14:03 UTC`.
@@ -496,13 +470,18 @@ fn utc_minutes(epoch_ms: f64) -> String {
 fn theme_look() -> chart_option::ChartLook {
     chart_option::ChartLook {
         accent: probe_color("text-primary").unwrap_or_else(|| "#2e7d4f".to_owned()),
+        compare: probe_color("text-secondary").unwrap_or_else(|| "#4c5f4e".to_owned()),
         text: probe_color("text-base-content").unwrap_or_else(|| "#1d2b1f".to_owned()),
         muted: probe_color("text-base-content/50").unwrap_or_else(|| "#1d2b1f80".to_owned()),
     }
 }
 
 /// Resolves one Tailwind colour class to its computed CSS colour by
-/// mounting a throwaway probe span; `None` outside a browser context.
+/// mounting a throwaway probe span; `None` outside a browser context
+/// or while the stylesheet has not applied yet (the unstyled initial
+/// black is never a leaflog theme colour, so it means "styles not
+/// ready" — the chart then draws with the light-palette fallbacks
+/// instead of baking black chrome into the option).
 fn probe_color(class: &str) -> Option<String> {
     let window = web_sys::window()?;
     let document = window.document()?;
@@ -515,117 +494,7 @@ fn probe_color(class: &str) -> Option<String> {
         .ok()
         .flatten()
         .and_then(|style| style.get_property_value("color").ok())
-        .filter(|colour| !colour.is_empty());
+        .filter(|colour| !colour.is_empty() && colour != "rgb(0, 0, 0)");
     let _ = parent.remove_child(&probe);
     colour
-}
-
-/// TEMPORARY, until ticket 04 swaps the pH/EC cards to an `ECharts`
-/// scatter and deletes this component (coordinator boundary note on
-/// ticket 03): the hand-rolled event-dot plot. The pair's input dots
-/// overlay its runoff dots in a second colour, with the two corner
-/// labels the old charts carried.
-#[component]
-fn ChartSvg(chart: GrowHistory, format_value: fn(f64) -> String) -> impl IntoView {
-    let from = parse_epoch(&chart.series.from).unwrap_or(0);
-    let to = parse_epoch(&chart.series.to).unwrap_or(from + 1);
-    let points: Vec<(i64, f64)> = chart
-        .series
-        .points
-        .iter()
-        .filter_map(|point| parse_epoch(&point.at).map(|at| (at, point.value)))
-        .collect();
-    let compare: Vec<(i64, f64)> = chart
-        .compare
-        .as_ref()
-        .map(|series| {
-            series
-                .points
-                .iter()
-                .filter_map(|point| parse_epoch(&point.at).map(|at| (at, point.value)))
-                .collect()
-        })
-        .unwrap_or_default();
-    // The compare series shares the scale, so its values join the
-    // range the axis is computed from.
-    let mut values: Vec<f64> = points.iter().map(|(_, value)| *value).collect();
-    values.extend(compare.iter().map(|(_, value)| *value));
-    let (y_min, y_max) = padded_value_range(&values);
-    let y_max_label = format_value(y_max);
-    let y_min_label = format_value(y_min);
-    let label = format!("{} history", chart.role);
-    let y_min_y = format!("{:.1}", HEIGHT - 6.0);
-
-    // Dots map their epochs and values through the same scale. Epoch
-    // seconds stay far below f64's 52-bit mantissa.
-    #[allow(clippy::cast_precision_loss)]
-    let x_of = |at: i64| WIDTH * (at - from) as f64 / (to - from).max(1) as f64;
-    #[allow(clippy::cast_precision_loss)]
-    let y_of = |value: f64| HEIGHT * (1.0 - (value - y_min) / (y_max - y_min).max(0.001));
-    let dot = |(at, value): (i64, f64), class: &'static str| {
-        view! {
-            <circle
-                cx=format!("{:.1}", x_of(at))
-                cy=format!("{:.1}", y_of(value))
-                r="3.5"
-                class=class
-            />
-        }
-    };
-    let main_dots = points
-        .iter()
-        .map(|&point| dot(point, "fill-primary"))
-        .collect::<Vec<_>>();
-    let compare_dots = compare
-        .iter()
-        .map(|&point| dot(point, "fill-secondary"))
-        .collect::<Vec<_>>();
-
-    view! {
-        <svg viewBox=format!("0 0 {WIDTH} {HEIGHT}") class="w-full" role="img" aria-label=label>
-            {main_dots}
-            {compare_dots}
-            <text x="4" y="14" class="fill-base-content/60">{y_max_label}</text>
-            <text x="4" y=y_min_y class="fill-base-content/60">{y_min_label}</text>
-        </svg>
-    }
-}
-
-/// The padded value range for the dot scale: 10 % padding, at least
-/// half a unit, so dots never sit on the frame. An empty (or
-/// non-finite) series falls back to 0..1.
-#[must_use]
-fn padded_value_range(values: &[f64]) -> (f64, f64) {
-    let low = values.iter().copied().fold(f64::INFINITY, f64::min);
-    let high = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    let (low, high) = if low.is_finite() && high.is_finite() {
-        (low, high)
-    } else {
-        (0.0, 1.0)
-    };
-    let padding = ((high - low) * 0.1).max(0.5);
-    (low - padding, high + padding)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::padded_value_range;
-
-    #[test]
-    fn the_value_range_pads_past_both_ends() {
-        let (low, high) = padded_value_range(&[18.0, 22.0]);
-        assert!(low < 18.0, "padded below the low reading: {low}");
-        assert!(high > 22.0, "padded above the high reading: {high}");
-    }
-
-    #[test]
-    fn a_flat_or_empty_series_still_yields_a_usable_range() {
-        let (low, high) = padded_value_range(&[21.0, 21.0]);
-        assert!(low < high, "a flat series still gets room: {low}..{high}");
-        let (empty_low, empty_high) = padded_value_range(&[]);
-        assert!(
-            empty_low < empty_high,
-            "an empty series falls back to a default: {empty_low}..{empty_high}"
-        );
-    }
 }
