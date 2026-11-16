@@ -891,6 +891,105 @@ async fn lamp_advisor_uses_the_grow_space_light() {
     );
 }
 
+/// Logs one note entry carrying `tags` and returns the lamp advice's
+/// dim recommendation.
+async fn lamp_dim_pct_with_tags(
+    client: &reqwest::Client,
+    base: &str,
+    name: &str,
+    started_on: &str,
+    tags: &[&str],
+) -> Option<u64> {
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&json!({
+            "name": name,
+            "strain_id": null,
+            "grow_space_id": null,
+            "substrate": "soil",
+            "started_on": started_on,
+            "status": "active",
+            "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let grow_id = grow["id"].as_str().unwrap();
+    client
+        .post(format!("{base}/api/grows/{grow_id}/actions"))
+        .json(&json!({
+            "plant_ids": [],
+            "occurred_at": format!("{started_on}T12:00:00Z"),
+            "action_type": "note",
+            "details": {},
+            "notes": null,
+            "appearance_tags": tags,
+        }))
+        .send()
+        .await
+        .unwrap();
+    let advice: Value = client
+        .get(format!("{base}/api/grows/{grow_id}/lamp"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    advice["dim_pct"].as_u64()
+}
+
+#[tokio::test]
+async fn lamp_advisor_reacts_to_merged_and_old_stress_tags() {
+    let base = spawn_api().await;
+    let client = reqwest::Client::new();
+    let today = time::OffsetDateTime::now_utc().date();
+    let started_on = format!(
+        "{:04}-{:02}-{:02}",
+        today.year(),
+        u8::from(today.month()),
+        today.day()
+    );
+    let dim = |name: &'static str, tags: &'static [&'static str]| {
+        lamp_dim_pct_with_tags(&client, &base, name, &started_on, tags)
+    };
+
+    // The default fixture (330 W, dimmable) has no dim advice without
+    // a light-stress tag; stretch alone changes height, not dimming.
+    assert_eq!(dim("No tags", &[]).await, None, "no tag → no dim advice");
+    assert_eq!(
+        dim("Stretch only", &["stretchy"]).await,
+        None,
+        "stretch raises, does not dim"
+    );
+
+    // The merged vocabulary must advise exactly like the old spellings
+    // that stored entries may still carry.
+    assert_eq!(
+        dim("Canoeing grow", &["canoeing"]).await,
+        Some(70),
+        "merged canoeing tag dims to 70%"
+    );
+    assert_eq!(
+        dim("Taco grow", &["taco"]).await,
+        Some(70),
+        "old taco tag still dims to 70%"
+    );
+    assert_eq!(
+        dim("Canoe grow", &["canoe"]).await,
+        Some(70),
+        "old canoe tag still dims to 70%"
+    );
+    assert_eq!(
+        dim("Bleaching grow", &["bleaching"]).await,
+        Some(70),
+        "bleaching keeps dimming to 70%"
+    );
+}
+
 #[tokio::test]
 async fn bundled_records_are_read_only_and_clone_to_user_entries() {
     let db = Db::open_in_memory().unwrap();

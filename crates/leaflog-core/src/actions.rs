@@ -1,6 +1,8 @@
 //! Action log domain types (spec §4.2): the quick-add chips, their
-//! structured fields, appearance tags, and the M3 phase/day derivation
-//! (replaced by the forecast engine in M5).
+//! structured fields, and the M3 phase/day derivation.
+//!
+//! The M3 derivation is replaced by the forecast engine (M5). The
+//! appearance vocabulary lives in [`crate::appearance`].
 
 use serde::{Deserialize, Serialize};
 
@@ -161,26 +163,6 @@ pub struct ActionDetails {
     /// The phase a [`ActionType::PhaseChange`] moved the grow to.
     pub target_phase: Option<Phase>,
 }
-
-/// Appearance tags commonly used on log entries (spec §4.2). Free-form
-/// tags are allowed; these get chips and translations.
-pub const APPEARANCE_TAGS: &[&str] = &[
-    "healthy",
-    "dark_green",
-    "light_green",
-    "yellowing",
-    "purple_stems",
-    "droop",
-    "praying",
-    "taco",
-    "canoe",
-    "bleaching",
-    "tip_burn",
-    "fox_tailing",
-    "nutrient_burn",
-    "stretchy",
-    "short",
-];
 
 /// Derives the phase label for an action on `grow_day`.
 ///

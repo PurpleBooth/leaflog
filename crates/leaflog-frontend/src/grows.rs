@@ -667,7 +667,8 @@ pub fn GrowDetail() -> impl IntoView {
                                                             .appearance_tags
                                                             .iter()
                                                             .map(|tag| {
-                                                                view! { <span class="badge badge-sm badge-ghost">{tag.clone()}</span> }
+                                                                let label = leaflog_core::appearance::display_label(tag).into_owned();
+                                                                view! { <span class="badge badge-sm badge-ghost">{label}</span> }
                                                             })
                                                             .collect::<Vec<_>>()}
                                                     </p>
@@ -966,25 +967,52 @@ fn ActionForm(draft: RwSignal<ActionInput>, kind: RwSignal<Option<ActionType>>) 
         </div>
         <fieldset class="fieldset mt-3">
             <legend class="fieldset-legend">"Appearance"</legend>
-            {leaflog_core::actions::APPEARANCE_TAGS
-                .iter()
-                .map(|tag| {
+            {leaflog_core::appearance::Category::all()
+                .into_iter()
+                .map(|category| {
+                    let traits = leaflog_core::appearance::TRAITS
+                        .iter()
+                        .filter(|entry| entry.category == category);
                     view! {
-                        <label class="flex items-center gap-2 cursor-pointer">
-                            <input type="checkbox" class="checkbox checkbox-sm"
-                                on:change=move |ev| {
-                                    let tag = (*tag).to_owned();
-                                    let checked = event_target_checked(&ev);
-                                    draft.update(|d| {
-                                        d.appearance_tags.retain(|existing| existing != &tag);
-                                        if checked {
-                                            d.appearance_tags.push(tag);
+                        <div class="mt-2">
+                            <p class="text-base-content/60 text-xs uppercase tracking-wide">
+                                {category.label()}
+                            </p>
+                            <div class="flex flex-wrap gap-x-4 gap-y-1 mt-1">
+                                {traits
+                                    .into_iter()
+                                    .map(|entry| {
+                                        let entry = *entry;
+                                        view! {
+                                            <label
+                                                class="flex items-center gap-2 cursor-pointer"
+                                                title=entry.meaning
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    class="checkbox checkbox-sm"
+                                                    on:change=move |ev| {
+                                                        let tag = entry.tag.to_owned();
+                                                        let checked =
+                                                            event_target_checked(&ev);
+                                                        draft.update(|d| {
+                                                            d.appearance_tags
+                                                                .retain(|existing| {
+                                                                    existing != &tag
+                                                                });
+                                                            if checked {
+                                                                d.appearance_tags.push(tag);
+                                                            }
+                                                        });
+                                                    }
+                                                />
+                                                <span class="text-sm">{entry.label}</span>
+                                            </label>
                                         }
-                                    });
-                                }
-                            />
-                            <span class="text-sm">{*tag}</span>
-                        </label>
+                                    })
+                                    .collect::<Vec<_>>()}
+                            </div>
+                        </div>
                     }
                 })
                 .collect::<Vec<_>>()}

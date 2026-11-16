@@ -306,7 +306,8 @@ pub struct LampInput {
     pub light_tolerance: Tolerance,
     /// Whether stretch symptoms are logged (raise the lamp).
     pub stretch_logged: bool,
-    /// Whether bleaching/taco/crispy tags are logged (dim or raise).
+    /// Whether light-stress tags (bleaching, canoeing) are logged
+    /// (dim or raise).
     pub stress_tags_logged: bool,
 }
 
@@ -383,15 +384,15 @@ pub fn advise_lamp(input: &LampInput) -> LampAdvice {
         why.push_str("Stretch logged: raise 2–4 in as plants grow. ");
     }
 
-    // Stress tags (bleaching/taco/crispy): +2–4 in or dim to 70–80%.
+    // Light-stress tags (bleaching/canoeing): +2–4 in or dim to 70–80%.
     if input.stress_tags_logged {
         if input.dimmable {
             dim_pct = Some(70);
-            why.push_str("Bleaching/taco/crispy: dim to ~70–80% and re-check after a week. ");
+            why.push_str("Bleaching or canoeing: dim to ~70–80% and re-check after a week. ");
         } else {
             height.min_in += 2.0;
             height.max_in += 4.0;
-            why.push_str("Bleaching/taco/crispy: raise 2–4 in and re-check after a week. ");
+            why.push_str("Bleaching or canoeing: raise 2–4 in and re-check after a week. ");
         }
     }
 

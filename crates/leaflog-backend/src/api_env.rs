@@ -210,16 +210,22 @@ async fn grow_lamp(
                 .transpose()?
                 .map_or((330, true), |equipment| space_light(&equipment));
 
-            // Stretch/stress from recent appearance tags.
+            // Stretch/stress from recent appearance tags. The matchers
+            // live in core (leaflog_core::appearance) so the merged
+            // vocabulary and the old spellings in stored entries are
+            // treated alike.
             let recent = store::actions::list(conn, &id, None, 30)?;
-            let stretch = recent
-                .iter()
-                .any(|entry| entry.appearance_tags.iter().any(|t| t == "stretchy"));
+            let stretch = recent.iter().any(|entry| {
+                entry
+                    .appearance_tags
+                    .iter()
+                    .any(|t| leaflog_core::appearance::is_stretch_tag(t))
+            });
             let stress = recent.iter().any(|entry| {
                 entry
                     .appearance_tags
                     .iter()
-                    .any(|t| t == "bleaching" || t == "taco")
+                    .any(|t| leaflog_core::appearance::is_light_stress_tag(t))
             });
 
             let input = LampInput {
