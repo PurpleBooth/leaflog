@@ -66,6 +66,29 @@ there is no catalog to join yet. V14 as shipped only *adds* the
 nullable columns — the label/photoperiod backfill from the strain
 links stays in the later drop migration, exactly as D075 describes.
 
+### D077: grow-sourced engine defaults — the auto total window, the watt conversion, the type relocation
+
+Ticket 02 re-sources the forecast, feed-fit, threshold shifts, lamp
+advisor and phase picker from the grow (D075). Three shapes it
+settles. First, the auto default: the SPEC's autoflower window
+(~9–11 weeks from seed, §4.5) was previously only reachable through a
+strain record; a strain-less auto actually finished at flip + default
+flower days (~day 94). The grow's toggle now carries the default
+directly: `forecast::AUTO_TOTAL_DAYS = (63, 77)` from seed, anchored
+on `forecast::AUTO_FLIP_DAY = 28`, with `input_for` deriving the
+auto's flower window as the total minus the age flip — so a default
+auto's forecast (harvest day 70, band 63–77) finally matches the
+documented default. Second, the watt conversion the D076 note
+promised: `env::advisor_watts` maps the grow's `Option<f64>
+real_watts` to the advisor's whole-watt `u32` — `None` falls back to
+the D021 330 W fixture (`env::DEFAULT_FIXTURE_WATTS`), a recorded
+value rounds to the nearest watt and never lands below 1. Third,
+`PhotoperiodType` and `Tolerance` move from `strain.rs` to
+`grows.rs` — grow attributes per the glossary — with `strain.rs`
+re-exporting them until ticket 05 deletes the catalogue, so
+recommendation modules no longer name the strain module at all.
+The advisor's caution text says "plant", not "strain", to match.
+
 ---
 
 ## 2026-11-16 — grow overview redesign (D073 follow-up)
