@@ -318,3 +318,153 @@ async fn reject(client: &reqwest::Client, url: &str, body: &Value) -> (u16, Valu
     let status = response.status().as_u16();
     (status, response.json().await.unwrap_or(Value::Null))
 }
+
+// --- Coach light state (ticket 08) ---
+
+/// The VPD tip's title out of a coach response.
+fn vpd_tip(coach: &Value) -> String {
+    coach["tips"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|tip| tip["title"].as_str().unwrap().to_owned())
+        .find(|title| title.contains("Keep VPD"))
+        .expect("the coach must carry the VPD tip")
+}
+
+/// `HH:MM` in the canonical zone (UTC in this suite: the offline
+/// bridge never learns a timezone and no display one is set).
+fn hhmm(moment: time::OffsetDateTime) -> String {
+    format!("{:02}:{:02}", moment.hour(), moment.minute())
+}
+
+/// Without a bound light entity the coach evaluates the grow's Light
+/// Cycle for "now": a cycle switched on ten minutes ago (one hour on,
+/// every lit phase) reads as lights on; rewinding it two hours reads
+/// as lights off with the researched night wording (D085).
+#[tokio::test]
+async fn coach_asks_the_light_cycle_when_nothing_is_bound() {
+    let base = spawn_memory().await;
+    let client = reqwest::Client::new();
+    let grow_id = create_grow(&base).await;
+    let now = time::OffsetDateTime::now_utc();
+    let hours = json!({ "germination": 1, "seedling": 1, "vegetative": 1, "flower": 1 });
+
+    client
+        .put(format!("{base}/api/grows/{grow_id}/light-cycle"))
+        .json(&json!({
+            "lights_on": hhmm(now - time::Duration::minutes(10)),
+            "hours_on": hours,
+        }))
+        .send()
+        .await
+        .unwrap();
+    let coach: Value = client
+        .get(format!("{base}/api/grows/{grow_id}/coach"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(
+        vpd_tip(&coach).contains("(lights on)"),
+        "an on-period covering now must read as lit, got {:?}",
+        vpd_tip(&coach)
+    );
+
+    // Same grow, cycle wound back two hours: dark for the last hour.
+    client
+        .put(format!("{base}/api/grows/{grow_id}/light-cycle"))
+        .json(&json!({
+            "lights_on": hhmm(now - time::Duration::hours(2)),
+            "hours_on": hours,
+        }))
+        .send()
+        .await
+        .unwrap();
+    let coach: Value = client
+        .get(format!("{base}/api/grows/{grow_id}/coach"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let tip = vpd_tip(&coach);
+    assert!(
+        tip.contains("(lights off: keep close to daytime; watch the RH spike)"),
+        "an ended on-period must read as dark, got {tip:?}"
+    );
+    assert!(!tip.contains("run higher"));
+}
+
+/// A bound light entity whose live state is unknown (the bridge is
+/// offline here) falls back to the newest auto-captured snapshot —
+/// which also beats a schedule that would say otherwise (D085).
+#[tokio::test]
+async fn coach_reads_the_newest_snapshot_when_the_live_map_is_empty() {
+    let db = Db::open_in_memory().unwrap();
+    let base = spawn_with_db(
+        db.clone(),
+        std::env::temp_dir().join(format!("coach-{}", leaflog_backend::db::new_id())),
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let grow_id = create_grow(&base).await;
+
+    client
+        .put(format!("{base}/api/grows/{grow_id}/bindings"))
+        .json(&json!({ "bindings": { "light": "light.grow_led" } }))
+        .send()
+        .await
+        .unwrap();
+    // The cycle would keep the lights on all day — the snapshot wins.
+    client
+        .put(format!("{base}/api/grows/{grow_id}/light-cycle"))
+        .json(&json!({
+            "lights_on": "00:00",
+            "hours_on": { "germination": 24, "seedling": 24, "vegetative": 24, "flower": 24 },
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    // An action to hang the snapshot off, then the snapshot itself.
+    let action: Value = client
+        .post(format!("{base}/api/grows/{grow_id}/actions"))
+        .json(&json!({
+            "plant_ids": [],
+            "occurred_at": leaflog_backend::db::now_rfc3339(),
+            "action_type": "water",
+            "details": {},
+            "notes": null,
+            "appearance_tags": [],
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let action_id = action["id"].as_str().unwrap().to_owned();
+    db.with(move |conn| {
+        store::sensors::snapshot(conn, &action_id, "light", "light.grow_led", "off")
+    })
+    .await
+    .unwrap();
+
+    let coach: Value = client
+        .get(format!("{base}/api/grows/{grow_id}/coach"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let tip = vpd_tip(&coach);
+    assert!(
+        tip.contains("(lights off: keep close to daytime; watch the RH spike)"),
+        "the newest snapshot's off state must win, got {tip:?}"
+    );
+}
