@@ -23,8 +23,20 @@ The rolling time span a history chart covers, ending now; the toggles read 24h /
 _Avoid_: Day, Week, Month (as toggle captions), period
 
 **Light Cycle**:
-A grow's daily lights-on local time plus hours-on per lit phase, nullable with sourced preset defaults (photoperiod 18/6 veg and 12/12 flower; autoflowers long days throughout) and reset-to-default. Charts use it for day/night bands when no light entity is bound.
+A grow's daily lights-on local time plus hours-on per lit phase. Unset parts fall back to sourced preset defaults (photoperiod 18/6 veg and 12/12 flower; autoflowers long days throughout), and reset-to-default restores those defaults. Charts and the phase coach use the cycle for the day/night split when no light entity is bound.
 _Avoid_: Light schedule setting, lights config
+
+**Lights-On Period**:
+The stretch of a Light Cycle day when the grow lights are on: from the daily lights-on time through lights-on time plus the phase's hours-on. It can run past midnight; the Light Cycle day splits at the lights-on clock time, not at 00:00. Day targets (the day range) apply during it.
+_Avoid_: Day (alone), photoperiod (a strain trait), on time
+
+**Lights-Off Period**:
+The rest of a Light Cycle day after the Lights-On Period: the dark hours. Night targets (the night range) apply during it.
+_Avoid_: Night (alone), dark period, downtime
+
+**Target Band**:
+The recommended range shaded behind a history chart's readings. It steps between the phase's day range (Lights-On Period targets) and night range (Lights-Off Period targets); phases without grow lights keep one range.
+_Avoid_: Corridor, recommended range, band (alone)
 
 ### Grow lifecycle
 

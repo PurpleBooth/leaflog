@@ -6,6 +6,80 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-17 — the coach sees the real light state; the spec closes out (ticket 08)
+
+### D085: the coach resolves the light state live map → snapshot → Light Cycle
+
+`grow_coach` no longer hardcodes `light_on = true`. At call time it resolves:
+
+1. **The bound light entity's latest known state.** The live entity map first —
+   it is the WebSocket subscription's current snapshot and costs one in-memory
+   read. When the map has nothing (HA unreachable, entity not yet subscribed),
+   the newest auto-captured `light` snapshot row speaks.
+2. **The grow's Light Cycle, evaluated for "now".** The same expansion the bands
+   use, through the new core point query `schedule_light_on_at`: expand a window
+   straddling the instant, read off the covering interval. Interval ends are
+   exclusive, so an instant exactly at lights-off is already dark. This is also
+   the whole answer when nothing is bound, and the fallback for a bound entity
+   with no known state.
+3. **No source at all keeps the lights-on assumption** — the corridor's
+   convention for an unknown state (D083), and the only reading the unlit
+   phases admit.
+
+The auto-logged `lights` entries were considered as a source and rejected.
+Their state lives in free-text notes ("auto: light on"), not structured data;
+parsing notes would freeze the wording for users. The live map plus snapshots
+cover the realistic cases.
+
+The night VPD tip now reads "lights off: keep close to daytime; watch the RH
+spike". The old "(lights off: run higher)" contradicted the research: measured
+VPD falls on its own as the room cools (research caveat C2; Pulse Grow and
+Black Dog LED night sections). The tip keeps the day band's numbers on
+purpose — night guidance is "hold near the day band" — and the RH spike stays
+the watch item. Core tests pin the tip selection by state.
+
+Supporting fix in `mock-ha`: the session doc claimed `toggle_light` "forces a
+state-changed push on the next tick", but `tick_changes` never included the
+light. The flip never reached subscribers. The session now tracks the light
+state it has pushed and includes the entity only on an actual change — HA
+pushes deltas, and re-sending an unchanged binary state every 2 s would trip
+the auto-log into writing a `lights` entry per tick.
+
+### D086: the Light Cycle spec closes out — obligations verified, glossary aligned
+
+Closeout state of the "Light Cycle stepped bands and ECharts chart overhaul"
+spec:
+
+- SPEC §4.9 describes the implemented precedence: lights-on and lights-off
+  targets exist per phase, the bound light entity's history wins, the Light
+  Cycle fills the gaps, neither source keeps a single band, and the coach
+  resolves the same way. The phantom `preset_env` tables in SPEC §8 stay,
+  deliberately — separate cleanup, out of scope.
+- GLOSSARY.md coherence pass: added the missing agreed terms Lights-On Period,
+  Lights-Off Period and Target Band. The Light Cycle entry lost its
+  storage-speak ("nullable"). No duplicates, no drift, definitions stay
+  implementation-free.
+- Obligations discharged: the AGENTS.md architecture line names npm + esbuild
+  for the chart bundle (D077); `docs/adr/0001-echarts-rendering.md` exists;
+  the decisions doc carries the night leaf offset (D075), the VPD clamp
+  (D076), the ECharts tooling (D077), the Light Cycle model (D078), the band
+  precedence and corridors (D082–D083), and everything since.
+
+Open ideas, none blocking:
+
+- **Value-axis tick labels in the HA unit system.** The temperature axis
+  renders "20.0 °C / 68.0 °F" per tick (ticket 02 called it cluttered).
+  Per-system ticks need plumbing that does not exist yet: nothing exposes the
+  HA unit system to the frontend (the bridge caches only the config
+  timezone), and the card's formatter is a plain `fn(f64) -> String`, not a
+  unit-aware closure. Judged more feature than polish, so skipped. The axis
+  name already declares both units, and the tooltip keeps dual-unit text.
+- **Alert evaluation against night bands** (research caveat C3) and
+  **suspending germination-dome VPD band checks** (C4) — future work, as the
+  spec's out-of-scope list records.
+
+---
+
 ## 2026-11-17 — the Target Bands step between day and night (ticket 07)
 
 ### D082: the light-state timeline wins by source — sensor staircase first, schedule fills the gaps
