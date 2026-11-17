@@ -264,8 +264,9 @@ async fn bindings_put_while_connected_resubscribes_and_lands_the_states() {
         .await
         .unwrap();
 
-    // The resubscribe reconnects with one backoff step; poll like the
-    // callers of the live map (env snapshot, auto-capture) do.
+    // The resubscribe reconnects without a failure backoff (HA is
+    // healthy); poll like the callers of the live map (env snapshot,
+    // auto-capture) do.
     for _ in 0..40 {
         let live = bridge.live_now();
         if live.entities.contains_key("sensor.grow_temperature")

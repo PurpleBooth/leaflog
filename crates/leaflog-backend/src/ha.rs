@@ -327,10 +327,16 @@ async fn socket_task(
         )
         .await
         {
-            SocketOutcome::Restart(next_tracked) => {
+            SocketOutcome::Retry(next_tracked) => {
                 tracked = next_tracked;
                 attempt = attempt.saturating_add(1);
                 tokio::time::sleep(backoff_for(attempt)).await;
+            }
+            SocketOutcome::Resubscribe(next_tracked) => {
+                tracked = next_tracked;
+                // The connection authenticated and streamed — HA is
+                // reachable, so the failure backoff starts over.
+                attempt = 0;
             }
         }
     }
@@ -363,10 +369,15 @@ async fn refresh_timezone(
     }
 }
 
-/// Why the socket run ended (there is only one reason: try again).
+/// Why the socket run ended: retry with backoff, or resubscribe now.
 enum SocketOutcome {
-    /// Reconnect, tracking this entity set.
-    Restart(Vec<String>),
+    /// The connection failed (dial, auth, subscribe, stream error):
+    /// reconnect with failure backoff, tracking this entity set.
+    Retry(Vec<String>),
+    /// The bound-entity set changed on a live connection:
+    /// resubscribe immediately — HA is healthy, so no backoff, and a
+    /// connection that got this far resets the failure backoff.
+    Resubscribe(Vec<String>),
 }
 
 /// One connection lifecycle: WS handshake → `auth` →
@@ -384,21 +395,26 @@ async fn run_socket(
     let mut tracked = tracked.to_vec();
     let stream = tokio_tungstenite::connect_async(url).await;
     let Ok((mut socket, _response)) = stream else {
-        return SocketOutcome::Restart(tracked);
+        return SocketOutcome::Retry(tracked);
     };
 
     // Expect auth_required, send the token, expect auth_ok.
     if !auth_handshake(&mut socket, token).await {
-        return SocketOutcome::Restart(tracked);
+        return SocketOutcome::Retry(tracked);
     }
     let mut next_id = 1_u64;
     if !subscribe(&mut socket, &tracked, &mut next_id).await {
-        return SocketOutcome::Restart(tracked);
+        return SocketOutcome::Retry(tracked);
     }
 
     // Connected: seed from REST states so the UI is not blind until the
     // first event, then mark online.
     live_tx.send_modify(|data| data.connected = true);
+
+    // A binding-set change on this live connection exits the stream
+    // loop with a resubscribe (no failure backoff); every other break
+    // is a connection failure and retries with backoff.
+    let mut outcome = SocketOutcome::Retry(tracked.clone());
 
     let mut heartbeat = tokio::time::interval(Duration::from_secs(30));
     heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -423,6 +439,10 @@ async fn run_socket(
                     tracked = entities;
                     if changed {
                         // Cleanest resubscribe: a fresh connection.
+                        // HA is healthy — this is not a failure, so
+                        // the reconnect skips the backoff and the
+                        // failure counter resets.
+                        outcome = SocketOutcome::Resubscribe(tracked.clone());
                         break;
                     }
                 }
@@ -459,7 +479,7 @@ async fn run_socket(
         data.connected = false;
         data.entities.clear();
     });
-    SocketOutcome::Restart(tracked)
+    outcome
 }
 
 /// The HA WebSocket auth handshake.
