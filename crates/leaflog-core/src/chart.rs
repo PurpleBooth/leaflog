@@ -335,13 +335,13 @@ fn phase_at(spans: &[(i64, Phase)], at: i64) -> Option<Phase> {
 ///
 /// The schedule anchors in the grow's canonical timezone: each local
 /// day whose phase is one of [`crate::light_cycle::LIT_PHASES`] gets
-/// its on-period at the resolved lights-on wall-clock time, lasting
-/// `hours_on` absolute hours — so the on-length survives a DST
-/// transition while the anchor stays local, the same convention
-/// [`phase_spans`] uses for phase boundaries. Off periods fill the
-/// rest of the window. Days in the unlit phases, before the first
-/// phase span, or outside a parseable window contribute nothing; an
-/// unknown zone fails closed to an empty list.
+/// its on-period at the resolved lights-on wall-clock time. The
+/// on-period lasts `hours_on` **absolute** hours, so the on-length
+/// survives a DST transition while the anchor stays local — the same
+/// convention [`phase_spans`] uses for phase boundaries. Off periods
+/// fill the rest of the window. Days in the unlit phases, before the
+/// first phase span, or outside a parseable window contribute
+/// nothing; an unknown zone fails closed to an empty list.
 #[must_use]
 pub fn schedule_light_periods(
     from: &str,

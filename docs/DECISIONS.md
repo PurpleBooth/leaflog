@@ -6,6 +6,85 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-17 — the Target Bands step between day and night (ticket 07)
+
+### D082: the light-state timeline wins by source — sensor staircase first, schedule fills the gaps
+
+The history endpoint resolves one lights-on/off timeline per Chart
+window, by precedence:
+
+1. **A bound light entity's real history wins wherever it has
+   in-window readings.** The staircase semantics match the light
+   chart: each reading's state holds until the next reading, and the
+   last reading holds until the window end. Any positive value counts
+   as lit (a dimmer at 42 % is a lit fixture); exactly zero is dark.
+2. **The stretch before the first reading belongs to the Light
+   Cycle.** A reading's state cannot be projected backwards, so the
+   schedule covers that prefix (clipped at the first reading). When
+   no light entity is bound, the schedule owns the whole window.
+3. **Neither source → no light state.** The band stays single, as
+   before ticket 07.
+
+Every grow has a Light Cycle (stored default = cited presets), so
+unbound grows step day/night out of the box; the single-band path
+survives only for the unlit phases. The schedule anchors at the
+lights-on wall-clock time in the grow's canonical timezone and lasts
+`hours_on` **absolute** hours, so the on-length survives a DST
+transition while the anchor stays local — the convention
+`phase_spans` already uses for phase boundaries.
+
+A failed HA fetch of the *light* entity never degrades the chart:
+the schedule covers the window instead, and the `degraded` flag
+stays bound to the charted role's own fetch. The default Light Cycle
+(06:00, strain-aware hours) is a grower-preference anchor marked
+unverified in `light_cycle.rs`.
+
+### D083: band segments grow a light-state dimension; CO₂ gets its first corridor
+
+`BandSegment` (and the frontend's `BandSegmentData`) carries
+`light_on: Option<bool>`. `None` covers the unlit phases (drying and
+curing never split) and the no-light-state case. The pure builder
+`build_light_bands` intersects phase spans with the light timeline,
+computes each piece's corridor, and merges neighbours that agree on
+`(min, max, phase, light_on)` — a month of steady nights is one
+region, not 60. The comparison is exact on purpose: range edges are
+preset constants copied bit-identical (the D074 rationale again), so
+the merge carries a scoped `#[allow(clippy::float_cmp)]` with the
+reason inline, and the butt-join check `last.end == segment.start`
+carries `#[allow(clippy::suspicious_operation_groupings)]` the same
+way. The endpoint's response-reduce helper keeps a
+`#[allow(clippy::type_complexity)]`: its four-tuple mirrors the
+`GrowHistory` fields one to one.
+
+Corridors per state: temperature uses the lights-on §5.2 range by
+day and the researched lights-off range by night. VPD swaps to the
+night band. The humidity band solves the RH window at the segment's
+actual **temperature** mean with the matching leaf offset (−2 °C
+day, −1 °C night) — the humidity-as-temperature bug is fixed at the
+root, with the temperature series fetched for the humidity chart.
+Segments without in-segment points have no honest mean and emit no
+humidity band. CO₂ gains its first corridor: 800–1,500 ppm while
+lit, ambient 400–450 ppm in the dark, the lights-on target kept
+when the state is unknown.
+
+The frontend needs no new drawing logic — the option builder
+already rendered one `markArea` region per segment, so varying
+ranges step for free. The e2e seam (`16-stepped-bands.spec.ts`)
+asserts the visible half: multiple filled regions of differing
+geometry inside the chart SVG, fed by a grow whose Light Cycle is
+set and, separately, by the bound light's fixture staircase.
+
+### D084: the mock's light history is a request-anchored on/off staircase
+
+`GET /core/api/history/period` for `light.grow_led` now returns a
+deterministic off→on→off staircase stamped relative to request time
+(off at now−23 h, on at now−20 h, off at now−18 h), in the
+documented `minimal_response` shape. Sensor histories keep their
+canned 2026-11-08 points — nothing asserted on those timestamps.
+The relative stamping keeps the staircase inside any rolling window
+on every run date, which is what the bound-light integration test
+and `16-stepped-bands.spec.ts` both lean on.
+
 ## 2026-11-17 — the pair scatters move onto ECharts; unbound cards stop rendering (ticket 04)
 
 ### D081: every chart is an option-built chart; the card-visibility rule lands

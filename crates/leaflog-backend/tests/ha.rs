@@ -1066,7 +1066,7 @@ async fn grow_history_serves_live_series_with_phase_bands() {
 
     // Humidity's corridor is the phase's VPD band converted at the
     // segment's mean temperature (a clamped RH percentage). With the
-    // default cycle the window steps day/night, so several segments
+    // default cycle the window steps day/night, so multiple segments
     // appear and every one stays a sane RH window.
     let body: Value = client
         .get(format!(
