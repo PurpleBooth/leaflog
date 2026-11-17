@@ -64,6 +64,23 @@ report the shortId back in the reply.
 - Run `git bug push` after creating or updating tickets. Ordinary `git push` never
   carries `refs/bugs/*`; syncing the tracker is always an explicit step.
 
+## Multi-session efforts
+
+Several agent streams can work the same repo between releases. Three habits
+keep them from colliding at merge time:
+
+- **Claim numbers at spec time.** When publishing a spec, record the claimed
+  decision-number range (first free number from `docs/DECISIONS.md`, so count
+  its `### D###:` headings) and the next free migration number as a comment on
+  the spec bug. Tickets number from the claim, never from a fresh grep — a
+  sibling stream may have taken numbers while you worked.
+- **Fetch at milestone boundaries.** After each merged milestone, `git fetch
+  origin` and diff against `origin/main`; list new `v*` tags too. Another
+  stream may have released or landed main while you worked.
+- **Anchor working notes on identifiers.** Notes written for implementers cite
+  grep-able anchors (test names, symbol names), not file line numbers — lines
+  shift within hours when streams move in parallel.
+
 ## Migration history
 
 2026-11-14 (D072): the live `localisation` effort migrated from

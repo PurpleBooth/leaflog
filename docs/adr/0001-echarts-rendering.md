@@ -100,3 +100,8 @@ to its SVG renderer. The bundle is produced at build time:
 - Zoom, pan, and brush interactions stay out of scope; their
   components are not in the bundle, so adding them later means an
   import-list change plus a rebuild, not a redesign.
+- Glue changes land with a rendered-DOM e2e assertion. Option-builder
+  unit tests verify the Rust-side JSON only; the wasm-to-JS boundary
+  can still hand ECharts the wrong shape (maps instead of plain
+  objects once rendered a blank chart with every unit test green,
+  D079).

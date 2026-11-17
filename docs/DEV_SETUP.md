@@ -26,6 +26,9 @@ cd Leaflog
 devbox shell          # installs/pins the toolchain on first run
 ```
 
+To run one command from outside the environment, use `-c <repo dir>`:
+`devbox run -c Leaflog -- just ci`. This devbox has no `--dir` flag.
+
 `devbox.json` pins: `rustup` (toolchain via `rust-toolchain.toml`),
 `just`, `trunk`, `sqlite`, `pkg-config`, `libiconv`, `cocogitto`. The
 init hook adds the `wasm32-unknown-unknown` target and clippy/rustfmt.
