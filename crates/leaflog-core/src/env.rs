@@ -629,8 +629,11 @@ pub fn coach_tips(phase: Phase, substrate_label: &str, light_on: bool) -> Vec<Co
     let mut tips = Vec::new();
 
     let (vpd_min, vpd_max) = vpd_band(phase);
+    // Night guidance per the lights-off research (caveat C2): measured
+    // VPD falls on its own as the room cools, so the fix is not "run
+    // higher" — hold near the day band and watch the RH spike.
     tips.push(CoachTip {
-        title: format!("Keep VPD {vpd_min:.1}–{vpd_max:.1} kPa{}", if light_on { " (lights on)" } else { " (lights off: run higher)" }),
+        title: format!("Keep VPD {vpd_min:.1}–{vpd_max:.1} kPa{}", if light_on { " (lights on)" } else { " (lights off: keep close to daytime; watch the RH spike)" }),
         why: "VPD drives transpiration and nutrient uptake; the band shifts by phase and lights state (spec §5.2).".to_owned(),
     });
 
@@ -996,6 +999,41 @@ mod tests {
         let tips = coach_tips(Phase::Flower, "soil", true);
         assert!(tips.iter().any(|t| t.title.contains("mould")));
         assert!(tips.iter().any(|t| t.title.contains("stretch")));
+    }
+
+    /// The tip selection by light state (ticket 08): lights-on keeps
+    /// the plain band wording; lights-off carries the researched night
+    /// guidance — close to daytime, watch the RH spike — and never
+    /// tells the grower to "run higher".
+    #[test]
+    fn coach_vpd_tip_matches_the_light_state() {
+        let day = coach_tips(Phase::Vegetative, "soil", true);
+        let vpd_day = day
+            .iter()
+            .find(|tip| tip.title.contains("Keep VPD"))
+            .unwrap_or_else(|| panic!("veg tips must carry the VPD tip"));
+        assert!(vpd_day.title.contains("(lights on)"));
+        assert!(!vpd_day.title.contains("run higher"));
+
+        let night = coach_tips(Phase::Vegetative, "soil", false);
+        let vpd_night = night
+            .iter()
+            .find(|tip| tip.title.contains("Keep VPD"))
+            .unwrap_or_else(|| panic!("veg tips must carry the VPD tip"));
+        assert!(
+            vpd_night
+                .title
+                .contains("(lights off: keep close to daytime; watch the RH spike)")
+        );
+        assert!(
+            !vpd_night.title.contains("run higher"),
+            "the research contradicts 'run higher' at night (caveat C2)"
+        );
+        // The band numbers themselves are the daytime band in both
+        // states — night guidance is "hold near the day band".
+        let band_part =
+            |tip: &super::CoachTip| tip.title.split(" (").next().unwrap_or_default().to_owned();
+        assert_eq!(band_part(vpd_day), band_part(vpd_night));
     }
 
     // Compile check that PhotoperiodType is reachable.
