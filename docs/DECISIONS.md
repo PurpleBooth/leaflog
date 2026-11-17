@@ -207,9 +207,13 @@ Choices worth remembering:
   `HistoryChart` gates the whole card on the loaded response's
   `bound` flag — no sensor, or no pH/EC entries, means no card, no
   placeholder. A dead binding is `bound: true` (the binding exists), so
-  its card stays and the env dashboard's No-data banner names it; a
-  failed history fetch also leaves the card hidden (a missing chart is
-  honest, and the dashboard still reports its own fetch failures).
+  its card stays and the env dashboard's No-data banner names it. A
+  bound role whose history fetch fails keeps its card too: a failed
+  fetch consults the bindings endpoint, and a bound role renders a
+  degraded banner naming the failure instead of vanishing. The
+  glossary's rule holds — a dead binding is the only state the page
+  may call "no data". Unbound roles, and the pH/EC log roles a failed
+  first fetch cannot classify, stay hidden.
 - **The visibility gate is a reactive block, not `Show`.** A `Show`
   children closure must be `Fn`, and the card carries the children slot
   (the soil band editor, D080) — building it inside a `Fn` closure does
