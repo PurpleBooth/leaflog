@@ -2,28 +2,77 @@
 All notable changes to the Leaflog Home Assistant app. Version headings are exactly `## <version>` — Home Assistant slices release notes on them. Generated file; never edit by hand.
 
 - - -
+## 0.8.0
+
+_Released 2026-11-17._
+
+#### Bug Fixes
+- **(frontend)** a bound chart card survives a failed history fetch - (e0f9f15) - billie.codes
+- **(mock-ha)** push a flipped light state on the next tick (bug c62200c) - (7b99597) - billie.codes
+- a live-connection resubscribe skips the failure backoff - (4eab684) - billie.codes
+#### Documentation
+- register the LightCycleEditor lint exception - (69d5b9c) - billie.codes
+- spec 4.9 precedence, glossary terms and d085-d086 close the spec (bug c62200c) - (ab7bdd5) - billie.codes
+#### Features
+- **(backend)** the coach resolves the real light state at call time (bug c62200c) - (10cc334) - billie.codes
+- **(core)** the night VPD tip follows the research and the schedule answers now (bug c62200c) - (4727047) - billie.codes
+#### Miscellaneous
+- **(version)** 0.8.0 - (506a76f) - billie.codes
+#### Refactoring
+- **(core)** drop the unused window end and name the point-query window - (2ea29e6) - billie.codes
+- **(core)** one lit rule for every light reader - (058de92) - billie.codes
+#### Tests
+- **(backend)** the temperature corridor steps with the default schedule - (10366e6) - billie.codes
+- **(backend)** any on/off entity bound to the Light role drives the staircase - (51fcc7c) - billie.codes
+
+- - -
+
 ## 0.7.0
 
 _Released 2026-11-17._
 
 #### Bug Fixes
+- **(frontend)** give ECharts the option as plain objects (bug 1b2b540) - (c27c7af) - billie.codes
+- **(frontend)** editor buttons submit the right thing - (1cede2d) - billie.codes
 - tri-state grow-page test survives the removed side fetches - (c60b0ae) - billie.codes
+#### Build
+- **(frontend)** bundle tree-shaken echarts via npm + esbuild (D075) - (d136c35) - billie.codes
 #### CI
 - unique decision ids, a serialized gate, and e2e port pre-flight (D083-D085) - (f9449b0) - billie.codes
+- build the echarts bundle in the image and ci pipelines - (956c56b) - billie.codes
 #### Documentation
 - **(release)** the v0.7.0 upgrade note - (56e8598) - billie.codes
 - AGENTS.md status points at the changelog - (2b48c6e) - billie.codes
 - the decision log matches the code (D081-D085) - (161a87c) - billie.codes
 - the lamp fallback cites D044, not D021 - (bb1cd83) - billie.codes
+- d082-d084 record the stepped-band choices and precedence (bug 745472e) - (7e509eb) - billie.codes
 - the spec and app docs match the stripped app (71d8a42) - (339d8a0) - billie.codes
+- d081 records the pair scatter migration and the card visibility rule (bug 89198dc) - (c4ee560) - billie.codes
+- D080 records the role-mapped option builder and the band editor's new home - (1240b08) - billie.codes
 - e2e follows the strain removal; THREAT-MODEL R3 resolved - (7ad9012) - billie.codes
+- D079 records the option's plain-object wasm boundary - (76fef5e) - billie.codes
 - d077 grow-sourced engine defaults - (d68c145) - billie.codes
+- chart window glossary entry and D079 for the ECharts seam - (7c3e3ec) - billie.codes
 - d075 feature-strip decision and glossary reframe (grow carries label/photoperiod/tolerances/watts) - (9453a79) - billie.codes
+- renumber the light cycle decision to d078 - (68ade4c) - billie.codes
+- d075 light cycle storage and defaults, glossary term - (e999d4d) - billie.codes
+- echarts rendering decision (adr 0001, D075, AGENTS.md) - (82f825a) - billie.codes
+- decisions for the night leaf offset and the VPD zero clamp - (ad8bbc2) - billie.codes
 #### Features
+- **(backend)** split history bands day/night from light state (bug 745472e) - (b78c2f5) - billie.codes
 - **(backend)** drop the strain catalogue, the grow label carries the history - (62637ef) - billie.codes
+- **(backend)** per-grow light cycle endpoint with validation and reset - (2b967ab) - billie.codes
+- **(core)** expand light-state timelines and stepped band corridors (bug 745472e) - (ea5b9a7) - billie.codes
+- **(core)** lights-off presets with sources and a pinned VPD zero clamp - (3fb7fa1) - billie.codes
+- **(core)** strain-aware light cycle defaults with validation - (cf00ba0) - billie.codes
+- **(frontend)** render stepped band segments as per-segment regions (bug 745472e) - (40348b5) - billie.codes
+- **(frontend)** draw the ph/ec pairs as echarts scatters (bug 89198dc) - (45f8fbd) - billie.codes
+- **(frontend)** render the environment charts through ECharts (bug 3cadef8) - (cb6f2dd) - billie.codes
 - **(frontend)** the grow carries its strain — page, nav, picker and wizard step removed - (8ce6608) - billie.codes
 - **(frontend)** phase picker follows the grow's photoperiod toggle - (633e234) - billie.codes
+- **(frontend)** render the temperature chart through ECharts (bug 1b2b540) - (5cb3bae) - billie.codes
 - **(frontend)** grow form strain label, photoperiod and advanced settings - (ce0be3c) - billie.codes
+- **(frontend)** light cycle editor on the grow overview - (7bdcd84) - billie.codes
 - drop spaces and the equipment catalogue end to end (9d39219) - (bb74cb9) - billie.codes
 - recommendations read the grow, not the catalogue (5cf01b8) - (49b8beb) - billie.codes
 - grow carries strain label, photoperiod and lamp facts (V14) - (aba9a79) - billie.codes
@@ -37,7 +86,11 @@ _Released 2026-11-17._
 - cargo fmt after the fold - (7c65ba1) - billie.codes
 #### Tests
 - **(e2e)** the entity-ids payload drops strain_id; helper docs repaired - (daf58ed) - billie.codes
+- **(e2e)** prove the stepped day/night band regions in the browser (bug 745472e) - (6ec3900) - billie.codes
+- **(e2e)** pin the pair scatters and the hidden unbound cards (bug 89198dc) - (328ebd9) - billie.codes
 - **(e2e)** pin the removed spaces/equipment surface and the wizard's skip path - (4a2748e) - billie.codes
+- **(frontend)** judge bundle composition on the esbuild output graph - (c567473) - billie.codes
+- **(frontend)** bundle checks for the echarts pipeline (D075) - (dd8158e) - billie.codes
 
 - - -
 
