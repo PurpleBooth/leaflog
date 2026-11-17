@@ -6,6 +6,62 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-17 — review fixes and retro hardening
+
+### D083: decision ids are unique — the `decision-ids` gate
+
+The decision log's numbering failed twice in the same way: parallel
+tickets numbered from different bases and claimed the same D-number.
+D012 and D013 each headed two decisions — the M2-era storage pair
+(SQLite via rusqlite, migration scope) and a later pair (bundled
+equipment seed data, offset-less action timestamps) — and the
+feature-strip tickets re-created the failure mode, with D078 claimed
+twice and sorted by hand mid-run. The `just decision-ids` recipe
+makes the collision mechanical: every `### D<3digits>:` heading in
+this file must be unique, or `just ci` fails naming the offenders.
+
+The one-time cleanup renumbers the later-chronological pair onto the
+next free numbers — equipment seed data D012 → D081, action
+timestamps D013 → D082 — keeping the entries in their dated sections
+with a note, and repoints D075's supersede list, which meant the
+equipment decision. The earlier M2 pair keeps D012/D013; every other
+inbound reference (the single-connection notes in the store, the
+THREAT-MODEL migration row) already meant that pair.
+
+### D084: the ci gate self-serializes on a host flock
+
+Two full `just ci` gates running at once on the 14 Gi dev host were
+OOM-killed, so the gate now self-serializes: `just ci` runs its
+implementation (`_ci-impl`, the same recipe list as before) under
+`flock /tmp/leaflog-fs/ci.lock`, and a second concurrent gate waits
+instead of racing. CI is unaffected — its jobs call `just e2e` and
+`just lint-prose` directly on their own runners, and `just ci` is the
+only gate in its job. A host without `flock` runs unlocked (the
+skip-if-not-installed pattern). Do not wrap `just ci` in an outer
+flock of the same file: the gate holds the lock itself, so a second
+flock of that path would wait on it forever.
+
+### D085: e2e fails fast on busy ports
+
+The e2e stack binds two fixed ports (app and mock Supervisor). When a
+stale stack held one, the run surfaced it only after the full
+frontend build — as a dead backend or a health poll answered by
+someone else's process. The `e2e` recipe now probes both ports before
+any build work and fails immediately, naming the busy port and the
+remedy: stop the stale stack, or pick free ports with
+`just e2e_port=<port> e2e_mock_port=<port> e2e`. The post-launch bind
+check stays: it catches a backend that dies between the probe and its
+own bind.
+
+### Lint-policy exceptions (`#[allow]` register) — review additions
+
+| Crate | Items | Lint | Reason |
+|---|---|---|---|
+| leaflog-backend | store fn `grows::map_grow` | `clippy::too_many_lines` | Flat row-to-struct mapping of the grow's columns, not logic; splitting would obscure the column list |
+| leaflog-core | fn `env::advisor_watts` | `clippy::cast_possible_truncation`, `clippy::cast_sign_loss` | The value is rounded and floored at 1 (positive) before the cast, and f64→u32 casts saturate rather than wrap |
+
+---
+
 ## 2026-11-16 — feature strip: strains, seed bank, spaces, equipment catalogue
 
 ### D075: the grow carries strain, tolerance and lamp facts; catalogue features are removed
@@ -23,7 +79,7 @@ What replaced them lives on the grow itself:
   in the UI.
 - Forecast, feed-fit and the phase picker read the photoperiod from
   the grow. The tolerance threshold shifts (D030's `shifted` logic)
-  and the lamp advisor (D021's 330 W fallback) keep their logic and
+  and the lamp advisor (D044's 330 W fallback) keep their logic and
   change only their source: the grow, not a strain record or the
   space's strongest light.
 - History's yield aggregate keys on `strain_label`. The yield
@@ -33,7 +89,7 @@ What replaced them lives on the grow itself:
   (D067) disappear; sensors are bound on the grow page, and onboarding
   step 1 becomes exactly that.
 
-Supersedes D012, D014, D015, D043, D044, D045, D049, D050, D051,
+Supersedes D081, D014, D015, D043, D044, D045, D049, D050, D051,
 D052, D053, D056, D067 — their subject matter is deleted. THREAT-MODEL
 R3 (the strain `source_url` link) closes with the catalogue, and the
 third-party licence burden of the bundled strain records goes with it.
@@ -81,7 +137,7 @@ auto's forecast (harvest day 70, band 63–77) finally matches the
 documented default. Second, the watt conversion the D076 note
 promised: `env::advisor_watts` maps the grow's `Option<f64>
 real_watts` to the advisor's whole-watt `u32` — `None` falls back to
-the D021 330 W fixture (`env::DEFAULT_FIXTURE_WATTS`), a recorded
+the D044 330 W fixture (`env::DEFAULT_FIXTURE_WATTS`), a recorded
 value rounds to the nearest watt and never lands below 1. Third,
 `PhotoperiodType` and `Tolerance` move from `strain.rs` to
 `grows.rs` — grow attributes per the glossary — with `strain.rs`
@@ -522,8 +578,6 @@ body of `POST /api/spaces/{id}/equipment/{id}` and always failed,
 swallowed by `let _ =`) to `api::post_action`, and the per-plant POST
 failures now surface in the wizard's error line instead of being
 dropped silently.
-||||||| parent of ee68fe8 (ci(changelog): serve an HA-sliceable app changelog (D061))
-||||||| parent of 4b7a27c (feat(frontend): Tailwind v4 + daisyUI 5 with green themes (D063, D064))
 
 ### D060: Environment alerts route to Home Assistant, gated three ways
 
@@ -996,7 +1050,7 @@ up.
 
 | Crate | Items | Lint | Reason |
 |---|---|---|---|
-| leaflog-backend | `api_env::space_light` | `clippy::cast_possible_truncation`, `clippy::cast_sign_loss` | One f64→u32 fixture-wattage conversion, rounded and clamped to the u32 range before the cast |
+| leaflog-backend | `api_env::space_light` | `clippy::cast_possible_truncation`, `clippy::cast_sign_loss` | **Historical, superseded by D075**: the spaces and this handler are gone; the wattage cast now lives in leaflog-core's `env::advisor_watts` (2026-11-17 register) |
 
 ### D042: CHANGELOG.md is cocogitto output, regenerated in CI
 
@@ -1484,9 +1538,9 @@ packaging changes were needed.
 |---|---|---|---|
 | leaflog-frontend | module `api` | `clippy::future_not_send` | WASM is single-threaded; gloo-net response types are not `Send` and `spawn_local` does not require it |
 | leaflog-frontend | `GrowsPage::fetch_list`, `GrowsPage::timed_get` | `clippy::future_not_send` | Same rationale as module `api`: the list fetch races a timeout future and the wasm types are not `Send` |
-| leaflog-frontend | `EquipmentPage`, `EquipmentForm`, `StrainsPage`, `StrainForm` | `clippy::too_many_lines` | Declarative view code, not logic; splitting would obscure the forms |
+| leaflog-frontend | `EquipmentPage`, `EquipmentForm`, `StrainsPage`, `StrainForm` | `clippy::too_many_lines` | **Historical**: the pages left with the D075 strip; kept as register history (the declarative-view reason now covers the surviving pages) |
 | leaflog-backend | store `photos`, `feeds`, `actions`, `grows` serde writes | `clippy::missing_panics_doc` | Serialising plain data with serde_json cannot fail |
-| leaflog-frontend | `OnboardingState` in `onboarding.rs` | `clippy::struct_excessive_bools` | The flags are the payload: the onboarding endpoint reports a snapshot of booleans by design |
+| leaflog-frontend | `OnboardingState` in `onboarding.rs` | `clippy::struct_excessive_bools` | **Historical**: D078 shrank the state to three booleans, under the lint's threshold; kept as register history |
 
 ---
 
@@ -1593,7 +1647,12 @@ enablement file for the `leaflog` longrun service); upstream now prefers
 `/etc/s6-overlay/user-bundles.d`. Works fine on the pinned base
 (3.24-2026.11.0); migrate when a future base bump requires it.
 
-### D012: predefined equipment seed data, no personal purchase details
+### D081: predefined equipment seed data, no personal purchase details
+
+*(Numbered D081 in 2026-11-17, D083's cleanup: the entry first
+shipped as D012, a number the earlier M2 storage decision already
+held; the original number stays with that decision. D075's supersede
+list now points here.)*
 
 `seeds/equipment.json` ships a starter inventory (a 60x60 tent setup:
 Spider Farmer tent/light/filters, VIVOSUN humidifier/clip fan, meters,
@@ -1606,7 +1665,11 @@ own database. The five Dutch Passion strains added to
 `seeds/strains.json` follow the same rule: breeder-published facts with
 per-field evidence tags, sources cited per the seed-data discipline.
 
-### D013: offset-less action timestamps read as UTC
+### D082: offset-less action timestamps read as UTC
+
+*(Numbered D082 in 2026-11-17, D083's cleanup: the entry first
+shipped as D013, a number the earlier M2 migration-scope decision
+already held; the original number stays with that decision.)*
 
 The quick-add form's `<input type="datetime-local">` yields
 `YYYY-MM-DDTHH:MM` (seconds and UTC offset absent), and its
