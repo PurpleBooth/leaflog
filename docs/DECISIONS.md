@@ -64,6 +64,15 @@ spec:
   the decisions doc carries the night leaf offset (D075), the VPD clamp
   (D076), the ECharts tooling (D077), the Light Cycle model (D078), the band
   precedence and corridors (D082–D083), and everything since.
+- Story 22's binding-UI obligation verified end to end: the Light role's
+  picker lists every entity (no domain filter anywhere in the chain), and a
+  `switch.*` on/off entity bound to the Light role drives the chart
+  staircase exactly like a `light.*` fixture (the mock now serves
+  `switch.grow_panel`; integration test
+  `grow_history_steps_follow_any_on_off_entity_bound_to_light`). The
+  binary_sensor.* domain reads the same `"on"`/`"off"` states through the
+  same parse, so it is covered by the same rule rather than its own mock
+  entity.
 
 Open ideas, none blocking:
 

@@ -87,6 +87,10 @@ impl FakeRoom {
                 "",
                 "Grow light"
             ),
+            // A second on/off entity of a non-light domain: the Light
+            // binding role must accept any on/off entity, not only a
+            // light.* fixture.
+            entity_state("switch.grow_panel", "on", "", "Grow panel switch"),
         ])
     }
 
@@ -238,8 +242,8 @@ async fn history(State(state): State<MockState>, Query(query): Query<HistoryQuer
     let entity = query
         .filter_entity_id
         .unwrap_or_else(|| "sensor.grow_temperature".to_owned());
-    if entity == "light.grow_led" {
-        return Json(light_history());
+    if entity == "light.grow_led" || entity == "switch.grow_panel" {
+        return Json(on_off_history(&entity));
     }
     let (base, temperature, humidity, soil_moisture) = {
         let room = state.room.lock().await;
@@ -278,12 +282,16 @@ async fn history(State(state): State<MockState>, Query(query): Query<HistoryQuer
     json!([series]).into()
 }
 
-/// The bound light's on/off staircase for `history/period`, anchored
-/// at request time so every window contains it: off at now−23 h, on
-/// at now−20 h, off at now−18 h. In a rolling day window that is a
-/// schedule-driven prefix, a dark override, a one-hour on stretch,
-/// and a dark run to now — the shape the stepped-band tests assert.
-fn light_history() -> Value {
+/// An on/off entity's staircase for `history/period`, anchored at
+/// request time so every window contains it.
+///
+/// Served for the light fixture and the panel switch alike — any
+/// on/off entity bound to the Light role must drive the same
+/// timeline. The stamps run off at now−23 h, on at now−20 h, off at
+/// now−18 h: in a rolling day window that is a schedule-driven
+/// prefix, a dark override, a one-hour on stretch, and a dark run to
+/// now — the shape the stepped-band tests assert.
+fn on_off_history(entity_id: &str) -> Value {
     let now = jiff::Timestamp::now();
     let stamp = |hours_ago: i64| (now - jiff::Span::new().hours(hours_ago)).to_string();
     // minimal_response shape: one full state object first, then
@@ -291,7 +299,7 @@ fn light_history() -> Value {
     json!([
         [
             {
-                "entity_id": "light.grow_led",
+                "entity_id": entity_id,
                 "state": "off",
                 "attributes": { "friendly_name": "Grow light" },
                 "last_changed": stamp(23),
