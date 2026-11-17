@@ -57,7 +57,9 @@ jobs:
           just --version
 
       - name: Verify conventional commits
-        run: cog check
+        # Same recipe the local gate runs (justfile `cog-check`), so the
+        # release gate can never drift from it again.
+        run: just cog-check
 
       - name: Extract version from tag
         id: version
