@@ -100,6 +100,15 @@ e2e: tailwind-daisyui
         echo "e2e deps missing; run 'just e2e-install' first — skipping e2e"
         exit 0
     fi
+    # Pre-flight (D085): both ports must be free before any build time
+    # is spent. A listener here is a stale stack (just dev, an old e2e
+    # run) that the run would only collide with after the builds.
+    for probe_port in {{e2e_port}} {{e2e_mock_port}}; do
+        if (exec 3<>"/dev/tcp/127.0.0.1/$probe_port") 2>/dev/null; then
+            echo "e2e port $probe_port is already in use — stop the stale stack (just dev / an old e2e run) or pick free ports: just e2e_port=<port> e2e_mock_port=<port> e2e" >&2
+            exit 1
+        fi
+    done
     cargo build -p mock-ha --quiet
     cargo build -p leaflog-backend --no-default-features --quiet
     work="$(mktemp -d)"
@@ -172,6 +181,22 @@ allow-register:
     done < <(grep -rhoE 'clippy::[a-z_]+' crates --include='*.rs' \
         | grep -vE 'clippy::(nursery|cargo|complexity|correctness|perf|style|suspicious|pedantic)' \
         | sort -u)
+    exit "$status"
+
+# Decision-id guard (D083): every `### D<3digits>:` heading in the
+# decision log must be unique. Parallel tickets numbered from
+# different bases claimed the same number twice (D012 and D013 each
+# headed two decisions), so the collision becomes a gate failure that
+# names the offenders instead of a review catch.
+decision-ids:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    status=0
+    while IFS= read -r id; do
+        echo "duplicate decision id: $id" >&2
+        grep -n "^${id%%:*}" docs/DECISIONS.md | sed 's/^/  /' >&2
+        status=1
+    done < <(grep -oE '^### D[0-9]{3}:' docs/DECISIONS.md | sort | uniq -d)
     exit "$status"
 
 # Check conventional commits (cocogitto; skip if not installed).
@@ -320,8 +345,23 @@ lint-prose:
     vale "$tmp/ui" || status=1
     exit "$status"
 
-# Everything CI checks: fmt, clippy (native + wasm), tests, WASM build, commits, allow register, secrets, deps, prose, e2e.
-ci: cog-check allow-register fmt clippy clippy-wasm build-frontend test gitleaks deny lint-prose e2e
+# Everything CI checks: fmt, clippy (native + wasm), tests, WASM
+# build, commits, allow register, decision ids, secrets, deps, prose,
+# e2e. Self-serializes on a host lock (D084): two full gates at once
+# OOM-killed the 14 Gi dev host, so a second concurrent gate waits.
+# CI's separate jobs call `just e2e` / `just lint-prose` directly and
+# are unaffected; a host without flock runs unlocked.
+ci:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if command -v flock >/dev/null 2>&1; then
+        mkdir -p /tmp/leaflog-fs
+        exec flock /tmp/leaflog-fs/ci.lock just _ci-impl
+    fi
+    exec just _ci-impl
+
+# The gate's implementation; run it through `ci` so the lock holds.
+_ci-impl: cog-check allow-register decision-ids fmt clippy clippy-wasm build-frontend test gitleaks deny lint-prose e2e
 
 # Check formatting.
 fmt:
