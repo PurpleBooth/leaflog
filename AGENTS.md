@@ -8,9 +8,10 @@ for features, seed data, and acceptance criteria (research snapshot 2026-11-08).
 
 ## Status
 
-v0.1.0 released (tagged 2026-11-08); M1-M8 complete. The feature strip
-(D075, M13) has since removed the strain catalogue, the seed bank, grow
-spaces and the equipment catalogue — the grow itself carries its strain
+Current release and version history: CHANGELOG.md (generated from the
+conventional commits, so it cannot drift). The feature strip
+(D075, M13) removed the strain catalogue, the seed bank, grow spaces
+and the equipment catalogue — the grow itself carries its strain
 label, photoperiod, tolerances and lamp facts. Post-release hardening:
 keep commits lint-clean; open items R1-R9 in docs/THREAT-MODEL.md (R3
 resolved by the strip), one-off choices in docs/DECISIONS.md.
