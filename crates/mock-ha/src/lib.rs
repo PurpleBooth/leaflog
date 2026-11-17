@@ -230,6 +230,9 @@ async fn history(State(state): State<MockState>, Query(query): Query<HistoryQuer
     let entity = query
         .filter_entity_id
         .unwrap_or_else(|| "sensor.grow_temperature".to_owned());
+    if entity == "light.grow_led" {
+        return Json(light_history());
+    }
     let (base, temperature, humidity, soil_moisture) = {
         let room = state.room.lock().await;
         (
@@ -265,6 +268,31 @@ async fn history(State(state): State<MockState>, Query(query): Query<HistoryQuer
         series.push(json!({ "s": format!("{value:.1}"), "lu": "2026-11-08T11:00:00+00:00" }));
     }
     json!([series]).into()
+}
+
+/// The bound light's on/off staircase for `history/period`, anchored
+/// at request time so every window contains it: off at now−23 h, on
+/// at now−20 h, off at now−18 h. In a rolling day window that is a
+/// schedule-driven prefix, a dark override, a one-hour on stretch,
+/// and a dark run to now — the shape the stepped-band tests assert.
+fn light_history() -> Value {
+    let now = jiff::Timestamp::now();
+    let stamp = |hours_ago: i64| (now - jiff::Span::new().hours(hours_ago)).to_string();
+    // minimal_response shape: one full state object first, then
+    // short {s, lu} objects.
+    json!([
+        [
+            {
+                "entity_id": "light.grow_led",
+                "state": "off",
+                "attributes": { "friendly_name": "Grow light" },
+                "last_changed": stamp(23),
+                "last_updated": stamp(23),
+            },
+            { "s": "on", "lu": stamp(20) },
+            { "s": "off", "lu": stamp(18) },
+        ]
+    ])
 }
 
 // Extractors are taken by value because Axum requires it.

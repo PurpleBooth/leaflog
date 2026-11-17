@@ -1065,7 +1065,9 @@ async fn grow_history_serves_live_series_with_phase_bands() {
     assert_eq!(bands[0]["max"], 26.7);
 
     // Humidity's corridor is the phase's VPD band converted at the
-    // segment's mean temperature (a clamped RH percentage).
+    // segment's mean temperature (a clamped RH percentage). With the
+    // default cycle the window steps day/night, so several segments
+    // appear and every one stays a sane RH window.
     let body: Value = client
         .get(format!(
             "{base}/api/grows/{grow_id}/history?role=humidity&window=month"
@@ -1079,11 +1081,350 @@ async fn grow_history_serves_live_series_with_phase_bands() {
     assert_eq!(body["degraded"], false);
     assert_eq!(body["bound"], true);
     let humidity_bands = body["bands"].as_array().unwrap();
-    assert_eq!(humidity_bands.len(), 1);
-    assert_eq!(humidity_bands[0]["phase"], "germination");
-    let humidity_min = humidity_bands[0]["min"].as_f64().unwrap();
-    let humidity_max = humidity_bands[0]["max"].as_f64().unwrap();
-    assert!((0.0..=100.0).contains(&humidity_min));
-    assert!((0.0..=100.0).contains(&humidity_max));
-    assert!(humidity_min <= humidity_max);
+    assert!(!humidity_bands.is_empty());
+    for band in humidity_bands {
+        assert_eq!(band["phase"], "germination");
+        let min = band["min"].as_f64().unwrap();
+        let max = band["max"].as_f64().unwrap();
+        assert!((0.0..=100.0).contains(&min));
+        assert!((0.0..=100.0).contains(&max));
+        assert!(min <= max);
+    }
+}
+
+// --- Stepped day/night bands (Light Cycle spec, ticket 07) ---
+
+/// Creates a grow whose germination phase covers any day window:
+/// started three days ago, so the first phase span predates the
+/// window on every run date.
+async fn create_germinating_grow(base: &str, name: &str) -> String {
+    let started = (time::OffsetDateTime::now_utc() - time::Duration::days(3)).date();
+    reqwest::Client::new()
+        .post(format!("{base}/api/grows"))
+        .json(&json!({
+            "name": name, "strain_id": null, "substrate": "soil",
+            "started_on": started.to_string(), "status": "active", "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json::<Value>()
+        .await
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned()
+}
+
+/// The germ-phase day corridor a lights-on band must carry.
+const DAY_BAND: (f64, f64) = (21.1, 26.7);
+/// The germ-phase night corridor a lights-off band must carry.
+const NIGHT_BAND: (f64, f64) = (20.0, 23.3);
+
+/// Asserts a band list steps cleanly: alternating light states,
+/// butt-joined segments, both states present in a day window.
+/// Returns the light states in order, for the caller's per-state
+/// corridor checks.
+fn assert_germination_stepping(bands: &[Value]) -> Vec<bool> {
+    let mut states = Vec::new();
+    for band in bands {
+        assert_eq!(band["phase"], "germination");
+        let min = band["min"].as_f64().unwrap();
+        let max = band["max"].as_f64().unwrap();
+        assert!(min < max);
+        let light_on = band["light_on"]
+            .as_bool()
+            .expect("the schedule always yields a light state here");
+        if let Some(&previous) = states.last() {
+            assert_ne!(previous, light_on, "identical neighbours must merge");
+        }
+        states.push(light_on);
+    }
+    for pair in bands.windows(2) {
+        assert_eq!(pair[0]["end"], pair[1]["start"], "segments butt-join");
+    }
+    assert!(
+        states.iter().any(|&on| on) && states.iter().any(|&on| !on),
+        "a day window must contain both a lights-on and a lights-off stretch"
+    );
+    states
+}
+
+/// Asserts every temperature band carries its light state's corridor.
+fn assert_temperature_corridors(bands: &[Value], states: &[bool]) {
+    for (band, &on) in bands.iter().zip(states) {
+        assert_eq!(
+            (band["min"].as_f64().unwrap(), band["max"].as_f64().unwrap()),
+            if on { DAY_BAND } else { NIGHT_BAND },
+            "corridor must match the light state (on: {on})"
+        );
+    }
+}
+
+#[tokio::test]
+async fn grow_history_steps_day_and_night_by_the_light_cycle() {
+    // No light bound: the grow's Light Cycle drives the split. The
+    // schedule runs 08:00–20:00 UTC in germination (12 h on), so the
+    // day window shows both states with their own corridors, and the
+    // humidity chart solves at the temperature series — not at a
+    // humidity reading fed in as °C.
+    let dead_url = "http://127.0.0.1:1".to_owned();
+    let (base, db, _bridge) = spawn_api(&dead_url).await;
+    let client = reqwest::Client::new();
+    let grow_id = create_germinating_grow(&base, "Stepped schedule").await;
+
+    let put = client
+        .put(format!("{base}/api/grows/{grow_id}/light-cycle"))
+        .json(&json!({ "lights_on": "08:00", "hours_on": { "germination": 12 } }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(put.status(), 200);
+
+    client
+        .put(format!("{base}/api/grows/{grow_id}/bindings"))
+        .json(&json!({
+            "bindings": {
+                "temperature": "sensor.grow_temperature",
+                "humidity": "sensor.grow_humidity",
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    // One log entry whose auto-capture is replaced by exact known
+    // snapshots: temperature 22.0 °C is the mean the humidity window
+    // must solve at; the humidity reading (70.0) must NOT shape it.
+    let entry: Value = client
+        .post(format!("{base}/api/grows/{grow_id}/actions"))
+        .json(&json!({
+            "plant_ids": [], "occurred_at": "2026-11-16T10:00:00Z",
+            "action_type": "note", "details": {}, "notes": "snapshot seed",
+            "appearance_tags": [],
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let entry_id = entry["id"].as_str().unwrap().to_owned();
+    db.with(move |conn| {
+        leaflog_backend::store::sensors::snapshot(
+            conn,
+            &entry_id,
+            "temperature",
+            "sensor.grow_temperature",
+            "22.0",
+        )?;
+        leaflog_backend::store::sensors::snapshot(
+            conn,
+            &entry_id,
+            "humidity",
+            "sensor.grow_humidity",
+            "70.0",
+        )
+    })
+    .await
+    .unwrap();
+
+    let history = |role: &'static str| {
+        let base = base.clone();
+        let grow_id = grow_id.clone();
+        let client = client.clone();
+        async move {
+            client
+                .get(format!(
+                    "{base}/api/grows/{grow_id}/history?role={role}&window=day"
+                ))
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap()
+        }
+    };
+
+    // Temperature: the reference stepping — and each band must carry
+    // its light state's corridor.
+    let temperature = history("temperature").await;
+    assert_eq!(temperature["degraded"], true, "dead supervisor");
+    let temp_bands = temperature["bands"].as_array().unwrap().to_vec();
+    let steps = assert_germination_stepping(&temp_bands);
+    assert_temperature_corridors(&temp_bands, &steps);
+    // The band covering the window end (the snapshot lands there too:
+    // its captured_at is the server's wall-clock now).
+    let to_epoch =
+        leaflog_core::chart::parse_epoch(temperature["series"]["to"].as_str().unwrap()).unwrap();
+    let covering = temp_bands
+        .iter()
+        .find(|band| {
+            let start = leaflog_core::chart::parse_epoch(band["start"].as_str().unwrap()).unwrap();
+            let end = leaflog_core::chart::parse_epoch(band["end"].as_str().unwrap()).unwrap();
+            start <= to_epoch && to_epoch <= end
+        })
+        .expect("bands cover the window end")
+        .clone();
+
+    // VPD: night bands use the sourced lights-off band, not the day
+    // band with a different label, and they step with the light state.
+    let vpd = history("vpd").await;
+    let vpd_bands = vpd["bands"].as_array().unwrap().to_vec();
+    let vpd_steps = assert_germination_stepping(&vpd_bands);
+    assert_eq!(vpd_steps, steps, "vpd steps exactly with the light state");
+    let day_vpd = (0.4, 0.8);
+    let night_vpd = (0.5, 0.9);
+    for (band, &on) in vpd_bands.iter().zip(&steps) {
+        assert_eq!(
+            (band["min"].as_f64().unwrap(), band["max"].as_f64().unwrap()),
+            if on { day_vpd } else { night_vpd }
+        );
+    }
+
+    // CO2: enrichment range while lit, ambient range in the dark.
+    let co2 = history("co2").await;
+    let co2_bands = co2["bands"].as_array().unwrap().to_vec();
+    let co2_steps = assert_germination_stepping(&co2_bands);
+    assert_eq!(co2_steps, steps, "co2 steps exactly with the light state");
+    for (band, &on) in co2_bands.iter().zip(&steps) {
+        assert_eq!(
+            (band["min"].as_f64().unwrap(), band["max"].as_f64().unwrap()),
+            if on { (800.0, 1500.0) } else { (400.0, 450.0) }
+        );
+    }
+
+    // Humidity: the RH window solved at the segment's actual mean
+    // temperature with the day/night leaf offset. The one injected
+    // temperature snapshot (22.0 °C, at wall-clock now) gives exactly
+    // one light segment a mean, so exactly one humidity band exists —
+    // and it must equal the independently tested core solver at 22.0
+    // °C with that segment's leaf offset (the 70.0 humidity reading
+    // never feeds the solver as °C).
+    let humidity = history("humidity").await;
+    let humidity_bands = humidity["bands"].as_array().unwrap();
+    assert_eq!(
+        humidity_bands.len(),
+        1,
+        "only the snapshot's segment has a mean"
+    );
+    let humid_band = &humidity_bands[0];
+    let on_at_snapshot = covering["light_on"].as_bool().unwrap();
+    let offset = match on_at_snapshot {
+        true => leaflog_core::env::DEFAULT_LEAF_OFFSET_C,
+        false => leaflog_core::env::NIGHT_LEAF_OFFSET_C,
+    };
+    let vpd_band = match on_at_snapshot {
+        true => leaflog_core::env::vpd_band(leaflog_core::Phase::Germination),
+        false => {
+            let night = leaflog_core::env::night_vpd_band(leaflog_core::Phase::Germination)
+                .expect("germination night band");
+            (night.min_kpa, night.max_kpa)
+        }
+    };
+    let (min, max) = leaflog_core::env::rh_window(22.0, offset, vpd_band);
+    assert_eq!(
+        (
+            humid_band["min"].as_f64().unwrap(),
+            humid_band["max"].as_f64().unwrap()
+        ),
+        (min, max),
+        "humidity band must solve at 22.0 °C (offset {offset}), light on: {on_at_snapshot}"
+    );
+    // The humidity band segments with the temperature band at the
+    // snapshot: same stretch, so the step boundaries come from the
+    // same light timeline.
+    assert_eq!(humid_band["start"], covering["start"]);
+    assert_eq!(humid_band["end"], covering["end"]);
+}
+
+#[tokio::test]
+async fn grow_history_steps_follow_the_bound_light_history() {
+    // A bound light entity wins over the schedule. The grow's cycle is
+    // 24 h on — under the schedule alone every band would be lit — so
+    // every dark band below is a fixture-driven override. The mock's
+    // staircase: off at now−23 h, on at now−20 h, off at now−18 h.
+    let (mock_url, _mock) = spawn_mock().await;
+    let (base, _db, bridge) = spawn_api(&mock_url).await;
+    wait_connected(&bridge).await;
+    let client = reqwest::Client::new();
+    let grow_id = create_germinating_grow(&base, "Stepped by fixture").await;
+
+    client
+        .put(format!("{base}/api/grows/{grow_id}/bindings"))
+        .json(&json!({
+            "bindings": {
+                "temperature": "sensor.grow_temperature",
+                "light": "light.grow_led",
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    let put = client
+        .put(format!("{base}/api/grows/{grow_id}/light-cycle"))
+        .json(&json!({ "lights_on": "06:00", "hours_on": { "germination": 24 } }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(put.status(), 200);
+
+    let body: Value = client
+        .get(format!(
+            "{base}/api/grows/{grow_id}/history?role=temperature&window=day"
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(body["degraded"], false);
+    assert_eq!(body["bound"], true);
+    let bands = body["bands"].as_array().unwrap();
+
+    // Four stretches: the schedule-lit prefix, then the staircase.
+    assert_eq!(bands.len(), 4, "schedule prefix + off + on + off");
+    let states: Vec<bool> = bands
+        .iter()
+        .map(|band| band["light_on"].as_bool().expect("light state"))
+        .collect();
+    assert_eq!(states, [true, false, true, false]);
+    for (index, band) in bands.iter().enumerate() {
+        let expected = if states[index] { DAY_BAND } else { NIGHT_BAND };
+        assert_eq!(
+            (band["min"].as_f64().unwrap(), band["max"].as_f64().unwrap()),
+            expected,
+            "band {index} must carry the corridor of its light state"
+        );
+        assert_eq!(band["phase"], "germination");
+    }
+    // The step instants are the fixture's staircase times (the mock
+    // stamps them relative to its own request-time now; allow a small
+    // skew against this test's now).
+    let now = time::OffsetDateTime::now_utc();
+    let boundary = |hours_ago: i64| now - time::Duration::hours(hours_ago);
+    let assert_near = |band: &Value, key: &str, expected: time::OffsetDateTime| {
+        let epoch = leaflog_core::chart::parse_epoch(band[key].as_str().unwrap()).unwrap();
+        let instant = time::OffsetDateTime::from_unix_timestamp(epoch).unwrap();
+        let skew = (instant - expected).abs();
+        assert!(
+            skew < time::Duration::minutes(5),
+            "{key} at {instant} must be the fixture time {expected}"
+        );
+    };
+    assert_near(&bands[0], "end", boundary(23));
+    assert_near(&bands[1], "start", boundary(23));
+    assert_near(&bands[1], "end", boundary(20));
+    assert_near(&bands[2], "start", boundary(20));
+    assert_near(&bands[2], "end", boundary(18));
+    assert_near(&bands[3], "start", boundary(18));
+    // The last dark stretch runs to the window end.
+    let to = leaflog_core::chart::parse_epoch(body["series"]["to"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        leaflog_core::chart::parse_epoch(bands[3]["end"].as_str().unwrap()),
+        Some(to)
+    );
 }
