@@ -246,6 +246,9 @@ pub struct BandSegmentData {
     pub max: f64,
     /// The phase the segment belongs to.
     pub phase: String,
+    /// Whether the grow lights were on during the segment (`None`
+    /// when no light state applies). The day/night steps ride on it.
+    pub light_on: Option<bool>,
 }
 
 /// One phase window as the API serializes it.
