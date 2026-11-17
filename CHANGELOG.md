@@ -2,7 +2,43 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
-## v0.6.0 - 2026-11-16
+## v0.7.0 - 2026-11-17
+#### Bug Fixes
+- tri-state grow-page test survives the removed side fetches - (c60b0ae) - billie.codes
+#### CI
+- unique decision ids, a serialized gate, and e2e port pre-flight (D083-D085) - (f9449b0) - billie.codes
+#### Documentation
+- **(release)** the v0.7.0 upgrade note - (56e8598) - billie.codes
+- AGENTS.md status points at the changelog - (2b48c6e) - billie.codes
+- the decision log matches the code (D081-D085) - (161a87c) - billie.codes
+- the lamp fallback cites D044, not D021 - (bb1cd83) - billie.codes
+- the spec and app docs match the stripped app (71d8a42) - (339d8a0) - billie.codes
+- e2e follows the strain removal; THREAT-MODEL R3 resolved - (7ad9012) - billie.codes
+- d077 grow-sourced engine defaults - (d68c145) - billie.codes
+- d075 feature-strip decision and glossary reframe (grow carries label/photoperiod/tolerances/watts) - (9453a79) - billie.codes
+#### Features
+- **(backend)** drop the strain catalogue, the grow label carries the history - (62637ef) - billie.codes
+- **(frontend)** the grow carries its strain — page, nav, picker and wizard step removed - (8ce6608) - billie.codes
+- **(frontend)** phase picker follows the grow's photoperiod toggle - (633e234) - billie.codes
+- **(frontend)** grow form strain label, photoperiod and advanced settings - (ce0be3c) - billie.codes
+- drop spaces and the equipment catalogue end to end (9d39219) - (bb74cb9) - billie.codes
+- recommendations read the grow, not the catalogue (5cf01b8) - (49b8beb) - billie.codes
+- grow carries strain label, photoperiod and lamp facts (V14) - (aba9a79) - billie.codes
+- drop the seed bank end to end (fb99a14) - (5f72c3f) - billie.codes
+#### Miscellaneous
+- **(release)** bump version to 0.6.0 - (0fec11d) - github-actions[bot]
+- **(version)** 0.7.0 - (0cc6d8f) - billie.codes
+#### Refactoring
+- the forecast's flower override loses the strain name (71d8a42) - (20eac09) - billie.codes
+#### Style
+- cargo fmt after the fold - (7c65ba1) - billie.codes
+#### Tests
+- **(e2e)** the entity-ids payload drops strain_id; helper docs repaired - (daf58ed) - billie.codes
+- **(e2e)** pin the removed spaces/equipment surface and the wizard's skip path - (4a2748e) - billie.codes
+
+- - -
+
+## v0.6.0 - 2026-11-17
 #### Bug Fixes
 - **(frontend)** space and seed-batch selects keep their pick on refetch - (16b7b3e) - billie.codes
 #### CI
@@ -39,7 +75,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.5.1 - 2026-11-16
+## v0.5.1 - 2026-11-17
 #### Bug Fixes
 - **(dashboard)** show the No-data banner only for real dead bindings - (d788fe3) - billie.codes
 - **(e2e)** point the stack at its mock; honest env poll, strain locators - (f9ce5aa) - billie.codes
@@ -62,7 +98,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.5.0 - 2026-11-16
+## v0.5.0 - 2026-11-17
 #### Bug Fixes
 - **(ci)** UI prose extraction drops Tailwind class lists (D065) - (063b515) - billie.codes
 - **(image)** fetch the daisyUI bundles inside the container build - (ca3df1f) - billie.codes
@@ -84,7 +120,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.4.1 - 2026-11-16
+## v0.4.1 - 2026-11-17
 #### Bug Fixes
 - **(frontend)** submit handlers must prevent_default themselves (D061) - (f949965) - billie.codes
 #### Miscellaneous
@@ -93,7 +129,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.4.0 - 2026-11-16
+## v0.4.0 - 2026-11-17
 #### CI
 - **(changelog)** generate CHANGELOG.md with cocogitto in CI - (fed0dea) - billie.codes
 - **(deny)** cargo-deny gate for advisories and licences (D047) - (780f227) - billie.codes
@@ -122,7 +158,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.3.0 - 2026-11-16
+## v0.3.0 - 2026-11-17
 #### Bug Fixes
 - **(backend)** add nosniff and a hash-pinned CSP to served responses - (bae8103) - billie.codes
 - **(backend)** reject traversal and interior separators in photo path builders - (e139c7e) - billie.codes
@@ -141,7 +177,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.2.0 - 2026-11-16
+## v0.2.0 - 2026-11-17
 #### Bug Fixes
 - **(backend)** normalize photos to rgb8 so non-rgb inputs cannot panic - (ebcf88e) - billie.codes
 - **(ci)** cocogitto tarball extracts to x86_64-unknown-linux-musl/cog - (726b341) - billie.codes
@@ -167,7 +203,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.1.0 - 2026-11-16
+## v0.1.0 - 2026-11-17
 #### Bug Fixes
 - **(ci)** reference arch-tagged images when merging the multi-arch manifest - (23a7e5a) - billie.codes
 - **(ha)** pin wasm-bindgen-cli in the image builder (trunk auto-fetch failed on aarch64 CI) - (d458f19) - billie.codes
