@@ -1,4 +1,4 @@
-// esbuild driver for the ECharts chart bundle (D077). Bundles
+// esbuild driver for the ECharts chart bundle (D088). Bundles
 // entry.mjs minified as an iife under the `echarts` global name —
 // the bundle assigns the echarts/core API to window.echarts at load
 // — and writes the esbuild metafile next to it for the composition

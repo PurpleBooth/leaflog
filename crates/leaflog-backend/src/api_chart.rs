@@ -14,7 +14,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use leaflog_core::chart::{self, BandSegment, ChartSeries, ChartWindow, PhaseSpan, RawPoint};
 use leaflog_core::grows::Grow;
-use leaflog_core::strain::PhotoperiodType;
+use leaflog_core::grows::PhotoperiodType;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -74,8 +74,8 @@ struct LoadedGrow {
     /// The light role's binding + snapshot points, for the bound-light
     /// staircase (only loaded for the stepped-band roles).
     light: Option<RolePoints>,
-    /// The grow strain's photoperiod type, for the Light Cycle
-    /// defaults (the no-strain fallback matches the forecast's).
+    /// The grow's photoperiod type, for the Light Cycle
+    /// defaults (an unset grow matches the forecast's).
     photoperiod: PhotoperiodType,
     /// The user's soil-moisture band override, when stored (else the
     /// core default applies).
@@ -174,18 +174,14 @@ fn load_role(
 /// Loads the forecast windows for a grow: the same actuals as the
 /// forecast endpoint (D073 resolution), so the corridor matches the
 /// Gantt. Also the phase-span source for the coach's Light Cycle
-/// point query (D085).
+/// point query (D096).
 pub(crate) fn load_windows(
     conn: &rusqlite::Connection,
     grow: &Grow,
 ) -> Result<Vec<leaflog_core::forecast::PhaseWindow>, ApiError> {
-    let strain = grow
-        .strain_id
-        .as_deref()
-        .and_then(|sid| store::strain::get(conn, sid).ok());
     let actuals = crate::api_phase::forecast_actuals(conn, &grow.id)?;
     Ok(leaflog_core::forecast::forecast(
-        &leaflog_core::forecast::input_for(strain.as_ref(), grow.planned_veg_weeks, actuals),
+        &leaflog_core::forecast::input_for(grow.photoperiod, grow.planned_veg_weeks, actuals),
     ))
 }
 
@@ -204,7 +200,7 @@ fn parse_soil_band(value: &Value) -> Option<(f64, f64)> {
 /// The DB half of the chart: the grow, its forecast windows and the
 /// wanted roles' points, in one connection pass. The stepped-band
 /// roles also load the light role's binding (the bound-light
-/// staircase) and the strain's photoperiod (the Light Cycle
+/// staircase) and the grow's photoperiod (the Light Cycle
 /// defaults).
 fn load_grow_db(
     conn: &rusqlite::Connection,
@@ -222,11 +218,7 @@ fn load_grow_db(
     let light = load_light
         .then(|| load_role(conn, &grow.id, "light"))
         .transpose()?;
-    let strain = grow
-        .strain_id
-        .as_deref()
-        .and_then(|sid| store::strain::get(conn, sid).ok());
-    let photoperiod = strain.map_or(PhotoperiodType::Photoperiod, |s| s.photoperiod);
+    let photoperiod = grow.photoperiod;
     let soil_band = store::settings::get(conn, "soil_moisture_band")
         .ok()
         .and_then(|value| parse_soil_band(&value));

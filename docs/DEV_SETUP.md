@@ -38,6 +38,17 @@ just ci     # everything CI checks: fmt, clippy (native+wasm), tests, wasm build
 just image  # build the HA app image locally with Podman (amd64 by default)
 ```
 
+## The gate and host memory
+
+The dev host has 14 Gi of RAM, and a full `just ci` gate peaks hard
+(enough that two gates running at once were OOM-killed). `just ci`
+therefore self-serializes on a host lock (`/tmp/leaflog-fs/ci.lock`,
+D084): starting a second gate simply waits its turn. Run the gate as
+`just ci` — do not wrap it in an outer flock of the same file (the
+gate holds the lock itself, so a second flock of that path waits
+forever), and do not run the gate's sub-recipes (`clippy`, `test`,
+`e2e`, …) in parallel shells expecting them to be free.
+
 ## Testing against a real Home Assistant
 
 `just dev` targets the bundled `mock-ha` by default. To point the backend

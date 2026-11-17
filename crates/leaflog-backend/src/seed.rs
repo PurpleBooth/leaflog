@@ -1,158 +1,31 @@
-//! Bundled strain and equipment seed data (spec §4.1, §4.4).
+//! Substrate and feed-preset seeding (spec §5.3).
 //!
-//! The curated records in `seeds/strains.json` carry a source URL, a
-//! licence note and per-field evidence tags; per the seed-data
-//! discipline, numbers are ranges wherever sources disagree.
-//! `seeds/equipment.json` holds the bundled defaults of the equipment
-//! catalogue (product facts only, no personal purchase details — the
-//! repo is public), stamped `is_builtin` on first boot. Seeding runs
-//! only when the corresponding table is empty (first boot or a wiped
-//! database) — it never overwrites user data.
-
-use std::collections::BTreeMap;
-
-use leaflog_core::equipment::EquipmentInput;
-use leaflog_core::strain::{EvidenceTag, StrainInput};
-use serde::Deserialize;
+//! The substrate profiles and the generic feed templates are seeded
+//! into empty tables on boot (first boot or a wiped database) — it
+//! never overwrites user data. The bundled data of the removed
+//! catalogue features left with them: strains with the strain
+//! catalogue (D075), equipment with the spaces/equipment removal
+//! (D078). This module is all the bundled data that remains.
 
 use crate::db::{Db, StoreError};
 use crate::store;
 
-/// The bundled seed records.
-const SEED: &str = include_str!("seeds/strains.json");
-
-/// The bundled predefined equipment records.
-const EQUIPMENT_SEED: &str = include_str!("seeds/equipment.json");
-
-/// Provenance note stamped on bundled equipment catalogue entries.
-const EQUIPMENT_SOURCE: &str = "bundled default (docs/DECISIONS.md D012)";
-
-/// One bundled equipment record: a stable id plus the catalogue payload.
-#[derive(Debug, Deserialize)]
-struct EquipmentSeed {
-    /// Stable id from the source dataset (spec §4.1).
-    id: String,
-    /// The editable payload (same shape the API accepts).
-    #[serde(flatten)]
-    input: EquipmentInput,
-}
-
-/// One bundled record: a stable id, an editable payload plus provenance.
-#[derive(Debug, Deserialize)]
-struct StrainSeed {
-    /// Stable id from the source dataset (spec §4.1): upgrades insert
-    /// bundled rows that are new, keyed by this id; it never changes
-    /// between releases.
-    id: String,
-    /// The editable payload (same shape the API accepts).
-    #[serde(flatten)]
-    input: StrainInput,
-    /// Per-field evidence tags for the numbers above.
-    evidence: BTreeMap<String, EvidenceTag>,
-    /// Where this record's facts came from.
-    source_url: String,
-    /// Licence terms for bundling these facts.
-    source_licence: String,
-}
-
-/// A seeding failure (unreadable seed file or a storage error).
+/// A seeding failure (a storage error).
 #[derive(Debug, thiserror::Error)]
 pub enum SeedError {
-    /// The embedded seed JSON does not match the expected shape.
-    #[error("seed file invalid: {0}")]
-    Invalid(#[from] serde_json::Error),
     /// Writing the seed rows failed.
     #[error(transparent)]
     Store(#[from] StoreError),
 }
 
-/// Seeds the bundled strains (spec §4.1 upgrade rule).
-///
-/// Inserts records whose stable id is not present yet and never
-/// touches existing rows — bundled or user (V8 adopted pre-stable-id
-/// databases onto these ids). Returns how many rows were inserted.
+/// Seeds the substrate profiles and the generic feed templates (only
+/// into empty tables; part of first boot, D079: previously a side
+/// effect of strain seeding).
 ///
 /// # Errors
 ///
-/// Returns a [`SeedError`] when the seed file cannot be parsed or the
-/// inserts fail.
-pub async fn seed_strains(db: &Db) -> Result<u32, SeedError> {
-    let seeds: Vec<StrainSeed> = serde_json::from_str(SEED)?;
-    // Substrate profiles + feed templates (separate check: they go into
-    // their own tables and seed independently of strains).
-    if let Err(error) = seed_feeds(db).await {
-        eprintln!("feed/substrate seeding skipped: {error}");
-    }
-
-    db.with(move |conn| -> Result<u32, SeedError> {
-        // One transaction per pass: a partial seed must not persist.
-        let tx = conn.unchecked_transaction().map_err(StoreError::from)?;
-        let mut inserted = 0_u32;
-        for seed in &seeds {
-            let mut strain = store::strain::from_input(&seed.input);
-            strain.id.clone_from(&seed.id);
-            strain.evidence = seed.evidence.clone();
-            strain.is_builtin = true;
-            strain.source_url = Some(seed.source_url.clone());
-            strain.source_licence = Some(seed.source_licence.clone());
-            match store::strain::get(&tx, &strain.id) {
-                // Already bundled (or adopted by V8): leave it exactly
-                // as it is, user-edited fields included.
-                Ok(_) => continue,
-                Err(store::StoreOrNotFound::NotFound(_)) => {}
-                Err(store::StoreOrNotFound::Store(error)) => return Err(error.into()),
-            }
-            store::strain::create(&tx, &strain)?;
-            inserted += 1;
-        }
-        tx.commit().map_err(StoreError::from)?;
-        Ok(inserted)
-    })
-    .await
-}
-
-/// Seeds the bundled equipment (spec §4.1 upgrade rule).
-///
-/// Inserts records whose stable id is not present yet and never
-/// touches existing rows (V8 adopted pre-stable-id databases onto
-/// these ids). Returns how many rows were inserted.
-///
-/// # Errors
-///
-/// Returns a [`SeedError`] when the seed file cannot be parsed or the
-/// inserts fail.
-pub async fn seed_equipment(db: &Db) -> Result<u32, SeedError> {
-    let seeds: Vec<EquipmentSeed> = serde_json::from_str(EQUIPMENT_SEED)?;
-    db.with(move |conn| -> Result<u32, SeedError> {
-        // One transaction per pass: a partial seed must not persist.
-        let tx = conn.unchecked_transaction().map_err(StoreError::from)?;
-        let mut inserted = 0_u32;
-        for seed in &seeds {
-            match store::equipment::get(&tx, &seed.id) {
-                // Already bundled (or adopted by V8): leave it exactly
-                // as it is, user-edited fields included.
-                Ok(_) => continue,
-                Err(store::StoreOrNotFound::NotFound(_)) => {}
-                Err(store::StoreOrNotFound::Store(error)) => return Err(error.into()),
-            }
-            store::equipment::create_with_id(
-                &tx,
-                &seed.id,
-                &seed.input,
-                Some(EQUIPMENT_SOURCE),
-                true,
-            )?;
-            inserted += 1;
-        }
-        tx.commit().map_err(StoreError::from)?;
-        Ok(inserted)
-    })
-    .await
-}
-
-/// Seeds substrate profiles and generic feed templates (only into
-/// empty tables).
-async fn seed_feeds(db: &Db) -> Result<(), SeedError> {
+/// Returns a [`SeedError`] when the inserts fail.
+pub async fn seed_feed_presets(db: &Db) -> Result<(), SeedError> {
     // Substrate profiles.
     let profiles = db.with(store::feeds::profile_count).await?;
     if profiles == 0 {
@@ -299,107 +172,66 @@ fn generic_template_rows(
 
 #[cfg(test)]
 mod tests {
-    use super::{EQUIPMENT_SEED, SEED, SeedError, seed_equipment, seed_strains};
+    use super::{SeedError, seed_feed_presets};
     use crate::db::Db;
 
     #[tokio::test]
-    async fn seed_file_is_valid_and_seeds_once() -> Result<(), SeedError> {
-        let parsed: serde_json::Value = serde_json::from_str(SEED)?;
-        assert!(parsed.as_array().is_some_and(|a| a.len() >= 4));
-
+    async fn feed_presets_seed_into_empty_tables_only() -> Result<(), SeedError> {
         let db = Db::open_in_memory()?;
-        let first = seed_strains(&db).await?;
-        assert!(first >= 4, "first boot seeds the bundled records");
-        let second = seed_strains(&db).await?;
-        assert_eq!(second, 0, "second run must not duplicate seeds");
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn equipment_seed_file_is_valid_and_seeds_once() -> Result<(), SeedError> {
-        let parsed: serde_json::Value = serde_json::from_str(EQUIPMENT_SEED)?;
-        assert!(parsed.as_array().is_some_and(|a| !a.is_empty()));
-
-        let db = Db::open_in_memory()?;
-        let first = seed_equipment(&db).await?;
-        assert!(first >= 1, "first boot seeds the predefined equipment");
-        let second = seed_equipment(&db).await?;
-        assert_eq!(second, 0, "second run must not duplicate seeds");
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn seeded_equipment_covers_only_catalogue_categories() -> Result<(), SeedError> {
-        let db = Db::open_in_memory()?;
-        seed_equipment(&db).await?;
-        let items = db
-            .with(|conn| crate::store::equipment::list(conn, None))
+        seed_feed_presets(&db).await?;
+        let profiles: i64 = db
+            .with(|conn| {
+                conn.query_row("SELECT COUNT(*) FROM substrate_profile", [], |r| r.get(0))
+                    .map_err(crate::db::StoreError::from)
+            })
             .await?;
-        assert!(!items.is_empty(), "the trimmed seed set still ships");
+        assert!(profiles >= 3, "soil, coco and hydro profiles seeded");
+        let templates: i64 = db
+            .with(|conn| {
+                conn.query_row("SELECT COUNT(*) FROM feed_template", [], |r| r.get(0))
+                    .map_err(crate::db::StoreError::from)
+            })
+            .await?;
+        assert!(templates >= 3, "one generic template per substrate seeded");
+        // A second pass is a no-op (only empty tables are filled).
+        seed_feed_presets(&db).await?;
+        let templates_after: i64 = db
+            .with(|conn| {
+                conn.query_row("SELECT COUNT(*) FROM feed_template", [], |r| r.get(0))
+                    .map_err(crate::db::StoreError::from)
+            })
+            .await?;
+        assert_eq!(templates_after, templates, "no template duplication");
+        Ok(())
+    }
+
+    // Provenance note: the presets are generated from the §5.3
+    // substrate science presets, not third-party records — their
+    // `source` column names the derivation, asserted here once.
+    #[tokio::test]
+    async fn seeded_templates_carry_their_source() -> Result<(), SeedError> {
+        let db = Db::open_in_memory()?;
+        seed_feed_presets(&db).await?;
+        let rows: Vec<(Option<String>, i64)> = db
+            .with(
+                |conn| -> Result<Vec<(Option<String>, i64)>, crate::db::StoreError> {
+                    let mut stmt =
+                        conn.prepare("SELECT source, is_builtin FROM feed_template ORDER BY name")?;
+                    let rows = stmt
+                        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(rows)
+                },
+            )
+            .await?;
+        assert!(!rows.is_empty(), "templates seeded");
         assert!(
-            items.iter().all(
-                |item| leaflog_core::equipment::EquipmentCategory::catalogue()
-                    .contains(&item.category)
-            ),
-            "bundled presets ship for lights, tents and fans only (spec §4.1): {:?}",
-            items.iter().map(|item| item.category).collect::<Vec<_>>()
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn seeded_equipment_has_no_personal_purchase_details() -> Result<(), SeedError> {
-        let db = Db::open_in_memory()?;
-        seed_equipment(&db).await?;
-        let items = db
-            .with(|conn| crate::store::equipment::list(conn, None))
-            .await?;
-        assert!(items.iter().all(|item| {
-            item.purchase_date.is_none()
-                && item.purchase_price.is_none()
-                && item.currency.is_none()
-                && item.real_watts.is_none()
-        }));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn seeded_equipment_is_marked_builtin_with_source() -> Result<(), SeedError> {
-        let db = Db::open_in_memory()?;
-        seed_equipment(&db).await?;
-        let items = db
-            .with(|conn| crate::store::equipment::list(conn, None))
-            .await?;
-        assert_ne!(
-            items.len(),
-            0,
-            "first boot must seed the equipment catalogue"
-        );
-        assert!(items.iter().all(|item| {
-            item.is_builtin
-                && item
-                    .source
+            rows.iter().all(|(source, builtin)| *builtin == 1
+                && source
                     .as_deref()
-                    .is_some_and(|source| !source.is_empty())
-        }));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn seeded_records_carry_provenance() -> Result<(), SeedError> {
-        let db = Db::open_in_memory()?;
-        seed_strains(&db).await?;
-        let strains = db.with(crate::store::strain::list).await?;
-        assert!(strains.iter().all(|strain| {
-            strain
-                .source_url
-                .as_deref()
-                .is_some_and(|url| !url.is_empty())
-                && strain
-                    .source_licence
-                    .as_deref()
-                    .is_some_and(|licence| !licence.is_empty())
-        }));
+                    .is_some_and(|source| source.contains("§5.3"))),
+            "the generated presets state where they come from"
+        );
         Ok(())
     }
 }

@@ -61,12 +61,8 @@ pub(crate) fn current_phase(
     grow: &leaflog_core::grows::Grow,
     today: u16,
 ) -> Result<Phase, StoreError> {
-    let strain = grow
-        .strain_id
-        .as_deref()
-        .and_then(|id| store::strain::get(conn, id).ok());
     let actuals = forecast_actuals(conn, &grow.id)?;
-    let input = forecast::input_for(strain.as_ref(), grow.planned_veg_weeks, actuals);
+    let input = forecast::input_for(grow.photoperiod, grow.planned_veg_weeks, actuals);
     let windows = forecast::forecast(&input);
     Ok(phase_at(&windows, i64::from(today)))
 }
@@ -87,7 +83,7 @@ mod tests {
     use super::phase_at;
     use leaflog_core::Phase;
     use leaflog_core::forecast::{Actuals, ForecastInput, PhaseDefaults, forecast};
-    use leaflog_core::strain::PhotoperiodType;
+    use leaflog_core::grows::PhotoperiodType;
 
     #[test]
     fn phase_at_walks_the_windows() {
@@ -95,7 +91,7 @@ mod tests {
             photoperiod: PhotoperiodType::Photoperiod,
             planned_veg_weeks: Some(4),
             auto_total_days: None,
-            strain_flower_days: None,
+            flower_days_override: None,
             defaults: PhaseDefaults::default(),
             actuals: Actuals::default(),
         };

@@ -4,7 +4,7 @@
 //! lit phase, stored nullable: every missing part falls back to a
 //! cited preset default, and reset-to-default means "clear back to
 //! those defaults". Pure domain only: parsing, validation and the
-//! strain-aware defaults. Period expansion against a timezone is
+//! photoperiod-aware defaults. Period expansion against a timezone is
 //! later work (ticket 07) and keeps living in the chart engine.
 
 use std::fmt;
@@ -12,7 +12,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::Phase;
-use crate::strain::PhotoperiodType;
+use crate::grows::PhotoperiodType;
 
 /// The phases a Light Cycle speaks about: the ones with grow lights.
 /// Drying and curing run without lights, so no schedule applies.
@@ -92,7 +92,7 @@ impl<'de> Deserialize<'de> for ClockTime {
 }
 
 /// Hours the lights stay on, per lit phase. A `None` phase uses the
-/// preset default for the grow's strain type.
+/// preset default for the grow's photoperiod type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct PhaseHours {
     /// Lights-on hours while germinating.
@@ -281,7 +281,7 @@ pub const DEFAULT_LIGHTS_ON: ClockTime = ClockTime { hour: 6, minute: 0 };
 pub const DEFAULT_LIGHTS_ON_SOURCE: &str = "grower convention, unverified — no published standard for the \
      wall-clock on-time; 06:00 keeps the dark period in the evening";
 
-/// One phase's preset hours-on for a strain type, with its source
+/// One phase's preset hours-on for a photoperiod type, with its source
 /// label (seed-data discipline: a range-backed default, labelled).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HoursOnDefault {
@@ -291,7 +291,8 @@ pub struct HoursOnDefault {
     pub source: &'static str,
 }
 
-/// The preset hours-on per lit phase for a strain type (spec §5.1).
+/// The preset hours-on per lit phase for a photoperiod type (spec
+/// §5.1), keyed off the grow's photoperiod field (D075).
 ///
 /// Photoperiod: 18/6 from germination through veg (spec has no
 /// seedling row; seedlings run the vegetative schedule), 12/12 in
@@ -337,7 +338,7 @@ mod tests {
         LightCycleInput, MAX_HOURS_ON, MIN_HOURS_ON, PhaseHours, PhaseHoursInput, default_hours_on,
     };
     use crate::Phase;
-    use crate::strain::PhotoperiodType;
+    use crate::grows::PhotoperiodType;
 
     #[test]
     fn clock_time_parses_the_shapes_an_html_time_input_yields() {
@@ -464,13 +465,13 @@ mod tests {
             cycle.hours_on_for(Phase::Flower, PhotoperiodType::Photoperiod),
             Some(11)
         );
-        // Unset parts resolve to the strain-aware defaults.
+        // Unset parts resolve to the photoperiod-aware defaults.
         assert_eq!(
             cycle.hours_on_for(Phase::Vegetative, PhotoperiodType::Photoperiod),
             Some(18)
         );
         // The autoflower default applies to an unset phase; a set
-        // override wins whatever the strain type is.
+        // override wins whatever the photoperiod type is.
         assert_eq!(
             cycle.hours_on_for(Phase::Vegetative, PhotoperiodType::Auto),
             Some(18)

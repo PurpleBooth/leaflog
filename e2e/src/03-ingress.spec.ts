@@ -3,7 +3,7 @@
 // hrefs, deep links that load by full navigation.
 
 import { test, expect } from '@playwright/test';
-import { INGRESS_PREFIX, createSpace, uniqueName, url } from './helpers';
+import { INGRESS_PREFIX, createGrow, uniqueName, url } from './helpers';
 
 test('served shell carries the runtime ingress base', async ({ page }) => {
   await page.goto(url('/'));
@@ -26,11 +26,11 @@ test('nav links stay inside the ingress prefix', async ({ page }) => {
 });
 
 test('deep links load the page under the prefix', async ({ page, request }) => {
-  const name = uniqueName('E2E Deep Space');
-  const id = await createSpace(request, name);
+  const name = uniqueName('E2E Deep Grow');
+  const id = await createGrow(request, name);
 
   // A full browser navigation (not an SPA route change) straight to
   // the detail page; the backend must serve the SPA shell there.
-  await page.goto(url(`/spaces/${id}`));
+  await page.goto(url(`/grows/${id}`));
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
 });

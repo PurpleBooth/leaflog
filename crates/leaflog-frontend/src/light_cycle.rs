@@ -1,6 +1,6 @@
 //! Light Cycle editor on the grow overview (ticket 05): the daily
 //! lights-on local time plus hours-on per lit phase. Empty fields
-//! keep the cited preset defaults (shown as placeholders, strain
+//! keep the cited preset defaults (shown as placeholders, photoperiod
 //! aware); saving stores the override, reset clears it back to the
 //! defaults. The strings are plain English like every other form —
 //! no locale catalog exists yet (see docs/DECISIONS.md).
@@ -9,10 +9,10 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 
 use leaflog_core::Phase;
+use leaflog_core::grows::PhotoperiodType;
 use leaflog_core::light_cycle::{
     LIT_PHASES, LightCycle, LightCycleInput, PhaseHoursInput, default_hours_on,
 };
-use leaflog_core::strain::PhotoperiodType;
 
 use crate::api;
 use crate::phase_pick::phase_display;
@@ -100,7 +100,7 @@ fn optional_field(hours: Option<u8>) -> String {
 }
 
 /// The Light Cycle editor form: one lights-on time input plus
-/// hours-on per lit phase. Placeholders show the strain-aware preset
+/// hours-on per lit phase. Placeholders show the photoperiod-aware preset
 /// defaults; reset clears the whole override.
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md

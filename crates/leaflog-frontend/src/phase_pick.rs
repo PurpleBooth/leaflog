@@ -1,10 +1,12 @@
 //! The phase picker's pure logic (D073): what recording a pick means,
-//! and the spelled-out phase labels for the interface.
+//! and the spelled-out phase labels for the interface. The
+//! photoperiod-vs-auto distinction comes from the grow's toggle
+//! (D075): Flowering on a photoperiod grow is the flip; on an
+//! autoflower grow it is the generic Phase-change.
 
 use leaflog_core::Phase;
 use leaflog_core::actions::{ActionDetails, ActionType};
-use leaflog_core::grows::ActionInput;
-use leaflog_core::strain::PhotoperiodType;
+use leaflog_core::grows::{ActionInput, PhotoperiodType};
 
 /// The interface label for a phase: spelled out, "Flowering" not the
 /// terse code label.
@@ -38,10 +40,10 @@ pub fn picker_phases() -> Vec<(Phase, &'static str)> {
         .collect()
 }
 
-/// The event a pick records (D073): Flowering on a photoperiod is the
-/// flip; Drying is the harvest; every other boundary — and an
-/// autoflower's Flowering — is the generic Phase-change action with
-/// the target phase.
+/// The event a pick records (D073): Flowering on a photoperiod grow
+/// is the flip; Drying is the harvest; every other boundary — and an
+/// autoflower grow's Flowering — is the generic Phase-change action
+/// with the target phase.
 #[must_use]
 pub const fn event_for_pick(
     phase: Phase,
@@ -77,7 +79,7 @@ mod tests {
     use super::{event_for_pick, phase_display, phase_from_label, pick_input, picker_phases};
     use leaflog_core::Phase;
     use leaflog_core::actions::ActionType;
-    use leaflog_core::strain::PhotoperiodType;
+    use leaflog_core::grows::PhotoperiodType;
 
     #[test]
     fn labels_are_spelled_out() {

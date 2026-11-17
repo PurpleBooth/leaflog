@@ -428,8 +428,8 @@ mod tests {
         assert_eq!(rewritten(prefix, prefix), "/");
         assert_eq!(rewritten(&format!("{prefix}/"), prefix), "/");
         assert_eq!(
-            rewritten(&format!("{prefix}/api/strains"), prefix),
-            "/api/strains"
+            rewritten(&format!("{prefix}/api/grows"), prefix),
+            "/api/grows"
         );
         assert_eq!(
             rewritten(&format!("{prefix}/pkg/app.css"), prefix),

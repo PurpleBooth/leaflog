@@ -32,7 +32,6 @@ pub mod api;
 mod chart;
 mod chart_option;
 mod dashboard;
-mod equipment;
 mod feed;
 mod gantt;
 mod grows;
@@ -41,11 +40,7 @@ mod light_cycle;
 mod live;
 mod onboarding;
 mod phase_pick;
-mod seedbank;
-mod spaces;
-mod strains;
 
-use equipment::EquipmentPage;
 use grows::{GrowsPage, GrowsRoute, Landing};
 use history::{HistoryPage, PlantViewPage};
 use js_sys::{Reflect, global};
@@ -54,9 +49,6 @@ use leptos::task::spawn_local;
 use leptos_router::components::{A, Route, Router, Routes};
 use leptos_router::path;
 use onboarding::OnboardingWizard;
-use seedbank::SeedbankPage;
-use spaces::{SpaceDetail, SpacesPage};
-use strains::StrainsPage;
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 
 /// Reads `window.__LEAFLOG_BASE__`, injected at serve time by the
@@ -103,6 +95,20 @@ pub(crate) fn non_empty(value: String) -> Option<String> {
     (!value.trim().is_empty()).then_some(value)
 }
 
+/// The shared inline error banner: renders while `error` holds a
+/// message, clears from the tree when it is `None`. Lived in the
+/// equipment module before the catalogue left (D078); every data page
+/// imports it from the crate root now.
+#[component]
+#[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
+pub(crate) fn ErrorIf(error: RwSignal<Option<String>>) -> impl IntoView {
+    move || {
+        error.get().map(|message| {
+            view! { <p class="alert alert-error py-2 px-4 text-sm" role="alert">{message}</p> }
+        })
+    }
+}
+
 /// Root component: top navigation plus the router wired to the runtime
 /// ingress base.
 #[component]
@@ -118,10 +124,6 @@ pub fn App() -> impl IntoView {
                         aria-label="Main"
                     >
                         <A href=route_href("/") exact=true>"Home"</A>
-                        <A href=route_href("/equipment")>"Equipment"</A>
-                        <A href=route_href("/strains")>"Strains"</A>
-                        <A href=route_href("/spaces")>"Spaces"</A>
-                        <A href=route_href("/seedbank")>"Seedbank"</A>
                         <A href=route_href("/history")>"History"</A>
                         <A href=route_href("/grows")>"Grows"</A>
                     </nav>
@@ -130,13 +132,8 @@ pub fn App() -> impl IntoView {
                     <Routes fallback=|| view! { <p>"Loading…"</p> }>
                         <Route path=path!("/") view=Landing />
                         <Route path=path!("/spike") view=Spike />
-                        <Route path=path!("/equipment") view=EquipmentPage />
-                        <Route path=path!("/strains") view=StrainsPage />
-                        <Route path=path!("/spaces") view=SpacesPage />
-                    <Route path=path!("/seedbank") view=SeedbankPage />
-                    <Route path=path!("/history") view=HistoryPage />
-                    <Route path=path!("/plants/:id") view=PlantViewPage />
-                        <Route path=path!("/spaces/:id") view=SpaceDetail />
+                        <Route path=path!("/history") view=HistoryPage />
+                        <Route path=path!("/plants/:id") view=PlantViewPage />
                         <Route path=path!("/grows") view=GrowsPage />
                         <Route path=path!("/grows/:id") view=GrowsRoute />
                     </Routes>
@@ -176,14 +173,9 @@ pub fn Home() -> impl IntoView {
                      pH point and watt in one private place."
                 </p>
                 <p class="text-base-content/70 text-sm">
-                    "Milestone M2: the foundation — equipment inventory and the strain
-                     database (bundled records carry sources and evidence tags). More
-                     arrives with each milestone."
+                    "Everything lives on the grow now: sensors bind per grow, and the
+                     strain label and photoperiod are grow fields."
                 </p>
-                <ul class="list-disc pl-5">
-                    <li><A href=route_href("/equipment")>"Equipment inventory"</A></li>
-                    <li><A href=route_href("/strains")>"Strain database"</A></li>
-                </ul>
                 <h3>"Backend health"</h3>
                 <pre aria-live="polite">{move || health.get()}</pre>
             </div>

@@ -1,4 +1,4 @@
-// Bundle verification for the ECharts build pipeline (D077).
+// Bundle verification for the ECharts build pipeline (D088).
 //
 // Checks the built bundle at the build-artifact seam: the tree-shaken
 // module composition (metafile), local-only loading (no CDN hosts, no

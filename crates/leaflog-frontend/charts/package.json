@@ -2,7 +2,7 @@
   "name": "leaflog-frontend-charts",
   "private": true,
   "version": "0.0.0",
-  "description": "Leaflog chart bundle build: tree-shaken ECharts (SVG renderer) bundled by esbuild into the Trunk dist (D075). Build-time only; Node never reaches the image.",
+  "description": "Leaflog chart bundle build: tree-shaken ECharts (SVG renderer) bundled by esbuild into the Trunk dist (D088). Build-time only; Node never reaches the image.",
   "license": "Unlicense",
   "type": "module",
   "scripts": {

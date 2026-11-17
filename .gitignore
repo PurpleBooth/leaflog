@@ -11,7 +11,7 @@
 /crates/leaflog-frontend/tailwind
 
 # ECharts bundle + esbuild metafile, built by `just build-echarts`
-# from charts/entry.mjs (npm + esbuild, build-time only; D077).
+# from charts/entry.mjs (npm + esbuild, build-time only; D088).
 # charts/package.json and package-lock.json ARE committed.
 /crates/leaflog-frontend/charts/echarts.js
 /crates/leaflog-frontend/charts/metafile.json

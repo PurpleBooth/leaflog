@@ -5,7 +5,7 @@
 //! the pH/EC pair scatters — renders through `ECharts` (SVG renderer)
 //! via the option-builder seam. The card-visibility rule: a role with
 //! no binding (or, for the pH/EC log-detail roles, no entries) renders
-//! no card at all; a dead binding is `bound: true`, so its card stays
+//! no card at all. A dead binding is `bound: true`, so its card stays
 //! and the env dashboard's No-data banner names it. A bound role whose
 //! history fetch fails keeps its card too, in a degraded presentation
 //! naming the failure — only unbound and dataless roles hide.

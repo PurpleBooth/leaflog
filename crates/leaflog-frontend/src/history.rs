@@ -1,14 +1,14 @@
 //! History page (spec §4.15): predicted-vs-actual accuracy across
-//! grows, yield aggregates by strain / substrate / feed template, and
-//! one-tap "start next run".
+//! grows, yield aggregates by strain label / substrate / feed
+//! template, and one-tap "start next run".
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::components::A;
 use serde::Deserialize;
 
+use crate::ErrorIf;
 use crate::api;
-use crate::equipment::ErrorIf;
 use crate::route_href;
 use leaflog_core::grows::{Plant, PlantInput};
 
@@ -32,7 +32,7 @@ pub struct GrowAccuracy {
     pub grow_id: String,
     /// Grow name.
     pub name: String,
-    /// Strain name.
+    /// The grow's strain label, when it has one (display only, D075).
     pub strain: Option<String>,
     /// Comparisons.
     pub boundaries: Vec<BoundaryAccuracy>,
@@ -58,8 +58,9 @@ pub struct YieldAggregate {
 pub struct HistoryReport {
     /// One row per grow.
     pub accuracy: Vec<GrowAccuracy>,
-    /// Yields by strain.
-    pub yield_by_strain: Vec<YieldAggregate>,
+    /// Yields by the grow's strain label (unlabelled grows group
+    /// together).
+    pub yield_by_label: Vec<YieldAggregate>,
     /// Yields by substrate.
     pub yield_by_substrate: Vec<YieldAggregate>,
     /// Yields by feed template.
@@ -170,7 +171,7 @@ pub fn HistoryPage() -> impl IntoView {
                 <p class="py-6 text-center text-base-content/60">"No grows yet — history builds itself as grows finish."</p>
             </Show>
 
-            <Aggregate title="Yield by strain" rows=Signal::derive(move || report.get().yield_by_strain) />
+            <Aggregate title="Yield by label" rows=Signal::derive(move || report.get().yield_by_label) />
             <Aggregate title="Yield by substrate" rows=Signal::derive(move || report.get().yield_by_substrate) />
             <Aggregate title="Yield by feed template" rows=Signal::derive(move || report.get().yield_by_feed_template) />
 

@@ -37,12 +37,43 @@ async fn spawn() -> (String, PathBuf) {
 fn grow_payload(name: &str) -> Value {
     json!({
         "name": name,
-        "strain_id": null,
         "substrate": "soil",
         "started_on": "2026-10-01",
         "status": "active",
         "notes": null,
     })
+}
+
+/// The grow-carried strain and lamp facts (D075 feature strip, step
+/// 01), in the shape the create/update forms send.
+fn strain_lamp_fields(label: &str, photoperiod: &str, watts: f64, dimmable: bool) -> Value {
+    json!({
+        "strain_label": label,
+        "photoperiod": photoperiod,
+        "heat_tolerance": "sensitive",
+        "cold_tolerance": "tolerant",
+        "light_tolerance": "tolerant",
+        "real_watts": watts,
+        "dimmable": dimmable,
+    })
+}
+
+/// Asserts one stored grow carries exactly these strain/lamp facts.
+fn assert_strain_lamp_fields(grow: &Value, fields: &Value) {
+    for key in [
+        "strain_label",
+        "photoperiod",
+        "heat_tolerance",
+        "cold_tolerance",
+        "light_tolerance",
+        "real_watts",
+        "dimmable",
+    ] {
+        assert_eq!(
+            grow[key], fields[key],
+            "field {key} did not round-trip (response: {grow})"
+        );
+    }
 }
 
 fn action_payload(kind: &str, occurred: &str) -> Value {
@@ -160,6 +191,143 @@ async fn grow_plant_round_trip() {
         .await
         .unwrap();
     assert_eq!(response.status(), reqwest::StatusCode::NO_CONTENT);
+}
+
+/// Create and update round-trip every grow-carried strain and lamp
+/// fact (D075 step 01): the payload's values come back on the create
+/// response, on the update response and on a fresh read.
+#[tokio::test]
+async fn grow_round_trips_strain_and_lamp_fields() {
+    let (base, _root) = spawn().await;
+    let client = reqwest::Client::new();
+
+    let mut payload = grow_payload("Labelled run");
+    let fields = strain_lamp_fields("Northern Lights #5", "auto", 113.5, false);
+    for (key, value) in fields.as_object().expect("fields is an object") {
+        payload[key] = value.clone();
+    }
+    let created: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let id = created["id"].as_str().unwrap().to_owned();
+    assert_strain_lamp_fields(&created, &fields);
+
+    // The edit flips every field (autoflower → photoperiod, the
+    // tolerance levels each move, watts set and cleared differently).
+    let mut update = payload.clone();
+    update["name"] = json!("Labelled run v2");
+    update["strain_label"] = json!("Moby Dick");
+    update["photoperiod"] = json!("photoperiod");
+    update["heat_tolerance"] = json!("average");
+    update["cold_tolerance"] = json!("sensitive");
+    update["light_tolerance"] = json!("average");
+    update["real_watts"] = json!(240.0);
+    update["dimmable"] = json!(true);
+    let updated: Value = client
+        .put(format!("{base}/api/grows/{id}"))
+        .json(&update)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_strain_lamp_fields(&updated, &update);
+
+    // A fresh read sees the persisted values, not just the echo.
+    let fetched: Value = client
+        .get(format!("{base}/api/grows/{id}"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_strain_lamp_fields(&fetched, &update);
+}
+
+/// A grow created without the new fields defaults them: label empty,
+/// photoperiod photoperiod, tolerances average, watts unset, lamp
+/// dimmable (D075 step 01 defaults).
+#[tokio::test]
+async fn grow_defaults_strain_and_lamp_fields_when_omitted() {
+    let (base, _root) = spawn().await;
+    let client = reqwest::Client::new();
+
+    let created: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&grow_payload("Plain run"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let id = created["id"].as_str().unwrap().to_owned();
+    let defaults = json!({
+        "strain_label": "",
+        "photoperiod": "photoperiod",
+        "heat_tolerance": "average",
+        "cold_tolerance": "average",
+        "light_tolerance": "average",
+        "real_watts": null,
+        "dimmable": true,
+    });
+    assert_strain_lamp_fields(&created, &defaults);
+
+    // A full replace that omits the fields resets to the defaults too
+    // (PUT is a full update, like every other grow field).
+    let mut update = grow_payload("Plain run v2");
+    update["strain_label"] = json!("should be replaced");
+    let _ = client
+        .put(format!("{base}/api/grows/{id}"))
+        .json(&json!({
+            "name": update["name"],
+            "substrate": update["substrate"],
+            "started_on": update["started_on"],
+            "status": update["status"],
+            "notes": update["notes"],
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json::<Value>()
+        .await
+        .unwrap();
+    let fetched: Value = client
+        .get(format!("{base}/api/grows/{id}"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_strain_lamp_fields(&fetched, &defaults);
+}
+
+/// A negative watt draw is nonsense (the equipment catalogue rejects
+/// it too); the grow's copy of the field follows the same rule — 400,
+/// never a stored row.
+#[tokio::test]
+async fn grow_rejects_negative_real_watts() {
+    let (base, _root) = spawn().await;
+    let client = reqwest::Client::new();
+
+    let mut payload = grow_payload("Negative watts");
+    payload["real_watts"] = json!(-5.0);
+    let response = client
+        .post(format!("{base}/api/grows"))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]

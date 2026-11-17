@@ -1,41 +1,38 @@
-//! First-run onboarding wizard (spec §4.12): equipment → grow space →
-//! strain → plants, ending with a first grow running. Every step can be
+//! First-run onboarding wizard (spec §4.12, final two-step shape):
+//! bind sensors → plants (the grow's strain label and photoperiod sit
+//! inline, D075), ending with a first grow running. Every step can be
 //! skipped, the wizard gates nothing (all screens stay reachable), and
 //! dismissing it leaves the normal dashboard.
 
-use leaflog_core::equipment::EquipmentItem;
+use std::collections::BTreeMap;
+
 use leaflog_core::grows::Grow;
 use leaflog_core::grows::GrowInput;
 use leaflog_core::grows::GrowStatus;
-use leaflog_core::seedbank::SeedBatchView;
-use leaflog_core::spaces::GrowSpace;
-use leaflog_core::spaces::GrowSpaceInput;
-use leaflog_core::strain::Strain;
+use leaflog_core::grows::PhotoperiodType;
+use leaflog_core::grows::Tolerance;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::Deserialize;
 use serde_json::json;
 
+use crate::ErrorIf;
 use crate::api;
-use crate::equipment::ErrorIf;
+use crate::grows::photoperiod_options;
+use crate::live::BINDING_ROLES;
 use crate::non_empty;
 
 /// The `GET /api/onboarding` state.
 // The endpoint reports a snapshot of booleans by design; the flags are
 // the whole payload.
-#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Copy, Default, Deserialize, Eq, PartialEq)]
 pub struct OnboardingState {
     /// Whether the wizard should show now.
     pub show_wizard: bool,
     /// Whether the user dismissed it before.
     pub dismissed: bool,
-    /// Whether any grow space exists.
-    pub has_spaces: bool,
     /// Whether any grow exists.
     pub has_grows: bool,
-    /// Whether any catalogue entry exists.
-    pub has_equipment: bool,
 }
 
 /// The wizard, mounted on the home page.
@@ -50,19 +47,16 @@ pub fn OnboardingWizard() -> impl IntoView {
     // handler closures below stay Copy (view children may re-render).
     let navigate = StoredValue::new_local(leptos_router::hooks::use_navigate());
 
-    let equipment = RwSignal::<Vec<EquipmentItem>>::new(Vec::new());
-    let picked = RwSignal::<Vec<String>>::new(Vec::new());
-    let space_name = RwSignal::<String>::new(String::new());
-    let space_w = RwSignal::<String>::new(String::new());
-    let space_d = RwSignal::<String>::new(String::new());
-    let space_h = RwSignal::<String>::new(String::new());
-    let strains = RwSignal::<Vec<Strain>>::new(Vec::new());
-    let picked_strain = RwSignal::<String>::new(String::new());
-    let batches = RwSignal::<Vec<SeedBatchView>>::new(Vec::new());
-    let picked_batch = RwSignal::<String>::new(String::new());
+    // Step 1: role → entity picks, applied to the grow created in the
+    // last step (a binding hangs off a grow, so the write lands once
+    // the grow exists — the picks here mirror the grow page's pickers).
+    let picks = RwSignal::<BTreeMap<String, String>>::new(BTreeMap::new());
+    let entities = RwSignal::<Vec<serde_json::Value>>::new(Vec::new());
     let plant_prefix = RwSignal::<String>::new(String::from("Plant"));
     let plant_count = RwSignal::<u32>::new(1);
     let grow_name = RwSignal::<String>::new(String::new());
+    let strain_label = RwSignal::<String>::new(String::new());
+    let photoperiod = RwSignal::<PhotoperiodType>::new(PhotoperiodType::default());
     let started_on = RwSignal::<String>::new(default_start());
 
     let refresh_state = move || {
@@ -77,14 +71,8 @@ pub fn OnboardingWizard() -> impl IntoView {
     Effect::new(move |_| {
         refresh_state();
         spawn_local(async move {
-            if let Ok(list) = api::get::<Vec<EquipmentItem>>("api/equipment").await {
-                equipment.set(list);
-            }
-            if let Ok(list) = api::get::<Vec<Strain>>("api/strains").await {
-                strains.set(list);
-            }
-            if let Ok(list) = api::get::<Vec<SeedBatchView>>("api/seed-batches").await {
-                batches.set(list);
+            if let Ok(value) = api::get::<serde_json::Value>("api/ha/entities").await {
+                entities.set(value["entities"].as_array().cloned().unwrap_or_default());
             }
         });
     });
@@ -102,7 +90,7 @@ pub fn OnboardingWizard() -> impl IntoView {
     // Every step can be skipped: "skip" just advances; finishing with
     // everything skipped only dismisses the wizard.
     let skip = move |_| {
-        step.update(|current| *current = (*current).clamp(1, 3) + 1);
+        step.update(|current| *current = (*current).clamp(1, 2) + 1);
     };
 
     // prevent_default first: Leptos has no `on:submit:prevent` modifier
@@ -113,41 +101,8 @@ pub fn OnboardingWizard() -> impl IntoView {
         ev.prevent_default();
         let navigate = navigate.get_value();
         spawn_local(async move {
-            // Step 2: a space built from the picked equipment.
-            let mut new_space_id = None;
-            if !space_name.get().trim().is_empty() {
-                let input = GrowSpaceInput {
-                    name: space_name.get(),
-                    width_cm: space_w.get().trim().parse().ok(),
-                    depth_cm: space_d.get().trim().parse().ok(),
-                    height_cm: space_h.get().trim().parse().ok(),
-                    notes: None,
-                };
-                match api::post::<GrowSpaceInput, GrowSpace>("api/spaces", &input).await {
-                    Ok(space) => {
-                        let created = space.id;
-                        new_space_id = Some(created.clone());
-                        for id in picked.get() {
-                            // 204 No Content: post_action, not post_empty
-                            // (which would try to parse a missing body).
-                            if let Err(failure) =
-                                api::post_action(&format!("api/spaces/{created}/equipment/{id}"))
-                                    .await
-                            {
-                                error.set(Some(failure.message));
-                                return;
-                            }
-                        }
-                    }
-                    Err(failure) => {
-                        error.set(Some(failure.message));
-                        return;
-                    }
-                }
-            }
-            // Step 4: plants inside a grow in that space; the grow is
-            // the wizard's whole point, so skipping it entirely just
-            // dismisses.
+            // Step 3: the grow is the wizard's whole point, so skipping
+            // it entirely just dismisses.
             let mut grow_id = None;
             if plant_count.get() > 0 {
                 let prefix = {
@@ -163,11 +118,17 @@ pub fn OnboardingWizard() -> impl IntoView {
                         let name = grow_name.get();
                         non_empty(name).unwrap_or_else(|| format!("{prefix} run"))
                     },
-                    strain_id: non_empty(picked_strain.get()),
-                    grow_space_id: new_space_id,
-                    seed_batch_id: non_empty(picked_batch.get()),
                     feed_template_id: None,
                     planned_veg_weeks: None,
+                    // The strain label is the free text the grow
+                    // carries (D075); photoperiod sits beside it.
+                    strain_label: strain_label.get().trim().to_owned(),
+                    photoperiod: photoperiod.get_untracked(),
+                    heat_tolerance: Tolerance::default(),
+                    cold_tolerance: Tolerance::default(),
+                    light_tolerance: Tolerance::default(),
+                    real_watts: None,
+                    dimmable: true,
                     substrate: "soil".to_owned(),
                     started_on: started_on.get(),
                     status: GrowStatus::Active,
@@ -186,6 +147,19 @@ pub fn OnboardingWizard() -> impl IntoView {
                                 error.set(Some(failure.message));
                                 return;
                             }
+                        }
+                        // Step 1's sensor picks become the new grow's
+                        // bindings; empty picks write nothing.
+                        let bound = picks.get();
+                        if !bound.is_empty()
+                            && let Err(failure) = api::put::<serde_json::Value, serde_json::Value>(
+                                &format!("api/grows/{}/bindings", grow.id),
+                                &json!({ "bindings": bound }),
+                            )
+                            .await
+                        {
+                            error.set(Some(failure.message));
+                            return;
                         }
                         grow_id = Some(grow.id);
                     }
@@ -219,7 +193,7 @@ pub fn OnboardingWizard() -> impl IntoView {
     let restartable = move || {
         state
             .get()
-            .is_some_and(|state| state.dismissed && !state.has_spaces && !state.has_grows)
+            .is_some_and(|state| state.dismissed && !state.has_grows)
     };
 
     // The step indicator class as a reactive value: `step` lights up
@@ -241,170 +215,89 @@ pub fn OnboardingWizard() -> impl IntoView {
             <section class="card bg-base-100 shadow-sm px-5 py-4 my-4" aria-label="First-run setup">
                 <h2>"Welcome to Leaflog"</h2>
                 <p class="text-base-content/70">
-                    "Four quick steps to a first grow — skip any of them, everything stays
+                    "Two quick steps to a first grow — skip any of them, everything stays
                      reachable from the tabs."
                 </p>
                 <ul class="steps my-2">
-                    <li class=step_class(1)>"Equipment"</li>
-                    <li class=step_class(2)>"Grow space"</li>
-                    <li class=step_class(3)>"Strain"</li>
-                    <li class=step_class(4)>"Plants"</li>
+                    <li class=step_class(1)>"Bind sensors"</li>
+                    <li class=step_class(2)>"Plants"</li>
                 </ul>
                 <ErrorIf error />
 
                 <Show when=move || step.get() == 1>
                     <div>
-                        <h3>"1. Equipment basics"</h3>
+                        <h3>"1. Bind sensors"</h3>
                         <p class="text-base-content/70">
-                            "Start from the bundled presets — anything you pick here goes straight
-                             into your space. Add your own gear (and HA sensors) on the "
-                            <a href=crate::route_href("/equipment")>"equipment page"</a>
-                            " and come back; the wizard waits."
+                            "Pick a Home Assistant entity per role — the picks become this
+                             grow's bindings. Everything optional; you can bind (or rebind)
+                             on the grow page any time."
                         </p>
-                        <ul class="flex flex-wrap gap-2 my-2">
-                            {move || {
-                                equipment
-                                    .get()
-                                    .into_iter()
-                                    .map(|item| {
-                                        let id = item.id.clone();
-                                        let label = item.name;
-                                        let id_for_check = id.clone();
-                                        let is_picked =
-                                            move || picked.get().contains(&id_for_check);
-                                        view! {
-                                            <li>
-                                                <button
-                                                    class=move || if is_picked() {
-                                                        "btn btn-sm rounded-full btn-primary"
-                                                    } else {
-                                                        "btn btn-sm rounded-full"
-                                                    }
-                                                    on:click=move |_| {
-                                                        picked.update(|current| {
-                                                            if let Some(position) =
-                                                                current.iter().position(|entry| entry == &id)
-                                                            {
-                                                                current.remove(position);
-                                                            } else {
-                                                                current.push(id.clone());
+                        <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
+                            {BINDING_ROLES
+                                .iter()
+                                .map(|(role, label)| {
+                                    let role = *role;
+                                    let current = picks;
+                                    let options = entities;
+                                    view! {
+                                        <label class="fieldset">
+                                            <span class="fieldset-label">{*label}</span>
+                                            <select class="select"
+                                                prop:value=move || {
+                                                    current.get().get(role).cloned().unwrap_or_default()
+                                                }
+                                                on:change=move |ev| {
+                                                    let value = event_target_value(&ev);
+                                                    picks.update(|map| {
+                                                        if value.is_empty() {
+                                                            map.remove(role);
+                                                        } else {
+                                                            map.insert(role.to_owned(), value);
+                                                        }
+                                                    });
+                                                }
+                                            >
+                                                <option value="">"— unbound —"</option>
+                                                {move || {
+                                                    options
+                                                        .get()
+                                                        .iter()
+                                                        .map(|entity| {
+                                                            let id = entity["entity_id"]
+                                                                .as_str()
+                                                                .unwrap_or_default()
+                                                                .to_owned();
+                                                            let name = entity["attributes"]["friendly_name"]
+                                                                .as_str()
+                                                                .unwrap_or(&id)
+                                                                .to_owned();
+                                                            view! {
+                                                                <option value=id>
+                                                                    {format!("{name} ({id})")}
+                                                                </option>
                                                             }
-                                                        });
-                                                    }
-                                                >
-                                                    {label}
-                                                </button>
-                                            </li>
-                                        }
-                                    })
-                                    .collect::<Vec<_>>()
-                            }}
-                        </ul>
+                                                        })
+                                                        .collect::<Vec<_>>()
+                                                }}
+                                            </select>
+                                        </label>
+                                    }
+                                })
+                                .collect::<Vec<_>>()}
+                        </div>
                         <div class="flex flex-wrap gap-2 mt-4">
                             <button class="btn btn-sm" on:click=skip>"Skip this step"</button>
-                            <button class="btn btn-primary btn-sm" on:click=skip disabled=move || picked.get().is_empty()>
-                                "Next"
-                            </button>
+                            <button class="btn btn-primary btn-sm" on:click=skip>"Next"</button>
                         </div>
                     </div>
                 </Show>
 
                 <Show when=move || step.get() == 2>
-                    <div>
-                        <h3>"2. Grow space"</h3>
-                        <p class="text-base-content/70">"Name the tent or room your picked equipment lives in."</p>
-                        <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
-                            <label class="fieldset">
-                                <span class="fieldset-label">"Name"</span>
-                                <input class="input" type="text" placeholder="60×60 tent"
-                                    prop:value=move || space_name.get()
-                                    on:input=move |ev| space_name.set(event_target_value(&ev))
-                                />
-                            </label>
-                            <label class="fieldset"><span class="fieldset-label">"Width (cm)"</span>
-                                <input class="input" type="number" min="0"
-                                    prop:value=move || space_w.get()
-                                    on:input=move |ev| space_w.set(event_target_value(&ev))
-                                />
-                            </label>
-                            <label class="fieldset"><span class="fieldset-label">"Depth (cm)"</span>
-                                <input class="input" type="number" min="0"
-                                    prop:value=move || space_d.get()
-                                    on:input=move |ev| space_d.set(event_target_value(&ev))
-                                />
-                            </label>
-                            <label class="fieldset"><span class="fieldset-label">"Height (cm)"</span>
-                                <input class="input" type="number" min="0"
-                                    prop:value=move || space_h.get()
-                                    on:input=move |ev| space_h.set(event_target_value(&ev))
-                                />
-                            </label>
-                        </div>
-                        <div class="flex flex-wrap gap-2 mt-4">
-                            <button class="btn btn-sm" on:click=skip>"Skip this step"</button>
-                            <button class="btn btn-primary btn-sm" on:click=move |_| step.set(3)>"Next"</button>
-                        </div>
-                    </div>
-                </Show>
-
-                <Show when=move || step.get() == 3>
-                    <div>
-                        <h3>"3. Strain"</h3>
-                        <p class="text-base-content/70">
-                            "Pick a strain for the grow diary — bundled presets are marked and
-                             read-only; clone one as your phenotype to tweak it."
-                        </p>
-                        <label class="fieldset">
-                            <span class="fieldset-label">"Strain"</span>
-                            <select class="select"
-                                prop:value=move || picked_strain.get()
-                                on:change=move |ev| picked_strain.set(event_target_value(&ev))
-                            >
-                                <option value="">"— none —"</option>
-                                {move || {
-                                    // Same reliability fix as the grow form's
-                                    // strain select: rebuilt <option> nodes
-                                    // mount with no selected state, so the
-                                    // pick is re-encoded from the draft
-                                    // whenever the list arrives or refetches
-                                    // (untracked — `prop:value` covers draft
-                                    // changes).
-                                    let picked = picked_strain.get_untracked();
-                                    strains
-                                        .get()
-                                        .into_iter()
-                                        .map(|strain| {
-                                            let id = strain.id.clone();
-                                            let is_selected = !picked.is_empty()
-                                                && picked == strain.id;
-                                            let label = if strain.is_builtin {
-                                                format!("{} (bundled)", strain.name)
-                                            } else {
-                                                strain.name
-                                            };
-                                            view! {
-                                                <option value=id selected=is_selected>
-                                                    {label}
-                                                </option>
-                                            }
-                                        })
-                                        .collect::<Vec<_>>()
-                                }}
-                            </select>
-                        </label>
-                        <div class="flex flex-wrap gap-2 mt-4">
-                            <button class="btn btn-sm" on:click=skip>"Skip this step"</button>
-                            <button class="btn btn-primary btn-sm" on:click=move |_| step.set(4)>"Next"</button>
-                        </div>
-                    </div>
-                </Show>
-
-                <Show when=move || step.get() == 4>
                     <form on:submit=finish>
-                        <h3>"4. Plants"</h3>
+                        <h3>"2. Plants"</h3>
                         <p class="text-base-content/70">
-                            "Finishing creates a grow inside your space (today counts as day one —
-                             change it if the seeds went in earlier) and opens its dashboard."
+                            "Finishing creates the grow (today counts as day one — change it
+                             if the seeds went in earlier) and opens its dashboard."
                         </p>
                         <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
                             <label class="fieldset"><span class="fieldset-label">"Grow name"</span>
@@ -412,6 +305,25 @@ pub fn OnboardingWizard() -> impl IntoView {
                                     prop:value=move || grow_name.get()
                                     on:input=move |ev| grow_name.set(event_target_value(&ev))
                                 />
+                            </label>
+                            <label class="fieldset"><span class="fieldset-label">"Strain label"</span>
+                                <input class="input" type="text" placeholder="Northern Lights #5"
+                                    prop:value=move || strain_label.get()
+                                    on:input=move |ev| strain_label.set(event_target_value(&ev))
+                                />
+                            </label>
+                            <label class="fieldset"><span class="fieldset-label">"Photoperiod"</span>
+                                <select class="select"
+                                    prop:value=move || photoperiod.get().label().to_owned()
+                                    on:change=move |ev| {
+                                        photoperiod.set(
+                                            PhotoperiodType::from_label(&event_target_value(&ev))
+                                                .unwrap_or_default(),
+                                        );
+                                    }
+                                >
+                                    {photoperiod_options()}
+                                </select>
                             </label>
                             <label class="fieldset"><span class="fieldset-label">"Name prefix"</span>
                                 <input class="input" type="text"
@@ -433,40 +345,9 @@ pub fn OnboardingWizard() -> impl IntoView {
                                     on:input=move |ev| started_on.set(event_target_value(&ev))
                                 />
                             </label>
-                            <label class="fieldset"><span class="fieldset-label">"From seed batch"</span>
-                                <select class="select"
-                                    prop:value=move || picked_batch.get()
-                                    on:change=move |ev| picked_batch.set(event_target_value(&ev))
-                                >
-                                    <option value="">"— none —"</option>
-                                    {move || {
-                                        // Mount-time `selected`, as in the grow
-                                        // form's list selects: freshly rebuilt
-                                        // options must not reset the pick that
-                                        // `picked_batch` already holds.
-                                        let picked = picked_batch.get_untracked();
-                                        batches
-                                            .get()
-                                            .into_iter()
-                                            .map(|batch| {
-                                                let id = batch.batch.id.clone();
-                                                let label = format!(
-                                                    "{} × {}",
-                                                    batch.batch.quantity,
-                                                    strain_label(&strains, batch.batch.strain_id.as_ref()),
-                                                );
-                                                let is_selected = picked == id;
-                                                view! {
-                                                    <option value=id selected=is_selected>{label}</option>
-                                                }
-                                            })
-                                            .collect::<Vec<_>>()
-                                    }}
-                                </select>
-                            </label>
                         </div>
                         <div class="flex flex-wrap gap-2 mt-4">
-                            <button class="btn btn-sm" type="button" on:click=move |_| step.set(3)>"Back"</button>
+                            <button class="btn btn-sm" type="button" on:click=move |_| step.set(1)>"Back"</button>
                             <button class="btn btn-sm btn-error btn-outline" type="button"
                                 on:click=move |_| set_dismissed(true)
                             >
@@ -491,20 +372,6 @@ pub fn OnboardingWizard() -> impl IntoView {
             </section>
         </Show>
     }
-}
-
-/// The strain name for a batch option (unlinked batches say so).
-fn strain_label(strains: &RwSignal<Vec<Strain>>, strain_id: Option<&String>) -> String {
-    strain_id.map_or_else(
-        || "unlinked seeds".to_owned(),
-        |id| {
-            strains
-                .get_untracked()
-                .iter()
-                .find(|strain| &strain.id == id)
-                .map_or_else(|| "unknown strain".to_owned(), |strain| strain.name.clone())
-        },
-    )
 }
 
 /// Today as `YYYY-MM-DD`: germination defaults to today (editable).

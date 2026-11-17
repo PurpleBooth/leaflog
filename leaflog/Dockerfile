@@ -21,7 +21,7 @@ ARG HA_BASE=ghcr.io/home-assistant/base:3.24-2026.11.0
 # ---------------------------------------------------------------------------
 FROM rust:1.99.1-slim-bookworm AS frontend-builder
 ARG TARGETARCH
-# nodejs + npm run the ECharts bundle step (D077): build-time only,
+# nodejs + npm run the ECharts bundle step (D088): build-time only,
 # this stage's outputs are dist/ files and the app stage below never
 # sees Node. Debian bookworm ships node 18 — esbuild needs >=18, and
 # the npm project pins exact echarts/esbuild versions via the
@@ -46,7 +46,7 @@ COPY crates crates
 # The daisyUI bundles are gitignored (fetched, never vendored); the
 # same pinned+verified recipe that `just dev`/`just ci` run fetches
 # them here too. The ECharts bundle builds the same way: npm ci from
-# the committed lockfile, then the verified esbuild bundle (D077).
+# the committed lockfile, then the verified esbuild bundle (D088).
 RUN just tailwind-daisyui
 RUN just build-echarts
 RUN cd crates/leaflog-frontend \

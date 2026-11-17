@@ -125,7 +125,7 @@ rated for disclosure impact **high** or above unless noted.
 | 1.5 | LAN eavesdropping | Accepted (out of app control) | HA terminates TLS. On installs reached over plain HTTP on the LAN, photos and JSON are sniffable. Nothing Leaflog can do beyond not adding its own plaintext surface (there is none: no host port, no direct UI) |
 | 1.6 | Browser artifacts on shared machines | Open | No `localStorage`/`sessionStorage` use anywhere in the frontend (verified), and history entries show only the opaque ingress URL. But photo responses carry no `Cache-Control` (`api_grows.rs:498`), so originals and thumbnails land in the browser disk cache of any machine the panel was used on. Recommendation R2: `private, no-store` on originals |
 | 1.7 | The HA sidebar itself | Accepted | `panel_admin: true` limits the panel (icon `mdi:cannabis`, title "Leaflog") to administrator accounts (`leaflog/config.yaml:16`). Anyone who can see an admin's HA UI sees the panel. Per-user sidebar hiding exists in HA if the owner wants it |
-| 1.8 | Telemetry or cloud calls | Mitigated | Local-first by construction: the only outbound connection the app makes is to the Supervisor (`lib.rs:171`). No analytics, no fonts, no CDN, no update pings (verified: frontend fetches only relative API paths, external links are user-authored and `rel="noreferrer"`) |
+| 1.8 | Telemetry or cloud calls | Mitigated | Local-first by construction: the only outbound connection the app makes is to the Supervisor (`lib.rs:171`). No analytics, no fonts, no CDN, no update pings (verified: the frontend fetches only relative API paths; the former user-authored external links went with the strain catalogue, D075) |
 | 1.9 | Dev-mode exposure | Mitigated by configuration | Dev mode accepts any peer (`app.rs:273`). It exists for `just dev` only; production is auto-selected when `SUPERVISOR_TOKEN` is present (D005), and the container publishes no ports. Never set `LEAFLOG_ENV=dev` in a real install |
 
 ## 6. TM2: Leaflog used as a platform to attack others
@@ -136,7 +136,7 @@ not be usable to attack third parties.
 | # | Path | Status | Detail |
 |---|---|---|---|
 | 2.1 | Token theft via compromise of the Leaflog process (image-decode bug, dependency exploit) | Mitigated in depth, blast radius accepted | With the process compromised, the admin token yields all of HA. Controls: the token is sent only to the Supervisor, lives behind a redacted-`Debug` newtype, and never appears in a response or log line, asserted by an integration test that exercises every HA endpoint (D021, `tests/ha.rs`). The Supervisor surface is strictly read-only, so the token is used for nothing an attacker could not do faster from HA itself |
-| 2.2 | XSS in the SPA pivoting to HA (same origin) | Mitigated | Leptos contextual escaping everywhere; zero uses of `inner_html` or equivalent (verified). The one string the backend injects into HTML, the ingress base, is character-allowlisted, HTML-escaped and JS-escaped (`ingress.rs`, tested against markup and traversal payloads). One gap: user-authored strain `source_url` renders as an `href` with no scheme check (`strains.rs:177` in the frontend) — a `javascript:` URL is self-inflicted today, but becomes an attack vector the moment strain import (CSV/JSON, deferred) ships. Recommendation R3 |
+| 2.2 | XSS in the SPA pivoting to HA (same origin) | Mitigated | Leptos contextual escaping everywhere; zero uses of `inner_html` or equivalent (verified). The one string the backend injects into HTML, the ingress base, is character-allowlisted, HTML-escaped and JS-escaped (`ingress.rs`, tested against markup and traversal payloads). The former gap — user-authored strain `source_url` rendering as an `href` with no scheme check — closed with the strain catalogue's removal (feature strip D075, ticket 05): no user-authored URL renders as a link any more. Re-open if a data-import feature ever renders user URLs |
 | 2.3 | CSRF against Leaflog endpoints | Mitigated | Three independent blockers: HA authenticates the session before proxying anything into ingress; the per-install ingress path token is unguessable, so a hostile site cannot even address the routes; and every mutating handler requires a JSON or multipart body that a cross-site form cannot forge usefully. The app sets no cookies of its own and emits no CORS headers |
 | 2.4 | SSRF via the Supervisor link | Mitigated | The backend calls only the Supervisor base URL from the environment (`lib.rs:171`). The history passthrough interpolates a user-supplied `entity_id` into the Supervisor query (`ha.rs:181`), but the caller is already an HA administrator querying their own instance: no privilege crosses a boundary |
 | 2.5 | Container as a beachhead on the add-on network | Mitigated by packaging | No host network, no privileged mode, no Docker socket, `map: data:rw` only, no published ports (`leaflog/config.yaml`). A compromised container still has typical outbound network access; egress filtering is host-level and out of scope. Co-tenant add-ons cannot pass the ingress IP gate, and IP spoofing from another container is not possible without control of the host network namespace |
@@ -156,7 +156,7 @@ hand.
 |---|---|---|---|
 | 3.1 | Poisoned sensor data (spoofed MQTT/ESPHome device, compromised HA) shifting VPD windows, lamp advice, auto-captured snapshots | Accepted | Advisory-only engines. Partial controls: the dashboard shows the raw readings so gross anomalies are visible; feed fitting clamps EC steps (200 µS/cm default, D026); advice is presented as ranges. A patient attacker shifting values plausibly defeats it, but an adversary who controls HA already controls locks and cameras; the plants are not the crown jewels in that scenario |
 | 3.2 | Diary tampering via the API by an authorised user | Accepted | Any HA administrator can rewrite or delete anything; there is no second layer of authorisation below HA admin, by design (single-user, `panel_admin: true`). Non-admin HA users cannot reach the app at all |
-| 3.3 | Preset or bundled-data tampering | Mitigated (bundled), open (future import) | Bundled strain records are embedded in the signed-by-publishing binary and re-seed only into an empty table (D014). User presets are user data. The deferred CSV/JSON import is the risk: imported strains with extreme ranges would steer forecast and feed fit. Range validation is a hard requirement on that feature (tracked in R8's context, §14) |
+| 3.3 | Preset or bundled-data tampering | Mitigated (bundled), open (future import) | The only bundled data left is the feed and substrate presets (D075 removed the strain and equipment bundles): embedded in the signed-by-publishing binary, re-seeded only into empty tables (D079). User presets are user data. A future data-import feature is the risk: imported values with extreme ranges would steer forecast and feed fit. Range validation is a hard requirement on that feature (tracked in R8's context, §14) |
 | 3.4 | Clock or timestamp manipulation skewing day counts and phases | Accepted | Day derivation trusts grow start, logged flips/harvests and the clock. EXIF timestamps are stored naive-UTC (D018) and can shift a photo's day number by hours-to-a-day. Cosmetic-to-minor |
 | 3.5 | Feed-schedule sabotage (nutrient burn or deficiency) | Partially mitigated | Templates are editable by any app user, but the fitter's EC step clamp bounds how fast a sabotaged schedule can change concentrations (D026) |
 | 3.6 | Auto-log spam from a flapping `light.*` entity distorting the diary | Mitigated | Opt-out setting `auto_log_ha_events` (default on, D022); entries are labelled `auto:` in notes so they are distinguishable and prunable |
@@ -254,7 +254,7 @@ the categories above.
 | DoS | Image decompression bomb (unbounded decode) | Open | R1, see 4.6 |
 | DoS | Disk exhaustion | Open | R6, see 4.4 |
 | Elevation of privilege | No app accounts, no cookies, no secrets in the browser; the WASM bundle holds nothing but UI | Mitigated (nothing to elevate) | frontend verified |
-| XSS | Framework escaping, zero `inner_html`, escaped base injection; URL scheme gap on `source_url` | Mitigated except the URL scheme gap | R3, see 2.2 |
+| XSS | Framework escaping, zero `inner_html`, escaped base injection | Mitigated | see 2.2 (the former `source_url` gap closed with D075) |
 | CSRF | Unguessable path token + JSON/multipart bodies + no app cookies | Mitigated | see 2.3 |
 | SSRF | Fixed Supervisor URL from env only | Mitigated | see 2.4 |
 | Clickjacking / framing | Not applicable: HA ingress panels render in HA's own iframe by design | n/a | §2 |
@@ -275,7 +275,7 @@ mitigated is omitted from the table.
 |---|---|---|---|---|---|
 | TM1.3 | Diary and photos disclosed via unencrypted backups | likely | high | **High** | Open (R5) |
 | TM1.6 / TM5.4 | Photos persist in shared machines' browser cache | possible | medium | Medium | Open (R2) |
-| TM2.2b | `javascript:` URL in strain `source_url` (vector via future import) | rare today | high | Low today, High with import | Open (R3) |
+| TM2.2b | `javascript:` URL in strain `source_url` (vector via future import) | rare today | high | Low today, High with import | Closed (D075: strains removed) |
 | TM2.7 | Un-hash-pinned build-tool downloads | rare | critical | Medium | Open (R4) |
 | TM3.1 | Sensor poisoning steers advice | possible | medium | Medium | Accepted |
 | TM4.1 | One-click destructive delete, no undo | possible | high | **High** | Open (R8) |
@@ -294,7 +294,7 @@ Prioritised; none blocks v0.1.0.
 |---|---|---|
 | R1 | Cap decoded image dimensions (reject above ~40 MP) before decode, or use the `image` crate's `Limits` | TM4.6, TM7 DoS |
 | R2 | `Cache-Control: private, no-store` on photo originals (and `private, max-age=…` for thumbnails, which are small and low-detail) | TM1.6, TM5.4 |
-| R3 | Validate `source_url` scheme (`http`/`https` only) on input and render. **Hard prerequisite for the strain-import feature** | TM2.2b |
+| R3 | **Resolved** in the feature strip (D075, ticket 05): the strain catalogue — and with it every `source_url` — is gone, so the scheme validation is moot. Re-open only if a data-import feature returns and renders user URLs | TM2.2b |
 | R4 | SHA256-pin the Trunk, wasm-bindgen and cocogitto downloads in Dockerfile and release workflow | TM2.7 |
 | R5 | User-facing hardening notes (a `leaflog/DOCS.md` section or `docs/HARDENING.md`): encrypted HA backups, per-person HA accounts with MFA on admins, sign out of shared devices, FDE on x86 hosts, restraint with host-path add-ons, beware browser caches | TM1.3, TM4.3, TM4.7, TM5.2, TM6 |
 | R6 | Optional photo storage quota setting (default off) with a clear UI state when hit | TM4.4 |
@@ -311,8 +311,9 @@ Re-open this document when any of the following happens:
   advice into dead plants and re-rates the whole category. The
   AGENTS.md opt-in gate is mandatory, and this model must be updated
   in the same change.
-- **The data-import feature** (CSV/JSON strains): activates TM2.2b and
-  TM3.3's validation requirements.
+- **Any data-import feature** (e.g. CSV/JSON of removed catalogue
+  data): activates TM3.3's validation requirements, and TM2.2b again
+  if imported URLs ever render as links.
 - **Multi-user or non-admin panel access**: re-opens TM5 and the
   repudiation acceptance in TM7.
 - **Any change to** the photo pipeline, `backup_exclude`, token

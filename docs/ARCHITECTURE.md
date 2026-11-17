@@ -119,7 +119,7 @@ Three subsystems and one rule, per D073/D074:
   log-time snapshots per role; the corridor (temperature, RH window,
   VPD, soil band) comes from phase-keyed presets in core. The
   frontend renders charts with ECharts' SVG renderer, driven from
-  Rust — the bundle is a build-time artifact (ADR 0001, D077). HA
+  Rust — the bundle is a build-time artifact (ADR 0001, D088). HA
   outages degrade to snapshot-only, per the Dead binding rule.
 - **The app lands on the active grow's overview**, not a marketing
   page; fresh installs still meet the onboarding wizard.

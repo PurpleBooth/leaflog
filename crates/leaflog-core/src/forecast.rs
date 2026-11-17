@@ -1,20 +1,22 @@
 //! Phase forecast engine (spec §4.5, milestone M5).
 //!
-//! A pure function from a grow's inputs (start date, strain, planned
-//! veg weeks or auto age, and any logged actual events) to a list of
-//! phase windows — each phase with an **earliest / likely / latest**
-//! start and end. Logged events (flip, transplant, trichome check,
-//! harvest) pin their phase boundary to reality; everything after the
-//! last actual re-forecasts from it.
+//! A pure function from a grow's inputs (start date, photoperiod
+//! toggle, planned veg weeks or auto age, and any logged actual
+//! events) to a list of phase windows — each phase with an
+//! **earliest / likely / latest** start and end. Logged events (flip,
+//! transplant, trichome check, harvest) pin their phase boundary to
+//! reality; everything after the last actual re-forecasts from it.
 //!
-//! Seed defaults carry the spec §4.5 ranges; the strain's
-//! flower-days and stretch override them when present. Autos skip the
-//! veg choice and flower by age.
+//! Seed defaults carry the spec §4.5 ranges; an explicit flower-days
+//! override replaces them when present ([`ForecastInput`
+//! construction is the extension point, not the engine]). Autos skip
+//! the veg choice and flower by age. All inputs come from the grow
+//! (D075) — no strain record is consulted.
 
 use serde::{Deserialize, Serialize};
 
 use crate::Phase;
-use crate::strain::{PhotoperiodType, Strain};
+use crate::grows::PhotoperiodType;
 
 /// A date (days since the grow start, 0-based), so the engine stays
 /// calendar-free and testable.
@@ -22,7 +24,8 @@ pub type Day = i64;
 
 /// The default phase durations in days (spec §4.5, sourced ranges).
 /// Germination 3–10, seedling 14–21 (2–3 weeks), flower 56–77
-/// (8–11 weeks; the strain wins when present), dry 7–14, cure 14–30.
+/// (8–11 weeks; an explicit flower-days override wins), dry 7–14,
+/// cure 14–30.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PhaseDefaults {
     /// Germination minimum days.
@@ -33,9 +36,10 @@ pub struct PhaseDefaults {
     pub seedling_min: Day,
     /// Seedling maximum days (3 weeks).
     pub seedling_max: Day,
-    /// Flower minimum days (8 weeks; strain overrides).
+    /// Flower minimum days (8 weeks; the override wins when present).
     pub flower_min: Day,
-    /// Flower maximum days (11 weeks; strain overrides).
+    /// Flower maximum days (11 weeks; the override wins when
+    /// present).
     pub flower_max: Day,
     /// Dry minimum days (until stem snap).
     pub dry_min: Day,
@@ -97,7 +101,7 @@ pub struct Actuals {
 /// The inputs to [`forecast`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ForecastInput {
-    /// Photoperiod or autoflowering (from the strain).
+    /// Photoperiod or autoflowering (from the grow, D075).
     pub photoperiod: PhotoperiodType,
     /// Planned vegetative weeks for photoperiods (grower's choice);
     /// ignored for autos. When absent and no flip is logged, the
@@ -107,8 +111,10 @@ pub struct ForecastInput {
     /// Autoflower total days from seed (overrides flower timing when
     /// present).
     pub auto_total_days: Option<(Day, Day)>,
-    /// Strain flower days (min, max); overrides the defaults.
-    pub strain_flower_days: Option<(Day, Day)>,
+    /// Flower days (min, max); overrides the defaults. Any source may
+    /// supply the override; the grow carries no flower data, so
+    /// [`input_for`] only fills it for the auto default window.
+    pub flower_days_override: Option<(Day, Day)>,
     /// The sourced default ranges (editable).
     pub defaults: PhaseDefaults,
     /// Logged actual events.
@@ -279,29 +285,43 @@ fn normalize(windows: &mut [PhaseWindow]) {
     }
 }
 
-/// Builds the forecast input from a strain + grow facts (used by the
-/// backend API).
+/// The grow day an autoflower starts flowering by age (spec §4.5:
+/// autos start ~3–5 weeks from seed; the engine anchors the age flip
+/// at week 4).
+pub const AUTO_FLIP_DAY: Day = 28;
+
+/// The default autoflower seed-to-harvest window in days (spec §4.5:
+/// ~9–11 weeks from seed). Unchanged default window — the grow's
+/// photoperiod toggle alone selects it.
+pub const AUTO_TOTAL_DAYS: (Day, Day) = (63, 77);
+
+/// Builds the forecast input from a grow's facts (used by the backend
+/// API, D075): the photoperiod toggle decides the windows.
+///
+/// Unset parses as a photoperiod grow on the default ranges; an
+/// autoflower grow finishes within [`AUTO_TOTAL_DAYS`] from seed, so
+/// its flower window is the total minus the age flip.
 #[must_use]
 pub fn input_for(
-    strain: Option<&Strain>,
+    photoperiod: PhotoperiodType,
     planned_veg_weeks: Option<u8>,
     actuals: Actuals,
 ) -> ForecastInput {
-    let photoperiod = strain.map_or(PhotoperiodType::Photoperiod, |s| s.photoperiod);
-    let strain_flower_days = strain.and_then(|s| match (s.flower_days_min, s.flower_days_max) {
-        (Some(min), Some(max)) => Some((Day::from(min), Day::from(max))),
-        _ => None,
-    });
-    let auto_total_days =
-        strain.and_then(|s| match (s.auto_total_days_min, s.auto_total_days_max) {
-            (Some(min), Some(max)) => Some((Day::from(min), Day::from(max))),
-            _ => None,
-        });
+    let (flower_days_override, auto_total_days) = match photoperiod {
+        PhotoperiodType::Photoperiod => (None, None),
+        PhotoperiodType::Auto => (
+            Some((
+                AUTO_TOTAL_DAYS.0 - AUTO_FLIP_DAY,
+                AUTO_TOTAL_DAYS.1 - AUTO_FLIP_DAY,
+            )),
+            Some(AUTO_TOTAL_DAYS),
+        ),
+    };
     ForecastInput {
         photoperiod,
         planned_veg_weeks,
         auto_total_days,
-        strain_flower_days,
+        flower_days_override,
         defaults: PhaseDefaults::default(),
         actuals,
     }
@@ -325,10 +345,6 @@ fn flower_end_for(input: &ForecastInput, flower_start: Day, (f_min, f_max): (Day
         })
 }
 
-/// Appends the vegetative window; returns the flip day and the flower
-/// length range (strain overrides). `None` when nothing past veg is
-/// projectable: a photoperiod with neither a logged flip nor planned
-/// veg weeks leaves the window open-ended.
 /// Completes an open-ended chain: nothing past veg is projectable,
 /// unless a curing pin says the grow is already curing, in which case
 /// the skipped phases collapse into history at the pin.
@@ -367,6 +383,10 @@ fn pin_start(windows: &mut [PhaseWindow], requested: Day) -> Day {
     start
 }
 
+/// Appends the vegetative window; returns the flip day and the flower
+/// length range (override or defaults). `None` when nothing past veg
+/// is projectable: a photoperiod with neither a logged flip nor
+/// planned veg weeks leaves the window open-ended.
 fn add_vegetative(
     windows: &mut Vec<PhaseWindow>,
     input: &ForecastInput,
@@ -380,7 +400,7 @@ fn add_vegetative(
     match input.photoperiod {
         PhotoperiodType::Photoperiod => {
             let flower = input
-                .strain_flower_days
+                .flower_days_override
                 .unwrap_or((d.flower_min, d.flower_max));
             let pinned = input.actuals.vegetative_start.is_some();
             let Some(weeks) = input.planned_veg_weeks else {
@@ -426,7 +446,12 @@ fn add_vegetative(
             let auto_flip = input
                 .actuals
                 .flower_start
-                .map_or_else(|| 28.max(start), |pin| pin.max(start));
+                .map_or_else(|| AUTO_FLIP_DAY.max(start), |pin| pin.max(start));
+            // The flower window: an explicit override (the adapter's
+            // derived default total) or the default ranges.
+            let flower = input
+                .flower_days_override
+                .unwrap_or((d.flower_min, d.flower_max));
             add(
                 windows,
                 Phase::Vegetative,
@@ -437,7 +462,7 @@ fn add_vegetative(
                 input.actuals.vegetative_start.is_some(),
                 Some(auto_flip),
             );
-            Some((auto_flip, (d.flower_min, d.flower_max)))
+            Some((auto_flip, flower))
         }
     }
 }
@@ -555,10 +580,10 @@ mod tests {
 
     fn base_input() -> ForecastInput {
         ForecastInput {
-            photoperiod: crate::strain::PhotoperiodType::Photoperiod,
+            photoperiod: crate::grows::PhotoperiodType::Photoperiod,
             planned_veg_weeks: Some(4),
             auto_total_days: None,
-            strain_flower_days: None,
+            flower_days_override: None,
             defaults: PhaseDefaults::default(),
             actuals: Actuals::default(),
         }
@@ -573,7 +598,7 @@ mod tests {
                 for flower_max in [flower_min, flower_min + 21] {
                     let input = ForecastInput {
                         planned_veg_weeks: Some(veg),
-                        strain_flower_days: Some((Day::from(flower_min), Day::from(flower_max))),
+                        flower_days_override: Some((Day::from(flower_min), Day::from(flower_max))),
                         ..base_input()
                     };
                     let windows = forecast(&input);
@@ -774,7 +799,7 @@ mod tests {
     #[test]
     fn autoflower_flowering_pin_beats_age_estimate() {
         let input = ForecastInput {
-            photoperiod: crate::strain::PhotoperiodType::Auto,
+            photoperiod: crate::grows::PhotoperiodType::Auto,
             planned_veg_weeks: None,
             auto_total_days: Some((70, 84)),
             actuals: Actuals {
@@ -895,7 +920,7 @@ mod tests {
         for total_min in [63_i64, 70, 77] {
             for total_max in [total_min, total_min + 14] {
                 let input = ForecastInput {
-                    photoperiod: crate::strain::PhotoperiodType::Auto,
+                    photoperiod: crate::grows::PhotoperiodType::Auto,
                     planned_veg_weeks: None,
                     auto_total_days: Some((total_min, total_max)),
                     ..base_input()
@@ -932,30 +957,68 @@ mod tests {
         assert_eq!(planned_flower.likely_end, pinned_flower.likely_end);
     }
 
+    // --- Grow-sourced inputs (ticket 02: the grow carries the
+    // photoperiod; no strain record is consulted) ---
+
+    #[test]
+    fn input_for_unset_photoperiod_is_a_photoperiod_grow() {
+        // An unlabelled photoperiod grow with a 4-week plan: the whole
+        // chain projects on the default windows alone.
+        let input = input_for(
+            crate::grows::PhotoperiodType::Photoperiod,
+            Some(4),
+            Actuals::default(),
+        );
+        assert_eq!(
+            input.photoperiod,
+            crate::grows::PhotoperiodType::Photoperiod
+        );
+        let windows = forecast(&input);
+        assert_eq!(windows.len(), 6);
+        // Defaults: germ 3–10 (likely 6), seedling 14–21 (likely 17),
+        // so veg starts at day 23; 4 planned weeks project the flip at
+        // 51 and the default 56–77 flower days follow.
+        let flower = &windows[3];
+        assert_eq!(flower.phase, Phase::Flower);
+        assert_eq!(flower.likely_start, 51);
+        assert_eq!(flower.earliest_end, 51 + 56);
+        assert_eq!(flower.likely_end, 51 + 66);
+        assert_eq!(flower.latest_end, 51 + 77);
+    }
+
+    #[test]
+    fn input_for_autoflower_projects_the_default_total_window() {
+        // An autoflower grow with no other data finishes 63–77 days
+        // from seed (spec §4.5: ~9–11 weeks), anchored on the age flip.
+        let input = input_for(
+            crate::grows::PhotoperiodType::Auto,
+            None,
+            Actuals::default(),
+        );
+        let windows = forecast(&input);
+        assert_eq!(windows.len(), 6);
+        let flower = &windows[3];
+        assert_eq!(flower.phase, Phase::Flower);
+        assert!(flower.actual_start, "autos flip by age");
+        assert_eq!(flower.likely_start, super::AUTO_FLIP_DAY);
+        // The seed-to-harvest total lands exactly in the default
+        // window: earliest 63, likely 70, latest 77.
+        assert_eq!(flower.earliest_end, 63);
+        assert_eq!(flower.likely_end, 70);
+        assert_eq!(flower.latest_end, 77);
+    }
+
     // --- Golden tests (spec §13) ---
 
     #[test]
-    fn golden_photoperiod_northern_lights() {
-        // Northern Lights: 45–63 flower days (seed catalogue), 4 veg
-        // weeks planned. Defaults: germ 3–10 (likely 6), seedling
-        // 14–21 (likely 17).
-        let strain_data = r#"{
-            "id": "x", "name": "Northern Lights", "breeder": "Sensi Seeds",
-            "photoperiod": "photoperiod", "sex": "feminized",
-            "indica_pct": 90, "landrace_tags": ["afghani"],
-            "flower_days_min": 45, "flower_days_max": 63,
-            "stretch_factor": 1.4, "veg_weeks_min": null, "veg_weeks_max": null,
-            "height_class": "short", "auto_total_days_min": null,
-            "auto_total_days_max": null, "yield_notes": null,
-            "terpene_notes": null, "effect_notes": null,
-            "heat_tolerance": "sensitive", "cold_tolerance": "average",
-            "light_tolerance": "average", "user_rating": null, "notes": null,
-            "evidence": {}, "source_url": null, "source_licence": null,
-            "is_phenotype_of": null, "created_at": "t", "updated_at": "t"
-        }"#;
-        let strain: crate::strain::Strain =
-            serde_json::from_str(strain_data).expect("strain parses");
-        let input = input_for(Some(&strain), Some(4), Actuals::default());
+    fn golden_photoperiod_grow() {
+        // A photoperiod grow, 4 veg weeks planned. Defaults: germ 3–10
+        // (likely 6), seedling 14–21 (likely 17).
+        let input = input_for(
+            crate::grows::PhotoperiodType::Photoperiod,
+            Some(4),
+            Actuals::default(),
+        );
         let windows = forecast(&input);
 
         let by_phase = |phase: Phase| {
@@ -973,39 +1036,28 @@ mod tests {
         // Veg: 4 weeks = 28 days → flower starts at 51.
         assert_eq!(by_phase(Phase::Vegetative).likely_start, 23);
         assert_eq!(by_phase(Phase::Vegetative).likely_end, 51);
-        // Flower: strain 45–63 days, likely 54 → ends at 105.
+        // Flower: default 56–77 days, likely 66 → ends at 117.
         let flower = by_phase(Phase::Flower);
         assert_eq!(flower.likely_start, 51);
-        assert_eq!(flower.earliest_end, 51 + 45);
-        assert_eq!(flower.likely_end, 51 + 54);
-        assert_eq!(flower.latest_end, 51 + 63);
-        // Dry: 7–14 (likely 10) → 115; cure: 14–30 (likely 22) → 137.
-        assert_eq!(by_phase(Phase::Drying).likely_start, 105);
-        assert_eq!(by_phase(Phase::Drying).likely_end, 115);
-        assert_eq!(by_phase(Phase::Curing).likely_start, 115);
-        assert_eq!(by_phase(Phase::Curing).likely_end, 137);
+        assert_eq!(flower.earliest_end, 51 + 56);
+        assert_eq!(flower.likely_end, 51 + 66);
+        assert_eq!(flower.latest_end, 51 + 77);
+        // Dry: 7–14 (likely 10) → 127; cure: 14–30 (likely 22) → 149.
+        assert_eq!(by_phase(Phase::Drying).likely_start, 117);
+        assert_eq!(by_phase(Phase::Drying).likely_end, 127);
+        assert_eq!(by_phase(Phase::Curing).likely_start, 127);
+        assert_eq!(by_phase(Phase::Curing).likely_end, 149);
     }
 
     #[test]
-    fn golden_autoflower_gg4_auto() {
-        // GG4 Auto: 70–84 days from seed. Autos flip at day 28.
-        let strain_data = r#"{
-            "id": "x", "name": "GG4 Auto", "breeder": null,
-            "photoperiod": "auto", "sex": "feminized",
-            "indica_pct": 60, "landrace_tags": ["chem", "sour_diesel", "ruderalis"],
-            "flower_days_min": null, "flower_days_max": null,
-            "stretch_factor": 1.4, "veg_weeks_min": null, "veg_weeks_max": null,
-            "height_class": "short", "auto_total_days_min": 70,
-            "auto_total_days_max": 84, "yield_notes": null,
-            "terpene_notes": null, "effect_notes": null,
-            "heat_tolerance": "sensitive", "cold_tolerance": "tolerant",
-            "light_tolerance": "average", "user_rating": null, "notes": null,
-            "evidence": {}, "source_url": null, "source_licence": null,
-            "is_phenotype_of": null, "created_at": "t", "updated_at": "t"
-        }"#;
-        let strain: crate::strain::Strain =
-            serde_json::from_str(strain_data).expect("strain parses");
-        let input = input_for(Some(&strain), None, Actuals::default());
+    fn golden_autoflower_grow() {
+        // An autoflower grow on the default total window: flip at day
+        // 28, harvest inside 63–77 days from seed.
+        let input = input_for(
+            crate::grows::PhotoperiodType::Auto,
+            None,
+            Actuals::default(),
+        );
         let windows = forecast(&input);
 
         let flower = windows
@@ -1014,23 +1066,23 @@ mod tests {
             .expect("flower window");
         // Autos flip by age (day 28), flower actual_start is true.
         assert!(flower.actual_start);
-        // The total window lands within the seed-to-harvest range
-        // (70–84 days from seed).
+        // The total window lands within the seed-to-harvest default
+        // (63–77 days from seed).
         let harvest = flower.likely_end;
         assert!(
-            (70..=84).contains(&harvest),
-            "autoflower harvest day {harvest} should be within 70–84"
+            (63..=77).contains(&harvest),
+            "autoflower harvest day {harvest} should be within 63–77"
         );
     }
 
     #[test]
-    fn strain_flower_days_override_defaults() {
-        let with_strain = forecast(&ForecastInput {
-            strain_flower_days: Some((50, 60)),
+    fn flower_days_override_beats_defaults() {
+        let with_override = forecast(&ForecastInput {
+            flower_days_override: Some((50, 60)),
             ..base_input()
         });
         let without = forecast(&base_input());
-        let with = with_strain
+        let with = with_override
             .iter()
             .find(|w| w.phase == Phase::Flower)
             .expect("flower");

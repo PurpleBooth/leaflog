@@ -94,17 +94,10 @@ test('an autoflower grow defaults to long days through flower', async ({
   page,
   request,
 }) => {
-  const strain = await api<{ id: string }>(request, 'POST', 'api/strains', {
-    name: uniqueName('E2E Cycle Auto'),
-    photoperiod: 'auto',
-    sex: 'feminized',
-    landrace_tags: [],
-    heat_tolerance: 'average',
-    cold_tolerance: 'average',
-    light_tolerance: 'average',
-  });
+  // The grow carries its photoperiod (feature strip): an autoflower
+  // grow keeps long days, so the flower field prefills 18, not 12.
   const growId = await createGrow(request, uniqueName('E2E Cycle Auto'), {
-    strain_id: strain!.id,
+    photoperiod: 'auto',
   });
   await page.goto(url(`/grows/${growId}`));
 

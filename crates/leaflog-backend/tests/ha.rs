@@ -80,7 +80,7 @@ async fn create_grow(base: &str) -> String {
     reqwest::Client::new()
         .post(format!("{base}/api/grows"))
         .json(&json!({
-            "name": "HA run", "strain_id": null, "substrate": "soil",
+            "name": "HA run", "substrate": "soil",
             "started_on": "2026-10-01", "status": "active", "notes": null,
         }))
         .send()
@@ -665,9 +665,6 @@ async fn grow_days_count_local_calendar_days_in_the_ha_timezone() {
         .post(format!("{base}/api/grows"))
         .json(&json!({
             "name": "TZ run",
-            "strain_id": null,
-            "grow_space_id": null,
-            "seed_batch_id": null,
             "feed_template_id": null,
             "substrate": "soil",
             "started_on": "2026-11-10",
@@ -730,9 +727,6 @@ async fn env_alerts_route_to_ha_under_optin_rate_limited_and_quiet() {
         .post(format!("{base}/api/grows"))
         .json(&json!({
             "name": "Hot run",
-            "strain_id": null,
-            "grow_space_id": null,
-            "seed_batch_id": null,
             "feed_template_id": null,
             "substrate": "soil",
             "started_on": "2026-10-01",
@@ -974,7 +968,7 @@ async fn grow_history_serves_live_series_with_phase_bands() {
     let grow: Value = client
         .post(format!("{base}/api/grows"))
         .json(&json!({
-            "name": "Chart run", "strain_id": null, "substrate": "soil",
+            "name": "Chart run", "substrate": "soil",
             "started_on": today.to_string(), "status": "active", "notes": null,
         }))
         .send()
@@ -1502,7 +1496,7 @@ fn vpd_tip(coach: &Value) -> String {
 
 /// The coach reads the bound light entity's live state: the fake room
 /// starts dark, so the VPD tip carries the researched night wording;
-/// flipping the fixture flips the tip (spec §4.9, D085).
+/// flipping the fixture flips the tip (spec §4.9, D096).
 #[tokio::test]
 async fn coach_tips_follow_the_bound_light_state() {
     let (mock_url, mock) = spawn_mock().await;

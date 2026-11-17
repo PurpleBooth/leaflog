@@ -1,8 +1,8 @@
 // Shared helpers for the Leaflog end-to-end suite.
 //
 // Everything runs under the simulated HA ingress prefix, exactly like
-// `just dev` and production: `url('/equipment')` is
-// `/api/hassio_ingress/e2e/equipment`. No test may talk to the bare
+// `just dev` and production: `url('/grows')` is
+// `/api/hassio_ingress/e2e/grows`. No test may talk to the bare
 // origin — ingress-relative URLs are a non-negotiable, and the whole
 // suite exercises them on every navigation and API call.
 
@@ -20,10 +20,7 @@ export function url(path: string): string {
 
 let counter = 0;
 
-/**
- * A unique per-run name, so the bundled seed records (15 strains,
- * 5 equipment items) and repeated runs can never collide.
- */
+/** A unique per-run name, so repeated runs can never collide. */
 export function uniqueName(prefix: string): string {
   counter += 1;
   return `${prefix} ${Date.now().toString(36)}-${counter}`;
@@ -78,9 +75,6 @@ export async function createGrow(
   const today = new Date().toISOString().slice(0, 10);
   const grow = await api<{ id: string }>(request, 'POST', 'api/grows', {
     name,
-    strain_id: null,
-    grow_space_id: null,
-    seed_batch_id: null,
     feed_template_id: null,
     substrate: 'soil',
     started_on: today,
@@ -104,21 +98,6 @@ export async function createPlant(
     { name },
   );
   return plant!.id;
-}
-
-/** Creates a grow space via the API and returns its id. */
-export async function createSpace(
-  request: APIRequestContext,
-  name: string,
-): Promise<string> {
-  const space = await api<{ id: string }>(request, 'POST', 'api/spaces', {
-    name,
-    width_cm: null,
-    depth_cm: null,
-    height_cm: null,
-    notes: null,
-  });
-  return space!.id;
 }
 
 /** Dismisses the onboarding wizard for this database. */

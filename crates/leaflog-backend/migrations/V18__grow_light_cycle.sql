@@ -1,4 +1,4 @@
--- Leaflog schema migration V14 (per-grow Light Cycle, spec §4.9).
+-- Leaflog schema migration V18 (per-grow Light Cycle, spec §4.9).
 --
 -- The grow's daily lights-on local time plus hours-on per lit phase
 -- as one JSON document (leaflog-core::light_cycle::LightCycle).

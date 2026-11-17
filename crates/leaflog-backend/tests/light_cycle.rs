@@ -341,7 +341,7 @@ fn hhmm(moment: time::OffsetDateTime) -> String {
 /// Without a bound light entity the coach evaluates the grow's Light
 /// Cycle for "now": a cycle switched on ten minutes ago (one hour on,
 /// every lit phase) reads as lights on; rewinding it two hours reads
-/// as lights off with the researched night wording (D085).
+/// as lights off with the researched night wording (D096).
 #[tokio::test]
 async fn coach_asks_the_light_cycle_when_nothing_is_bound() {
     let base = spawn_memory().await;
@@ -401,7 +401,7 @@ async fn coach_asks_the_light_cycle_when_nothing_is_bound() {
 
 /// A bound light entity whose live state is unknown (the bridge is
 /// offline here) falls back to the newest auto-captured snapshot —
-/// which also beats a schedule that would say otherwise (D085).
+/// which also beats a schedule that would say otherwise (D096).
 #[tokio::test]
 async fn coach_reads_the_newest_snapshot_when_the_live_map_is_empty() {
     let db = Db::open_in_memory().unwrap();

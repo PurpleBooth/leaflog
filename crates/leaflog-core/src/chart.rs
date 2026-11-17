@@ -349,7 +349,7 @@ pub fn schedule_light_periods(
     tz_name: &str,
     spans: &[PhaseSpan],
     cycle: &crate::light_cycle::LightCycle,
-    photoperiod: crate::strain::PhotoperiodType,
+    photoperiod: crate::grows::PhotoperiodType,
 ) -> Vec<LightInterval> {
     let (Some(from_epoch), Some(to_epoch)) = (parse_epoch(from), parse_epoch(to)) else {
         return Vec::new();
@@ -446,7 +446,7 @@ fn complete_off_periods(from_epoch: i64, to_epoch: i64, on_periods: &mut Vec<Lig
     *on_periods = complete;
 }
 
-/// Whether a light reading counts as lit (D082).
+/// Whether a light reading counts as lit (D093).
 ///
 /// Any positive value is a lit fixture (a dimmer at 42 % is lit),
 /// exactly zero is dark. The one rule for every light reader — the
@@ -563,7 +563,7 @@ pub fn schedule_light_on_at(
     tz_name: &str,
     spans: &[PhaseSpan],
     cycle: &crate::light_cycle::LightCycle,
-    photoperiod: crate::strain::PhotoperiodType,
+    photoperiod: crate::grows::PhotoperiodType,
 ) -> Option<bool> {
     let moment: jiff::Timestamp = at.parse().ok()?;
     let look_back = (moment - jiff::Span::new().hours(SCHEDULE_POINT_WINDOW_HOURS)).to_string();
@@ -1078,8 +1078,8 @@ mod light_timeline_tests {
         resolve_light_periods, schedule_light_on_at, schedule_light_periods, sensor_light_periods,
     };
     use crate::Phase;
+    use crate::grows::PhotoperiodType;
     use crate::light_cycle::{ClockTime, LightCycle, PhaseHours};
-    use crate::strain::PhotoperiodType;
 
     /// A cycle with one lights-on time and one phase's hours set.
     fn cycle(lights_on: ClockTime, hours: u8) -> LightCycle {
@@ -1564,7 +1564,7 @@ mod light_timeline_tests {
 
     #[test]
     fn any_positive_light_value_is_lit_and_zero_is_dark() {
-        // The shared rule (D082): a dimmer at 42 % is a lit fixture,
+        // The shared rule (D093): a dimmer at 42 % is a lit fixture,
         // exactly zero is dark; negative and NaN readings are not lit.
         assert!(light_value_is_on(42.0));
         assert!(light_value_is_on(1.0));

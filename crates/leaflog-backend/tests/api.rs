@@ -1,5 +1,5 @@
-//! Integration tests for the M2 JSON API: equipment CRUD, strain CRUD
-//! and clone, seeding, settings, and validation errors.
+//! Integration tests for the JSON API: settings, onboarding, the
+//! removed catalogue routes, grows, harvest weights and history.
 
 use std::net::SocketAddr;
 
@@ -7,8 +7,6 @@ use axum::ServiceExt as _;
 use std::path::Path;
 
 use leaflog_backend::{AppState, Assets, Db, Mode};
-use leaflog_core::equipment::EquipmentInput;
-use leaflog_core::strain::StrainInput;
 use serde_json::{Value, json};
 
 /// Spawns the API on an ephemeral port with an empty in-memory database.
@@ -38,276 +36,87 @@ async fn spawn_with(db: Db) -> String {
     format!("http://{addr}")
 }
 
-fn sample_equipment(name: &str) -> Value {
-    json!({
-        "name": name,
-        "category": "light",
-        "brand_model": "Spider Farmer SE-3000",
-        "real_watts": 285.0,
-        "dimmable": true,
-        "purchase_date": "2026-05-01",
-        "purchase_price": 289.99,
-        "currency": "EUR",
-        "notes": null,
-    })
-}
-
-fn sample_strain(name: &str) -> Value {
-    json!({
-        "name": name,
-        "breeder": "Test Breeder",
-        "photoperiod": "photoperiod",
-        "sex": "feminized",
-        "indica_pct": 55,
-        "landrace_tags": ["haze"],
-        "flower_days_min": 56,
-        "flower_days_max": 63,
-        "stretch_factor": 1.5,
-        "veg_weeks_min": null,
-        "veg_weeks_max": null,
-        "height_class": "medium",
-        "auto_total_days_min": null,
-        "auto_total_days_max": null,
-        "yield_notes": null,
-        "terpene_notes": null,
-        "effect_notes": null,
-        "heat_tolerance": "average",
-        "cold_tolerance": "average",
-        "light_tolerance": "average",
-        "user_rating": null,
-        "notes": null,
-    })
-}
-
+/// The strain catalogue routes are gone (D075 feature strip, step 05):
+/// list, create, read, update, delete, clone-as-phenotype and the
+/// grow's yield write-back all answer 404, so a stale bookmark or an
+/// old client gets a clean "not found", never a half-working endpoint.
 #[tokio::test]
-async fn equipment_crud_round_trip() {
+async fn strain_routes_are_gone() {
     let base = spawn_api().await;
     let client = reqwest::Client::new();
-
-    // Create.
-    let created: Value = client
-        .post(format!("{base}/api/equipment"))
-        .json(&sample_equipment("Mars Hydro TS-1000"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let id = created["id"].as_str().unwrap().to_owned();
-    assert_eq!(created["name"], "Mars Hydro TS-1000");
-    assert_eq!(created["category"], "light");
-    assert_eq!(created["dimmable"], true);
-
-    // Read (list + get).
-    let list: Vec<Value> = client
-        .get(format!("{base}/api/equipment"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(list.len(), 1);
-    let fetched: Value = client
-        .get(format!("{base}/api/equipment/{id}"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(fetched["id"], id.as_str());
-    assert_eq!(fetched["real_watts"], 285.0);
-
-    // Category filter matches and misses.
-    let lights: Vec<Value> = client
-        .get(format!("{base}/api/equipment?category=light"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(lights.len(), 1);
-    let fans: Vec<Value> = client
-        .get(format!("{base}/api/equipment?category=fan"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert!(fans.is_empty());
-    let bad_filter = client
-        .get(format!("{base}/api/equipment?category=lightsabre"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(bad_filter.status(), reqwest::StatusCode::BAD_REQUEST);
-
-    // Update (rename + change watts).
-    let mut updated_input = sample_equipment("Mars Hydro TS-1000 (measured)");
-    updated_input["real_watts"] = json!(150.0);
-    updated_input["category"] = json!("light");
-    let updated: Value = client
-        .put(format!("{base}/api/equipment/{id}"))
-        .json(&updated_input)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(updated["name"], "Mars Hydro TS-1000 (measured)");
-    assert_eq!(updated["real_watts"], 150.0);
-    assert_eq!(updated["created_at"], created["created_at"]);
-    assert_ne!(updated["updated_at"], created["updated_at"]);
-
-    // Delete: 204 then 404.
-    let deleted = client
-        .delete(format!("{base}/api/equipment/{id}"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(deleted.status(), reqwest::StatusCode::NO_CONTENT);
-    let missing = client
-        .get(format!("{base}/api/equipment/{id}"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(missing.status(), reqwest::StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn equipment_validation_rejects_bad_input() {
-    let base = spawn_api().await;
-    let client = reqwest::Client::new();
-
-    let mut no_name = sample_equipment("x");
-    no_name["name"] = json!("  ");
-    let response = client
-        .post(format!("{base}/api/equipment"))
-        .json(&no_name)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
-
-    let mut negative_watts = sample_equipment("Free energy");
-    negative_watts["real_watts"] = json!(-1.0);
-    let response = client
-        .post(format!("{base}/api/equipment"))
-        .json(&negative_watts)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
-
-    let mut bad_category = sample_equipment("Alien tech");
-    bad_category["category"] = json!("warp_drive");
-    let response = client
-        .post(format!("{base}/api/equipment"))
-        .json(&bad_category)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::UNPROCESSABLE_ENTITY);
-}
-
-#[tokio::test]
-async fn strain_crud_and_clone_as_phenotype() {
-    let base = spawn_api().await;
-    let client = reqwest::Client::new();
-
-    let created: Value = client
-        .post(format!("{base}/api/strains"))
-        .json(&sample_strain("Test Haze"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let id = created["id"].as_str().unwrap().to_owned();
-    assert_eq!(created["flower_days_min"], 56);
-    // User-entered numbers are tagged grower-reported; tolerances inferred.
-    assert_eq!(created["evidence"]["flower_days_min"], "grower_reported");
-    assert_eq!(created["evidence"]["heat_tolerance"], "inferred");
-    // No provenance on user records.
-    assert!(created["source_url"].is_null());
-
-    // Update.
-    let mut updated_input = sample_strain("Test Haze v2");
-    updated_input["flower_days_max"] = json!(70);
-    let updated: Value = client
-        .put(format!("{base}/api/strains/{id}"))
-        .json(&updated_input)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(updated["name"], "Test Haze v2");
-    assert_eq!(updated["flower_days_max"], 70);
-
-    // Clone as phenotype.
-    let clone: Value = client
-        .post(format!("{base}/api/strains/{id}/clone"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(clone["name"], "Test Haze v2 (my phenotype)");
-    assert_eq!(clone["is_phenotype_of"], id.as_str());
-    assert!(clone["source_url"].is_null());
-
-    // Strain validation: inverted range.
-    let mut inverted = sample_strain("Bad range");
-    inverted["flower_days_min"] = json!(70);
-    inverted["flower_days_max"] = json!(56);
-    let response = client
-        .post(format!("{base}/api/strains"))
-        .json(&inverted)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
-
-    // Delete both.
-    for strain_id in [&id, clone["id"].as_str().unwrap()] {
+    let routes = [
+        (reqwest::Method::GET, "/api/strains"),
+        (reqwest::Method::POST, "/api/strains"),
+        (reqwest::Method::GET, "/api/strains/nope"),
+        (reqwest::Method::PUT, "/api/strains/nope"),
+        (reqwest::Method::DELETE, "/api/strains/nope"),
+        (reqwest::Method::POST, "/api/strains/nope/clone"),
+        (reqwest::Method::POST, "/api/grows/nope/writeback"),
+    ];
+    for (method, path) in routes {
         let response = client
-            .delete(format!("{base}/api/strains/{strain_id}"))
+            .request(method, format!("{base}{path}"))
+            .json(&json!({}))
             .send()
             .await
             .unwrap();
-        assert_eq!(response.status(), reqwest::StatusCode::NO_CONTENT);
+        assert_eq!(
+            response.status(),
+            reqwest::StatusCode::NOT_FOUND,
+            "{path} must be gone"
+        );
     }
-    let empty: Vec<Value> = client
-        .get(format!("{base}/api/strains"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert!(empty.is_empty());
 }
 
+/// The spaces and equipment routes are gone too (feature-strip D078,
+/// ticket 04): list, create, read, update, delete, membership and
+/// clone all answer 404.
 #[tokio::test]
-async fn strain_inputs_round_trip_through_core_types() {
-    // Proves the JSON the API accepts deserializes into the shared
-    // domain type and back without loss (frontend uses the same shape).
-    let payload = sample_strain("Round Trip");
-    let parsed: StrainInput = serde_json::from_value(payload.clone()).unwrap();
-    assert_eq!(parsed.name, "Round Trip");
-    assert_eq!(parsed.flower_days_max, Some(63));
-    let equipment_payload = sample_equipment("Round Trip Light");
-    let parsed: EquipmentInput = serde_json::from_value(equipment_payload).unwrap();
-    assert_eq!(parsed.real_watts, Some(285.0));
+async fn space_and_equipment_routes_are_gone() {
+    let base = spawn_api().await;
+    let client = reqwest::Client::new();
+    let space: Value = json!({ "name": "tent" });
+    let equipment: Value = json!({ "name": "lamp", "category": "light" });
+    let body_by_path = [
+        ("/api/spaces", &space),
+        ("/api/spaces/nope", &space),
+        ("/api/spaces/nope/equipment/nope", &Value::Null),
+        ("/api/equipment", &equipment),
+        ("/api/equipment/nope", &equipment),
+        ("/api/equipment/nope/clone", &Value::Null),
+    ];
+    let routes = [
+        (reqwest::Method::GET, "/api/spaces"),
+        (reqwest::Method::POST, "/api/spaces"),
+        (reqwest::Method::GET, "/api/spaces/nope"),
+        (reqwest::Method::PUT, "/api/spaces/nope"),
+        (reqwest::Method::DELETE, "/api/spaces/nope"),
+        (reqwest::Method::POST, "/api/spaces/nope/equipment/nope"),
+        (reqwest::Method::DELETE, "/api/spaces/nope/equipment/nope"),
+        (reqwest::Method::GET, "/api/equipment"),
+        (reqwest::Method::POST, "/api/equipment"),
+        (reqwest::Method::GET, "/api/equipment/nope"),
+        (reqwest::Method::PUT, "/api/equipment/nope"),
+        (reqwest::Method::DELETE, "/api/equipment/nope"),
+        (reqwest::Method::POST, "/api/equipment/nope/clone"),
+    ];
+    for (method, path) in routes {
+        let body = body_by_path
+            .iter()
+            .find(|(candidate, _)| candidate == &path)
+            .map_or(json!({}), |(_, body)| (*body).clone());
+        let response = client
+            .request(method, format!("{base}{path}"))
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            reqwest::StatusCode::NOT_FOUND,
+            "{path} must be gone"
+        );
+    }
 }
 
 #[tokio::test]
@@ -359,48 +168,13 @@ async fn settings_round_trip() {
 }
 
 #[tokio::test]
-async fn seeds_arrive_once_and_carry_provenance() {
-    let db = Db::open_in_memory().unwrap();
-    leaflog_backend::seed::seed_strains(&db).await.unwrap();
-    let base = spawn_with(db).await;
-
-    let strains: Vec<Value> = reqwest::get(format!("{base}/api/strains"))
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert!(strains.len() >= 5, "five bundled records expected");
-    for strain in &strains {
-        assert!(strain["source_url"].as_str().is_some_and(|u| !u.is_empty()));
-        assert!(
-            strain["source_licence"]
-                .as_str()
-                .is_some_and(|l| !l.is_empty())
-        );
-    }
-    let northern_lights = strains
-        .iter()
-        .find(|s| s["name"] == "Northern Lights")
-        .expect("Northern Lights is bundled");
-    assert_eq!(northern_lights["flower_days_min"], 45);
-    assert_eq!(northern_lights["evidence"]["flower_days_min"], "breeder");
-    let auto = strains
-        .iter()
-        .find(|s| s["name"] == "GG4 Auto")
-        .expect("an autoflower is bundled");
-    assert_eq!(auto["photoperiod"], "auto");
-    assert_eq!(auto["auto_total_days_max"], 84);
-}
-
-#[tokio::test]
 async fn sensors_replace_is_atomic_when_an_insert_fails() {
     use std::collections::BTreeMap;
 
     use leaflog_backend::db::StoreError;
     use leaflog_backend::store::grows;
     use leaflog_backend::store::sensors::{BindingsInput, list, replace};
-    use leaflog_core::grows::{GrowInput, GrowStatus};
+    use leaflog_core::grows::{GrowInput, GrowStatus, PhotoperiodType, Tolerance};
 
     let db = Db::open_in_memory().unwrap();
 
@@ -412,11 +186,15 @@ async fn sensors_replace_is_atomic_when_an_insert_fails() {
                     conn,
                     &GrowInput {
                         name: "Closet run".to_owned(),
-                        strain_id: None,
-                        grow_space_id: None,
-                        seed_batch_id: None,
                         feed_template_id: None,
                         planned_veg_weeks: None,
+                        strain_label: String::new(),
+                        photoperiod: PhotoperiodType::default(),
+                        heat_tolerance: Tolerance::default(),
+                        cold_tolerance: Tolerance::default(),
+                        light_tolerance: Tolerance::default(),
+                        real_watts: None,
+                        dimmable: true,
                         substrate: "soil".to_owned(),
                         started_on: "2026-10-01".to_owned(),
                         status: GrowStatus::Active,
@@ -476,29 +254,12 @@ fn offline_bridge() -> std::sync::Arc<leaflog_backend::ha::HaBridge> {
     ))
 }
 
-// --- Grow spaces (spec §4.1) -------------------------------------------
-
-fn sample_space(name: &str) -> Value {
-    json!({
-        "name": name,
-        "width_cm": 60.0,
-        "depth_cm": 60.0,
-        "height_cm": 180.0,
-        "notes": null,
-    })
-}
-
-/// Creates an equipment entry via the API and returns its id.
-async fn create_equipment_at(
-    client: &reqwest::Client,
-    base: &str,
-    name: &str,
-    real_watts: Option<f64>,
-) -> String {
-    let mut body = sample_equipment(name);
-    body["real_watts"] = json!(real_watts);
-    let created: Value = client
-        .post(format!("{base}/api/equipment"))
+async fn lamp_min_for_grow(client: &reqwest::Client, base: &str, body: Value) -> f64 {
+    let started_on = started_today();
+    let mut body = body;
+    body["started_on"] = json!(started_on);
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
         .json(&body)
         .send()
         .await
@@ -506,197 +267,168 @@ async fn create_equipment_at(
         .json()
         .await
         .unwrap();
-    created["id"].as_str().unwrap().to_owned()
+    let advice: Value = client
+        .get(format!(
+            "{base}/api/grows/{}/lamp",
+            grow["id"].as_str().unwrap()
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    advice["height"]["min_in"].as_f64().unwrap()
+}
+
+/// Today's date, `YYYY-MM-DD`, for grows whose forecast starts now.
+fn started_today() -> String {
+    let today = time::OffsetDateTime::now_utc().date();
+    format!(
+        "{:04}-{:02}-{:02}",
+        today.year(),
+        u8::from(today.month()),
+        today.day()
+    )
 }
 
 #[tokio::test]
-async fn spaces_crud_and_equipment_membership_round_trip() {
+async fn lamp_advisor_reads_the_grow_watts_with_the_default_fallback() {
     let base = spawn_api().await;
     let client = reqwest::Client::new();
 
-    // Create.
-    let created: Value = client
-        .post(format!("{base}/api/spaces"))
-        .json(&sample_space("60×60 tent"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let id = created["id"].as_str().unwrap().to_owned();
-    assert_eq!(created["name"], "60×60 tent");
-    assert_eq!(created["height_cm"], 180.0);
+    // Seedling ranges: 28–30 in for the D044 330 W default fixture,
+    // 32–36 in for a 420 W lamp — read from the grow's own watts.
+    let plain = json!({
+        "name": "Default run",
+        "substrate": "soil",
+        "status": "active",
+        "notes": null,
+    });
+    assert_eq!(
+        lamp_min_for_grow(&client, &base, plain).await,
+        28.0,
+        "no watts → 330 W class"
+    );
 
-    // Membership: add two entries; re-adding is an idempotent no-op.
-    let light = create_equipment_at(&client, &base, "SE420", Some(420.0)).await;
-    let fan = create_equipment_at(&client, &base, "Clip fan", None).await;
-    for _ in 0..2 {
-        let status = client
-            .post(format!("{base}/api/spaces/{id}/equipment/{light}"))
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
-    }
-    let status = client
-        .post(format!("{base}/api/spaces/{id}/equipment/{fan}"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
+    let mut lit = json!({
+        "name": "Lit run",
+        "substrate": "soil",
+        "status": "active",
+        "notes": null,
+    });
+    lit["real_watts"] = json!(420.0);
+    assert_eq!(
+        lamp_min_for_grow(&client, &base, lit).await,
+        32.0,
+        "grow watts → 420 W class"
+    );
 
-    // Detail and list resolve the equipment, ordered by name.
-    let detail: Value = client
-        .get(format!("{base}/api/spaces/{id}"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(detail["space"]["id"], id.as_str());
-    assert_eq!(detail["equipment"].as_array().unwrap().len(), 2);
-    assert_eq!(detail["equipment"][0]["name"], "Clip fan");
-    assert_eq!(detail["grows"].as_array().unwrap().len(), 0);
-    let list: Vec<Value> = client
-        .get(format!("{base}/api/spaces"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(list.len(), 1);
-    assert_eq!(list[0]["equipment"].as_array().unwrap().len(), 2);
-
-    // Unknown space or equipment on membership is a 404.
-    let status = client
-        .post(format!("{base}/api/spaces/{id}/equipment/nope"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(status.status(), reqwest::StatusCode::NOT_FOUND);
-    let status = client
-        .post(format!("{base}/api/spaces/nope/equipment/{light}"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(status.status(), reqwest::StatusCode::NOT_FOUND);
-
-    // Removing is idempotent and shrinks the set.
-    for _ in 0..2 {
-        let status = client
-            .delete(format!("{base}/api/spaces/{id}/equipment/{fan}"))
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
-    }
-    let detail: Value = client
-        .get(format!("{base}/api/spaces/{id}"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(detail["equipment"].as_array().unwrap().len(), 1);
-    assert_eq!(detail["equipment"][0]["name"], "SE420");
-
-    // Deleting equipment removes it from every space (cascade).
-    let status = client
-        .delete(format!("{base}/api/equipment/{light}"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
-    let detail: Value = client
-        .get(format!("{base}/api/spaces/{id}"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert!(detail["equipment"].as_array().unwrap().is_empty());
-
-    // Update (rename + resize), preserving id and creation time.
-    let mut renamed = sample_space("Big tent");
-    renamed["height_cm"] = json!(200.0);
-    let updated: Value = client
-        .put(format!("{base}/api/spaces/{id}"))
-        .json(&renamed)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(updated["name"], "Big tent");
-    assert_eq!(updated["height_cm"], 200.0);
-    assert_eq!(updated["created_at"], created["created_at"]);
-
-    // Validation: blank name and non-positive dimensions are 400s.
-    let mut no_name = sample_space("x");
-    no_name["name"] = json!("  ");
-    let response = client
-        .post(format!("{base}/api/spaces"))
-        .json(&no_name)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
-    let mut flat = sample_space("Flat tent");
-    flat["height_cm"] = json!(-1.0);
-    let response = client
-        .post(format!("{base}/api/spaces"))
-        .json(&flat)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
-
-    // Delete: 204 then 404.
-    let status = client
-        .delete(format!("{base}/api/spaces/{id}"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
-    let status = client
-        .get(format!("{base}/api/spaces/{id}"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(status.status(), reqwest::StatusCode::NOT_FOUND);
+    let mut fractional = json!({
+        "name": "Rounded run",
+        "substrate": "soil",
+        "status": "active",
+        "notes": null,
+    });
+    fractional["real_watts"] = json!(419.6);
+    assert_eq!(
+        lamp_min_for_grow(&client, &base, fractional).await,
+        32.0,
+        "fractional grow watts round to the nearest whole watt"
+    );
 }
 
 #[tokio::test]
-async fn grows_belong_to_spaces() {
+async fn env_thresholds_shift_by_grow_tolerances() {
     let base = spawn_api().await;
     let client = reqwest::Client::new();
 
-    let space: Value = client
-        .post(format!("{base}/api/spaces"))
-        .json(&sample_space("60×60 tent"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let space_id = space["id"].as_str().unwrap().to_owned();
+    let thresholds_for = |name: String, heat: Value, cold: Value| {
+        let client = &client;
+        let base = &base;
+        async move {
+            let mut body = json!({
+                "name": name,
+                "substrate": "soil",
+                "started_on": started_today(),
+                "status": "active",
+                "notes": null,
+            });
+            // Null means leave the field out: the serde default (Average)
+            // applies to absent fields only.
+            if !heat.is_null() {
+                body["heat_tolerance"] = heat;
+            }
+            if !cold.is_null() {
+                body["cold_tolerance"] = cold;
+            }
+            let grow: Value = client
+                .post(format!("{base}/api/grows"))
+                .json(&body)
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            let env: Value = client
+                .get(format!(
+                    "{base}/api/grows/{}/env",
+                    grow["id"].as_str().unwrap()
+                ))
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            env["thresholds"].clone()
+        }
+    };
 
-    // Create a grow inside the space.
+    let default = thresholds_for("Plain run".to_owned(), Value::Null, Value::Null).await;
+    assert!(
+        (default["ceiling_c"].as_f64().unwrap() - 26.7).abs() < 0.1,
+        "unset tolerances keep the unshifted ceiling"
+    );
+    assert!(
+        (default["floor_c"].as_f64().unwrap() - 15.6).abs() < 0.1,
+        "unset tolerances keep the unshifted floor"
+    );
+
+    let shifted = thresholds_for(
+        "Tuned run".to_owned(),
+        json!("sensitive"),
+        json!("tolerant"),
+    )
+    .await;
+    assert!(
+        shifted["ceiling_c"].as_f64().unwrap() < default["ceiling_c"].as_f64().unwrap() - 1.0,
+        "heat-sensitive grow lowers the ceiling"
+    );
+    assert!(
+        shifted["floor_c"].as_f64().unwrap() < default["floor_c"].as_f64().unwrap() - 1.0,
+        "cold-tolerant grow lowers the floor"
+    );
+}
+
+#[tokio::test]
+async fn autoflower_grow_forecasts_and_fits_without_a_strain() {
+    // The grow attaches no strain record — there is no catalogue left
+    // (D075): the forecast and feed-fit must run on the grow's
+    // photoperiod alone.
+    let db = Db::open_in_memory().unwrap();
+    leaflog_backend::seed::seed_feed_presets(&db).await.unwrap();
+    let base = spawn_with(db).await;
+    let client = reqwest::Client::new();
+
     let grow: Value = client
         .post(format!("{base}/api/grows"))
         .json(&json!({
-            "name": "RC #1",
-            "strain_id": null,
-            "grow_space_id": space_id,
+            "name": "Auto run",
+            "photoperiod": "auto",
             "substrate": "soil",
-            "started_on": "2026-10-01",
+            "started_on": started_today(),
             "status": "active",
             "notes": null,
         }))
@@ -707,116 +439,61 @@ async fn grows_belong_to_spaces() {
         .await
         .unwrap();
     let grow_id = grow["id"].as_str().unwrap().to_owned();
-    assert_eq!(grow["grow_space_id"], space_id.as_str());
 
-    // The space lists the grow.
-    let detail: Value = client
-        .get(format!("{base}/api/spaces/{space_id}"))
+    // The forecast projects the full auto chain on the default total
+    // window: age flip at day 28, harvest 63–77 days from seed.
+    let forecast: Value = client
+        .get(format!("{base}/api/grows/{grow_id}/forecast"))
         .send()
         .await
         .unwrap()
         .json()
         .await
         .unwrap();
-    let grows = detail["grows"].as_array().unwrap();
-    assert_eq!(grows.len(), 1);
-    assert_eq!(grows[0]["id"], grow_id.as_str());
+    let flower = forecast["windows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|window| window["phase"] == "flower")
+        .expect("auto grow projects a flower window");
+    assert_eq!(flower["actual_start"], true, "autos flip by age");
+    assert_eq!(flower["earliest_end"], 63);
+    assert_eq!(flower["likely_end"], 70);
+    assert_eq!(flower["latest_end"], 77);
 
-    // An unknown space id is rejected on create and update.
-    let response = client
-        .post(format!("{base}/api/grows"))
-        .json(&json!({
-            "name": "Nowhere run",
-            "strain_id": null,
-            "grow_space_id": "nope",
-            "substrate": "soil",
-            "started_on": "2026-10-01",
-            "status": "active",
-            "notes": null,
-        }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
-
-    // Clearing the space via PUT round-trips.
-    let cleared: Value = client
-        .put(format!("{base}/api/grows/{grow_id}"))
-        .json(&json!({
-            "name": "RC #1",
-            "strain_id": null,
-            "grow_space_id": null,
-            "substrate": "soil",
-            "started_on": "2026-10-01",
-            "status": "active",
-            "notes": null,
-        }))
+    // Feed-fit consumes the same windows: the auto grow fits on the
+    // toggle alone, no record consulted.
+    let templates: Vec<Value> = client
+        .get(format!("{base}/api/feeds/templates"))
         .send()
         .await
         .unwrap()
         .json()
         .await
         .unwrap();
-    assert_eq!(cleared["grow_space_id"], Value::Null);
-
-    // Re-assign, then delete the space: the grow survives, unspaced.
-    let response = client
-        .put(format!("{base}/api/grows/{grow_id}"))
-        .json(&json!({
-            "name": "RC #1",
-            "strain_id": null,
-            "grow_space_id": space_id,
-            "substrate": "soil",
-            "started_on": "2026-10-01",
-            "status": "active",
-            "notes": null,
-        }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::OK);
-    let status = client
-        .delete(format!("{base}/api/spaces/{space_id}"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
-    let survived: Value = client
-        .get(format!("{base}/api/grows/{grow_id}"))
+    let fit: Value = client
+        .post(format!("{base}/api/grows/{grow_id}/feed/fit"))
+        .json(&json!({ "template_id": templates[0]["id"] }))
         .send()
         .await
         .unwrap()
         .json()
         .await
         .unwrap();
-    assert_eq!(survived["name"], "RC #1");
-    assert_eq!(survived["grow_space_id"], Value::Null);
-}
-
-#[tokio::test]
-async fn lamp_advisor_uses_the_grow_space_light() {
-    let base = spawn_api().await;
-    let client = reqwest::Client::new();
-
-    // A grow started today has no flip/harvest, so the advice reflects
-    // the seedling range of the advising wattage class: 28–30 in for
-    // the historical 330 W default, 32–36 in for a 420 W fixture.
-    let today = time::OffsetDateTime::now_utc().date();
-    let started_on = format!(
-        "{:04}-{:02}-{:02}",
-        today.year(),
-        u8::from(today.month()),
-        today.day()
+    assert!(
+        !fit["after"]["days"].as_array().unwrap().is_empty(),
+        "the fitted plan has days"
     );
+    assert!(fit["after"]["actual_total_days"].as_u64().unwrap() > 0);
 
+    // Contrast: an unset photoperiod grow without a plan is
+    // open-ended — no flower window, and the fit refuses.
     let plain: Value = client
         .post(format!("{base}/api/grows"))
         .json(&json!({
-            "name": "Default run",
-            "strain_id": null,
-            "grow_space_id": null,
+            "name": "Photo run",
             "substrate": "soil",
-            "started_on": started_on,
+            "started_on": started_today(),
             "status": "active",
             "notes": null,
         }))
@@ -826,69 +503,26 @@ async fn lamp_advisor_uses_the_grow_space_light() {
         .json()
         .await
         .unwrap();
-    let advice: Value = client
-        .get(format!(
-            "{base}/api/grows/{}/lamp",
-            plain["id"].as_str().unwrap()
-        ))
+    let photo_id = plain["id"].as_str().unwrap();
+    let forecast: Value = client
+        .get(format!("{base}/api/grows/{photo_id}/forecast"))
         .send()
         .await
         .unwrap()
         .json()
         .await
         .unwrap();
-    assert_eq!(advice["height"]["min_in"], 28.0, "no space → 330 W class");
-
-    let light = create_equipment_at(&client, &base, "SE420", Some(420.0)).await;
-    let space: Value = client
-        .post(format!("{base}/api/spaces"))
-        .json(&sample_space("60×60 tent"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let space_id = space["id"].as_str().unwrap().to_owned();
+    let windows = forecast["windows"].as_array().unwrap();
+    assert_eq!(windows.len(), 3, "open-ended photoperiod veg");
+    assert_eq!(windows.last().unwrap()["phase"], "vegetative");
     let status = client
-        .post(format!("{base}/api/spaces/{space_id}/equipment/{light}"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
-
-    let lit: Value = client
-        .post(format!("{base}/api/grows"))
-        .json(&json!({
-            "name": "Lit run",
-            "strain_id": null,
-            "grow_space_id": space_id,
-            "substrate": "soil",
-            "started_on": started_on,
-            "status": "active",
-            "notes": null,
-        }))
+        .post(format!("{base}/api/grows/{photo_id}/feed/fit"))
+        .json(&json!({ "template_id": templates[0]["id"] }))
         .send()
         .await
         .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let advice: Value = client
-        .get(format!(
-            "{base}/api/grows/{}/lamp",
-            lit["id"].as_str().unwrap()
-        ))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(
-        advice["height"]["min_in"], 32.0,
-        "space light → 420 W class"
-    );
+        .status();
+    assert_eq!(status, reqwest::StatusCode::BAD_REQUEST);
 }
 
 /// Logs one note entry carrying `tags` and returns the lamp advice's
@@ -904,8 +538,6 @@ async fn lamp_dim_pct_with_tags(
         .post(format!("{base}/api/grows"))
         .json(&json!({
             "name": name,
-            "strain_id": null,
-            "grow_space_id": null,
             "substrate": "soil",
             "started_on": started_on,
             "status": "active",
@@ -990,528 +622,50 @@ async fn lamp_advisor_reacts_to_merged_and_old_stress_tags() {
     );
 }
 
+/// Feature-strip (ticket fb99a14): the seed bank is gone end to end —
+/// batch and germination routes answer 404, so a stale bookmark or an
+/// old client gets a clean "not found", never a half-working endpoint.
 #[tokio::test]
-async fn bundled_records_are_read_only_and_clone_to_user_entries() {
-    let db = Db::open_in_memory().unwrap();
-    leaflog_backend::seed::seed_strains(&db).await.unwrap();
-    leaflog_backend::seed::seed_equipment(&db).await.unwrap();
-    let base = spawn_with(db).await;
-    let client = reqwest::Client::new();
-
-    // -- Bundled equipment: edit and delete are rejected, clone works.
-    let equipment: Vec<Value> = client
-        .get(format!("{base}/api/equipment"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let bundled = equipment
-        .iter()
-        .find(|item| item["is_builtin"] == json!(true))
-        .expect("bundled equipment is seeded")
-        .clone();
-    let id = bundled["id"].as_str().unwrap().to_owned();
-
-    let response = client
-        .put(format!("{base}/api/equipment/{id}"))
-        .json(&sample_equipment("Hostile takeover"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
-    let response = client
-        .delete(format!("{base}/api/equipment/{id}"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
-    let survivor: Value = client
-        .get(format!("{base}/api/equipment/{id}"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(survivor["name"], bundled["name"], "the preset is intact");
-
-    let clone: Value = client
-        .post(format!("{base}/api/equipment/{id}/clone"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(
-        clone["name"],
-        format!("{} (copy)", bundled["name"].as_str().unwrap())
-    );
-    assert_eq!(clone["is_builtin"], json!(false), "clones are user entries");
-    assert_eq!(clone["dimmable"], bundled["dimmable"]);
-    assert_eq!(clone["category"], bundled["category"]);
-    assert_ne!(clone["id"], id.as_str());
-
-    // Cloning a user entry is the "two identical lights" flow (§4.1).
-    let user = create_equipment_at(&client, &base, "Second SE1500", Some(150.0)).await;
-    let second: Value = client
-        .post(format!("{base}/api/equipment/{user}/clone"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(second["real_watts"], 150.0);
-    assert_ne!(second["id"], user.as_str());
-
-    // -- Bundled strains: same contract.
-    let strains: Vec<Value> = client
-        .get(format!("{base}/api/strains"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let bundled_strain = strains
-        .iter()
-        .find(|strain| strain["is_builtin"] == json!(true))
-        .expect("bundled strain is seeded")
-        .clone();
-    let strain_id = bundled_strain["id"].as_str().unwrap().to_owned();
-
-    let response = client
-        .put(format!("{base}/api/strains/{strain_id}"))
-        .json(&sample_strain("Rewritten history"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
-    let response = client
-        .delete(format!("{base}/api/strains/{strain_id}"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
-
-    let phenotype: Value = client
-        .post(format!("{base}/api/strains/{strain_id}/clone"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(phenotype["is_builtin"], json!(false));
-    assert_eq!(phenotype["is_phenotype_of"], strain_id.as_str());
-
-    // User strains stay fully mutable.
-    let own: Value = client
-        .post(format!("{base}/api/strains"))
-        .json(&sample_strain("My own cross"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(own["is_builtin"], json!(false));
-    let response = client
-        .put(format!(
-            "{}/api/strains/{}",
-            base,
-            own["id"].as_str().unwrap()
-        ))
-        .json(&sample_strain("My own cross v2"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::OK);
-}
-
-#[tokio::test]
-async fn sensor_items_come_from_ha_entities_only() {
-    // The bridge is offline (spawn_api): creating sensor items must not
-    // need HA — the picker defers, nothing else blocks (spec §4.1).
+async fn seed_bank_routes_are_gone() {
     let base = spawn_api().await;
     let client = reqwest::Client::new();
-
-    let mut sensor = sample_equipment("Tent temperature");
-    sensor["category"] = json!("sensor");
-    // No entity at all: rejected.
-    let response = client
-        .post(format!("{base}/api/equipment"))
-        .json(&sensor)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
-
-    // Entity without a device class: rejected.
-    sensor["ha_entity_id"] = json!("sensor.grow_temperature");
-    let response = client
-        .post(format!("{base}/api/equipment"))
-        .json(&sensor)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
-
-    // An unsupported device class: rejected.
-    sensor["ha_device_class"] = json!("co2");
-    let response = client
-        .post(format!("{base}/api/equipment"))
-        .json(&sensor)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
-
-    // Malformed or non-sensor entity ids: rejected.
-    for bad in ["grow_temperature", "switch.grow_temperature", "sensor."] {
-        sensor["ha_entity_id"] = json!(bad);
-        sensor["ha_device_class"] = json!("temperature");
+    let routes = [
+        (reqwest::Method::GET, "/api/seed-batches"),
+        (reqwest::Method::POST, "/api/seed-batches"),
+        (reqwest::Method::GET, "/api/seed-batches/nope"),
+        (reqwest::Method::PUT, "/api/seed-batches/nope"),
+        (reqwest::Method::DELETE, "/api/seed-batches/nope"),
+        (
+            reqwest::Method::GET,
+            "/api/seed-batches/nope/germination-tests",
+        ),
+        (
+            reqwest::Method::POST,
+            "/api/seed-batches/nope/germination-tests",
+        ),
+    ];
+    for (method, path) in routes {
         let response = client
-            .post(format!("{base}/api/equipment"))
-            .json(&sensor)
+            .request(method, format!("{base}{path}"))
+            .json(&json!({}))
             .send()
             .await
             .unwrap();
-        assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST, "{bad}");
+        assert_eq!(
+            response.status(),
+            reqwest::StatusCode::NOT_FOUND,
+            "{path} must be gone"
+        );
     }
-
-    // A picked temperature entity round-trips with its identity.
-    sensor["ha_entity_id"] = json!("sensor.grow_temperature");
-    let created: Value = client
-        .post(format!("{base}/api/equipment"))
-        .json(&sensor)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(created["category"], "sensor");
-    assert_eq!(created["ha_entity_id"], "sensor.grow_temperature");
-    assert_eq!(created["ha_device_class"], "temperature");
-
-    // A device class on a non-sensor item is rejected; a plain entity
-    // binding on one is fine.
-    let mut light = sample_equipment("Bound light");
-    light["ha_device_class"] = json!("temperature");
-    let response = client
-        .post(format!("{base}/api/equipment"))
-        .json(&light)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
-    light["ha_device_class"] = Value::Null;
-    light["ha_entity_id"] = json!("light.grow_led");
-    let created: Value = client
-        .post(format!("{base}/api/equipment"))
-        .json(&light)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(created["ha_entity_id"], "light.grow_led");
-}
-
-fn sample_batch(strain_id: Option<&str>, acquisition_on: &str) -> Value {
-    json!({
-        "strain_id": strain_id,
-        "quantity": 10,
-        "acquired_from": "Royal Queen Seeds",
-        "acquisition_on": acquisition_on,
-        "storage_method": "cool_dark_dry",
-        "notes": null,
-    })
-}
-
-#[tokio::test]
-async fn seedbank_lists_oldest_first_with_viability() {
-    let base = spawn_api().await;
-    let client = reqwest::Client::new();
-
-    let strain: Value = client
-        .post(format!("{base}/api/strains"))
-        .json(&sample_strain("Royal Cookies"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let strain_id = strain["id"].as_str().unwrap().to_owned();
-
-    // Three batches: newest and oldest share the strain, one is
-    // unstrained.
-    let fresh: Value = client
-        .post(format!("{base}/api/seed-batches"))
-        .json(&sample_batch(Some(&strain_id), "2026-06-01"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(fresh["quantity"], 10);
-    assert_eq!(fresh["viability"]["window_months"], json!([12, 36]));
-    assert_eq!(fresh["viability"]["past_prime"], false);
-    assert!(
-        fresh["viability"]["source"]
-            .as_str()
-            .is_some_and(|source| !source.is_empty()),
-        "the preset window carries its source label"
-    );
-
-    let mut old = sample_batch(Some(&strain_id), "2024-01-01");
-    old["storage_method"] = json!("room_temp_dark");
-    old["quantity"] = json!(3);
-    let old: Value = client
-        .post(format!("{base}/api/seed-batches"))
-        .json(&old)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    // Room temp, dark drawer: 6-12 month window, acquired nearly three
-    // years ago — well past prime.
-    assert_eq!(old["viability"]["window_months"], json!([6, 12]));
-    assert_eq!(old["viability"]["past_prime"], true);
-
-    let unstrained: Value = client
-        .post(format!("{base}/api/seed-batches"))
-        .json(&sample_batch(None, "2025-03-01"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-
-    // Oldest first within the strain; the unstrained batch trails.
-    let list: Vec<Value> = client
-        .get(format!("{base}/api/seed-batches"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(list.len(), 3);
-    assert_eq!(list[0]["id"], old["id"], "oldest seeds listed first");
-    assert_eq!(list[1]["id"], fresh["id"]);
-    assert_eq!(list[2]["id"], unstrained["id"], "unstrained batches last");
-
-    // Update rewrites the payload; delete clears the batch.
-    let mut edited = sample_batch(Some(&strain_id), "2026-06-01");
-    edited["quantity"] = json!(7);
-    edited["storage_method"] = json!("refrigerated");
-    let updated: Value = client
-        .put(format!(
-            "{}/api/seed-batches/{}",
-            base,
-            fresh["id"].as_str().unwrap()
-        ))
-        .json(&edited)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(updated["quantity"], 7);
-    assert_eq!(updated["viability"]["window_months"], json!([60, 120]));
-
-    let status = client
-        .delete(format!(
-            "{}/api/seed-batches/{}",
-            base,
-            fresh["id"].as_str().unwrap()
-        ))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
-    let missing = client
-        .get(format!(
-            "{}/api/seed-batches/{}",
-            base,
-            fresh["id"].as_str().unwrap()
-        ))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(missing.status(), reqwest::StatusCode::NOT_FOUND);
-
-    // Validation: a bad date and an unknown strain.
-    let mut bad_date = sample_batch(None, "last summer");
-    bad_date["acquisition_on"] = json!("last summer");
-    let response = client
-        .post(format!("{base}/api/seed-batches"))
-        .json(&bad_date)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
-    let response = client
-        .post(format!("{base}/api/seed-batches"))
-        .json(&sample_batch(Some("nope"), "2026-01-01"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn linked_plant_starts_decrement_the_batch() {
-    let base = spawn_api().await;
-    let client = reqwest::Client::new();
-
-    let strain: Value = client
-        .post(format!("{base}/api/strains"))
-        .json(&sample_strain("Euforia"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let strain_id = strain["id"].as_str().unwrap().to_owned();
-    let mut batch = sample_batch(Some(&strain_id), "2026-09-01");
-    batch["quantity"] = json!(5);
-    let batch: Value = client
-        .post(format!("{base}/api/seed-batches"))
-        .json(&batch)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let batch_id = batch["id"].as_str().unwrap().to_owned();
-
-    // A grow names its batch; the link round-trips.
-    let grow: Value = client
-        .post(format!("{base}/api/grows"))
-        .json(&json!({
-            "name": "Euforia run",
-            "strain_id": strain_id,
-            "grow_space_id": null,
-            "seed_batch_id": batch_id,
-            "substrate": "soil",
-            "started_on": "2026-10-01",
-            "status": "active",
-            "notes": null,
-        }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let grow_id = grow["id"].as_str().unwrap().to_owned();
-    assert_eq!(grow["seed_batch_id"], batch_id.as_str());
-
-    // Two plants started: 5 -> 3, floored at zero, never raised.
-    for name in ["Plant A", "Plant B"] {
-        let status = client
-            .post(format!("{base}/api/grows/{grow_id}/plants"))
-            .json(&json!({ "name": name }))
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(status.status(), reqwest::StatusCode::CREATED);
-    }
-    let after: Value = client
-        .get(format!("{base}/api/seed-batches/{batch_id}"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(after["quantity"], 3, "each started plant decrements once");
-
-    // Manual edits always win: resetting to 10 makes the next plant
-    // start land on 9.
-    let mut edited = sample_batch(Some(&strain_id), "2026-09-01");
-    edited["quantity"] = json!(10);
-    client
-        .put(format!("{base}/api/seed-batches/{batch_id}"))
-        .json(&edited)
-        .send()
-        .await
-        .unwrap();
-    client
-        .post(format!("{base}/api/grows/{grow_id}/plants"))
-        .json(&json!({ "name": "Plant C" }))
-        .send()
-        .await
-        .unwrap();
-    let after: Value = client
-        .get(format!("{base}/api/seed-batches/{batch_id}"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(after["quantity"], 9);
-
-    // An unknown batch on grow creation is rejected...
-    let response = client
-        .post(format!("{base}/api/grows"))
-        .json(&json!({
-            "name": "Nowhere run",
-            "strain_id": null,
-            "grow_space_id": null,
-            "seed_batch_id": "nope",
-            "substrate": "soil",
-            "started_on": "2026-10-01",
-            "status": "active",
-            "notes": null,
-        }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
-
-    // ...and deleting the batch keeps the grow running, unlinked.
-    client
-        .delete(format!("{base}/api/seed-batches/{batch_id}"))
-        .send()
-        .await
-        .unwrap();
-    let survived: Value = client
-        .get(format!("{base}/api/grows/{grow_id}"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(survived["name"], "Euforia run");
-    assert_eq!(survived["seed_batch_id"], Value::Null);
 }
 
 #[tokio::test]
 async fn onboarding_wizard_appears_runs_and_stays_dismissable() {
-    // Fresh install: no spaces, no grows, no dismissal — the wizard
-    // shows (spec §4.12). The catalogue carries the bundled presets a
-    // fresh boot seeds.
+    // Fresh install: no grows, no dismissal — the wizard shows (spec
+    // §4.12). The feed presets a fresh boot seeds are the only bundled
+    // data left (D079).
     let db = Db::open_in_memory().unwrap();
-    leaflog_backend::seed::seed_strains(&db).await.unwrap();
-    leaflog_backend::seed::seed_equipment(&db).await.unwrap();
+    leaflog_backend::seed::seed_feed_presets(&db).await.unwrap();
     let base = spawn_with(db).await;
     let client = reqwest::Client::new();
     let fresh: Value = client
@@ -1523,6 +677,11 @@ async fn onboarding_wizard_appears_runs_and_stays_dismissable() {
         .await
         .unwrap();
     assert_eq!(fresh["show_wizard"], true);
+    // The removed catalogues no longer report into the wizard state.
+    assert!(
+        fresh.get("has_spaces").is_none() && fresh.get("has_equipment").is_none(),
+        "the wizard state must not report removed features: {fresh}"
+    );
 
     // Dismissal hides it (the settings flag is the dismissal), and the
     // empty-state restart clears the flag again.
@@ -1559,57 +718,15 @@ async fn onboarding_wizard_appears_runs_and_stays_dismissable() {
     assert_eq!(restarted["show_wizard"], true, "the restart card works");
 
     // The wizard's own call sequence, exactly as the frontend drives
-    // it: equipment → space → strain → plants → grow.
-    let equipment: Vec<Value> = client
-        .get(format!("{base}/api/equipment"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let tent = equipment
-        .iter()
-        .find(|item| item["category"] == "tent_room")
-        .expect("a bundled tent is picked in step 1")["id"]
-        .as_str()
-        .unwrap()
-        .to_owned();
-    let space: Value = client
-        .post(format!("{base}/api/spaces"))
-        .json(&sample_space("The tent"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let space_id = space["id"].as_str().unwrap().to_owned();
-    client
-        .post(format!("{base}/api/spaces/{space_id}/equipment/{tent}"))
-        .send()
-        .await
-        .unwrap();
-
-    let strains: Vec<Value> = client
-        .get(format!("{base}/api/strains"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    // The wizard offers the bundled records; step 3 may also be skipped
-    // entirely (a grow without a strain is valid).
-    let strain_id = strains[0]["id"].as_str().unwrap().to_owned();
-
+    // the final two-step shape: ① bind the grow's sensors, ② create
+    // the grow (strain label and photoperiod inline, D075) with its
+    // plants.
     let grow: Value = client
         .post(format!("{base}/api/grows"))
         .json(&json!({
             "name": "First run",
-            "strain_id": strain_id,
-            "grow_space_id": space_id,
-            "seed_batch_id": null,
+            "strain_label": "Northern Lights #5",
+            "photoperiod": "photoperiod",
             "substrate": "soil",
             "started_on": "2026-11-10",
             "status": "active",
@@ -1622,6 +739,18 @@ async fn onboarding_wizard_appears_runs_and_stays_dismissable() {
         .await
         .unwrap();
     let grow_id = grow["id"].as_str().unwrap().to_owned();
+    let bindings: Value = client
+        .put(format!("{base}/api/grows/{grow_id}/bindings"))
+        .json(&json!({
+            "bindings": { "temperature": "sensor.grow_temperature" }
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(bindings["temperature"], "sensor.grow_temperature");
     for name in ["Plant 1", "Plant 2"] {
         client
             .post(format!("{base}/api/grows/{grow_id}/plants"))
@@ -1642,32 +771,20 @@ async fn onboarding_wizard_appears_runs_and_stays_dismissable() {
         .unwrap();
     assert_eq!(done["show_wizard"], false);
     assert_eq!(done["has_grows"], true);
-    assert_eq!(done["has_spaces"], true);
 }
 
 #[tokio::test]
-async fn harvest_weights_round_trip_summarise_and_write_back() {
+async fn harvest_weights_round_trip_and_summarise() {
     let base = spawn_api().await;
     let client = reqwest::Client::new();
 
-    // A grow with a user strain and two plants, plus a second grow on a
-    // bundled strain for the write-back rejection.
-    let strain: Value = client
-        .post(format!("{base}/api/strains"))
-        .json(&sample_strain("My own cross"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
+    // A grow with two plants (the yield write-back left with the
+    // catalogue, D075 — the per-plant weights are the record).
     let grow: Value = client
         .post(format!("{base}/api/grows"))
         .json(&json!({
             "name": "Harvest run",
-            "strain_id": strain["id"],
-            "grow_space_id": null,
-            "seed_batch_id": null,
+            "strain_label": "My own cross",
             "feed_template_id": null,
             "substrate": "soil",
             "started_on": "2026-08-01",
@@ -1766,240 +883,17 @@ async fn harvest_weights_round_trip_summarise_and_write_back() {
         .await
         .unwrap();
     assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
-
-    // Write-back reaches the user strain exactly once per grow.
-    let written: Value = client
-        .post(format!("{base}/api/grows/{grow_id}/writeback"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let notes = written["yield_notes"].as_str().unwrap();
-    assert!(notes.contains("achieved"), "notes: {notes}");
-    assert!(notes.contains("30 g dry"), "notes: {notes}");
-    assert!(notes.contains(&format!("[grow:{grow_id}]")));
-    client
-        .post(format!("{base}/api/grows/{grow_id}/writeback"))
-        .send()
-        .await
-        .unwrap();
-    let strain_after: Value = client
-        .get(format!(
-            "{}/api/strains/{}",
-            base,
-            strain["id"].as_str().unwrap()
-        ))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let notes = strain_after["yield_notes"].as_str().unwrap();
-    assert_eq!(
-        notes.matches("achieved").count(),
-        1,
-        "re-writing replaces the line, it does not pile up: {notes}"
-    );
-
-    // A grow on a bundled strain never writes back (§4.4), and a
-    // strainless grow says so.
-    let db_seeded = Db::open_in_memory().unwrap();
-    leaflog_backend::seed::seed_strains(&db_seeded)
-        .await
-        .unwrap();
-    let seeded_base = spawn_with(db_seeded).await;
-    let bundled: Vec<Value> = reqwest::get(format!("{seeded_base}/api/strains"))
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let bundled_id = bundled
-        .iter()
-        .find(|s| s["is_builtin"] == json!(true))
-        .unwrap()["id"]
-        .as_str()
-        .unwrap()
-        .to_owned();
-    let bundled_grow: Value = reqwest::Client::new()
-        .post(format!("{seeded_base}/api/grows"))
-        .json(&json!({
-            "name": "Preset run",
-            "strain_id": bundled_id,
-            "grow_space_id": null,
-            "seed_batch_id": null,
-            "feed_template_id": null,
-            "substrate": "soil",
-            "started_on": "2026-08-01",
-            "status": "active",
-            "notes": null,
-        }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let response = reqwest::Client::new()
-        .post(format!(
-            "{}/api/grows/{}/writeback",
-            seeded_base,
-            bundled_grow["id"].as_str().unwrap()
-        ))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
-
-    let response = client
-        .post(format!("{base}/api/grows/nope/writeback"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn germination_tests_show_an_observed_rate_beside_the_window() {
-    let base = spawn_api().await;
-    let client = reqwest::Client::new();
-
-    let batch: Value = client
-        .post(format!("{base}/api/seed-batches"))
-        .json(&sample_batch(None, "2026-09-01"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(batch["observed"], Value::Null, "no tests, no observed rate");
-
-    let batch_id = batch["id"].as_str().unwrap().to_owned();
-    // Two tests: 3/4 and 6/6 — observed 9/10 overall, sitting beside
-    // (never overwriting) the §5.4 preset window.
-    for (sown, sprouted) in [(4, 3), (6, 6)] {
-        let view: Value = client
-            .post(format!(
-                "{base}/api/seed-batches/{batch_id}/germination-tests"
-            ))
-            .json(&json!({
-                "tested_on": "2026-10-0".to_owned() + if sprouted == 3 { "1" } else { "8" },
-                "sown": sown,
-                "sprouted": sprouted,
-                "notes": "paper towel",
-            }))
-            .send()
-            .await
-            .unwrap()
-            .json()
-            .await
-            .unwrap();
-        assert!(
-            view["viability"]["window_months"].is_array(),
-            "preset stays"
-        );
-    }
-    let view: Value = client
-        .get(format!("{base}/api/seed-batches/{batch_id}"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(view["observed"]["sprouted"], 9);
-    assert_eq!(view["observed"]["sown"], 10);
-
-    let tests: Vec<Value> = client
-        .get(format!(
-            "{base}/api/seed-batches/{batch_id}/germination-tests"
-        ))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(tests.len(), 2, "tests list oldest first");
-
-    // Validation: sprouted above sown and a bad date are rejected; an
-    // unknown batch is a 404.
-    let response = client
-        .post(format!(
-            "{base}/api/seed-batches/{batch_id}/germination-tests"
-        ))
-        .json(&json!({ "tested_on": "2026-10-01", "sown": 2, "sprouted": 5, "notes": null }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
-    let response = client
-        .post(format!(
-            "{base}/api/seed-batches/{batch_id}/germination-tests"
-        ))
-        .json(&json!({ "tested_on": "soon", "sown": 2, "sprouted": 1, "notes": null }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
-    let response = client
-        .post(format!("{base}/api/seed-batches/nope/germination-tests"))
-        .json(&json!({ "tested_on": "2026-10-01", "sown": 2, "sprouted": 1, "notes": null }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
-
-    // The listing carries the observed rate too.
-    let list: Vec<Value> = client
-        .get(format!("{base}/api/seed-batches"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(list[0]["observed"]["sown"], 10);
 }
 
 #[tokio::test]
 async fn history_accuracy_on_a_golden_grow_and_next_run_by_reference() {
     let db = Db::open_in_memory().unwrap();
-    leaflog_backend::seed::seed_strains(&db).await.unwrap();
-    leaflog_backend::seed::seed_equipment(&db).await.unwrap();
+    leaflog_backend::seed::seed_feed_presets(&db).await.unwrap();
     let base = spawn_with(db).await;
     let client = reqwest::Client::new();
 
-    // A grow of bundled Northern Lights (45–55 flower days) in a space
-    // with a generic feed template fitted.
-    let strains: Vec<Value> = client
-        .get(format!("{base}/api/strains"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let northern = strains
-        .iter()
-        .find(|strain| strain["name"] == "Northern Lights")
-        .unwrap()
-        .clone();
-    let strain_count = strains.len();
-
-    let space: Value = client
-        .post(format!("{base}/api/spaces"))
-        .json(&sample_space("Golden tent"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
+    // A labelled grow (free-text strain label, D075) with a generic
+    // feed template fitted.
     let templates: Vec<Value> = client
         .get(format!("{base}/api/feeds/templates"))
         .send()
@@ -2014,9 +908,8 @@ async fn history_accuracy_on_a_golden_grow_and_next_run_by_reference() {
         .post(format!("{base}/api/grows"))
         .json(&json!({
             "name": "NL golden run",
-            "strain_id": northern["id"],
-            "grow_space_id": space["id"],
-            "seed_batch_id": null,
+            "strain_label": "Northern Lights",
+            "photoperiod": "photoperiod",
             "feed_template_id": template["id"],
             "planned_veg_weeks": 4,
             "substrate": "soil",
@@ -2031,6 +924,25 @@ async fn history_accuracy_on_a_golden_grow_and_next_run_by_reference() {
         .await
         .unwrap();
     let grow_id = grow["id"].as_str().unwrap().to_owned();
+
+    // A second grow with no label: its yield groups under the shared
+    // unlabelled key instead of a strain.
+    let unlabelled: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&json!({
+            "name": "Unlabelled run",
+            "substrate": "hydro",
+            "started_on": "2026-08-02",
+            "status": "archived",
+            "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let unlabelled_id = unlabelled["id"].as_str().unwrap().to_owned();
 
     // Flip on grow day 42 (2026-09-12), harvest on day 100
     // (2026-11-09).
@@ -2053,7 +965,8 @@ async fn history_accuracy_on_a_golden_grow_and_next_run_by_reference() {
             .unwrap();
     }
 
-    // One plant with a dry weight feeds the yield aggregates.
+    // One plant with a dry weight feeds the yield aggregates; the
+    // unlabelled grow carries a second weighed plant.
     let plant: Value = client
         .post(format!("{base}/api/grows/{grow_id}/plants"))
         .json(&json!({ "name": "NL #1", "wet_g": null, "dry_g": null, "trimmed_g": null }))
@@ -2069,6 +982,24 @@ async fn history_accuracy_on_a_golden_grow_and_next_run_by_reference() {
             plant["id"].as_str().unwrap()
         ))
         .json(&json!({ "name": "NL #1", "wet_g": 100.0, "dry_g": 25.0, "trimmed_g": 23.0 }))
+        .send()
+        .await
+        .unwrap();
+    let loose_plant: Value = client
+        .post(format!("{base}/api/grows/{unlabelled_id}/plants"))
+        .json(&json!({ "name": "Loose #1", "wet_g": null, "dry_g": null, "trimmed_g": null }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    client
+        .put(format!(
+            "{base}/api/plants/{}",
+            loose_plant["id"].as_str().unwrap()
+        ))
+        .json(&json!({ "name": "Loose #1", "wet_g": 40.0, "dry_g": 8.0, "trimmed_g": 2.0 }))
         .send()
         .await
         .unwrap();
@@ -2101,16 +1032,26 @@ async fn history_accuracy_on_a_golden_grow_and_next_run_by_reference() {
     assert_eq!(boundaries[1]["actual_day"], 100);
     assert_eq!(boundaries[1]["delta_days"], 100 - predicted_harvest);
     // The plan's flip sits after germination + seedling + default veg;
-    // the harvest after the strain's 45–55 day flower.
+    // the harvest lands inside the default photoperiod flower window.
     assert!(predicted_flip > 0 && predicted_harvest > predicted_flip);
 
-    let nl_yield = report["yield_by_strain"]
+    // Yields group by the grow's strain label; the unlabelled grow
+    // groups under the shared key, never under a strain name.
+    let nl_yield = report["yield_by_label"]
         .as_array()
         .unwrap()
         .iter()
         .find(|row| row["label"] == "Northern Lights")
-        .expect("yield grouped by strain");
+        .expect("yield grouped by strain label");
     assert_eq!(nl_yield["total_dry_g"], 25.0);
+    assert_eq!(nl_yield["grows"], 1);
+    let unlabelled_yield = report["yield_by_label"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["label"] == "unlabelled")
+        .expect("unlabelled grows group together");
+    assert_eq!(unlabelled_yield["total_dry_g"], 8.0);
     let soil_yield = report["yield_by_substrate"]
         .as_array()
         .unwrap()
@@ -2141,8 +1082,9 @@ async fn history_accuracy_on_a_golden_grow_and_next_run_by_reference() {
     assert_eq!(view["plant"]["name"], "NL #1");
     assert_eq!(view["yield_g"]["total_dry_g"], 25.0);
 
-    // One-tap next run: everything copied by reference — the bundled
-    // strain is not duplicated.
+    // One-tap next run: the label and photoperiod travel verbatim (the
+    // label is free text now — there is no catalogue entry to
+    // reference), and the space is reused by reference, not copied.
     let next: Value = client
         .post(format!("{base}/api/grows/{grow_id}/next-run"))
         .send()
@@ -2152,34 +1094,11 @@ async fn history_accuracy_on_a_golden_grow_and_next_run_by_reference() {
         .await
         .unwrap();
     assert_eq!(next["name"], "NL golden run (next run)");
-    assert_eq!(
-        next["strain_id"], northern["id"],
-        "strain copied by reference"
-    );
-    assert_eq!(next["grow_space_id"], space["id"]);
+    assert_eq!(next["strain_label"], "Northern Lights");
+    assert_eq!(next["photoperiod"], "photoperiod");
     assert_eq!(next["feed_template_id"], template["id"]);
     assert_eq!(next["substrate"], "soil");
-    assert_eq!(next["seed_batch_id"], Value::Null);
     assert_eq!(next["status"], "active");
-
-    let strains_after: Vec<Value> = client
-        .get(format!("{base}/api/strains"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(strains_after.len(), strain_count, "no bundled duplication");
-    let spaces_after: Vec<Value> = client
-        .get(format!("{base}/api/spaces"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(spaces_after.len(), 1, "the space is reused, not copied");
 }
 
 #[tokio::test]
@@ -2194,9 +1113,6 @@ async fn unavailable_bound_entities_render_no_data_and_can_rebind() {
         .post(format!("{base}/api/grows"))
         .json(&json!({
             "name": "Drift run",
-            "strain_id": null,
-            "grow_space_id": null,
-            "seed_batch_id": null,
             "feed_template_id": null,
             "substrate": "soil",
             "started_on": "2026-10-01",
@@ -2268,241 +1184,4 @@ async fn unavailable_bound_entities_render_no_data_and_can_rebind() {
     assert_eq!(bindings.len(), 1, "the humidity role was released");
     assert_eq!(bindings[0]["entity_id"], "sensor.new_temp");
     assert_eq!(bindings[0]["available"], false, "still offline");
-}
-
-// --- Space sensor items → default grow bindings (spec §4.1) -----------
-
-/// Creates a sensor equipment item bound to an HA entity and returns
-/// its id.
-async fn create_sensor_item(
-    client: &reqwest::Client,
-    base: &str,
-    entity: &str,
-    class: &str,
-) -> String {
-    let created: Value = client
-        .post(format!("{base}/api/equipment"))
-        .json(&json!({
-            "name": entity, "category": "sensor",
-            "brand_model": null, "real_watts": null, "dimmable": false,
-            "purchase_date": null, "purchase_price": null, "currency": null,
-            "notes": null,
-            "ha_entity_id": entity, "ha_device_class": class,
-        }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    created["id"].as_str().unwrap().to_owned()
-}
-
-/// Creates a grow space and returns its id.
-async fn create_space_at(client: &reqwest::Client, base: &str, name: &str) -> String {
-    let created: Value = client
-        .post(format!("{base}/api/spaces"))
-        .json(&sample_space(name))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    created["id"].as_str().unwrap().to_owned()
-}
-
-/// Creates a grow (optionally inside a space) and returns its id.
-async fn create_grow_at(
-    client: &reqwest::Client,
-    base: &str,
-    name: &str,
-    space_id: Option<&str>,
-) -> String {
-    let created: Value = client
-        .post(format!("{base}/api/grows"))
-        .json(&json!({
-            "name": name,
-            "strain_id": null,
-            "grow_space_id": space_id,
-            "substrate": "soil",
-            "started_on": "2026-10-01",
-            "status": "active",
-            "notes": null,
-        }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    created["id"].as_str().unwrap().to_owned()
-}
-
-/// Reads a grow's bindings.
-async fn bindings_of(client: &reqwest::Client, base: &str, grow_id: &str) -> Value {
-    client
-        .get(format!("{base}/api/grows/{grow_id}/bindings"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap()
-}
-
-#[tokio::test]
-async fn space_sensor_items_seed_default_grow_bindings() {
-    let base = spawn_api().await;
-    let client = reqwest::Client::new();
-
-    let space_id = create_space_at(&client, &base, "60×60 tent").await;
-    let temp = create_sensor_item(&client, &base, "sensor.grow_temperature", "temperature").await;
-    let humidity = create_sensor_item(&client, &base, "sensor.grow_humidity", "humidity").await;
-    for item in [&temp, &humidity] {
-        let status = client
-            .post(format!("{base}/api/spaces/{space_id}/equipment/{item}"))
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
-    }
-
-    // A grow created in the space inherits both roles as defaults.
-    let grow_id = create_grow_at(&client, &base, "RC #1", Some(&space_id)).await;
-    let bindings = bindings_of(&client, &base, &grow_id).await;
-    assert_eq!(bindings["temperature"], "sensor.grow_temperature");
-    assert_eq!(bindings["humidity"], "sensor.grow_humidity");
-
-    // A grow without a space binds nothing.
-    let loose_grow_id = create_grow_at(&client, &base, "Loose", None).await;
-    let loose = bindings_of(&client, &base, &loose_grow_id).await;
-    assert_eq!(loose.as_object().unwrap().len(), 0);
-}
-
-#[tokio::test]
-async fn sensor_added_to_space_seeds_existing_grows_and_keeps_overrides() {
-    let base = spawn_api().await;
-    let client = reqwest::Client::new();
-
-    // The grow exists before any sensor does.
-    let space_id = create_space_at(&client, &base, "tent").await;
-    let grow_id = create_grow_at(&client, &base, "RC #2", Some(&space_id)).await;
-
-    // A sensor item added to the space seeds the role on existing grows.
-    let humidity = create_sensor_item(&client, &base, "sensor.grow_humidity", "humidity").await;
-    let status = client
-        .post(format!("{base}/api/spaces/{space_id}/equipment/{humidity}"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
-    let bindings = bindings_of(&client, &base, &grow_id).await;
-    assert_eq!(bindings["humidity"], "sensor.grow_humidity");
-
-    // An explicit binding survives a later sensor item of the same role.
-    let replaced: Value = client
-        .put(format!("{base}/api/grows/{grow_id}/bindings"))
-        .json(&json!({
-            "bindings": {
-                "temperature": "sensor.chosen_temp",
-                "humidity": "sensor.grow_humidity",
-            }
-        }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(replaced["temperature"], "sensor.chosen_temp");
-    let temp = create_sensor_item(&client, &base, "sensor.grow_temperature", "temperature").await;
-    let status = client
-        .post(format!("{base}/api/spaces/{space_id}/equipment/{temp}"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
-    let bindings = bindings_of(&client, &base, &grow_id).await;
-    assert_eq!(
-        bindings["temperature"], "sensor.chosen_temp",
-        "an explicit binding is never overwritten by seeding"
-    );
-    assert_eq!(bindings["humidity"], "sensor.grow_humidity");
-}
-
-#[tokio::test]
-async fn grow_moved_into_space_picks_up_sensor_defaults() {
-    let base = spawn_api().await;
-    let client = reqwest::Client::new();
-
-    let space_id = create_space_at(&client, &base, "tent").await;
-    let temp = create_sensor_item(&client, &base, "sensor.grow_temperature", "temperature").await;
-    let status = client
-        .post(format!("{base}/api/spaces/{space_id}/equipment/{temp}"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
-
-    // A grow edited into a space (PUT) picks the space's defaults for
-    // roles it has not bound itself.
-    let grow_id = create_grow_at(&client, &base, "Nomad", None).await;
-    let updated: Value = client
-        .put(format!("{base}/api/grows/{grow_id}"))
-        .json(&json!({
-            "name": "Nomad",
-            "strain_id": null,
-            "grow_space_id": space_id,
-            "substrate": "soil",
-            "started_on": "2026-10-01",
-            "status": "active",
-            "notes": null,
-        }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(updated["grow_space_id"], space_id.as_str());
-    let bindings = bindings_of(&client, &base, &grow_id).await;
-    assert_eq!(bindings["temperature"], "sensor.grow_temperature");
-}
-
-#[tokio::test]
-async fn startup_healing_pass_refills_cleared_bindings() {
-    let db = leaflog_backend::Db::open_in_memory().unwrap();
-    let base = spawn_with(db.clone()).await;
-    let client = reqwest::Client::new();
-
-    let space_id = create_space_at(&client, &base, "tent").await;
-    let temp = create_sensor_item(&client, &base, "sensor.grow_temperature", "temperature").await;
-    let status = client
-        .post(format!("{base}/api/spaces/{space_id}/equipment/{temp}"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(status.status(), reqwest::StatusCode::NO_CONTENT);
-    let grow_id = create_grow_at(&client, &base, "RC #3", Some(&space_id)).await;
-    assert_eq!(
-        bindings_of(&client, &base, &grow_id).await["temperature"],
-        "sensor.grow_temperature"
-    );
-
-    // Wipe the bindings (the state an install created before the
-    // §4.1 bridge existed would be in), then run the startup pass.
-    let status = client
-        .put(format!("{base}/api/grows/{grow_id}/bindings"))
-        .json(&json!({ "bindings": {} }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(status.status(), reqwest::StatusCode::OK);
-    leaflog_backend::seed_sensor_defaults(&db).await.unwrap();
-    let bindings = bindings_of(&client, &base, &grow_id).await;
-    assert_eq!(
-        bindings["temperature"], "sensor.grow_temperature",
-        "the startup pass re-fills unbound roles from the space's items"
-    );
 }

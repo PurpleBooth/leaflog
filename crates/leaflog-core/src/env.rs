@@ -5,13 +5,14 @@
 //! the humidity range that keeps VPD in band at the current
 //! temperature. The lamp-height advisor applies the spec §5.1
 //! wattage-class table with dimming, stretch and floor rules, plus a
-//! strain light-tolerance caution. Strain heat/cold tolerance shifts
-//! alert thresholds (tolerant +2 °F ceiling, sensitive −3 °F).
+//! light-tolerance caution. Grow heat/cold tolerance shifts alert
+//! thresholds (tolerant +2 °F ceiling, sensitive −3 °F). All sources
+//! are grow attributes (D075).
 
 use serde::{Deserialize, Serialize};
 
 use crate::Phase;
-use crate::strain::Tolerance;
+use crate::grows::Tolerance;
 
 // ---------------------------------------------------------------------------
 // VPD engine (spec §4.9, §5.2)
@@ -321,7 +322,7 @@ impl Default for TempThresholds {
 }
 
 impl TempThresholds {
-    /// Shifts thresholds for the strain's heat tolerance (spec §4.4:
+    /// Shifts thresholds for the grow's heat tolerance (spec §4.4:
     /// tolerant +2 °F ceiling, sensitive −3 °F ceiling; the floor
     /// mirrors for cold tolerance).
     ///
@@ -457,6 +458,30 @@ pub fn wattage_classes() -> Vec<WattageClass> {
     ]
 }
 
+/// The advisor's default fixture wattage (D044): the historical
+/// sensible 330 W light, used when the grow records no real wattage.
+pub const DEFAULT_FIXTURE_WATTS: u32 = 330;
+
+/// Converts a grow's optional real wall watts (D076: `f64` in, `REAL`
+/// in SQLite) into the advisor's whole-watt class input.
+///
+/// `None` falls back to the D044 default fixture; a recorded value
+/// rounds to the nearest watt and never lands below 1.
+#[must_use]
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+// the cast is guarded: rounded is a positive f64 and f64-to-int casts
+// saturate, never wrap (see docs/DECISIONS.md D044)
+pub fn advisor_watts(real_watts: Option<f64>) -> u32 {
+    let Some(watts) = real_watts else {
+        return DEFAULT_FIXTURE_WATTS;
+    };
+    let rounded = watts.round();
+    if rounded < 1.0 {
+        return 1;
+    }
+    rounded as u32
+}
+
 /// The advisor's inputs.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct LampInput {
@@ -470,7 +495,7 @@ pub struct LampInput {
     pub canopy_temperature_c: Option<f64>,
     /// The plant's current phase.
     pub phase: Phase,
-    /// The strain's light tolerance.
+    /// The grow's light tolerance.
     pub light_tolerance: Tolerance,
     /// Whether stretch symptoms are logged (raise the lamp).
     pub stretch_logged: bool,
@@ -490,8 +515,8 @@ pub struct LampAdvice {
     pub target_ppfd: Option<(u32, u32)>,
     /// Estimated DLI (mol/m²/day).
     pub dli: Option<f64>,
-    /// Confidence: "high" with a PPFD map, "low" from the wattage
-    /// table.
+    /// Confidence of the advice: always "low" — the wattage-class
+    /// table is the only source (no fixture map exists, D075).
     pub confidence: &'static str,
     /// Plain-English explanation.
     pub why: String,
@@ -570,9 +595,9 @@ pub fn advise_lamp(input: &LampInput) -> LampAdvice {
 
     // Light-tolerance caution.
     if input.light_tolerance == Tolerance::Sensitive {
-        why.push_str("This strain is light-sensitive: err toward the higher end. ");
+        why.push_str("This plant is light-sensitive: err toward the higher end. ");
     } else if input.light_tolerance == Tolerance::Tolerant {
-        why.push_str("This strain is light-tolerant: the lower end may work. ");
+        why.push_str("This plant is light-tolerant: the lower end may work. ");
     }
 
     // Target PPFD and DLI (approximate from the class).
@@ -708,10 +733,9 @@ mod tests {
     use super::{
         CO2_LIGHTS_OFF_PPM, CO2_LIGHTS_ON_PPM, DEFAULT_LEAF_OFFSET_C, LampInput,
         NIGHT_LEAF_OFFSET_C, NightVpdBand, Phase, TempThresholds, Tolerance, advise_lamp,
-        coach_tips, night_temperature_corridor, night_vpd_band, rh_window, saturation_vp_kpa,
-        temperature_corridor, vpd_band, vpd_kpa, wattage_classes,
+        advisor_watts, coach_tips, night_temperature_corridor, night_vpd_band, rh_window,
+        saturation_vp_kpa, temperature_corridor, vpd_band, vpd_kpa, wattage_classes,
     };
-    use crate::strain::PhotoperiodType;
 
     // --- VPD golden values (spec §13) ---
 
@@ -730,7 +754,7 @@ mod tests {
             (30.0, 70.0, -2.0, 0.83), // hot + humid = moderate
             (22.0, 80.0, -2.0, 0.35), // cool + very humid = low
             // Saturated air with a negative leaf offset makes the raw
-            // difference negative; the derivation clamps at zero (D076).
+            // difference negative; the derivation clamps at zero (D087).
             (25.0, 100.0, -2.0, 0.0), // raw ≈ −0.36 kPa
             (20.0, 100.0, -2.0, 0.0), // raw ≈ −0.27 kPa
             (22.0, 95.0, -2.0, 0.0),  // raw ≈ −0.17 kPa
@@ -825,7 +849,7 @@ mod tests {
     // --- Strain tolerance shifts (spec §13) ---
 
     #[test]
-    fn strain_tolerance_shifts_alert_thresholds() {
+    fn grow_tolerance_shifts_alert_thresholds() {
         let base = TempThresholds::default();
 
         let tolerant = base.shifted(Tolerance::Tolerant, Tolerance::Average);
@@ -851,6 +875,18 @@ mod tests {
     }
 
     // --- Lamp advisor (spec §13) ---
+
+    #[test]
+    fn advisor_watts_rounds_and_falls_back_to_the_default_fixture() {
+        // Unset: the D044 default fixture.
+        assert_eq!(advisor_watts(None), 330);
+        // A recorded value rounds to the nearest whole watt.
+        assert_eq!(advisor_watts(Some(419.6)), 420);
+        assert_eq!(advisor_watts(Some(240.0)), 240);
+        // Degenerate stored values never produce a zero-watt lamp.
+        assert_eq!(advisor_watts(Some(0.4)), 1);
+        assert_eq!(advisor_watts(Some(-5.0)), 1);
+    }
 
     #[test]
     fn lamp_advisor_wattage_table() {
@@ -1034,12 +1070,6 @@ mod tests {
         let band_part =
             |tip: &super::CoachTip| tip.title.split(" (").next().unwrap_or_default().to_owned();
         assert_eq!(band_part(vpd_day), band_part(vpd_night));
-    }
-
-    // Compile check that PhotoperiodType is reachable.
-    #[test]
-    fn photoperiod_type_available() {
-        let _ = PhotoperiodType::Photoperiod;
     }
 
     // --- Temperature corridor (spec §5.2, chart band) ---

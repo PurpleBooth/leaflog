@@ -50,8 +50,6 @@ pub mod api_grows;
 pub mod api_ha;
 pub mod api_history;
 pub mod api_phase;
-pub mod api_seedbank;
-pub mod api_spaces;
 pub mod app;
 pub mod assets;
 pub mod db;
@@ -221,26 +219,6 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     tokio::runtime::Runtime::new()?.block_on(serve(config))
 }
 
-/// Seeds every grow's unbound binding roles from its space's sensor
-/// items (spec §4.1).
-///
-/// Called once at startup — idempotent, so it also heals grows and
-/// sensor items created before the §4.1 bridge existed; explicit
-/// bindings always stay.
-///
-/// # Errors
-///
-/// Returns a [`crate::db::StoreError`] on storage failures.
-pub async fn seed_sensor_defaults(db: &Db) -> Result<(), crate::db::StoreError> {
-    db.with(|conn| {
-        for grow in crate::store::grows::list(conn)? {
-            crate::store::sensors::seed_from_space(conn, &grow)?;
-        }
-        Ok(())
-    })
-    .await
-}
-
 /// Seven days, in the only unit std's `Duration` constructors speak
 /// on stable.
 const fn weeks(count: u64) -> std::time::Duration {
@@ -317,19 +295,8 @@ pub fn run_migrate(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
 async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     let mode = config.mode;
     let db = Db::open(&config.db_path())?;
-    match seed::seed_strains(&db).await {
-        Ok(seeded) if seeded > 0 => {
-            println!("Seeded {seeded} bundled strain records");
-        }
-        Ok(_) => {}
-        Err(error) => eprintln!("strain seeding skipped: {error}"),
-    }
-    match seed::seed_equipment(&db).await {
-        Ok(seeded) if seeded > 0 => {
-            println!("Seeded {seeded} predefined equipment items");
-        }
-        Ok(_) => {}
-        Err(error) => eprintln!("equipment seeding skipped: {error}"),
+    if let Err(error) = seed::seed_feed_presets(&db).await {
+        eprintln!("feed/substrate seeding skipped: {error}");
     }
     // Snapshot retention (spec §4.2): prune at startup and weekly.
     {
@@ -370,14 +337,6 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     // out-of-band reading raises an HA notification (rate-limited,
     // quiet-hours aware).
     alerts::spawn(db.clone(), ha_bridge.clone());
-
-    // Spec §4.1 healing pass: a space's temperature + humidity sensor
-    // items are the default env bindings for grows in it — fill every
-    // grow's unbound roles (idempotent; explicit bindings stay). Covers
-    // grows and sensor items created before the bridge existed.
-    if let Err(error) = seed_sensor_defaults(&db).await {
-        eprintln!("sensor-default seeding skipped: {error}");
-    }
 
     // Track exactly what any grow has bound.
     if let Ok(entities) = db.with(crate::store::sensors::all_bound_entities).await {

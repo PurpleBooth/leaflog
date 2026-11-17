@@ -145,7 +145,7 @@ async fn backup_restore_keeps_db_and_photos() {
     let grow: Value = client
         .post(format!("{base}/api/grows"))
         .json(&json!({
-            "name": "Backup test", "strain_id": null, "substrate": "soil",
+            "name": "Backup test", "substrate": "soil",
             "started_on": "2026-10-01", "status": "active", "notes": null,
         }))
         .send()

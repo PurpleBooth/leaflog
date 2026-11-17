@@ -32,15 +32,11 @@ pub mod actions;
 pub mod appearance;
 pub mod chart;
 pub mod env;
-pub mod equipment;
 pub mod feed;
 pub mod forecast;
 pub mod grows;
 pub mod history;
 pub mod light_cycle;
-pub mod seedbank;
-pub mod spaces;
-pub mod strain;
 pub mod tz;
 pub mod units;
 

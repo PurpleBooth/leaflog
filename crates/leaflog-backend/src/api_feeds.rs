@@ -177,13 +177,12 @@ async fn fit_feed(
         .db
         .with(move |conn| -> Result<_, ApiError> {
             let grow = store::grows::get(conn, &id)?;
-            let strain = grow
-                .strain_id
-                .as_deref()
-                .and_then(|sid| store::strain::get(conn, sid).ok());
             let actuals = crate::api_phase::forecast_actuals(conn, &id)?;
-            let input =
-                leaflog_core::forecast::input_for(strain.as_ref(), grow.planned_veg_weeks, actuals);
+            let input = leaflog_core::forecast::input_for(
+                grow.photoperiod,
+                grow.planned_veg_weeks,
+                actuals,
+            );
             let windows = leaflog_core::forecast::forecast(&input);
             let actual = store::feeds::actual_from_forecast(&windows)
                 .ok_or_else(|| ApiError::BadRequest("forecast incomplete".to_owned()))?;

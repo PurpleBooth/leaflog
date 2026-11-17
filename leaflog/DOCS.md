@@ -7,11 +7,12 @@ only), and serves its frontend through Home Assistant ingress under
 `/api/hassio_ingress/<token>/` with all relative URLs, so deep links
 and refreshes work.
 
-The shipped grow diary covers equipment inventory, strains, an action
-and photo log with automatic HA sensor capture, a phase forecast,
-feeding schedules fitted to the plant's real timeline, and environment
-coaching: VPD, lamp height, substrate-aware pH/EC/TDS guidance and
-strain-aware coaching.
+The shipped grow diary covers grows and plants. Each grow carries its
+strain label, photoperiod and Advanced Settings. Around them sit an
+action and photo log with automatic HA sensor capture through
+per-grow bindings, a phase forecast, and feeding schedules fitted to
+the plant's real timeline. Environment coaching covers VPD, lamp
+height and substrate-aware pH/EC/TDS guidance.
 
 ## Configuration
 

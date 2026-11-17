@@ -4,7 +4,7 @@
 use axum::extract::{Multipart, Path, Query, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::get;
 use axum::{Json, Router};
 use leaflog_core::actions::ActionType;
 use leaflog_core::grows::ActionInput;
@@ -65,7 +65,6 @@ pub fn router() -> Router<AppState> {
                 .delete(reset_light_cycle),
         )
         .route("/api/grows/{id}/yield", get(get_yield))
-        .route("/api/grows/{id}/writeback", post(writeback_grow))
         .route("/api/photos/{id}", axum::routing::delete(delete_photo))
         .route("/api/photos/{id}/original", get(photo_original))
         .route("/api/photos/{id}/thumbnail", get(photo_thumbnail))
@@ -88,33 +87,6 @@ async fn create_grow(
     Json(input): Json<GrowInput>,
 ) -> Result<(StatusCode, Json<leaflog_core::grows::Grow>), ApiError> {
     validate_grow(&input)?;
-    if let Some(strain_id) = &input.strain_id {
-        state
-            .db
-            .with({
-                let strain_id = strain_id.clone();
-                move |conn| store::strain::get(conn, &strain_id)
-            })
-            .await?;
-    }
-    if let Some(grow_space_id) = &input.grow_space_id {
-        state
-            .db
-            .with({
-                let grow_space_id = grow_space_id.clone();
-                move |conn| store::spaces::get(conn, &grow_space_id)
-            })
-            .await?;
-    }
-    if let Some(seed_batch_id) = &input.seed_batch_id {
-        state
-            .db
-            .with({
-                let seed_batch_id = seed_batch_id.clone();
-                move |conn| store::seedbank::get(conn, &seed_batch_id)
-            })
-            .await?;
-    }
     if let Some(feed_template_id) = &input.feed_template_id {
         state
             .db
@@ -124,20 +96,13 @@ async fn create_grow(
             })
             .await?;
     }
-    let ha = state.ha.clone();
     let grow = state
         .db
         .with(move |conn| -> Result<_, crate::db::StoreError> {
-            let grow = store::grows::create(conn, &input)?;
-            // Spec §4.1: a space's temperature + humidity sensor items
-            // are the default env bindings for a grow in it; seed only
-            // fills unbound roles, so per-grow overrides stay.
-            if !store::sensors::seed_from_space(conn, &grow)?.is_empty() {
-                // track_entities replaces the tracked set, so pass the
-                // union of every grow's bindings (as put_bindings does).
-                ha.track_entities(store::sensors::all_bound_entities(conn)?);
-            }
-            Ok(grow)
+            // A new grow binds no sensors yet; the grower picks its
+            // entities in the binding pickers (onboarding step 1 or the
+            // grow page).
+            store::grows::create(conn, &input)
         })
         .await?;
     Ok((StatusCode::CREATED, Json(grow)))
@@ -166,24 +131,6 @@ async fn update_grow(
     Json(input): Json<GrowInput>,
 ) -> Result<Json<leaflog_core::grows::Grow>, ApiError> {
     validate_grow(&input)?;
-    if let Some(grow_space_id) = &input.grow_space_id {
-        state
-            .db
-            .with({
-                let grow_space_id = grow_space_id.clone();
-                move |conn| store::spaces::get(conn, &grow_space_id)
-            })
-            .await?;
-    }
-    if let Some(seed_batch_id) = &input.seed_batch_id {
-        state
-            .db
-            .with({
-                let seed_batch_id = seed_batch_id.clone();
-                move |conn| store::seedbank::get(conn, &seed_batch_id)
-            })
-            .await?;
-    }
     if let Some(feed_template_id) = &input.feed_template_id {
         state
             .db
@@ -193,18 +140,12 @@ async fn update_grow(
             })
             .await?;
     }
-    let ha = state.ha.clone();
     let grow = state
         .db
         .with(move |conn| -> Result<_, store::StoreOrNotFound> {
-            let grow = store::grows::update(conn, &id, &input)?;
-            // A grow moved into (or between) spaces picks the new
-            // space's sensor defaults for any role it has not bound
-            // itself (spec §4.1, same rule as create_grow).
-            if !store::sensors::seed_from_space(conn, &grow)?.is_empty() {
-                ha.track_entities(store::sensors::all_bound_entities(conn)?);
-            }
-            Ok(grow)
+            // Bindings are the only sensor concept (feature-strip
+            // D075): editing a grow never touches them.
+            store::grows::update(conn, &id, &input)
         })
         .await?;
     Ok(Json(grow))
@@ -259,12 +200,6 @@ async fn create_plant(
         .with(move |conn| -> Result<_, StoreOrNotFound> {
             store::grows::get(conn, &id)?;
             let plant = store::grows::create_plant(conn, &id, &input)?;
-            // Starting a plant from a linked batch decrements the count
-            // (spec §4.13); manual edits always win, and the decrement
-            // clamps at zero.
-            if let Ok(Some(batch_id)) = store::seedbank::batch_of_grow(conn, &id) {
-                store::seedbank::decrement(conn, &batch_id, 1)?;
-            }
             Ok(plant)
         })
         .await?;
@@ -486,13 +421,12 @@ async fn get_forecast(
         .db
         .with(move |conn| -> Result<ForecastResponse, ApiError> {
             let grow = store::grows::get(conn, &id)?;
-            let strain = grow
-                .strain_id
-                .as_deref()
-                .and_then(|strain_id| store::strain::get(conn, strain_id).ok());
             let actuals = crate::api_phase::forecast_actuals(conn, &id)?;
-            let input =
-                leaflog_core::forecast::input_for(strain.as_ref(), grow.planned_veg_weeks, actuals);
+            let input = leaflog_core::forecast::input_for(
+                grow.photoperiod,
+                grow.planned_veg_weeks,
+                actuals,
+            );
             let windows = leaflog_core::forecast::forecast(&input);
             let today_day = day_number_in(&grow.started_on, &crate::db::now_rfc3339(), &tz)
                 .ok_or_else(|| ApiError::BadRequest("invalid started_on date".to_owned()))?;
@@ -594,69 +528,6 @@ async fn get_yield(
         )
         .await?;
     Ok(Json(summary))
-}
-
-/// `POST /api/grows/{id}/writeback` — copies the grow's achieved yield
-/// into its strain's yield notes (spec §4.4, §4.14). User-owned strains
-/// only: a bundled strain is read-only and answers 409.
-// Extractors are taken by value because Axum requires it.
-#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-async fn writeback_grow(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> Result<Json<leaflog_core::strain::Strain>, ApiError> {
-    let strain = state
-        .db
-        .with(
-            move |conn| -> Result<leaflog_core::strain::Strain, ApiError> {
-                let grow = store::grows::get(conn, &id)?;
-                let plants = store::grows::list_plants(conn, &grow.id)?;
-                let summary = leaflog_core::grows::YieldSummary::of(&grow.id, plants);
-                let strain_id = grow.strain_id.clone().ok_or_else(|| {
-                    ApiError::BadRequest("the grow has no strain to write back to".to_owned())
-                })?;
-                let mut strain = store::strain::get(conn, &strain_id)?;
-                if strain.is_builtin {
-                    return Err(ApiError::Conflict(
-                        "bundled strain is read-only; clone it as your phenotype and write back \
-                     there"
-                            .to_owned(),
-                    ));
-                }
-                // One line per grow, replaced on re-write so the write-back
-                // is idempotent.
-                let line = format!(
-                    "achieved: {} g dry, {} g wet, {} g trimmed over {} plant(s) [grow:{}]",
-                    summary
-                        .total_dry_g
-                        .map_or_else(|| "-".to_owned(), |grams| format!("{grams:.0}")),
-                    summary
-                        .total_wet_g
-                        .map_or_else(|| "-".to_owned(), |grams| format!("{grams:.0}")),
-                    summary
-                        .total_trimmed_g
-                        .map_or_else(|| "-".to_owned(), |grams| format!("{grams:.0}")),
-                    summary.plants.len(),
-                    grow.id
-                );
-                let marker = format!("[grow:{}]", grow.id);
-                let notes = strain.yield_notes.clone().unwrap_or_default();
-                let updated_lines: Vec<String> = notes
-                    .lines()
-                    .filter(|existing| !existing.contains(&marker))
-                    .map(str::to_owned)
-                    .chain([line])
-                    .collect();
-                strain.yield_notes = Some(updated_lines.join("\n"));
-                // Rebuild the update payload from the strain and keep the
-                // evidence map the grower curated.
-                let mut input = leaflog_core::strain::StrainInput::from_strain(&strain);
-                input.yield_notes.clone_from(&strain.yield_notes);
-                Ok(store::strain::update(conn, &strain.id, &input)?)
-            },
-        )
-        .await?;
-    Ok(Json(strain))
 }
 
 // Extractors are taken by value because Axum requires it.
@@ -916,6 +787,13 @@ fn validate_grow(input: &GrowInput) -> Result<(), ApiError> {
     if input.substrate.trim().is_empty() {
         return Err(ApiError::BadRequest(
             "substrate must not be empty".to_owned(),
+        ));
+    }
+    // Same rule as the equipment catalogue's field of the same name:
+    // a negative wall draw is nonsense, everything else is accepted.
+    if input.real_watts.is_some_and(|watts| watts < 0.0) {
+        return Err(ApiError::BadRequest(
+            "real_watts must not be negative".to_owned(),
         ));
     }
     Ok(())

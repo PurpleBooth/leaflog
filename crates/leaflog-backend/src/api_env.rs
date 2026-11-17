@@ -1,15 +1,15 @@
-//! Environment, lamp advisor and phase coach API routes (M7).
+//! Environment, lamp advisor and phase coach API routes (M7). All
+//! engine inputs are grow attributes (D075) — no strain record or
+//! space equipment is consulted.
 
 use axum::extract::{Path, State};
 use axum::routing::get;
 use axum::{Json, Router};
 use leaflog_core::Phase;
 use leaflog_core::env::{
-    CoachTip, LampAdvice, LampInput, TempThresholds, advise_lamp, coach_tips, rh_window, vpd_band,
-    vpd_kpa,
+    CoachTip, LampAdvice, LampInput, TempThresholds, advise_lamp, advisor_watts, coach_tips,
+    rh_window, vpd_band, vpd_kpa,
 };
-use leaflog_core::equipment::{EquipmentCategory, EquipmentItem};
-use leaflog_core::strain::{PhotoperiodType, Tolerance};
 use serde::Serialize;
 
 use crate::api::ApiError;
@@ -41,7 +41,8 @@ pub struct EnvSnapshot {
     pub vpd_band: (f64, f64),
     /// The RH window that keeps VPD in band.
     pub rh_window: (f64, f64),
-    /// Temperature alert thresholds (strain-shifted).
+    /// Temperature alert thresholds (shifted by the grow's heat and
+    /// cold tolerance, D075).
     pub thresholds: TempThresholds,
     /// Current phase label.
     pub phase: String,
@@ -96,10 +97,6 @@ pub(crate) fn snapshot(
 ) -> Result<EnvSnapshot, ApiError> {
     {
         let grow = store::grows::get(conn, id)?;
-        let strain = grow
-            .strain_id
-            .as_deref()
-            .and_then(|sid| store::strain::get(conn, sid).ok());
 
         // The phase the grow is in today, from the re-anchored
         // forecast (D073). Local calendar days in the canonical zone
@@ -141,14 +138,10 @@ pub(crate) fn snapshot(
             band,
         );
 
-        // Strain-shifted thresholds.
-        let heat = strain
-            .as_ref()
-            .map_or(Tolerance::Average, |s| s.heat_tolerance);
-        let cold = strain
-            .as_ref()
-            .map_or(Tolerance::Average, |s| s.cold_tolerance);
-        let thresholds = TempThresholds::default().shifted(heat, cold);
+        // Grow-shifted thresholds (D075): unset tolerances are
+        // Average, so a fresh grow needs no tuning.
+        let thresholds =
+            TempThresholds::default().shifted(grow.heat_tolerance, grow.cold_tolerance);
 
         let temp_ok = temperature_c.map(|t| t >= thresholds.floor_c && t <= thresholds.ceiling_c);
         let vpd_ok = vpd.map(|v| v >= band.0 && v <= band.1);
@@ -180,10 +173,6 @@ async fn grow_lamp(
         .db
         .with(move |conn| -> Result<LampAdvice, ApiError> {
             let grow = store::grows::get(conn, &id)?;
-            let strain = grow
-                .strain_id
-                .as_deref()
-                .and_then(|sid| store::strain::get(conn, sid).ok());
 
             // Phase from the re-anchored forecast (D073).
             // Local calendar days in the canonical zone (spec §2);
@@ -199,16 +188,9 @@ async fn grow_lamp(
                 .and_then(|e| live.entities.get(e))
                 .and_then(|e| e.state.parse::<f64>().ok());
 
-            // The most powerful light in the grow's space advises the
-            // wattage class; without a space (or a known wattage) we
-            // fall back to the historical sensible default
-            // (docs/DECISIONS.md D021).
-            let (light_watts, light_dimmable) = grow
-                .grow_space_id
-                .as_deref()
-                .map(|space_id| store::equipment::list_for_space(conn, space_id))
-                .transpose()?
-                .map_or((330, true), |equipment| space_light(&equipment));
+            // The grow's own lamp facts (D075) advise the wattage
+            // class; unset watts fall back to the historical sensible
+            // default (docs/DECISIONS.md D044).
 
             // Stretch/stress from recent appearance tags. The matchers
             // live in core (leaflog_core::appearance) so the merged
@@ -229,14 +211,12 @@ async fn grow_lamp(
             });
 
             let input = LampInput {
-                real_watts: light_watts,
-                dimmable: light_dimmable,
+                real_watts: advisor_watts(grow.real_watts),
+                dimmable: grow.dimmable,
                 dim_pct: 100,
                 canopy_temperature_c: canopy_temp,
                 phase,
-                light_tolerance: strain
-                    .as_ref()
-                    .map_or(Tolerance::Average, |s| s.light_tolerance),
+                light_tolerance: grow.light_tolerance,
                 stretch_logged: stretch,
                 stress_tags_logged: stress,
             };
@@ -244,29 +224,6 @@ async fn grow_lamp(
         })
         .await?;
     Ok(Json(advice))
-}
-
-/// Picks the advising light from a grow space's equipment: the most
-/// powerful light with a known real wattage, and whether any light is
-/// dimmable. Returns the `(330, true)` historical default when the
-/// space has no usable light.
-fn space_light(equipment: &[EquipmentItem]) -> (u32, bool) {
-    let lights: Vec<&EquipmentItem> = equipment
-        .iter()
-        .filter(|item| item.category == EquipmentCategory::Light)
-        .collect();
-    let watts = lights
-        .iter()
-        .filter_map(|light| light.real_watts)
-        .fold(0.0_f64, f64::max);
-    if watts <= 0.0 {
-        return (330, true);
-    }
-    let dimmable = lights.iter().any(|light| light.dimmable);
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    // fixture wattage; the clamp keeps the cast exact (see docs/DECISIONS.md D021)
-    let watts = watts.round().clamp(1.0, 9_999_999.0) as u32;
-    (watts, dimmable)
 }
 
 /// The coach response.
@@ -282,7 +239,7 @@ pub struct CoachResponse {
 
 /// Reads one raw light state the way the chart staircase does:
 /// `"on"` (any case) is lit, `"off"` is dark, and a numeric state
-/// counts as lit by the core rule — any positive value, D082.
+/// counts as lit by the core rule — any positive value, D093.
 /// Anything else is unknown.
 fn light_state_is_on(state: &str) -> Option<bool> {
     match state.trim().to_ascii_lowercase().as_str() {
@@ -296,7 +253,7 @@ fn light_state_is_on(state: &str) -> Option<bool> {
     }
 }
 
-/// Resolves the coach's light state at call time (spec §4.9, D085):
+/// Resolves the coach's light state at call time (spec §4.9, D096):
 ///
 /// 1. **A bound light entity's latest known state wins.** The live
 ///    entity map first (the WebSocket subscription's current
@@ -308,7 +265,7 @@ fn light_state_is_on(state: &str) -> Option<bool> {
 ///    nothing is bound).
 /// 3. **No source at all keeps the lights-on assumption** — the same
 ///    convention the stepped corridors use for an unknown state
-///    (D083), and the only reading available in the unlit phases.
+///    (D094), and the only reading available in the unlit phases.
 ///
 /// A failed DB read of the schedule inputs surfaces as an API error;
 /// a merely unknown state does not.
@@ -335,11 +292,9 @@ fn resolve_coach_light_on(
     }
     let windows = crate::api_chart::load_windows(conn, grow)?;
     let spans = leaflog_core::chart::phase_spans(&grow.started_on, tz, &windows);
-    let photoperiod = grow
-        .strain_id
-        .as_deref()
-        .and_then(|sid| store::strain::get(conn, sid).ok())
-        .map_or(PhotoperiodType::Photoperiod, |strain| strain.photoperiod);
+    // The grow's own photoperiod behaviour (D075) replaces the
+    // removed strain lookup.
+    let photoperiod = grow.photoperiod;
     let now = crate::db::now_rfc3339();
     Ok(leaflog_core::chart::schedule_light_on_at(
         &now,
@@ -371,7 +326,7 @@ async fn grow_coach(
                 .unwrap_or(0);
             let phase = crate::api_phase::current_phase(conn, &grow, today)?;
 
-            // The real light state at call time (spec §4.9, D085) —
+            // The real light state at call time (spec §4.9, D096) —
             // not the hardcoded lights-on assumption.
             let light_on = resolve_coach_light_on(conn, &ha, &grow, &tz)?;
 
