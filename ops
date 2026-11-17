@@ -1,1 +1,1 @@
-{"author":{"id":"ce771b8a9b8c30a8aac165a8b1cdb0957637d3941276ec4f27335daee16d79de"},"ops":[{"type":2,"timestamp":1794944167,"nonce":"b5WdPeFDb2IEq5fk+Fh1ujILT24=","title":"Grow page rework: live values, edit page, learned Light Cycle, quick-add menu, HA theme","was":"Grow page rework: live values, edit page, learned Light Cycle, quick-add menu, HA theme"}]}
+{"author":{"id":"ce771b8a9b8c30a8aac165a8b1cdb0957637d3941276ec4f27335daee16d79de"},"ops":[{"type":5,"timestamp":1794944179,"nonce":"n4fZ9/bbaWpQUYXs8IXX9Dp6L20=","added":["spec"],"removed":null}]}
