@@ -141,7 +141,7 @@ Output: **recommended height range, dim %, target PPFD, DLI** (PPFD × hours × 
   - Never recommend below the fixture's minimum distance (default floor 10–12 in for dimmable LEDs).
   - On "bleaching / taco / crispy" tags, suggest +2–4 in or dim to 70–80%, then re-check after about a week.
 - Prefer "set distance by stage, then fine-tune with the dimmer".
-- The advising fixture is the grow's recorded wall wattage; when it is unset a 330 W-class default applies (D021), so advice never blocks on a form field.
+- The advising fixture is the grow's recorded wall wattage; when it is unset a 330 W-class default applies (D044), so advice never blocks on a form field.
 - Always show the units, say that the numbers are starting points, and recommend a PAR meter or a PPFD-meter log entry to calibrate.
 - If a dimmer entity is bound **and** service calls are opted in, offer a one-tap "apply" with confirmation. Otherwise advise only.
 

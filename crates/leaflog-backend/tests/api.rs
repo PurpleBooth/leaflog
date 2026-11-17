@@ -297,7 +297,7 @@ async fn lamp_advisor_reads_the_grow_watts_with_the_default_fallback() {
     let base = spawn_api().await;
     let client = reqwest::Client::new();
 
-    // Seedling ranges: 28–30 in for the D021 330 W default fixture,
+    // Seedling ranges: 28–30 in for the D044 330 W default fixture,
     // 32–36 in for a 420 W lamp — read from the grow's own watts.
     let plain = json!({
         "name": "Default run",

@@ -190,7 +190,7 @@ async fn grow_lamp(
 
             // The grow's own lamp facts (D075) advise the wattage
             // class; unset watts fall back to the historical sensible
-            // default (docs/DECISIONS.md D021).
+            // default (docs/DECISIONS.md D044).
 
             // Stretch/stress from recent appearance tags. The matchers
             // live in core (leaflog_core::appearance) so the merged

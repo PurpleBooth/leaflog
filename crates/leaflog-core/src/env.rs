@@ -316,19 +316,19 @@ pub fn wattage_classes() -> Vec<WattageClass> {
     ]
 }
 
-/// The advisor's default fixture wattage (D021): the historical
+/// The advisor's default fixture wattage (D044): the historical
 /// sensible 330 W light, used when the grow records no real wattage.
 pub const DEFAULT_FIXTURE_WATTS: u32 = 330;
 
 /// Converts a grow's optional real wall watts (D076: `f64` in, `REAL`
 /// in SQLite) into the advisor's whole-watt class input.
 ///
-/// `None` falls back to the D021 default fixture; a recorded value
+/// `None` falls back to the D044 default fixture; a recorded value
 /// rounds to the nearest watt and never lands below 1.
 #[must_use]
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 // the cast is guarded: rounded is a positive f64 and f64-to-int casts
-// saturate, never wrap (see docs/DECISIONS.md D021)
+// saturate, never wrap (see docs/DECISIONS.md D044)
 pub fn advisor_watts(real_watts: Option<f64>) -> u32 {
     let Some(watts) = real_watts else {
         return DEFAULT_FIXTURE_WATTS;
@@ -704,7 +704,7 @@ mod tests {
 
     #[test]
     fn advisor_watts_rounds_and_falls_back_to_the_default_fixture() {
-        // Unset: the D021 default fixture.
+        // Unset: the D044 default fixture.
         assert_eq!(advisor_watts(None), 330);
         // A recorded value rounds to the nearest whole watt.
         assert_eq!(advisor_watts(Some(419.6)), 420);
