@@ -446,6 +446,16 @@ fn complete_off_periods(from_epoch: i64, to_epoch: i64, on_periods: &mut Vec<Lig
     *on_periods = complete;
 }
 
+/// Whether a light reading counts as lit (D082).
+///
+/// Any positive value is a lit fixture (a dimmer at 42 % is lit),
+/// exactly zero is dark. The one rule for every light reader — the
+/// chart staircase and the coach's raw-state parse share it.
+#[must_use]
+pub fn light_value_is_on(value: f64) -> bool {
+    value > 0.0
+}
+
 /// Builds the light-state intervals from the bound light entity's
 /// staircase readings (in-window `(epoch, value)` pairs; any positive
 /// value is a lit fixture).
@@ -464,7 +474,7 @@ pub fn sensor_light_periods(from: &str, to: &str, staircase: &[(i64, f64)]) -> V
         .iter()
         .copied()
         .filter(|(at, value)| value.is_finite() && *at >= from_epoch && *at <= to_epoch)
-        .map(|(at, value)| (at, value > 0.0))
+        .map(|(at, value)| (at, light_value_is_on(value)))
         .collect();
     reads.sort_by_key(|(at, _)| *at);
     // Collapse runs of repeated state: the run's first reading anchors
@@ -497,7 +507,6 @@ pub fn sensor_light_periods(from: &str, to: &str, staircase: &[(i64, f64)]) -> V
 #[must_use]
 pub fn resolve_light_periods(
     from: &str,
-    _to: &str,
     schedule: &[LightInterval],
     sensor: &[LightInterval],
 ) -> Option<Vec<LightInterval>> {
@@ -528,11 +537,19 @@ pub fn resolve_light_periods(
     Some(resolved)
 }
 
+/// The point query's expansion reach, one Chart day.
+///
+/// The on-period covering an instant anchors on the instant's local
+/// day or the one before (midnight wrap), and the schedule expansion
+/// itself reaches back a further day — 24 h each side must contain
+/// any covering interval, whatever the phase's hours-on.
+const SCHEDULE_POINT_WINDOW_HOURS: i64 = ChartWindow::Day.hours();
+
 /// The Light Cycle schedule's light state at one instant — the point
 /// query behind the phase coach (the coach asks "are the lights on
 /// *now*", not for a timeline).
 ///
-/// Expands the schedule over a window straddling `at` (one Chart day
+/// Expands the schedule over a window straddling `at` ([`SCHEDULE_POINT_WINDOW_HOURS`]
 /// each side, plus the expansion's own one-day look-behind for
 /// on-periods that wrap midnight) and reads off the interval that
 /// covers `at`. Interval ends are exclusive, so an instant exactly at
@@ -549,8 +566,8 @@ pub fn schedule_light_on_at(
     photoperiod: crate::strain::PhotoperiodType,
 ) -> Option<bool> {
     let moment: jiff::Timestamp = at.parse().ok()?;
-    let look_back = (moment - jiff::Span::new().hours(ChartWindow::Day.hours())).to_string();
-    let look_ahead = (moment + jiff::Span::new().hours(ChartWindow::Day.hours())).to_string();
+    let look_back = (moment - jiff::Span::new().hours(SCHEDULE_POINT_WINDOW_HOURS)).to_string();
+    let look_ahead = (moment + jiff::Span::new().hours(SCHEDULE_POINT_WINDOW_HOURS)).to_string();
     let at_epoch = parse_epoch(at)?;
     schedule_light_periods(&look_back, &look_ahead, tz_name, spans, cycle, photoperiod)
         .iter()
@@ -1057,8 +1074,8 @@ mod tests {
 #[cfg(test)]
 mod light_timeline_tests {
     use super::{
-        LightInterval, PhaseSpan, build_light_bands, parse_epoch, resolve_light_periods,
-        schedule_light_on_at, schedule_light_periods, sensor_light_periods,
+        LightInterval, PhaseSpan, build_light_bands, light_value_is_on, parse_epoch,
+        resolve_light_periods, schedule_light_on_at, schedule_light_periods, sensor_light_periods,
     };
     use crate::Phase;
     use crate::light_cycle::{ClockTime, LightCycle, PhaseHours};
@@ -1522,7 +1539,7 @@ mod light_timeline_tests {
             interval("2026-11-16T02:00:00Z", "2026-11-16T08:00:00Z", false),
             interval("2026-11-16T08:00:00Z", to, true),
         ];
-        let resolved = resolve_light_periods(from, to, &schedule, &sensor).unwrap();
+        let resolved = resolve_light_periods(from, &schedule, &sensor).unwrap();
         // The schedule's on-period is clipped at the sensor's first
         // reading; from there the staircase owns the timeline.
         assert_eq!(
@@ -1540,12 +1557,20 @@ mod light_timeline_tests {
         let from = "2026-11-16T00:00:00Z";
         let to = "2026-11-16T12:00:00Z";
         let schedule = vec![interval(from, to, true)];
-        assert_eq!(
-            resolve_light_periods(from, to, &schedule, &[]),
-            Some(schedule)
-        );
+        assert_eq!(resolve_light_periods(from, &schedule, &[]), Some(schedule));
         // Neither schedule nor sensor: no light state at all.
-        assert_eq!(resolve_light_periods(from, to, &[], &[]), None);
+        assert_eq!(resolve_light_periods(from, &[], &[]), None);
+    }
+
+    #[test]
+    fn any_positive_light_value_is_lit_and_zero_is_dark() {
+        // The shared rule (D082): a dimmer at 42 % is a lit fixture,
+        // exactly zero is dark; negative and NaN readings are not lit.
+        assert!(light_value_is_on(42.0));
+        assert!(light_value_is_on(1.0));
+        assert!(!light_value_is_on(0.0));
+        assert!(!light_value_is_on(-0.5));
+        assert!(!light_value_is_on(f64::NAN));
     }
 
     // --- stepped bands ---

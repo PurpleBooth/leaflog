@@ -1429,6 +1429,64 @@ async fn grow_history_steps_follow_the_bound_light_history() {
     );
 }
 
+#[tokio::test]
+async fn grow_history_steps_follow_any_on_off_entity_bound_to_light() {
+    // The Light binding role is domain-agnostic: any on/off entity
+    // (light.*, switch.*, binary_sensor.*) is pickable, and its
+    // on/off history drives the staircase exactly like the light.*
+    // fixture. The mock serves switch.grow_panel the same
+    // request-anchored staircase, and the 24 h schedule alone would
+    // keep every band lit — so every dark band is switch-driven.
+    let (mock_url, _mock) = spawn_mock().await;
+    let (base, _db, bridge) = spawn_api(&mock_url).await;
+    wait_connected(&bridge).await;
+    let client = reqwest::Client::new();
+    let grow_id = create_germinating_grow(&base, "Stepped by switch").await;
+
+    let put = client
+        .put(format!("{base}/api/grows/{grow_id}/bindings"))
+        .json(&json!({
+            "bindings": {
+                "temperature": "sensor.grow_temperature",
+                "light": "switch.grow_panel",
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(put.status(), 200);
+
+    client
+        .put(format!("{base}/api/grows/{grow_id}/light-cycle"))
+        .json(&json!({ "lights_on": "06:00", "hours_on": { "germination": 24 } }))
+        .send()
+        .await
+        .unwrap();
+
+    let body: Value = client
+        .get(format!(
+            "{base}/api/grows/{grow_id}/history?role=temperature&window=day"
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(body["degraded"], false);
+    assert_eq!(body["bound"], true);
+    let bands = body["bands"].as_array().unwrap();
+    let states = assert_germination_stepping(bands);
+    for (band, &on) in bands.iter().zip(&states) {
+        let expected = if on { DAY_BAND } else { NIGHT_BAND };
+        assert_eq!(
+            (band["min"].as_f64().unwrap(), band["max"].as_f64().unwrap()),
+            expected,
+            "band must carry the corridor of the switch's light state (on: {on})"
+        );
+    }
+}
+
 // --- Coach light state (ticket 08) ---
 
 /// The VPD tip's title out of a coach response.

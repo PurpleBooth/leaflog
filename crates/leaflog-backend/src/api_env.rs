@@ -282,13 +282,17 @@ pub struct CoachResponse {
 
 /// Reads one raw light state the way the chart staircase does:
 /// `"on"` (any case) is lit, `"off"` is dark, and a numeric state
-/// counts as lit when it is positive (a dimmer at 42 % is a lit
-/// fixture, D082). Anything else is unknown.
+/// counts as lit by the core rule — any positive value, D082.
+/// Anything else is unknown.
 fn light_state_is_on(state: &str) -> Option<bool> {
     match state.trim().to_ascii_lowercase().as_str() {
         "on" => Some(true),
         "off" => Some(false),
-        _ => state.trim().parse::<f64>().ok().map(|value| value > 0.0),
+        _ => state
+            .trim()
+            .parse::<f64>()
+            .ok()
+            .map(leaflog_core::chart::light_value_is_on),
     }
 }
 

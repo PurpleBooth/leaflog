@@ -194,3 +194,47 @@ test('env strip spans the container and wraps without overflow', async ({
     ).toBeLessThanOrEqual(2);
   }
 });
+
+test('an aborted history fetch keeps the bound card and names the failure', async ({
+  page,
+  request,
+}) => {
+  const growId = await createGrow(
+    request,
+    uniqueName('E2E Fetch Fail Grow'),
+  );
+  await api(request, 'PUT', `api/grows/${growId}/bindings`, {
+    bindings: {
+      temperature: 'sensor.grow_temperature',
+      humidity: 'sensor.grow_humidity',
+    },
+  });
+  await page.goto(url(`/grows/${growId}`));
+  const tempCard = page.locator('.card', {
+    has: page.locator('svg[aria-label="temperature history"]'),
+  });
+  await expect(tempCard).toBeVisible();
+
+  // Abort the temperature role's history fetches, then switch the
+  // window: the fetch fails, and the bound card stays — with the
+  // degraded banner naming the failure. Hiding is the unbound state;
+  // a bound card never vanishes on a failed fetch.
+  const historyRoute = url(`api/grows/${growId}/history*role=temperature*`);
+  await page.route(historyRoute, (route) => route.abort());
+  await tempCard.getByRole('button', { name: '7d', exact: true }).click();
+  await expect(tempCard.getByRole('alert')).toContainText(
+    'History unavailable',
+  );
+  await expect(
+    page.locator('svg[aria-label="temperature history"]'),
+  ).toBeVisible();
+
+  // Lifting the abort recovers without a reload: the next window
+  // switch retries, the banner clears, the chart redraws.
+  await page.unroute(historyRoute);
+  await tempCard.getByRole('button', { name: '24h', exact: true }).click();
+  await expect(tempCard.getByRole('alert')).toHaveCount(0);
+  await expect(
+    page.locator('svg[aria-label="temperature history"]'),
+  ).toBeVisible();
+});

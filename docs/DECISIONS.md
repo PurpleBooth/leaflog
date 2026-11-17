@@ -64,6 +64,15 @@ spec:
   the decisions doc carries the night leaf offset (D075), the VPD clamp
   (D076), the ECharts tooling (D077), the Light Cycle model (D078), the band
   precedence and corridors (D082–D083), and everything since.
+- Story 22's binding-UI obligation verified end to end: the Light role's
+  picker lists every entity (no domain filter anywhere in the chain), and a
+  `switch.*` on/off entity bound to the Light role drives the chart
+  staircase exactly like a `light.*` fixture (the mock now serves
+  `switch.grow_panel`; integration test
+  `grow_history_steps_follow_any_on_off_entity_bound_to_light`). The
+  binary_sensor.* domain reads the same `"on"`/`"off"` states through the
+  same parse, so it is covered by the same rule rather than its own mock
+  entity.
 
 Open ideas, none blocking:
 
@@ -207,9 +216,13 @@ Choices worth remembering:
   `HistoryChart` gates the whole card on the loaded response's
   `bound` flag — no sensor, or no pH/EC entries, means no card, no
   placeholder. A dead binding is `bound: true` (the binding exists), so
-  its card stays and the env dashboard's No-data banner names it; a
-  failed history fetch also leaves the card hidden (a missing chart is
-  honest, and the dashboard still reports its own fetch failures).
+  its card stays and the env dashboard's No-data banner names it. A
+  bound role whose history fetch fails keeps its card too: a failed
+  fetch consults the bindings endpoint, and a bound role renders a
+  degraded banner naming the failure instead of vanishing. The
+  glossary's rule holds — a dead binding is the only state the page
+  may call "no data". Unbound roles, and the pH/EC log roles a failed
+  first fetch cannot classify, stay hidden.
 - **The visibility gate is a reactive block, not `Show`.** A `Show`
   children closure must be `Fn`, and the card carries the children slot
   (the soil band editor, D080) — building it inside a `Fn` closure does
@@ -1939,3 +1952,4 @@ once per crate.
 | leaflog-backend | `app.rs` handler `health` | `clippy::unused_async` | Axum handlers must be `async fn` even when they never await |
 | mock-ha | handlers `root`, `ping`, `states` | `clippy::unused_async` | Same Axum contract as above |
 | leaflog-frontend | component `App` | `clippy::must_use_candidate` | The Leptos `#[component]` macro drops a hand-written `#[must_use]`, so the lint fires on the generated function |
+| leaflog-frontend | component `LightCycleEditor` in `light_cycle.rs` | `clippy::too_many_lines` | Declarative view code, not logic; splitting would obscure the form (same pattern as the M2 register row) |

@@ -6,7 +6,9 @@
 //! via the option-builder seam. The card-visibility rule: a role with
 //! no binding (or, for the pH/EC log-detail roles, no entries) renders
 //! no card at all; a dead binding is `bound: true`, so its card stays
-//! and the env dashboard's No-data banner names it.
+//! and the env dashboard's No-data banner names it. A bound role whose
+//! history fetch fails keeps its card too, in a degraded presentation
+//! naming the failure — only unbound and dataless roles hide.
 
 use crate::api;
 use crate::api::{GrowHistory, SoilBand};
@@ -161,10 +163,14 @@ pub fn format_ec_us(value: f64) -> String {
 /// card-visibility rule: while the first response is in flight, or
 /// when it says the role is unbound (no sensor, or no pH/EC entries),
 /// the card renders nothing at all — the overview shows only what the
-/// grow has. A failed history fetch leaves the card hidden too (a
-/// missing chart is honest; the env dashboard still reports its own
-/// fetch failures). `children` render inside the card under the chart
-/// (the soil card carries its band editor).
+/// grow has. A bound role whose history fetch fails keeps its card,
+/// with a degraded banner naming the failure: a dead binding is the
+/// only state the page may call "no data", so hiding a bound card
+/// would lie about the grow. The chart keeps its last data until a
+/// retry succeeds. The pH/EC log-detail roles have no binding row to
+/// fall back on, so a failed first fetch for them keeps the
+/// in-flight hiding. `children` render inside the card under the
+/// chart (the soil card carries its band editor).
 #[component]
 pub fn HistoryChart(
     grow_id: String,
@@ -175,21 +181,49 @@ pub fn HistoryChart(
 ) -> impl IntoView {
     let window = RwSignal::new("day".to_owned());
     let data = RwSignal::<Option<GrowHistory>>::new(None);
+    // The last fetch failure, if any: the degraded banner's text. A
+    // successful response clears it (the chart recovered).
+    let fetch_failed = RwSignal::<Option<String>>::new(None);
+    // The bound bit for a failed fetch, resolved against the bindings
+    // endpoint (the response normally carries it). Only a role with a
+    // binding row flips true, so the pH/EC log-detail roles stay
+    // hidden on failure exactly as in flight.
+    let fallback_bound = RwSignal::new(false);
     // The visibility bit: the card mounts once `bound` flips true and
     // unmounts if it ever flips false, without re-mounting on every
     // in-card refetch (a window switch keeps the card in place).
-    let bound = Memo::new(move |_| data.get().is_some_and(|chart| chart.bound));
+    let bound =
+        Memo::new(move |_| data.get().is_some_and(|chart| chart.bound) || fallback_bound.get());
 
     Effect::new(move |_| {
         let id = grow_id.clone();
         let window_label = window.get();
         spawn_local(async move {
-            if let Ok(value) = api::get::<GrowHistory>(&format!(
+            match api::get::<GrowHistory>(&format!(
                 "api/grows/{id}/history?role={role}&window={window_label}"
             ))
             .await
             {
-                data.set(Some(value));
+                Ok(value) => {
+                    fetch_failed.set(None);
+                    fallback_bound.set(false);
+                    data.set(Some(value));
+                }
+                Err(failure) => {
+                    fetch_failed.set(Some(failure.message));
+                    // The response that would say `bound` never
+                    // arrived; the bindings endpoint is the
+                    // independent source. A sensor role with a binding
+                    // keeps its card (degraded); an unbound one stays
+                    // hidden.
+                    if let Ok(bindings) = api::get::<std::collections::BTreeMap<String, String>>(
+                        &format!("api/grows/{id}/bindings"),
+                    )
+                    .await
+                    {
+                        fallback_bound.set(bindings.contains_key(role));
+                    }
+                }
             }
         });
     });
@@ -217,6 +251,15 @@ pub fn HistoryChart(
                                 <span class="badge badge-warning badge-sm">"snapshot only"</span>
                             </Show>
                         </div>
+                        {move || {
+                            fetch_failed.get().map(|message| {
+                                view! {
+                                    <p class="alert alert-warning py-2 px-4 text-sm" role="alert">
+                                        "History unavailable — " {message}
+                                    </p>
+                                }
+                            })
+                        }}
                         <EChartsHistory data=data format_value=format_value />
                         {footer}
                     </div>
