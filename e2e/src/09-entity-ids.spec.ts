@@ -17,7 +17,6 @@ test('a long ha entity id wraps inside its card', async ({ page, request }) => {
     'sensor.growhub_e42a_inside_humidity_temperature_sensor_of_doom';
   const growId = await api<{ id: string }>(request, 'POST', 'api/grows', {
     name,
-    strain_id: null,
     feed_template_id: null,
     substrate: 'soil',
     started_on: new Date().toISOString().slice(0, 10),

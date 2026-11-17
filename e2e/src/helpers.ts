@@ -1,8 +1,8 @@
 // Shared helpers for the Leaflog end-to-end suite.
 //
 // Everything runs under the simulated HA ingress prefix, exactly like
-// `just dev` and production: `url('/equipment')` is
-// `/api/hassio_ingress/e2e/equipment`. No test may talk to the bare
+// `just dev` and production: `url('/grows')` is
+// `/api/hassio_ingress/e2e/grows`. No test may talk to the bare
 // origin — ingress-relative URLs are a non-negotiable, and the whole
 // suite exercises them on every navigation and API call.
 
@@ -20,11 +20,7 @@ export function url(path: string): string {
 
 let counter = 0;
 
-/**
- * A unique per-run name, so repeated runs can never collide.
- * A unique per-run name, so the bundled seed records (15 strains)
- * and repeated runs can never collide.
- */
+/** A unique per-run name, so repeated runs can never collide. */
 export function uniqueName(prefix: string): string {
   counter += 1;
   return `${prefix} ${Date.now().toString(36)}-${counter}`;
