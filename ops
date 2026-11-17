@@ -1,1 +1,1 @@
-{"author":{"id":"ce771b8a9b8c30a8aac165a8b1cdb0957637d3941276ec4f27335daee16d79de"},"ops":[{"type":2,"timestamp":1794949627,"nonce":"8CzD5lTmM1/zncZ+pEBLX9aieZo=","title":"01: Grow edit page","was":"Spec: 95b2e66 (Grow page rework)"}]}
+{"author":{"id":"ce771b8a9b8c30a8aac165a8b1cdb0957637d3941276ec4f27335daee16d79de"},"ops":[{"type":5,"timestamp":1794949627,"nonce":"l5QX+cVxKwfJISJuncE67/Wzzow=","added":["ready-for-agent"],"removed":null}]}
