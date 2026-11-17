@@ -237,6 +237,75 @@ pub struct CoachResponse {
     pub equipment_suggestions: Vec<String>,
 }
 
+/// Reads one raw light state the way the chart staircase does:
+/// `"on"` (any case) is lit, `"off"` is dark, and a numeric state
+/// counts as lit by the core rule — any positive value, D093.
+/// Anything else is unknown.
+fn light_state_is_on(state: &str) -> Option<bool> {
+    match state.trim().to_ascii_lowercase().as_str() {
+        "on" => Some(true),
+        "off" => Some(false),
+        _ => state
+            .trim()
+            .parse::<f64>()
+            .ok()
+            .map(leaflog_core::chart::light_value_is_on),
+    }
+}
+
+/// Resolves the coach's light state at call time (spec §4.9, D096):
+///
+/// 1. **A bound light entity's latest known state wins.** The live
+///    entity map first (the WebSocket subscription's current
+///    snapshot); when that has nothing — HA unreachable, or the
+///    entity not yet subscribed — the newest auto-captured snapshot
+///    row of the `light` role.
+/// 2. **Without a known sensor state, the grow's Light Cycle
+///    schedule is evaluated for "now"** (also the whole answer when
+///    nothing is bound).
+/// 3. **No source at all keeps the lights-on assumption** — the same
+///    convention the stepped corridors use for an unknown state
+///    (D094), and the only reading available in the unlit phases.
+///
+/// A failed DB read of the schedule inputs surfaces as an API error;
+/// a merely unknown state does not.
+fn resolve_coach_light_on(
+    conn: &rusqlite::Connection,
+    ha: &crate::ha::HaBridge,
+    grow: &leaflog_core::grows::Grow,
+    tz: &str,
+) -> Result<bool, ApiError> {
+    let bindings = store::sensors::list(conn, &grow.id)?;
+    if let Some(entity_id) = bindings.get("light") {
+        let live = ha.live_now();
+        if let Some(entity) = live.entities.get(entity_id)
+            && let Some(on) = light_state_is_on(&entity.state)
+        {
+            return Ok(on);
+        }
+        if let Some(snapshot) = store::sensors::snapshots_for_role(conn, &grow.id, "light")?
+            .last()
+            .and_then(|snapshot| light_state_is_on(&snapshot.state))
+        {
+            return Ok(snapshot);
+        }
+    }
+    let windows = crate::api_chart::load_windows(conn, grow)?;
+    let spans = leaflog_core::chart::phase_spans(&grow.started_on, tz, &windows);
+    // The grow's own photoperiod behaviour (D075) replaces the
+    // removed strain lookup.
+    let photoperiod = grow.photoperiod;
+    let now = crate::db::now_rfc3339();
+    Ok(leaflog_core::chart::schedule_light_on_at(
+        &now,
+        tz,
+        &spans,
+        &grow.light_cycle.unwrap_or_default(),
+        photoperiod,
+    )
+    .unwrap_or(true))
+}
+
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn grow_coach(
@@ -244,6 +313,7 @@ async fn grow_coach(
     Path(id): Path<String>,
 ) -> Result<Json<CoachResponse>, ApiError> {
     let tz = crate::app::canonical_timezone(&state).await;
+    let ha = state.ha.clone();
     let response = state
         .db
         .with(move |conn| -> Result<CoachResponse, ApiError> {
@@ -256,7 +326,11 @@ async fn grow_coach(
                 .unwrap_or(0);
             let phase = crate::api_phase::current_phase(conn, &grow, today)?;
 
-            let tips = coach_tips(phase, &grow.substrate, true);
+            // The real light state at call time (spec §4.9, D096) —
+            // not the hardcoded lights-on assumption.
+            let light_on = resolve_coach_light_on(conn, &ha, &grow, &tz)?;
+
+            let tips = coach_tips(phase, &grow.substrate, light_on);
 
             // Equipment suggestions matched to the phase.
             let equipment = match phase {

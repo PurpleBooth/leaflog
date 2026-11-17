@@ -116,6 +116,10 @@ pub struct BandSegment {
     pub max: f64,
     /// The phase the segment belongs to.
     pub phase: Phase,
+    /// Whether the grow lights were on during the segment. `None`
+    /// when no light state applies: the unlit phases (drying,
+    /// curing), or no schedule and no light history to speak of.
+    pub light_on: Option<bool>,
 }
 
 /// A phase boundary: the phase runs from `start` until the next
@@ -292,9 +296,426 @@ pub fn build_bands(
             min,
             max,
             phase: span.phase,
+            light_on: None,
         });
     }
     bands
+}
+
+// ---------------------------------------------------------------------------
+// Light-state timeline (Light Cycle spec, ticket 07)
+// ---------------------------------------------------------------------------
+
+/// One lights-on/off interval: the state holds from `start` (inclusive)
+/// to `end` (exclusive), RFC 3339 UTC.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LightInterval {
+    /// Interval start, RFC 3339 UTC (inclusive).
+    pub start: String,
+    /// Interval end, RFC 3339 UTC (exclusive; the next interval's
+    /// start, or the window end).
+    pub end: String,
+    /// Whether the lights are on during the interval.
+    pub on: bool,
+}
+
+/// The phase in effect at an instant, from the sorted span epochs.
+/// `None` when no span has started yet (the caller serves no schedule).
+fn phase_at(spans: &[(i64, Phase)], at: i64) -> Option<Phase> {
+    spans
+        .iter()
+        .rev()
+        .find(|(start, _)| *start <= at)
+        .map(|(_, phase)| *phase)
+}
+
+/// Expands a grow's Light Cycle into the lights-on/off timeline for
+/// the window (the schedule that fills gaps and the whole unbound
+/// window).
+///
+/// The schedule anchors in the grow's canonical timezone: each local
+/// day whose phase is one of [`crate::light_cycle::LIT_PHASES`] gets
+/// its on-period at the resolved lights-on wall-clock time. The
+/// on-period lasts `hours_on` **absolute** hours, so the on-length
+/// survives a DST transition while the anchor stays local — the same
+/// convention [`phase_spans`] uses for phase boundaries. Off periods
+/// fill the rest of the window. Days in the unlit phases, before the
+/// first phase span, or outside a parseable window contribute
+/// nothing; an unknown zone fails closed to an empty list.
+#[must_use]
+pub fn schedule_light_periods(
+    from: &str,
+    to: &str,
+    tz_name: &str,
+    spans: &[PhaseSpan],
+    cycle: &crate::light_cycle::LightCycle,
+    photoperiod: crate::grows::PhotoperiodType,
+) -> Vec<LightInterval> {
+    let (Some(from_epoch), Some(to_epoch)) = (parse_epoch(from), parse_epoch(to)) else {
+        return Vec::new();
+    };
+    let Ok(zone) = jiff::tz::TimeZone::get(tz_name) else {
+        return Vec::new();
+    };
+    let (Ok(from_zoned), Ok(to_zoned)) = (
+        jiff::Timestamp::from_second(from_epoch).map(|ts| ts.to_zoned(zone.clone())),
+        jiff::Timestamp::from_second(to_epoch).map(|ts| ts.to_zoned(zone.clone())),
+    ) else {
+        return Vec::new();
+    };
+    let mut sorted: Vec<(i64, Phase)> = spans
+        .iter()
+        .filter_map(|span| parse_epoch(&span.start).map(|epoch| (epoch, span.phase)))
+        .collect();
+    sorted.sort_by_key(|(epoch, _)| *epoch);
+
+    let on_time = cycle.lights_on_resolved();
+    // ClockTime validates its bounds, so the i8 conversions jiff wants
+    // are always in range.
+    let on_hour = i8::try_from(on_time.hour).unwrap_or(0);
+    let on_minute = i8::try_from(on_time.minute).unwrap_or(0);
+    // Start one local day early so an on-period wrapped over midnight
+    // still covers the window's first hours.
+    let mut day = from_zoned.datetime().date();
+    if let Ok(earlier) = day.yesterday() {
+        day = earlier;
+    }
+    let last_day = to_zoned.datetime().date();
+    let mut periods = Vec::new();
+    loop {
+        if let Ok(midnight) = day.at(0, 0, 0, 0).to_zoned(zone.clone())
+            && let Some(phase) = phase_at(&sorted, midnight.timestamp().as_second())
+            && let Some(hours) = cycle.hours_on_for(phase, photoperiod)
+            && let Ok(on_zoned) = day.at(on_hour, on_minute, 0, 0).to_zoned(zone.clone())
+            && let Ok(off_zoned) = on_zoned.checked_add(jiff::Span::new().hours(i64::from(hours)))
+        {
+            let start = on_zoned.timestamp().as_second().max(from_epoch);
+            let end = off_zoned.timestamp().as_second().min(to_epoch);
+            if start < end {
+                periods.push(LightInterval {
+                    start: format_epoch(start),
+                    end: format_epoch(end),
+                    on: true,
+                });
+            }
+        }
+        if day >= last_day {
+            break;
+        }
+        match day.tomorrow() {
+            Ok(next) => day = next,
+            Err(_) => break,
+        }
+    }
+    // Interleave the off periods: between and around the on-periods.
+    // A window whose phases are all unlit yields no on-periods and
+    // therefore no schedule at all.
+    if periods.is_empty() {
+        return Vec::new();
+    }
+    complete_off_periods(from_epoch, to_epoch, &mut periods);
+    periods
+}
+
+/// Fills the gaps between and around `on_periods` (ascending,
+/// non-overlapping) with off periods so the timeline covers the whole
+/// window edge to edge.
+fn complete_off_periods(from_epoch: i64, to_epoch: i64, on_periods: &mut Vec<LightInterval>) {
+    let mut complete = Vec::with_capacity(on_periods.len() * 2 + 1);
+    let mut cursor = from_epoch;
+    for period in on_periods.drain(..) {
+        let start = parse_epoch(&period.start).unwrap_or(cursor);
+        let end = parse_epoch(&period.end).unwrap_or(to_epoch);
+        if start > cursor {
+            complete.push(LightInterval {
+                start: format_epoch(cursor),
+                end: format_epoch(start),
+                on: false,
+            });
+        }
+        complete.push(period);
+        cursor = cursor.max(end);
+    }
+    if cursor < to_epoch {
+        complete.push(LightInterval {
+            start: format_epoch(cursor),
+            end: format_epoch(to_epoch),
+            on: false,
+        });
+    }
+    *on_periods = complete;
+}
+
+/// Whether a light reading counts as lit (D093).
+///
+/// Any positive value is a lit fixture (a dimmer at 42 % is lit),
+/// exactly zero is dark. The one rule for every light reader — the
+/// chart staircase and the coach's raw-state parse share it.
+#[must_use]
+pub fn light_value_is_on(value: f64) -> bool {
+    value > 0.0
+}
+
+/// Builds the light-state intervals from the bound light entity's
+/// staircase readings (in-window `(epoch, value)` pairs; any positive
+/// value is a lit fixture).
+///
+/// Staircase semantics: each reading's state holds until the next
+/// reading, the last until the window end — the timeline covers
+/// `[first reading, to]`. The stretch before the first reading is
+/// deliberately uncovered: the schedule fills it (the precedence
+/// rule), so this returns nothing there.
+#[must_use]
+pub fn sensor_light_periods(from: &str, to: &str, staircase: &[(i64, f64)]) -> Vec<LightInterval> {
+    let (Some(from_epoch), Some(to_epoch)) = (parse_epoch(from), parse_epoch(to)) else {
+        return Vec::new();
+    };
+    let mut reads: Vec<(i64, bool)> = staircase
+        .iter()
+        .copied()
+        .filter(|(at, value)| value.is_finite() && *at >= from_epoch && *at <= to_epoch)
+        .map(|(at, value)| (at, light_value_is_on(value)))
+        .collect();
+    reads.sort_by_key(|(at, _)| *at);
+    // Collapse runs of repeated state: the run's first reading anchors
+    // its whole stretch.
+    reads.dedup_by(|later, kept| later.1 == kept.1);
+
+    let mut periods = Vec::new();
+    for (index, (at, on)) in reads.iter().enumerate() {
+        let end = reads
+            .get(index + 1)
+            .map_or(to_epoch, |(next_at, _)| *next_at);
+        if at >= &end {
+            continue;
+        }
+        periods.push(LightInterval {
+            start: format_epoch(*at),
+            end: format_epoch(end),
+            on: *on,
+        });
+    }
+    periods
+}
+
+/// Resolves the window's light-state timeline by precedence.
+///
+/// The sensor staircase wins wherever it has readings; the schedule
+/// fills the uncovered stretch before the first reading. When neither
+/// exists there is no light state at all (`None` — the caller keeps a
+/// single band).
+#[must_use]
+pub fn resolve_light_periods(
+    from: &str,
+    schedule: &[LightInterval],
+    sensor: &[LightInterval],
+) -> Option<Vec<LightInterval>> {
+    if sensor.is_empty() {
+        return (!schedule.is_empty()).then(|| schedule.to_vec());
+    }
+    let from_epoch = parse_epoch(from)?;
+    let first_sensor = sensor
+        .iter()
+        .filter_map(|interval| parse_epoch(&interval.start))
+        .min()?;
+    // Schedule intervals clipped to the pre-sensor stretch.
+    let mut resolved: Vec<LightInterval> = schedule
+        .iter()
+        .filter_map(|interval| {
+            let start = parse_epoch(&interval.start)?;
+            let end = parse_epoch(&interval.end)?
+                .min(first_sensor)
+                .max(from_epoch);
+            (start < end && start < first_sensor).then_some(LightInterval {
+                start: format_epoch(start),
+                end: format_epoch(end),
+                on: interval.on,
+            })
+        })
+        .collect();
+    resolved.extend(sensor.iter().cloned());
+    Some(resolved)
+}
+
+/// The point query's expansion reach, one Chart day.
+///
+/// The on-period covering an instant anchors on the instant's local
+/// day or the one before (midnight wrap), and the schedule expansion
+/// itself reaches back a further day — 24 h each side must contain
+/// any covering interval, whatever the phase's hours-on.
+const SCHEDULE_POINT_WINDOW_HOURS: i64 = ChartWindow::Day.hours();
+
+/// The Light Cycle schedule's light state at one instant — the point
+/// query behind the phase coach (the coach asks "are the lights on
+/// *now*", not for a timeline).
+///
+/// Expands the schedule over a window straddling `at` ([`SCHEDULE_POINT_WINDOW_HOURS`]
+/// each side, plus the expansion's own one-day look-behind for
+/// on-periods that wrap midnight) and reads off the interval that
+/// covers `at`. Interval ends are exclusive, so an instant exactly at
+/// a lights-off boundary is already dark. `None` when the schedule
+/// has nothing to say at `at`: the unlit phases, an instant before
+/// the first phase span, or an unknown timezone — the caller decides
+/// what an unknown state means.
+#[must_use]
+pub fn schedule_light_on_at(
+    at: &str,
+    tz_name: &str,
+    spans: &[PhaseSpan],
+    cycle: &crate::light_cycle::LightCycle,
+    photoperiod: crate::grows::PhotoperiodType,
+) -> Option<bool> {
+    let moment: jiff::Timestamp = at.parse().ok()?;
+    let look_back = (moment - jiff::Span::new().hours(SCHEDULE_POINT_WINDOW_HOURS)).to_string();
+    let look_ahead = (moment + jiff::Span::new().hours(SCHEDULE_POINT_WINDOW_HOURS)).to_string();
+    let at_epoch = parse_epoch(at)?;
+    schedule_light_periods(&look_back, &look_ahead, tz_name, spans, cycle, photoperiod)
+        .iter()
+        .find_map(|interval| {
+            let start = parse_epoch(&interval.start)?;
+            let end = parse_epoch(&interval.end)?;
+            (start <= at_epoch && at_epoch < end).then_some(interval.on)
+        })
+}
+
+/// Builds the stepped band corridor for the window.
+///
+/// Each phase span overlapping `[from, to]` is split at the
+/// light-state changes, and every piece gets its corridor range for
+/// (phase, light state, mean point value). Adjacent pieces with
+/// identical `(min, max, phase, light_on)` merge, so a month of
+/// steady nights is one region, not hundreds.
+///
+/// The unlit phases (drying, curing) never split. `light` being `None`
+/// (no schedule and no sensor state) or an uncovered stretch yields
+/// pieces with `light_on: None` — the corridor decides what an unknown
+/// state means (today: the lights-on preset).
+#[must_use]
+pub fn build_light_bands(
+    from: &str,
+    to: &str,
+    points: &[(i64, f64)],
+    spans: &[PhaseSpan],
+    light: Option<&[LightInterval]>,
+    corridor: impl Fn(Phase, Option<bool>, Option<f64>) -> Option<(f64, f64)>,
+) -> Vec<BandSegment> {
+    let Some(from_epoch) = parse_epoch(from) else {
+        return Vec::new();
+    };
+    let Some(to_epoch) = parse_epoch(to) else {
+        return Vec::new();
+    };
+    let mut sorted: Vec<(i64, &PhaseSpan)> = spans
+        .iter()
+        .filter_map(|span| parse_epoch(&span.start).map(|epoch| (epoch, span)))
+        .collect();
+    sorted.sort_by_key(|(epoch, _)| *epoch);
+
+    let mut bands: Vec<BandSegment> = Vec::new();
+    for (index, (start_epoch, span)) in sorted.iter().enumerate() {
+        let span_end = sorted
+            .get(index + 1)
+            .map_or(to_epoch, |(next_epoch, _)| *next_epoch);
+        let segment_start = (*start_epoch).max(from_epoch);
+        let segment_end = span_end.min(to_epoch);
+        if segment_start > segment_end {
+            continue;
+        }
+        for (piece_start, piece_end, light_on) in
+            light_pieces(segment_start, segment_end, span.phase, light)
+        {
+            let mut sum = 0.0;
+            let mut count = 0;
+            for &(at, value) in points {
+                if at >= piece_start && at <= piece_end {
+                    sum += value;
+                    count += 1;
+                }
+            }
+            let mean =
+                (count > 0).then(|| sum / f64::from(u32::try_from(count).unwrap_or(u32::MAX)));
+            let Some((min, max)) = corridor(span.phase, light_on, mean) else {
+                continue;
+            };
+            push_merged(
+                &mut bands,
+                BandSegment {
+                    start: format_epoch(piece_start),
+                    end: format_epoch(piece_end),
+                    min,
+                    max,
+                    phase: span.phase,
+                    light_on,
+                },
+            );
+        }
+    }
+    bands
+}
+
+/// Splits one phase segment at the light-state changes. The unlit
+/// phases never split; a missing timeline or an uncovered stretch
+/// yields `None` light-state pieces.
+fn light_pieces(
+    segment_start: i64,
+    segment_end: i64,
+    phase: Phase,
+    light: Option<&[LightInterval]>,
+) -> Vec<(i64, i64, Option<bool>)> {
+    if !crate::light_cycle::LIT_PHASES.contains(&phase) {
+        return vec![(segment_start, segment_end, None)];
+    }
+    let Some(intervals) = light else {
+        return vec![(segment_start, segment_end, None)];
+    };
+    let mut ordered: Vec<(i64, i64, bool)> = intervals
+        .iter()
+        .filter_map(|interval| {
+            Some((
+                parse_epoch(&interval.start)?,
+                parse_epoch(&interval.end)?,
+                interval.on,
+            ))
+        })
+        .collect();
+    ordered.sort_by_key(|(start, _, _)| *start);
+    let mut pieces = Vec::new();
+    let mut cursor = segment_start;
+    for (start, end, on) in ordered {
+        let start = start.max(segment_start);
+        let end = end.min(segment_end);
+        if start >= end {
+            continue;
+        }
+        if start > cursor {
+            pieces.push((cursor, start, None));
+        }
+        let end = end.max(cursor);
+        pieces.push((cursor.max(start), end, Some(on)));
+        cursor = end;
+    }
+    if cursor < segment_end {
+        pieces.push((cursor, segment_end, None));
+    }
+    pieces
+}
+
+/// Appends a segment, fusing it into the previous one when phase,
+/// light state and range all agree and the pieces are contiguous.
+#[allow(clippy::float_cmp)] // range edges are preset constants copied bit-identical; see docs/DECISIONS.md
+#[allow(clippy::suspicious_operation_groupings)] // end == start is the butt-join check, on purpose
+fn push_merged(bands: &mut Vec<BandSegment>, segment: BandSegment) {
+    if let Some(last) = bands.last_mut()
+        && last.phase == segment.phase
+        && last.light_on == segment.light_on
+        && last.min == segment.min
+        && last.max == segment.max
+        && last.end == segment.start
+    {
+        last.end = segment.end;
+        return;
+    }
+    bands.push(segment);
 }
 
 /// Tolerance for pairing a humidity point to a temperature point when
@@ -651,6 +1072,742 @@ mod tests {
 }
 
 #[cfg(test)]
+mod light_timeline_tests {
+    use super::{
+        LightInterval, PhaseSpan, build_light_bands, light_value_is_on, parse_epoch,
+        resolve_light_periods, schedule_light_on_at, schedule_light_periods, sensor_light_periods,
+    };
+    use crate::Phase;
+    use crate::grows::PhotoperiodType;
+    use crate::light_cycle::{ClockTime, LightCycle, PhaseHours};
+
+    /// A cycle with one lights-on time and one phase's hours set.
+    fn cycle(lights_on: ClockTime, hours: u8) -> LightCycle {
+        LightCycle {
+            lights_on: Some(lights_on),
+            hours_on: PhaseHours {
+                germination: Some(hours),
+                ..PhaseHours::default()
+            },
+        }
+    }
+
+    fn span(start: &str, phase: Phase) -> PhaseSpan {
+        PhaseSpan {
+            start: start.to_owned(),
+            phase,
+        }
+    }
+
+    fn interval(start: &str, end: &str, on: bool) -> LightInterval {
+        LightInterval {
+            start: start.to_owned(),
+            end: end.to_owned(),
+            on,
+        }
+    }
+
+    /// The on-intervals of a resolved timeline, as (start, end) epoch
+    /// pairs — the readable shape for stepping assertions.
+    fn on_pairs(periods: &[LightInterval]) -> Vec<(i64, i64)> {
+        periods
+            .iter()
+            .filter(|period| period.on)
+            .map(|period| {
+                (
+                    parse_epoch(&period.start).unwrap(),
+                    parse_epoch(&period.end).unwrap(),
+                )
+            })
+            .collect()
+    }
+
+    fn epochs(texts: &[&str]) -> Vec<i64> {
+        texts
+            .iter()
+            .map(|text| parse_epoch(text).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn schedule_periods_alternate_on_and_off_across_the_window() {
+        // Worked example: Berlin in November is UTC+1, so a 08:00
+        // lights-on with 12 h on runs 07:00Z–19:00Z. The off periods
+        // fill everything else, clipped to the window.
+        let spans = [span("2026-11-01T00:00:00Z", Phase::Germination)];
+        let periods = schedule_light_periods(
+            "2026-11-16T00:00:00Z",
+            "2026-11-17T00:00:00Z",
+            "Europe/Berlin",
+            &spans,
+            &cycle(ClockTime { hour: 8, minute: 0 }, 12),
+            PhotoperiodType::Photoperiod,
+        );
+        assert_eq!(
+            on_pairs(&periods),
+            [(
+                parse_epoch("2026-11-16T07:00:00Z").unwrap(),
+                parse_epoch("2026-11-16T19:00:00Z").unwrap()
+            )]
+        );
+        // Three alternating periods: off, on, off — the off edges
+        // exactly the window edges and the on edges.
+        assert_eq!(periods.len(), 3);
+        assert_eq!(
+            epochs(&[&periods[0].start, &periods[0].end]),
+            epochs(&["2026-11-16T00:00:00Z", "2026-11-16T07:00:00Z"])
+        );
+        assert!(!periods[0].on);
+        assert_eq!(
+            epochs(&[&periods[2].start, &periods[2].end]),
+            epochs(&["2026-11-16T19:00:00Z", "2026-11-17T00:00:00Z"])
+        );
+        assert!(!periods[2].on);
+    }
+
+    #[test]
+    fn schedule_periods_wrap_midnight_and_reach_back_one_day() {
+        // 23:00 on with 4 h on spans midnight: the previous day's
+        // on-period must still cover the window's first hours.
+        let spans = [span("2026-11-01T00:00:00Z", Phase::Germination)];
+        let periods = schedule_light_periods(
+            "2026-11-16T00:00:00Z",
+            "2026-11-17T00:00:00Z",
+            "Europe/Berlin",
+            &spans,
+            &cycle(
+                ClockTime {
+                    hour: 23,
+                    minute: 0,
+                },
+                4,
+            ),
+            PhotoperiodType::Photoperiod,
+        );
+        assert_eq!(
+            on_pairs(&periods),
+            [
+                (
+                    parse_epoch("2026-11-16T00:00:00Z").unwrap(),
+                    parse_epoch("2026-11-16T02:00:00Z").unwrap()
+                ),
+                (
+                    parse_epoch("2026-11-16T22:00:00Z").unwrap(),
+                    parse_epoch("2026-11-17T00:00:00Z").unwrap()
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn schedule_periods_follow_the_phase_in_effect() {
+        // Veg 18 h until 2026-11-17 local midnight, then flower 12 h:
+        // the on-length changes at the phase boundary, not the
+        // calendar, and both phases anchor at the same local on-time.
+        let spans = [
+            span("2026-11-14T23:00:00Z", Phase::Vegetative), // Nov 15 00:00 local
+            span("2026-11-16T23:00:00Z", Phase::Flower),     // Nov 17 00:00 local
+        ];
+        let cycle = LightCycle {
+            lights_on: Some(ClockTime { hour: 6, minute: 0 }),
+            hours_on: PhaseHours {
+                vegetative: Some(18),
+                flower: Some(12),
+                ..PhaseHours::default()
+            },
+        };
+        let periods = schedule_light_periods(
+            "2026-11-16T00:00:00Z",
+            "2026-11-17T23:00:00Z",
+            "Europe/Berlin",
+            &spans,
+            &cycle,
+            PhotoperiodType::Photoperiod,
+        );
+        assert_eq!(
+            on_pairs(&periods),
+            [
+                (
+                    parse_epoch("2026-11-16T05:00:00Z").unwrap(),
+                    parse_epoch("2026-11-16T23:00:00Z").unwrap()
+                ),
+                (
+                    parse_epoch("2026-11-17T05:00:00Z").unwrap(),
+                    parse_epoch("2026-11-17T17:00:00Z").unwrap()
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn unlit_phases_and_spanless_windows_get_no_schedule() {
+        let drying = [span("2026-11-01T00:00:00Z", Phase::Drying)];
+        assert_eq!(
+            schedule_light_periods(
+                "2026-11-16T00:00:00Z",
+                "2026-11-17T00:00:00Z",
+                "Europe/Berlin",
+                &drying,
+                &cycle(ClockTime { hour: 6, minute: 0 }, 12),
+                PhotoperiodType::Photoperiod,
+            ),
+            Vec::new()
+        );
+        // A window entirely before the first phase span has no phase in
+        // effect, hence no schedule.
+        let early = [span("2026-12-01T00:00:00Z", Phase::Germination)];
+        assert_eq!(
+            schedule_light_periods(
+                "2026-11-16T00:00:00Z",
+                "2026-11-17T00:00:00Z",
+                "Europe/Berlin",
+                &early,
+                &cycle(ClockTime { hour: 6, minute: 0 }, 12),
+                PhotoperiodType::Photoperiod,
+            ),
+            Vec::new()
+        );
+    }
+
+    #[test]
+    fn schedule_periods_anchor_to_local_summer_time() {
+        // Berlin 2026-06 is UTC+2: 06:00 local is 04:00Z.
+        let spans = [span("2026-06-01T00:00:00Z", Phase::Germination)];
+        let periods = schedule_light_periods(
+            "2026-06-15T00:00:00Z",
+            "2026-06-16T00:00:00Z",
+            "Europe/Berlin",
+            &spans,
+            &cycle(ClockTime { hour: 6, minute: 0 }, 18),
+            PhotoperiodType::Photoperiod,
+        );
+        assert_eq!(
+            on_pairs(&periods),
+            [(
+                parse_epoch("2026-06-15T04:00:00Z").unwrap(),
+                parse_epoch("2026-06-15T22:00:00Z").unwrap()
+            )]
+        );
+    }
+
+    #[test]
+    fn schedule_periods_cross_the_dst_transition_on_local_time() {
+        // Berlin springs forward 2026-03-29 (02:00 → 03:00): the
+        // 06:00 anchor lands at 05:00Z on Saturday and 04:00Z on
+        // Sunday — local wall-clock, absolute hours-on.
+        let spans = [span("2026-03-01T00:00:00Z", Phase::Vegetative)];
+        let cycle = LightCycle {
+            lights_on: Some(ClockTime { hour: 6, minute: 0 }),
+            hours_on: PhaseHours {
+                vegetative: Some(18),
+                ..PhaseHours::default()
+            },
+        };
+        let periods = schedule_light_periods(
+            "2026-03-28T00:00:00Z",
+            "2026-03-30T00:00:00Z",
+            "Europe/Berlin",
+            &spans,
+            &cycle,
+            PhotoperiodType::Photoperiod,
+        );
+        assert_eq!(
+            on_pairs(&periods),
+            [
+                (
+                    parse_epoch("2026-03-28T05:00:00Z").unwrap(),
+                    parse_epoch("2026-03-28T23:00:00Z").unwrap()
+                ),
+                (
+                    parse_epoch("2026-03-29T04:00:00Z").unwrap(),
+                    parse_epoch("2026-03-29T22:00:00Z").unwrap()
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn schedule_periods_fail_closed_on_bad_zone_or_window() {
+        let spans = [span("2026-11-01T00:00:00Z", Phase::Germination)];
+        let cycle = cycle(ClockTime { hour: 6, minute: 0 }, 12);
+        assert_eq!(
+            schedule_light_periods(
+                "2026-11-16T00:00:00Z",
+                "2026-11-17T00:00:00Z",
+                "Mars/Olympus",
+                &spans,
+                &cycle,
+                PhotoperiodType::Photoperiod,
+            ),
+            Vec::new()
+        );
+        assert_eq!(
+            schedule_light_periods(
+                "garbage",
+                "2026-11-17T00:00:00Z",
+                "Europe/Berlin",
+                &spans,
+                &cycle,
+                PhotoperiodType::Photoperiod,
+            ),
+            Vec::new()
+        );
+    }
+
+    // --- the coach's point query ---
+
+    #[test]
+    fn light_on_at_reads_the_interval_covering_the_instant() {
+        // Berlin in November is UTC+1: a 08:00 lights-on with 12 h on
+        // runs 07:00Z–19:00Z. 12:00Z sits inside it, 20:00Z after it.
+        let spans = [span("2026-11-01T00:00:00Z", Phase::Germination)];
+        let cycle = cycle(ClockTime { hour: 8, minute: 0 }, 12);
+        assert_eq!(
+            schedule_light_on_at(
+                "2026-11-16T12:00:00Z",
+                "Europe/Berlin",
+                &spans,
+                &cycle,
+                PhotoperiodType::Photoperiod,
+            ),
+            Some(true)
+        );
+        assert_eq!(
+            schedule_light_on_at(
+                "2026-11-16T20:00:00Z",
+                "Europe/Berlin",
+                &spans,
+                &cycle,
+                PhotoperiodType::Photoperiod,
+            ),
+            Some(false)
+        );
+        // The boundary is half-open: the lights-off instant itself is
+        // already dark.
+        assert_eq!(
+            schedule_light_on_at(
+                "2026-11-16T19:00:00Z",
+                "Europe/Berlin",
+                &spans,
+                &cycle,
+                PhotoperiodType::Photoperiod,
+            ),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn light_on_at_sees_an_on_period_wrapping_from_the_previous_day() {
+        // 23:00 on with 4 h on spans midnight: at 01:00Z (02:00
+        // local) the previous day's on-period still covers the
+        // instant.
+        let spans = [span("2026-11-01T00:00:00Z", Phase::Germination)];
+        let cycle = cycle(
+            ClockTime {
+                hour: 23,
+                minute: 0,
+            },
+            4,
+        );
+        assert_eq!(
+            schedule_light_on_at(
+                "2026-11-16T01:00:00Z",
+                "Europe/Berlin",
+                &spans,
+                &cycle,
+                PhotoperiodType::Photoperiod,
+            ),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn light_on_at_has_nothing_to_say_without_a_schedule() {
+        // Before the first phase span, an unlit phase, a broken
+        // zone, or a broken instant: all unknown, not "off".
+        let germinating = [span("2026-11-01T00:00:00Z", Phase::Germination)];
+        let cycle = cycle(ClockTime { hour: 6, minute: 0 }, 18);
+        assert_eq!(
+            schedule_light_on_at(
+                "2026-10-15T12:00:00Z",
+                "Europe/Berlin",
+                &germinating,
+                &cycle,
+                PhotoperiodType::Photoperiod,
+            ),
+            None
+        );
+        let curing = [span("2026-11-01T00:00:00Z", Phase::Curing)];
+        assert_eq!(
+            schedule_light_on_at(
+                "2026-11-16T12:00:00Z",
+                "Europe/Berlin",
+                &curing,
+                &cycle,
+                PhotoperiodType::Photoperiod,
+            ),
+            None
+        );
+        assert_eq!(
+            schedule_light_on_at(
+                "2026-11-16T12:00:00Z",
+                "Mars/Olympus",
+                &germinating,
+                &cycle,
+                PhotoperiodType::Photoperiod,
+            ),
+            None
+        );
+        assert_eq!(
+            schedule_light_on_at(
+                "garbage",
+                "Europe/Berlin",
+                &germinating,
+                &cycle,
+                PhotoperiodType::Photoperiod,
+            ),
+            None
+        );
+    }
+
+    // --- sensor staircase ---
+
+    #[test]
+    fn sensor_periods_hold_each_reading_until_the_next() {
+        // The staircase: off until the first reading (not covered —
+        // the schedule fills that gap), then each reading's state
+        // holds until the next, the last until the window end.
+        let staircase = [
+            (parse_epoch("2026-11-16T02:00:00Z").unwrap(), 1.0),
+            (parse_epoch("2026-11-16T06:00:00Z").unwrap(), 0.0),
+            (parse_epoch("2026-11-16T10:00:00Z").unwrap(), 1.0),
+        ];
+        let periods =
+            sensor_light_periods("2026-11-16T00:00:00Z", "2026-11-16T12:00:00Z", &staircase);
+        assert_eq!(
+            periods,
+            vec![
+                interval("2026-11-16T02:00:00Z", "2026-11-16T06:00:00Z", true),
+                interval("2026-11-16T06:00:00Z", "2026-11-16T10:00:00Z", false),
+                interval("2026-11-16T10:00:00Z", "2026-11-16T12:00:00Z", true),
+            ]
+        );
+    }
+
+    #[test]
+    fn sensor_periods_treat_any_positive_value_as_on() {
+        // A dimmer at 42 % is a lit fixture; exactly zero is dark.
+        let staircase = [
+            (parse_epoch("2026-11-16T02:00:00Z").unwrap(), 42.0),
+            (parse_epoch("2026-11-16T06:00:00Z").unwrap(), 0.0),
+            (parse_epoch("2026-11-16T08:00:00Z").unwrap(), 0.0),
+        ];
+        let periods =
+            sensor_light_periods("2026-11-16T00:00:00Z", "2026-11-16T12:00:00Z", &staircase);
+        assert_eq!(
+            periods,
+            vec![
+                interval("2026-11-16T02:00:00Z", "2026-11-16T06:00:00Z", true),
+                interval("2026-11-16T06:00:00Z", "2026-11-16T12:00:00Z", false),
+            ]
+        );
+    }
+
+    #[test]
+    fn sensor_periods_drop_unparseable_reads_and_empty_windows() {
+        assert_eq!(
+            sensor_light_periods("2026-11-16T00:00:00Z", "2026-11-16T12:00:00Z", &[]),
+            Vec::new()
+        );
+        assert_eq!(
+            sensor_light_periods("garbage", "2026-11-16T12:00:00Z", &[]),
+            Vec::new()
+        );
+    }
+
+    // --- precedence resolve ---
+
+    #[test]
+    fn resolve_prefers_the_sensor_and_fills_the_leading_gap_from_the_schedule() {
+        let from = "2026-11-16T00:00:00Z";
+        let to = "2026-11-16T12:00:00Z";
+        let schedule = vec![
+            interval(from, "2026-11-16T04:00:00Z", true),
+            interval("2026-11-16T04:00:00Z", to, false),
+        ];
+        let sensor = vec![
+            interval("2026-11-16T02:00:00Z", "2026-11-16T08:00:00Z", false),
+            interval("2026-11-16T08:00:00Z", to, true),
+        ];
+        let resolved = resolve_light_periods(from, &schedule, &sensor).unwrap();
+        // The schedule's on-period is clipped at the sensor's first
+        // reading; from there the staircase owns the timeline.
+        assert_eq!(
+            resolved,
+            vec![
+                interval(from, "2026-11-16T02:00:00Z", true),
+                interval("2026-11-16T02:00:00Z", "2026-11-16T08:00:00Z", false),
+                interval("2026-11-16T08:00:00Z", to, true),
+            ]
+        );
+    }
+
+    #[test]
+    fn resolve_falls_back_to_the_schedule_without_sensor_reads() {
+        let from = "2026-11-16T00:00:00Z";
+        let to = "2026-11-16T12:00:00Z";
+        let schedule = vec![interval(from, to, true)];
+        assert_eq!(resolve_light_periods(from, &schedule, &[]), Some(schedule));
+        // Neither schedule nor sensor: no light state at all.
+        assert_eq!(resolve_light_periods(from, &[], &[]), None);
+    }
+
+    #[test]
+    fn any_positive_light_value_is_lit_and_zero_is_dark() {
+        // The shared rule (D093): a dimmer at 42 % is a lit fixture,
+        // exactly zero is dark; negative and NaN readings are not lit.
+        assert!(light_value_is_on(42.0));
+        assert!(light_value_is_on(1.0));
+        assert!(!light_value_is_on(0.0));
+        assert!(!light_value_is_on(-0.5));
+        assert!(!light_value_is_on(f64::NAN));
+    }
+
+    // --- stepped bands ---
+
+    /// The test corridor: day and night ranges per light state, the
+    /// lights-on range when the state is unknown (today's behaviour).
+    fn corridor(phase: Phase, light_on: Option<bool>, _mean: Option<f64>) -> Option<(f64, f64)> {
+        match (phase, light_on) {
+            (Phase::Germination, Some(true) | None) => Some((21.1, 26.7)),
+            (Phase::Germination, Some(false)) => Some((20.0, 23.3)),
+            (Phase::Drying, _) => Some((15.6, 20.0)),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn bands_step_between_day_and_night_at_the_light_changes() {
+        let spans = [span("2026-11-01T00:00:00Z", Phase::Germination)];
+        let light = [
+            interval("2026-11-16T07:00:00Z", "2026-11-16T19:00:00Z", true),
+            interval("2026-11-16T19:00:00Z", "2026-11-17T00:00:00Z", false),
+            interval("2026-11-16T00:00:00Z", "2026-11-16T07:00:00Z", false),
+        ];
+        let bands = build_light_bands(
+            "2026-11-16T00:00:00Z",
+            "2026-11-17T00:00:00Z",
+            &[],
+            &spans,
+            Some(&light),
+            corridor,
+        );
+        assert_eq!(bands.len(), 3);
+        assert_eq!(
+            epochs(&[&bands[0].start, &bands[0].end]),
+            epochs(&["2026-11-16T00:00:00Z", "2026-11-16T07:00:00Z"])
+        );
+        assert_eq!(
+            (bands[0].min, bands[0].max, bands[0].light_on),
+            (20.0, 23.3, Some(false))
+        );
+        assert_eq!(
+            epochs(&[&bands[1].start, &bands[1].end]),
+            epochs(&["2026-11-16T07:00:00Z", "2026-11-16T19:00:00Z"])
+        );
+        assert_eq!(
+            (bands[1].min, bands[1].max, bands[1].light_on),
+            (21.1, 26.7, Some(true))
+        );
+        assert_eq!(
+            epochs(&[&bands[2].start, &bands[2].end]),
+            epochs(&["2026-11-16T19:00:00Z", "2026-11-17T00:00:00Z"])
+        );
+        assert_eq!(bands[2].light_on, Some(false));
+        // Segments butt-join with no gap.
+        assert_eq!(bands[0].end, bands[1].start);
+        assert_eq!(bands[1].end, bands[2].start);
+    }
+
+    #[test]
+    fn bands_merge_adjacent_segments_that_agree_on_range_phase_and_light() {
+        let spans = [span("2026-11-01T00:00:00Z", Phase::Germination)];
+        // Two adjacent on-intervals draw as one band; the off pieces
+        // around them cannot merge across the on stretch.
+        let light = [
+            interval("2026-11-16T07:00:00Z", "2026-11-16T09:00:00Z", true),
+            interval("2026-11-16T09:00:00Z", "2026-11-16T19:00:00Z", true),
+            interval("2026-11-16T19:00:00Z", "2026-11-17T00:00:00Z", false),
+            interval("2026-11-16T00:00:00Z", "2026-11-16T07:00:00Z", false),
+        ];
+        let bands = build_light_bands(
+            "2026-11-16T00:00:00Z",
+            "2026-11-17T00:00:00Z",
+            &[],
+            &spans,
+            Some(&light),
+            corridor,
+        );
+        assert_eq!(bands.len(), 3, "the identical on neighbours merge");
+        assert_eq!(
+            epochs(&[&bands[1].start, &bands[1].end]),
+            epochs(&["2026-11-16T07:00:00Z", "2026-11-16T19:00:00Z"]),
+            "one band across both on-intervals"
+        );
+        assert_eq!(bands[0].light_on, Some(false));
+        assert_eq!(bands[1].light_on, Some(true));
+        assert_eq!(bands[2].light_on, Some(false));
+    }
+
+    #[test]
+    fn unlit_phases_stay_single_band_despite_light_intervals() {
+        let spans = [span("2026-11-01T00:00:00Z", Phase::Drying)];
+        let light = [interval(
+            "2026-11-16T00:00:00Z",
+            "2026-11-17T00:00:00Z",
+            true,
+        )];
+        let bands = build_light_bands(
+            "2026-11-16T00:00:00Z",
+            "2026-11-17T00:00:00Z",
+            &[],
+            &spans,
+            Some(&light),
+            corridor,
+        );
+        assert_eq!(bands.len(), 1);
+        assert_eq!(bands[0].light_on, None, "drying never splits");
+        assert_eq!((bands[0].min, bands[0].max), (15.6, 20.0));
+    }
+
+    #[test]
+    fn bands_without_a_light_timeline_stay_single() {
+        let spans = [span("2026-11-01T00:00:00Z", Phase::Germination)];
+        let bands = build_light_bands(
+            "2026-11-16T00:00:00Z",
+            "2026-11-17T00:00:00Z",
+            &[],
+            &spans,
+            None,
+            corridor,
+        );
+        assert_eq!(bands.len(), 1);
+        assert_eq!(bands[0].light_on, None);
+        assert_eq!((bands[0].min, bands[0].max), (21.1, 26.7));
+    }
+
+    #[test]
+    fn uncovered_regions_of_a_lit_phase_carry_no_light_state() {
+        // Light intervals cover only the middle of the day: the edges
+        // are unknown (no schedule filled them), so they keep the
+        // lights-on band.
+        let spans = [span("2026-11-01T00:00:00Z", Phase::Germination)];
+        let light = [interval(
+            "2026-11-16T07:00:00Z",
+            "2026-11-16T19:00:00Z",
+            false,
+        )];
+        let bands = build_light_bands(
+            "2026-11-16T00:00:00Z",
+            "2026-11-17T00:00:00Z",
+            &[],
+            &spans,
+            Some(&light),
+            corridor,
+        );
+        assert_eq!(bands.len(), 3);
+        assert_eq!(bands[0].light_on, None);
+        assert_eq!(
+            bands[0].max, 26.7,
+            "unknown state keeps the lights-on range"
+        );
+        assert_eq!(bands[1].light_on, Some(false));
+        assert_eq!(bands[2].light_on, None);
+    }
+
+    #[test]
+    fn the_humidity_band_solves_at_the_segments_actual_mean_temperature() {
+        // The points are *temperatures*: the warm day segment's RH
+        // window differs from the cool night's, and each solves at its
+        // own mean — never at a humidity reading fed as °C.
+        let spans = [span("2026-11-01T00:00:00Z", Phase::Germination)];
+        let light = [
+            interval("2026-11-16T00:00:00Z", "2026-11-16T12:00:00Z", true),
+            interval("2026-11-16T12:00:00Z", "2026-11-17T00:00:00Z", false),
+        ];
+        let temperatures = [
+            (parse_epoch("2026-11-16T06:00:00Z").unwrap(), 26.0),
+            (parse_epoch("2026-11-16T18:00:00Z").unwrap(), 14.0),
+        ];
+        let band = |phase: Phase, light_on: Option<bool>, mean: Option<f64>| {
+            let _ = phase;
+            let offset = match light_on {
+                Some(false) => crate::env::NIGHT_LEAF_OFFSET_C,
+                _ => crate::env::DEFAULT_LEAF_OFFSET_C,
+            };
+            let Some(mean) = mean else {
+                return Some((0.0, 100.0));
+            };
+            let (lo, hi) = crate::env::rh_window(mean, offset, (0.4, 0.8));
+            Some((lo, hi))
+        };
+        let bands = build_light_bands(
+            "2026-11-16T00:00:00Z",
+            "2026-11-17T00:00:00Z",
+            &temperatures,
+            &spans,
+            Some(&light),
+            band,
+        );
+        assert_eq!(bands.len(), 2);
+        let (day_lo, day_hi) = (bands[0].min, bands[0].max);
+        let (night_lo, night_hi) = (bands[1].min, bands[1].max);
+        // The same VPD band at 26 °C solves to a higher RH window than
+        // at 14 °C (cooler air holds less vapour): the segment's
+        // temperature, not a humidity reading, drove both.
+        assert!(day_hi > night_hi, "day {day_hi} > night {night_hi}");
+        assert!(day_lo > night_lo, "day {day_lo} > night {night_lo}");
+        assert!((0.0..=100.0).contains(&day_lo) && (0.0..=100.0).contains(&day_hi));
+    }
+
+    #[test]
+    fn bands_stay_inside_the_window_and_fail_closed() {
+        let spans = [span("2026-11-01T00:00:00Z", Phase::Germination)];
+        let light = [interval(
+            "2026-11-01T00:00:00Z",
+            "2026-12-01T00:00:00Z",
+            true,
+        )];
+        let bands = build_light_bands(
+            "2026-11-16T00:00:00Z",
+            "2026-11-17T00:00:00Z",
+            &[],
+            &spans,
+            Some(&light),
+            corridor,
+        );
+        assert_eq!(bands.len(), 1);
+        assert_eq!(
+            epochs(&[&bands[0].start, &bands[0].end]),
+            epochs(&["2026-11-16T00:00:00Z", "2026-11-17T00:00:00Z"]),
+            "an interval spanning the window clips to it"
+        );
+        // Unparseable window edges yield no bands (fail closed).
+        assert_eq!(
+            build_light_bands(
+                "nope",
+                "2026-11-17T00:00:00Z",
+                &[],
+                &spans,
+                Some(&light),
+                corridor
+            ),
+            Vec::new()
+        );
+    }
+}
+
+#[cfg(test)]
 mod vpd_derive_tests {
     use super::{
         ChartWindow, PointSource, RawPoint, SeriesPoint, VPD_PAIRING_TOLERANCE_SECS,
@@ -715,6 +1872,23 @@ mod vpd_derive_tests {
         let derived = derive_vpd_series(&temp_series, &rh_series, 0.0);
         assert_eq!(derived.points.len(), 1);
         assert_eq!(derived.points[0].value, 0.0);
+
+        // With a negative leaf offset the raw difference goes below
+        // zero (the leaf's saturation pressure sits under the air's
+        // actual vapour pressure); the derivation clamps at zero so no
+        // consumer can see a negative VPD.
+        let offsets = [
+            crate::env::DEFAULT_LEAF_OFFSET_C,
+            crate::env::NIGHT_LEAF_OFFSET_C,
+        ];
+        for offset in offsets {
+            let derived = derive_vpd_series(&temp_series, &rh_series, offset);
+            assert_eq!(derived.points.len(), 1);
+            assert_eq!(
+                derived.points[0].value, 0.0,
+                "saturation at offset {offset} must clamp at zero"
+            );
+        }
     }
 
     #[test]

@@ -29,6 +29,7 @@ use crate::chart::{
 use crate::dashboard::EnvDashboard;
 use crate::feed::FeedPanel;
 use crate::gantt::GanttTimeline;
+use crate::light_cycle::LightCycleEditor;
 use crate::live::LivePanel;
 use crate::route_href;
 
@@ -234,12 +235,12 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
     // photoperiod semantics.
     let pick_phase = RwSignal::<Option<Phase>>::new(None);
     let pick_date = RwSignal::<String>::new(String::new());
-    let current_photoperiod = move || {
+    let grow_photoperiod = Signal::derive(move || {
         grow.get()
             .as_ref()
             .map(|current| current.photoperiod)
             .unwrap_or_default()
-    };
+    });
 
     let refresh = move || {
         let id = grow_id.get();
@@ -320,7 +321,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             return;
         };
         let id = grow_id.get();
-        let photoperiod = current_photoperiod();
+        let photoperiod = grow_photoperiod.get();
         let when = pick_date.get();
         let day = if when.is_empty() {
             datetime_local_now()
@@ -543,16 +544,22 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             </form>
             <GanttTimeline grow_id=grow_id.get() />
 
+            <LightCycleEditor grow_id=grow_id photoperiod=grow_photoperiod />
+
             <EnvDashboard grow_id=grow_id.get() />
+            // Every chart card renders through the ECharts option-builder
+            // seam (tickets 02–04); a role with no binding (or no pH/EC
+            // entries) renders no card at all.
             <HistoryChart grow_id=grow_id.get() format_value=leaflog_core::units::temp_both />
             <HistoryChart grow_id=grow_id.get() role="humidity" title="Humidity" format_value=format_pct />
             <HistoryChart grow_id=grow_id.get() role="vpd" title="VPD" format_value=format_kpa />
             <HistoryChart grow_id=grow_id.get() role="co2" title="CO₂" format_value=format_ppm />
-            <HistoryChart grow_id=grow_id.get() role="light" title="Light" step=true format_value=format_on_off />
-            <HistoryChart grow_id=grow_id.get() role="soil_moisture" title="Soil moisture" format_value=format_pct />
-            <HistoryChart grow_id=grow_id.get() role="ph" title="pH" scatter=true format_value=format_ph no_data="No pH entries logged yet." />
-            <HistoryChart grow_id=grow_id.get() role="ec" title="EC" scatter=true format_value=format_ec_us no_data="No EC entries logged yet." />
-            <BandEditor />
+            <HistoryChart grow_id=grow_id.get() role="light" title="Light" format_value=format_on_off />
+            <HistoryChart grow_id=grow_id.get() role="soil_moisture" title="Soil moisture" format_value=format_pct>
+                <BandEditor />
+            </HistoryChart>
+            <HistoryChart grow_id=grow_id.get() role="ph" title="pH" format_value=format_ph />
+            <HistoryChart grow_id=grow_id.get() role="ec" title="EC" format_value=format_ec_us />
 
             <h3>"Feed schedule"</h3>
             <FeedPanel grow_id=grow_id.get() />
@@ -1256,6 +1263,7 @@ mod landing_pick_tests {
             light_tolerance: Tolerance::default(),
             real_watts: None,
             dimmable: true,
+            light_cycle: None,
             substrate: "soil".to_owned(),
             started_on: "2026-01-01".to_owned(),
             status,

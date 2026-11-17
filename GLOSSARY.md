@@ -18,21 +18,25 @@ _Avoid_: Sensor type, channel kind
 A binding whose entity Home Assistant currently reports as unavailable or unknown. Dead bindings are the only ones the grow page may call "no data".
 _Avoid_: Broken sensor
 
-**Light Cycle**:
-The recurring pattern of grow-light state in a grow: a Lights-On Period followed by a Lights-Off Period. Not the grow's Photoperiod, and not a chart window.
-_Avoid_: Day/night schedule, lights timer
+**Chart window**:
+The rolling time span an environment chart covers, always ending at now; the toggles read 24h / 7d / 30d. A Chart window is never a calendar day, and the word "day" on its own belongs to the Light Cycle.
+_Avoid_: Day, Week, Month (as toggle captions), period
 
-**Lights-On Period** / **Lights-Off Period**:
-The stretches of a Light Cycle with grow lights on and off. Environment targets may differ between the two.
-_Avoid_: Day/night (collides with chart windows and calendar days)
+**Light Cycle**:
+A grow's recurring pattern of grow-light state: one daily lights-on local time plus hours-on per lit phase — a Lights-On Period followed by a Lights-Off Period. Unset parts fall back to sourced preset defaults (photoperiod 18/6 veg and 12/12 flower; autoflowers long days throughout), and reset-to-default restores those defaults. It is not the grow's Photoperiod, and not a chart window. Charts and the phase coach use the cycle for the day/night split when no light entity is bound.
+_Avoid_: Light schedule setting, lights config, day/night schedule, lights timer
+
+**Lights-On Period**:
+The stretch of a Light Cycle day when the grow lights are on: from the daily lights-on time through lights-on time plus the phase's hours-on. It can run past midnight; the Light Cycle day splits at the lights-on clock time, not at 00:00. Day targets (the day range) apply during it.
+_Avoid_: Day (alone), photoperiod (the grow's trait), on time
+
+**Lights-Off Period**:
+The rest of a Light Cycle day after the Lights-On Period: the dark hours. Night targets (the night range) apply during it.
+_Avoid_: Night (alone), dark period, downtime
 
 **Target Band**:
-The shaded recommended range drawn on an environment chart.
-_Avoid_: Safe zone, corridor (in UI text), banding
-
-**Chart window**:
-The rolling time range an environment chart covers (24 h, 7 days, 30 days), always ending at now.
-_Avoid_: Day/Week/Month as toggle labels ("Day" reads as the Light Cycle's day)
+The recommended range shaded behind an environment chart's readings. It steps between the phase's day range (Lights-On Period targets) and night range (Lights-Off Period targets); phases without grow lights keep one range.
+_Avoid_: Safe zone, corridor (in UI text), recommended range, band (alone), banding
 
 ### Grow lifecycle
 

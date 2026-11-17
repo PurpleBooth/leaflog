@@ -30,11 +30,13 @@
 
 pub mod api;
 mod chart;
+mod chart_option;
 mod dashboard;
 mod feed;
 mod gantt;
 mod grows;
 mod history;
+mod light_cycle;
 mod live;
 mod onboarding;
 mod phase_pick;

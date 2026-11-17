@@ -34,14 +34,25 @@ async function stripBox(page: Page) {
   return box!;
 }
 
-/** Asserts nothing spills past the viewport sideways. */
+/** Asserts nothing spills past the viewport sideways.
+ *
+ * Settle-tolerant on purpose: after a viewport change the chart's
+ * resize handler re-renders asynchronously, so a freshly resized ECharts
+ * SVG can still carry its pre-resize width for a frame. The poll only
+ * waits for that re-render — a chart that never shrinks still fails
+ * (the stale-width bug class this assertion guards). */
 async function expectNoHorizontalOverflow(page: Page) {
-  const overflow = await page.evaluate(
-    () =>
-      document.documentElement.scrollWidth -
-      document.documentElement.clientWidth,
-  );
-  expect(overflow, 'no horizontal overflow').toBeLessThanOrEqual(0);
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(
+          () =>
+            document.documentElement.scrollWidth -
+            document.documentElement.clientWidth,
+        ),
+      { message: 'no horizontal overflow' },
+    )
+    .toBeLessThanOrEqual(0);
 }
 
 test('env strip spans the container and wraps without overflow', async ({
@@ -80,8 +91,8 @@ test('env strip spans the container and wraps without overflow', async ({
   await page.goto(url(`/grows/${growId}`));
   await expect(page.getByText('RH window')).toBeVisible();
 
-  // The bound roles' charts render on the overview; unbound ones state
-  // it (ticket 05/06).
+  // The bound roles' charts render on the overview; unbound roles
+  // render no card at all (ticket 04), so no placeholder text either.
   await expect(
     page.locator('svg[aria-label="temperature history"]'),
   ).toBeVisible();
@@ -89,7 +100,41 @@ test('env strip spans the container and wraps without overflow', async ({
   await expect(page.locator('svg[aria-label="vpd history"]')).toBeVisible();
   await expect(
     page.getByText('No sensor bound for this role.'),
+  ).toHaveCount(0);
+
+  // Chart window toggles read 24h / 7d / 30d (ticket 02): rolling
+  // windows ending now, never a calendar day. Only the bound roles
+  // carry cards (temperature, humidity, and VPD derived from both —
+  // ticket 04's visibility rule), so three toggle groups.
+  const chartCards = page.locator('.card', {
+    has: page.getByRole('group', { name: 'Chart window' }),
+  });
+  await expect(chartCards).toHaveCount(3);
+  await expect(
+    page.getByRole('button', { name: /^(Day|Week|Month)$/ }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: '24h', exact: true }),
   ).toHaveCount(3);
+  await expect(
+    page.getByRole('button', { name: '7d', exact: true }),
+  ).toHaveCount(3);
+  await expect(
+    page.getByRole('button', { name: '30d', exact: true }),
+  ).toHaveCount(3);
+
+  // Switching a Chart window refetches and re-renders (the
+  // temperature card now goes through ECharts; ticket 02).
+  const tempCard = page.locator('.card', {
+    has: page.locator('svg[aria-label="temperature history"]'),
+  });
+  await tempCard.getByRole('button', { name: '7d', exact: true }).click();
+  await expect(
+    tempCard.getByRole('button', { name: '7d', exact: true }),
+  ).toHaveClass(/btn-primary/);
+  await expect(
+    page.locator('svg[aria-label="temperature history"]'),
+  ).toBeVisible();
 
   // Desktop: all four tiles in one row, equally wide, spanning the
   // strip edge to edge.
@@ -148,4 +193,48 @@ test('env strip spans the container and wraps without overflow', async ({
       'very narrow tiles take the full row',
     ).toBeLessThanOrEqual(2);
   }
+});
+
+test('an aborted history fetch keeps the bound card and names the failure', async ({
+  page,
+  request,
+}) => {
+  const growId = await createGrow(
+    request,
+    uniqueName('E2E Fetch Fail Grow'),
+  );
+  await api(request, 'PUT', `api/grows/${growId}/bindings`, {
+    bindings: {
+      temperature: 'sensor.grow_temperature',
+      humidity: 'sensor.grow_humidity',
+    },
+  });
+  await page.goto(url(`/grows/${growId}`));
+  const tempCard = page.locator('.card', {
+    has: page.locator('svg[aria-label="temperature history"]'),
+  });
+  await expect(tempCard).toBeVisible();
+
+  // Abort the temperature role's history fetches, then switch the
+  // window: the fetch fails, and the bound card stays — with the
+  // degraded banner naming the failure. Hiding is the unbound state;
+  // a bound card never vanishes on a failed fetch.
+  const historyRoute = url(`api/grows/${growId}/history*role=temperature*`);
+  await page.route(historyRoute, (route) => route.abort());
+  await tempCard.getByRole('button', { name: '7d', exact: true }).click();
+  await expect(tempCard.getByRole('alert')).toContainText(
+    'History unavailable',
+  );
+  await expect(
+    page.locator('svg[aria-label="temperature history"]'),
+  ).toBeVisible();
+
+  // Lifting the abort recovers without a reload: the next window
+  // switch retries, the banner clears, the chart redraws.
+  await page.unroute(historyRoute);
+  await tempCard.getByRole('button', { name: '24h', exact: true }).click();
+  await expect(tempCard.getByRole('alert')).toHaveCount(0);
+  await expect(
+    page.locator('svg[aria-label="temperature history"]'),
+  ).toBeVisible();
 });

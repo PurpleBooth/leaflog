@@ -87,6 +87,10 @@ impl FakeRoom {
                 "",
                 "Grow light"
             ),
+            // A second on/off entity of a non-light domain: the Light
+            // binding role must accept any on/off entity, not only a
+            // light.* fixture.
+            entity_state("switch.grow_panel", "on", "", "Grow panel switch"),
         ])
     }
 
@@ -108,13 +112,21 @@ impl FakeRoom {
         self.soil_moisture = (self.soil_moisture - 0.8).max(15.0);
     }
 
-    /// The next change batch after a tick.
-    fn tick_changes(&self) -> Value {
-        json!({
+    /// The next change batch after a tick. Home Assistant only
+    /// pushes what changed, so the binary light enters the batch
+    /// only when the session has not yet pushed its current state —
+    /// `toggle_light` therefore reaches subscribers on the next tick
+    /// (the contract `toggle_light` documents).
+    fn tick_changes(&self, light_changed: bool) -> Value {
+        let mut changes = json!({
             "sensor.grow_temperature": { "s": format!("{:.1}", self.temperature) },
             "sensor.grow_humidity": { "s": format!("{:.0}", self.humidity) },
             "sensor.grow_soil_moisture": { "s": format!("{:.0}", self.soil_moisture) },
-        })
+        });
+        if light_changed {
+            changes["light.grow_led"] = json!({ "s": if self.light_on { "on" } else { "off" } });
+        }
+        changes
     }
 }
 
@@ -230,6 +242,9 @@ async fn history(State(state): State<MockState>, Query(query): Query<HistoryQuer
     let entity = query
         .filter_entity_id
         .unwrap_or_else(|| "sensor.grow_temperature".to_owned());
+    if entity == "light.grow_led" || entity == "switch.grow_panel" {
+        return Json(on_off_history(&entity));
+    }
     let (base, temperature, humidity, soil_moisture) = {
         let room = state.room.lock().await;
         (
@@ -267,6 +282,35 @@ async fn history(State(state): State<MockState>, Query(query): Query<HistoryQuer
     json!([series]).into()
 }
 
+/// An on/off entity's staircase for `history/period`, anchored at
+/// request time so every window contains it.
+///
+/// Served for the light fixture and the panel switch alike — any
+/// on/off entity bound to the Light role must drive the same
+/// timeline. The stamps run off at now−23 h, on at now−20 h, off at
+/// now−18 h: in a rolling day window that is a schedule-driven
+/// prefix, a dark override, a one-hour on stretch, and a dark run to
+/// now — the shape the stepped-band tests assert.
+fn on_off_history(entity_id: &str) -> Value {
+    let now = jiff::Timestamp::now();
+    let stamp = |hours_ago: i64| (now - jiff::Span::new().hours(hours_ago)).to_string();
+    // minimal_response shape: one full state object first, then
+    // short {s, lu} objects.
+    json!([
+        [
+            {
+                "entity_id": entity_id,
+                "state": "off",
+                "attributes": { "friendly_name": "Grow light" },
+                "last_changed": stamp(23),
+                "last_updated": stamp(23),
+            },
+            { "s": "on", "lu": stamp(20) },
+            { "s": "off", "lu": stamp(18) },
+        ]
+    ])
+}
+
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn websocket(State(state): State<MockState>, upgrade: WebSocketUpgrade) -> Response {
@@ -279,6 +323,9 @@ async fn socket_loop(socket: WebSocket, state: MockState) {
     let (mut sender, mut receiver) = socket.split();
     let mut subscribed = false;
     let mut next_event_id = 1_u64;
+    // The light state this session has already pushed; HA pushes a
+    // binary entity only when its state changes.
+    let mut pushed_light = false;
 
     // Send auth_required.
     if sender
@@ -333,7 +380,12 @@ async fn socket_loop(socket: WebSocket, state: MockState) {
                 };
                 match handle_command(&mut sender, &value, &state, &mut next_event_id).await {
                     CommandOutcome::Close => break,
-                    CommandOutcome::Subscribed => subscribed = true,
+                    CommandOutcome::Subscribed => {
+                        subscribed = true;
+                        // The subscribe batch carries the light's
+                        // current state; only a later flip is news.
+                        pushed_light = state.room.lock().await.light_on;
+                    }
                     CommandOutcome::Continue => {}
                 }
             }
@@ -341,7 +393,9 @@ async fn socket_loop(socket: WebSocket, state: MockState) {
                 if !subscribed { continue; }
                 let mut room = state.room.lock().await;
                 room.tick();
-                let changes = room.tick_changes();
+                let light_changed = room.light_on != pushed_light;
+                let changes = room.tick_changes(light_changed);
+                pushed_light = room.light_on;
                 drop(room);
                 let event = json!({
                     "id": next_event_id,

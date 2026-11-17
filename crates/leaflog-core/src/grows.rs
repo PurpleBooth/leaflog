@@ -167,6 +167,13 @@ pub struct Grow {
     /// parses as `true`.
     #[serde(default = "default_true")]
     pub dimmable: bool,
+    /// The grow's Light Cycle override (spec §4.9): lights-on time and
+    /// hours-on per lit phase. `None` — or any `None` part inside —
+    /// falls back to the cited preset defaults
+    /// ([`crate::light_cycle::default_hours_on`]). Absent JSON parses
+    /// as `None`.
+    #[serde(default)]
+    pub light_cycle: Option<crate::light_cycle::LightCycle>,
     /// Substrate label: one of [`SUBSTRATES`] or a user-defined name.
     pub substrate: String,
     /// Seed/clone start date, `YYYY-MM-DD`. Day numbers count from here.

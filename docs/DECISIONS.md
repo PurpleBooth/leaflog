@@ -201,6 +201,512 @@ future data import.
 
 ---
 
+## 2026-11-17 — the coach sees the real light state; the spec closes out (ticket 08)
+
+### D096: the coach resolves the light state live map → snapshot → Light Cycle
+
+_(Numbered D096 in the 2026-11-17 merge with the released
+feature-strip stream: the entry first shipped as D085 on this
+branch, a number the stream's own v0.7.0 decision already holds;
+that stream keeps its number.)_
+
+`grow_coach` no longer hardcodes `light_on = true`. At call time it resolves:
+
+1. **The bound light entity's latest known state.** The live entity map first —
+   it is the WebSocket subscription's current snapshot and costs one in-memory
+   read. When the map has nothing (HA unreachable, entity not yet subscribed),
+   the newest auto-captured `light` snapshot row speaks.
+2. **The grow's Light Cycle, evaluated for "now".** The same expansion the bands
+   use, through the new core point query `schedule_light_on_at`: expand a window
+   straddling the instant, read off the covering interval. Interval ends are
+   exclusive, so an instant exactly at lights-off is already dark. This is also
+   the whole answer when nothing is bound, and the fallback for a bound entity
+   with no known state.
+3. **No source at all keeps the lights-on assumption** — the corridor's
+   convention for an unknown state (D094), and the only reading the unlit
+   phases admit.
+
+The auto-logged `lights` entries were considered as a source and rejected.
+Their state lives in free-text notes ("auto: light on"), not structured data;
+parsing notes would freeze the wording for users. The live map plus snapshots
+cover the realistic cases.
+
+The night VPD tip now reads "lights off: keep close to daytime; watch the RH
+spike". The old "(lights off: run higher)" contradicted the research: measured
+VPD falls on its own as the room cools (research caveat C2; Pulse Grow and
+Black Dog LED night sections). The tip keeps the day band's numbers on
+purpose — night guidance is "hold near the day band" — and the RH spike stays
+the watch item. Core tests pin the tip selection by state.
+
+Supporting fix in `mock-ha`: the session doc claimed `toggle_light` "forces a
+state-changed push on the next tick", but `tick_changes` never included the
+light. The flip never reached subscribers. The session now tracks the light
+state it has pushed and includes the entity only on an actual change — HA
+pushes deltas, and re-sending an unchanged binary state every 2 s would trip
+the auto-log into writing a `lights` entry per tick.
+
+### D097: the Light Cycle spec closes out — obligations verified, glossary aligned
+
+_(Numbered D097 in the 2026-11-17 merge with the released
+feature-strip stream: the entry first shipped as D086 on this
+branch, a number the stream's own v0.7.0 decision already holds;
+that stream keeps its number.)_
+
+Closeout state of the "Light Cycle stepped bands and ECharts chart overhaul"
+spec:
+
+- SPEC §4.9 describes the implemented precedence: lights-on and lights-off
+  targets exist per phase, the bound light entity's history wins, the Light
+  Cycle fills the gaps, neither source keeps a single band, and the coach
+  resolves the same way. The phantom `preset_env` tables in SPEC §8 stay,
+  deliberately — separate cleanup, out of scope.
+- GLOSSARY.md coherence pass: added the missing agreed terms Lights-On Period,
+  Lights-Off Period and Target Band. The Light Cycle entry lost its
+  storage-speak ("nullable"). No duplicates, no drift, definitions stay
+  implementation-free.
+- Obligations discharged: the AGENTS.md architecture line names npm + esbuild
+  for the chart bundle (D088); `docs/adr/0001-echarts-rendering.md` exists;
+  the decisions doc carries the night leaf offset (D086), the VPD clamp
+  (D087), the ECharts tooling (D088), the Light Cycle model (D089), the band
+  precedence and corridors (D093–D094), and everything since.
+- Story 22's binding-UI obligation verified end to end: the Light role's
+  picker lists every entity (no domain filter anywhere in the chain), and a
+  `switch.*` on/off entity bound to the Light role drives the chart
+  staircase exactly like a `light.*` fixture (the mock now serves
+  `switch.grow_panel`; integration test
+  `grow_history_steps_follow_any_on_off_entity_bound_to_light`). The
+  binary_sensor.* domain reads the same `"on"`/`"off"` states through the
+  same parse, so it is covered by the same rule rather than its own mock
+  entity.
+
+Open ideas, none blocking:
+
+- **Value-axis tick labels in the HA unit system.** The temperature axis
+  renders "20.0 °C / 68.0 °F" per tick (ticket 02 called it cluttered).
+  Per-system ticks need plumbing that does not exist yet: nothing exposes the
+  HA unit system to the frontend (the bridge caches only the config
+  timezone), and the card's formatter is a plain `fn(f64) -> String`, not a
+  unit-aware closure. Judged more feature than polish, so skipped. The axis
+  name already declares both units, and the tooltip keeps dual-unit text.
+- **Alert evaluation against night bands** (research caveat C3) and
+  **suspending germination-dome VPD band checks** (C4) — future work, as the
+  spec's out-of-scope list records.
+
+---
+
+## 2026-11-17 — the Target Bands step between day and night (ticket 07)
+
+### D093: the light-state timeline wins by source — sensor staircase first, schedule fills the gaps
+
+_(Numbered D093 in the 2026-11-17 merge with the released
+feature-strip stream: the entry first shipped as D082 on this
+branch, a number the stream's own v0.7.0 decision already holds;
+that stream keeps its number.)_
+
+The history endpoint resolves one lights-on/off timeline per Chart
+window, by precedence:
+
+1. **A bound light entity's real history wins wherever it has
+   in-window readings.** The staircase semantics match the light
+   chart: each reading's state holds until the next reading, and the
+   last reading holds until the window end. Any positive value counts
+   as lit (a dimmer at 42 % is a lit fixture); exactly zero is dark.
+2. **The stretch before the first reading belongs to the Light
+   Cycle.** A reading's state cannot be projected backwards, so the
+   schedule covers that prefix (clipped at the first reading). When
+   no light entity is bound, the schedule owns the whole window.
+3. **Neither source → no light state.** The band stays single, as
+   before ticket 07.
+
+Every grow has a Light Cycle (stored default = cited presets), so
+unbound grows step day/night out of the box; the single-band path
+survives only for the unlit phases. The schedule anchors at the
+lights-on wall-clock time in the grow's canonical timezone and lasts
+`hours_on` **absolute** hours, so the on-length survives a DST
+transition while the anchor stays local — the convention
+`phase_spans` already uses for phase boundaries.
+
+A failed HA fetch of the *light* entity never degrades the chart:
+the schedule covers the window instead, and the `degraded` flag
+stays bound to the charted role's own fetch. The default Light Cycle
+(06:00, strain-aware hours) is a grower-preference anchor marked
+unverified in `light_cycle.rs`.
+
+### D094: band segments grow a light-state dimension; CO₂ gets its first corridor
+
+_(Numbered D094 in the 2026-11-17 merge with the released
+feature-strip stream: the entry first shipped as D083 on this
+branch, a number the stream's own v0.7.0 decision already holds;
+that stream keeps its number.)_
+
+`BandSegment` (and the frontend's `BandSegmentData`) carries
+`light_on: Option<bool>`. `None` covers the unlit phases (drying and
+curing never split) and the no-light-state case. The pure builder
+`build_light_bands` intersects phase spans with the light timeline,
+computes each piece's corridor, and merges neighbours that agree on
+`(min, max, phase, light_on)` — a month of steady nights is one
+region, not 60. The comparison is exact on purpose: range edges are
+preset constants copied bit-identical (the D074 rationale again), so
+the merge carries a scoped `#[allow(clippy::float_cmp)]` with the
+reason inline, and the butt-join check `last.end == segment.start`
+carries `#[allow(clippy::suspicious_operation_groupings)]` the same
+way. The endpoint's response-reduce helper keeps a
+`#[allow(clippy::type_complexity)]`: its four-tuple mirrors the
+`GrowHistory` fields one to one.
+
+Corridors per state: temperature uses the lights-on §5.2 range by
+day and the researched lights-off range by night. VPD swaps to the
+night band. The humidity band solves the RH window at the segment's
+actual **temperature** mean with the matching leaf offset (−2 °C
+day, −1 °C night) — the humidity-as-temperature bug is fixed at the
+root, with the temperature series fetched for the humidity chart.
+Segments without in-segment points have no honest mean and emit no
+humidity band. CO₂ gains its first corridor: 800–1,500 ppm while
+lit, ambient 400–450 ppm in the dark, the lights-on target kept
+when the state is unknown.
+
+The frontend needs no new drawing logic — the option builder
+already rendered one `markArea` region per segment, so varying
+ranges step for free. The e2e seam (`16-stepped-bands.spec.ts`)
+asserts the visible half: multiple filled regions of differing
+geometry inside the chart SVG, fed by a grow whose Light Cycle is
+set and, separately, by the bound light's fixture staircase.
+
+### D095: the mock's light history is a request-anchored on/off staircase
+
+_(Numbered D095 in the 2026-11-17 merge with the released
+feature-strip stream: the entry first shipped as D084 on this
+branch, a number the stream's own v0.7.0 decision already holds;
+that stream keeps its number.)_
+
+`GET /core/api/history/period` for `light.grow_led` now returns a
+deterministic off→on→off staircase stamped relative to request time
+(off at now−23 h, on at now−20 h, off at now−18 h), in the
+documented `minimal_response` shape. Sensor histories keep their
+canned 2026-11-08 points — nothing asserted on those timestamps.
+The relative stamping keeps the staircase inside any rolling window
+on every run date, which is what the bound-light integration test
+and `16-stepped-bands.spec.ts` both lean on.
+
+## 2026-11-17 — the pair scatters move onto ECharts; unbound cards stop rendering (ticket 04)
+
+### D092: every chart is an option-built chart; the card-visibility rule lands
+
+_(Numbered D092 in the 2026-11-17 merge with the released
+feature-strip stream: the entry first shipped as D081 on this branch,
+a number the stream's own decision already holds; that stream keeps
+its number.)_
+
+The pH/EC pair cards now render through the same pure option builder as
+every other chart (D090): `role_style` maps the pair roles to a
+`SeriesKind::Scatter` drawing mode, and the builder emits two named dot
+series — `Input` in the theme accent (`text-primary` probe, the old
+`fill-primary`) and `Runoff` in a second, distinct colour probed from
+`text-secondary` (the old `fill-secondary`). The runoff values join the
+value-axis range so the compare dots can never sit off-axis. With the
+pair migrated, the hand-rolled SVG renderer is gone entirely: ticket 03
+kept `ChartSvg` alive for pH/EC behind a `TEMPORARY` marker, and its
+small `padded_value_range` helper dies with it. No hand-rolled chart
+code remains; the Gantt and feed-fit bars stay inline-styled by design
+(out of the charts overhaul's scope).
+
+Choices worth remembering:
+
+- **`step: bool` became a `SeriesKind` enum.** A third drawing mode
+  (scatter) arrived, and two booleans with a never-both invariant is
+  worse than an honest enum: `Line`, `StepLine` (the light staircase),
+  `Scatter` (the pair roles).
+- **The scatter series carry names; the line series stay unnamed.** The
+  tooltip closure now renders one line per axis-trigger entry and
+  prefixes the series name when there is one, so the pair tooltip reads
+  `Input: 6.2 — 2026-11-16 14:03 UTC` over `Runoff: 6.8 — …`, while the
+  continuous charts keep the exact `value — time` line they always had.
+- **The compare colour's probe class lives in a string literal.** The
+  Tailwind scan picks tokens out of the Rust sources, and
+  `text-secondary` appears nowhere else, so the probe call itself is
+  what gets the utility compiled (the same accident `text-primary`
+  already relies on through its doc comment).
+- **A black probe result now means "styles not ready".** Writing the
+  distinct-colour e2e exposed a latent bug from ticket 02: if the chart
+  effect runs before the stylesheet applies, `getComputedStyle` returns
+  the unstyled initial `rgb(0, 0, 0)` and the option baked black chrome
+  (dots and axes) into every first paint. Black is never a leaflog
+  theme colour, so the probe now rejects it and the chart draws with
+  the light-palette fallbacks instead; once styles are loaded the
+  probes resolve the real theme colours as before.
+- **The card-visibility rule: `bound` decides, nothing else renders.**
+  `HistoryChart` gates the whole card on the loaded response's
+  `bound` flag — no sensor, or no pH/EC entries, means no card, no
+  placeholder. A dead binding is `bound: true` (the binding exists), so
+  its card stays and the env dashboard's No-data banner names it. A
+  bound role whose history fetch fails keeps its card too: a failed
+  fetch consults the bindings endpoint, and a bound role renders a
+  degraded banner naming the failure instead of vanishing. The
+  glossary's rule holds — a dead binding is the only state the page
+  may call "no data". Unbound roles, and the pH/EC log roles a failed
+  first fetch cannot classify, stay hidden.
+- **The visibility gate is a reactive block, not `Show`.** A `Show`
+  children closure must be `Fn`, and the card carries the children slot
+  (the soil band editor, D091) — building it inside a `Fn` closure does
+  not type-check. The gate is `{move || data.get().filter(bound)}`,
+  the same declarative pattern the env dashboard uses; the editor
+  re-mounts with its card and its signals re-run.
+- **11-soil-band e2e runs on a dedicated bound grow.** The landing
+  page's grow pick is not deterministic under the parallel suite, and
+  an unbound grow would now legitimately hide the soil card, so the
+  flow binds `sensor.grow_soil_moisture` and navigates to its own grow
+  page instead of `/`.
+
+---
+
+## 2026-11-16 — every continuous-role chart on ECharts (ticket 03)
+
+### D091: the option builder serves every continuous role; the band editor moved into the soil card
+
+_(Numbered D091 in the 2026-11-17 merge with the released
+feature-strip stream: the entry first shipped as D080 on this branch,
+a number the stream's own decision already holds; that stream keeps
+its number.)_
+
+All six continuous-role cards (temperature, humidity, VPD, CO₂, light,
+soil moisture) render through the same pure option builder
+(ticket 02's seam, D090). `role_style` maps the history response's
+role to the value-axis unit name (`°C / °F`, `%`, `kPa`, `ppm`, and
+`on / off` for the binary light), so a card's mount passes only its
+formatter; the axis-name choice and the formatter can no longer
+disagree. The per-role value formatting is unchanged: `58 %`,
+`0.85 kPa`, `900 ppm`, `on`/`off`.
+
+Choices worth remembering:
+
+- **The light staircase is a native step series.** The option sets
+  `step: "end"`, which holds each value until the next reading's x,
+  then jumps — the exact semantics of the deleted `step_points`
+  vertex expansion. No points are invented; the series data stay the
+  raw `[epoch ms, value]` pairs.
+- **CO₂ keeps no bands, and that renders cleanly.** The backend ships
+  no CO₂ band source today, so the builder emits zero `markArea`
+  regions and frames the axis on the readings alone (unit-tested).
+  Ticket 07 adds the stepped day/night bands.
+- **The soil band editor lives inside the soil card.** `HistoryChart`
+  grew an optional `children` slot rendered under the chart, and the
+  soil mount passes `<BandEditor />`. The accessible field labels
+  ("Band min %" / "Band max %") are untouched; the e2e flow scopes to
+  the card by its heading, so the relocation is what the test pins.
+- **The hand-rolled SVG is gone except the pH/EC scatter.**
+  `geometry()`, `ChartGeometry`, `step_points` and their tests are
+  deleted. The coordinator's boundary note keeps the event-dot
+  component alive until ticket 04 swaps pH/EC to an `ECharts` scatter
+  and removes the last SVG code; it is marked as temporary at the
+  component. The scatter's dot scale keeps the same padding rule in a
+  small `padded_value_range` helper that dies with the rest.
+
+## 2026-11-16 — temperature chart on ECharts (ticket 02)
+
+### D090: the option-builder seam replaces the SVG geometry seam; the chart window vocabulary changes
+
+Renumbered twice: from a first draft D078 in the ticket 02 branch
+(ticket 05's Light Cycle decision had landed as D078 while this ticket
+ran), then from D079 in the 2026-11-17 merge — the released
+feature-strip stream claims D079 — so D090 is the authoritative number
+for this entry.
+
+The temperature card now renders through `ECharts` (ADR 0001, D088).
+A pure function in `chart_option.rs` turns the history response into
+the option JSON: axes, the dual °C/°F unit label, gridlines, the
+hover tooltip, explicit padded axis bounds (the headroom rule,
+carried over from the old `geometry()`), and the Target Band regions
+as `markArea` pairs clipped to the window. The Leptos side only
+mounts: it probes the active daisyUI theme's computed colours for the
+option, passes the JSON with `serde-wasm-bindgen`, and drives
+`window.echarts` with `js_sys` calls — no hand-written application
+JavaScript. The value-axis and tooltip formatters are wasm closures
+handed over with `Closure::into_js_value`, so the JS GC owns their
+lifetime after the handoff.
+
+Choices worth remembering:
+
+- **The option crosses the wasm boundary as plain JSON objects.**
+  serde-wasm-bindgen's default serializes a `serde_json::Value::Object`
+  as a JS `Map`, and `setOption` reads plain objects only — a Map
+  option renders a bare frame with no complaint. The option serializes
+  with maps-as-objects, the axis/tooltip formatter closures attach to
+  the builder's single `yAxis` object (an array-indexing attach would
+  silently skip), and the time axis is pinned to the Chart window's
+  bounds so sparse data cannot zoom the axis in. The e2e suite
+  therefore asserts the rendered DOM — axis name, tick labels, line
+  path, hover tooltip — not just the Rust-side JSON.
+- **The aria-label contract moved to the SVG root.** The hand-rolled
+  chart was one `<svg role="img" aria-label="<role> history">`; the
+  e2e suite locates that element. `ECharts` renders its own root, so
+  the component stamps `role="img"` and the same label onto the
+  rendered root after init — the contract survives the migration.
+- **Colours are probed, not hard-coded.** Both daisyUI themes are
+  active by `prefers-color-scheme`; the option's colours come from
+  `getComputedStyle` on throwaway probes carrying `text-primary` /
+  `text-base-content` classes, so the chart follows the theme. The
+  band tint rides on `opacity` instead of an alpha colour, because
+  SVG attributes (where zrender paints) do not resolve `var()`.
+- **Chart window toggles read 24h / 7d / 30d everywhere.** The old
+  "Day" collided with the Light Cycle's day (new GLOSSARY entry
+  "Chart window"). API labels stay `day` / `week` / `month`.
+- **The i18n gap is real but empty.** The ticket's "locale catalogs
+  keep key parity" criterion has no runtime target: the locale-catalog
+  effort is still spec-side, and the app ships inline English strings
+  (the BandEditor precedent, also noted in D089). The renamed
+  captions are plain English strings; when catalogs land, these keys
+  migrate with the rest.
+
+## 2026-11-16 — the per-grow Light Cycle (ticket 05)
+
+### D089: the Light Cycle is grow columns, not a settings key
+
+_Renumbered twice: from a first draft D075 (while this ticket ran,
+D075–D077 went to the night leaf offset, the VPD zero clamp and the
+ECharts bundle) and again from D078 in the 2026-11-17 merge — the
+released feature-strip stream claims D078 — so D089 is the
+authoritative number for this entry._
+
+The Light Cycle (one lights-on local time plus hours-on per lit
+phase) belongs to one grow, like the strain or the start date, so it
+is stored as a nullable JSON column on `grow`
+(`light_cycle`, V18) — not as a key under `settings`, which is
+global. The soil-moisture band override kept its settings key
+because it is app-wide; a Light Cycle per grow under settings would
+have meant grown-up key names (`light_cycle.<grow-id>`) and no
+foreign-key integrity. `NULL` means "the preset defaults apply",
+which makes reset-to-default a `DELETE` on the cycle endpoint that
+writes `NULL` — the same cleared-override shape the soil band uses.
+
+The whole document is validated in Rust
+(`leaflog-core::light_cycle`): a bad time or out-of-range hours
+answers a clear 400. The defaults are pure functions of the phase
+and the strain's photoperiod type, shared by backend, editor
+placeholders and the phase picker's derived signal. Photoperiod
+defaults are 18/6 from germination through veg and 12/12 flower
+(SPEC §5.1; GrowWeedEasy's light-schedules guide — seedlings start
+in the vegetative stage on the same 18/6). Autoflowers get 18 h long
+days throughout (SPEC §5.1 "commonly 18–20 h", low end kept so a
+dark period remains; research caveat C6). The 06:00 default
+lights-on time is marked unverified in its source label: no
+published standard anchors a wall-clock on-time — it is a grower
+preference.
+
+Editor strings are plain English inline, like every existing form:
+the locale catalogs the spec's Language section describes do not
+exist in the codebase yet, so key parity has nothing to compile
+against. When the localization layer lands, these labels convert
+with the rest of the forms.
+
+## 2026-11-16 — night presets in core (light cycle ticket 06)
+
+### D086: lights-off maths get their own leaf offset; the night presets land as sourced constants
+
+_(Numbered D086 in the 2026-11-17 merge with the released
+feature-strip stream: the entry first shipped as D075 on this
+branch, a number the stream's own v0.7.0 decision already holds;
+that stream keeps its number.)_
+
+The −2 °C default leaf offset is a lights-on assumption: under the
+lamps, leaves run measurably below the air sensor's reading. In
+darkness the stomata close, transpiration cooling stops, and the leaf
+sits close to air temperature; Black Dog LED's VPD guide puts the
+lights-off span at 0 to −1 °C. Core now carries `NIGHT_LEAF_OFFSET_C`
+(−1 °C, the conservative edge) beside the default. Ticket 07's
+lights-off band segments pass it in place of the default, so night VPD
+and RH numbers stop carrying a cooling assumption that belongs to a
+lit room.
+
+The presets landed beside it, each row with its source label. Night
+temperature corridors: seedling 20.0–23.3 °C, veg 18.3–23.9 °C,
+flower 15.6–23.3 °C. Night VPD bands: germination/seedling
+0.5–0.9 kPa (sources span 0.3–1.0 and the label says so), veg
+0.8–1.2 kPa, flower 1.0–1.4 kPa. Both are Option-returning accessors:
+drying and curing rooms run without lights, their single day bands
+apply 24/7, and the accessors return `None` for them. Night CO2 is
+ambient 400–450 ppm with enrichment off; the lights-on band
+(800–1,500 ppm) comes from the two enrichment articles, which disagree
+on the ceiling (1,200 vs 1,500 ppm), so the encoded union keeps that
+disagreement visible in its label.
+
+Two open items travel with the numbers. Inside a germination dome at
+75–90 % RH the computed VPD sits far below any band, so band checks
+for dome-bound grows stay suspended until a ticket takes them up. And
+no university extension publishes cannabis lights-off setpoints — the
+strongest anchor is the peer-reviewed hemp study (Agronomy
+13(10):2636), which disagrees with hobby guides on ideal night
+temperature; the ranges keep both.
+
+### D087: the VPD derivation clamps at zero, as a tested contract
+
+_(Numbered D087 in the 2026-11-17 merge with the released
+feature-strip stream: the entry first shipped as D076 on this
+branch, a number the stream's own v0.7.0 decision already holds;
+that stream keeps its number.)_
+
+The Magnus derivation in `vpd_kpa` has always applied `.max(0.0)`, so
+no consumer has seen a negative value. Nothing guaranteed it: the
+clamp was an implementation detail, one refactor away from vanishing,
+and a saturated dark period (100 % RH, leaf cooler than air) computes
+a raw difference around −0.4 kPa. The clamp is now part of the
+derivation's contract: golden-value cases pin the saturation clamp, a
+grid over realistic temperatures, humidities and offsets asserts
+VPD ≥ 0, and the chart's derived-VPD test covers both leaf offsets at
+saturation. Alert evaluation against night bands (an open item, not
+yet built) inherits the guarantee.
+
+---
+
+## 2026-11-16 — charts move to ECharts (ticket 01, Light Cycle spec)
+
+### D088: Charts render through a build-time ECharts bundle; npm + esbuild join the toolchain
+
+Renumbered twice: from a first draft D075 in the ticket 01 merge
+(ticket 06's night-preset decisions claimed D075/D076 on the
+integration branch first), then from D077 in the 2026-11-17 merge —
+the released feature-strip stream claims D077 — so D088 is the
+authoritative number; branch commits from before the merges still say
+D075 or D077.
+
+The history charts leave the hand-rolled SVG path (ADR 0001 covers the
+rendering trade-off). The bundle lands as a build artifact:
+`crates/leaflog-frontend/charts/` is an npm project with exact pins
+(echarts 6.1.0, esbuild 0.28.2, committed lockfile), and
+`just build-echarts` bundles an entry module that registers line +
+scatter charts, grid + tooltip components, and the SVG renderer onto
+the `window.echarts` global. index.html loads it before the wasm
+boot; no application JavaScript is or will be hand-written — the wasm
+app will drive `echarts.init` from Rust in the chart tickets.
+
+Choices worth remembering:
+
+- **Barrels bypassed on purpose.** `echarts/charts` and
+  `echarts/components` re-export every chart type, and the package
+  marks `lib/chart/*.js` as side-effect-ful — a glob-array
+  `sideEffects` form esbuild does not apply, so a barrel import pulls
+  the whole library into the graph. The entry imports per-feature
+  install modules instead, and the bundle sits at 517 KiB minified
+  (roughly half a full-library dump).
+- **Composition checks read the output graph.** The esbuild metafile
+  lists every parsed file under `inputs`, but `outputs[...].inputs`
+  with `bytesInOutput` says what actually landed in the bundle;
+  `charts/verify.mjs` judges tree-shaking there, plus size bounds, no
+  CDN host, no Node constructs, and the index.html/dist wiring. The
+  checks run in `just build-echarts`, `just build-frontend`, `just
+  e2e`, and the Docker build.
+- **Node stays build-time.** The Dockerfile's frontend-builder stage
+  installs Debian's nodejs 18 (esbuild needs >=18) for the bundle
+  step; the app stage still copies only the backend binary with the
+  embedded dist, so the release image keeps no Node. The AGENTS.md
+  "no Node anywhere" stance is amended to "no Node in the image",
+  matching the Tailwind CLI precedent (D064).
+- **Out of scope, deliberately:** zoom/pan/brush components are not
+  in the bundle; the forecast Gantt and feed-fit bar chart stay
+  hand-rolled for now.
+||||||| 0fec11d
+
+---
+
 ## 2026-11-16 — grow overview redesign (D073 follow-up)
 
 ### D074: `float_cmp` allowance in the chart's step builder
@@ -1695,3 +2201,4 @@ once per crate.
 | mock-ha | handlers `root`, `ping`, `states` | `clippy::unused_async` | Same Axum contract as above |
 | leaflog-frontend | component `App` | `clippy::must_use_candidate` | The Leptos `#[component]` macro drops a hand-written `#[must_use]`, so the lint fires on the generated function |
 | leaflog-frontend | component `ErrorIf` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` |
+| leaflog-frontend | component `LightCycleEditor` in `light_cycle.rs` | `clippy::too_many_lines` | Declarative view code, not logic; splitting would obscure the form (same pattern as the M2 register row) |

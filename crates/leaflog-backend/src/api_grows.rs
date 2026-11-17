@@ -10,6 +10,7 @@ use leaflog_core::actions::ActionType;
 use leaflog_core::grows::ActionInput;
 use leaflog_core::grows::{GrowInput, Plant, PlantInput};
 use serde::Deserialize;
+use serde_json::Value;
 use time::format_description::well_known::Rfc3339;
 use time::macros::format_description;
 
@@ -57,6 +58,12 @@ pub fn router() -> Router<AppState> {
             get(list_photos).post(upload_photo),
         )
         .route("/api/grows/{id}/forecast", get(get_forecast))
+        .route(
+            "/api/grows/{id}/light-cycle",
+            get(get_light_cycle)
+                .put(put_light_cycle)
+                .delete(reset_light_cycle),
+        )
         .route("/api/grows/{id}/yield", get(get_yield))
         .route("/api/photos/{id}", axum::routing::delete(delete_photo))
         .route("/api/photos/{id}/original", get(photo_original))
@@ -442,6 +449,65 @@ async fn list_photos(
             .with(move |conn| store::photos::list(conn, &id))
             .await?,
     ))
+}
+
+// Extractors are taken by value because Axum requires it.
+#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
+#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
+async fn get_light_cycle(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<leaflog_core::light_cycle::LightCycle>, ApiError> {
+    let grow = state
+        .db
+        .with(move |conn| store::grows::get(conn, &id))
+        .await?;
+    // No stored override reads as the empty cycle: every part on its
+    // cited preset default.
+    Ok(Json(grow.light_cycle.unwrap_or_default()))
+}
+
+// Extractors are taken by value because Axum requires it.
+#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
+#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
+async fn put_light_cycle(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<Value>,
+) -> Result<Json<leaflog_core::light_cycle::LightCycle>, ApiError> {
+    // Parse loosely (any JSON object), then validate in Rust so the
+    // error messages name the accepted shapes (single source of
+    // truth, V1__init.sql preamble).
+    let input: leaflog_core::light_cycle::LightCycleInput = serde_json::from_value(body)
+        .map_err(|error| ApiError::BadRequest(format!("light_cycle: {error}")))?;
+    let cycle = input
+        .validate()
+        .map_err(|error| ApiError::BadRequest(error.to_string()))?;
+    let stored = state
+        .db
+        .with(move |conn| -> Result<_, store::StoreOrNotFound> {
+            store::grows::set_light_cycle(conn, &id, Some(&cycle))
+        })
+        .await?;
+    Ok(Json(stored.light_cycle.unwrap_or_default()))
+}
+
+// Extractors are taken by value because Axum requires it.
+#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
+#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
+async fn reset_light_cycle(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    // Reset-to-default: clear the stored override so the preset
+    // defaults apply again (spec §5.15 user-editable-with-reset rule).
+    state
+        .db
+        .with(move |conn| -> Result<_, store::StoreOrNotFound> {
+            store::grows::set_light_cycle(conn, &id, None)
+        })
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // Extractors are taken by value because Axum requires it.
