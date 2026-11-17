@@ -50,6 +50,11 @@ data" banner shipped in v0.4.0 but stayed invisible until v0.4.1 —
 goes in the GitHub Release notes instead
 (`gh release edit vX.Y.Z --notes-file ...`).
 
+Upgrade notes are the same kind of content. They live in
+`docs/releases/`, one file per release that needs one (for example
+`docs/releases/v0.7.0-upgrade.md`), and are pasted into the GitHub
+Release notes alongside the changelog body.
+
 ## Serving the notes to Home Assistant
 
 Home Assistant serves `leaflog/CHANGELOG.md` from the app directory
