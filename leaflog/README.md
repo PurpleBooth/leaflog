@@ -3,11 +3,12 @@
 A self-hosted cannabis grow diary that lives inside Home Assistant —
 your own sidebar tab, your own data, fully local.
 
-- Track grows, plants, strains and equipment
+- Track grows and plants; each grow carries its strain label,
+  photoperiod and Advanced Settings
 - Log actions and photos with sensor data captured automatically
 - Follow a feeding schedule stretched to your plant's real timeline
-- Get phase-, substrate- and strain-aware guidance for pH, EC/TDS,
-  temperature, humidity, VPD and lamp height
+- Get phase- and substrate-aware guidance for pH, EC/TDS, temperature,
+  humidity, VPD and lamp height
 
 No telemetry, no cloud calls, no sharing features. Photos are stripped
 of EXIF/GPS data. Backend and frontend are both Rust.

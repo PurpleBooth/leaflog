@@ -125,7 +125,7 @@ rated for disclosure impact **high** or above unless noted.
 | 1.5 | LAN eavesdropping | Accepted (out of app control) | HA terminates TLS. On installs reached over plain HTTP on the LAN, photos and JSON are sniffable. Nothing Leaflog can do beyond not adding its own plaintext surface (there is none: no host port, no direct UI) |
 | 1.6 | Browser artifacts on shared machines | Open | No `localStorage`/`sessionStorage` use anywhere in the frontend (verified), and history entries show only the opaque ingress URL. But photo responses carry no `Cache-Control` (`api_grows.rs:498`), so originals and thumbnails land in the browser disk cache of any machine the panel was used on. Recommendation R2: `private, no-store` on originals |
 | 1.7 | The HA sidebar itself | Accepted | `panel_admin: true` limits the panel (icon `mdi:cannabis`, title "Leaflog") to administrator accounts (`leaflog/config.yaml:16`). Anyone who can see an admin's HA UI sees the panel. Per-user sidebar hiding exists in HA if the owner wants it |
-| 1.8 | Telemetry or cloud calls | Mitigated | Local-first by construction: the only outbound connection the app makes is to the Supervisor (`lib.rs:171`). No analytics, no fonts, no CDN, no update pings (verified: frontend fetches only relative API paths, external links are user-authored and `rel="noreferrer"`) |
+| 1.8 | Telemetry or cloud calls | Mitigated | Local-first by construction: the only outbound connection the app makes is to the Supervisor (`lib.rs:171`). No analytics, no fonts, no CDN, no update pings (verified: the frontend fetches only relative API paths; the former user-authored external links went with the strain catalogue, D075) |
 | 1.9 | Dev-mode exposure | Mitigated by configuration | Dev mode accepts any peer (`app.rs:273`). It exists for `just dev` only; production is auto-selected when `SUPERVISOR_TOKEN` is present (D005), and the container publishes no ports. Never set `LEAFLOG_ENV=dev` in a real install |
 
 ## 6. TM2: Leaflog used as a platform to attack others
@@ -156,7 +156,7 @@ hand.
 |---|---|---|---|
 | 3.1 | Poisoned sensor data (spoofed MQTT/ESPHome device, compromised HA) shifting VPD windows, lamp advice, auto-captured snapshots | Accepted | Advisory-only engines. Partial controls: the dashboard shows the raw readings so gross anomalies are visible; feed fitting clamps EC steps (200 µS/cm default, D026); advice is presented as ranges. A patient attacker shifting values plausibly defeats it, but an adversary who controls HA already controls locks and cameras; the plants are not the crown jewels in that scenario |
 | 3.2 | Diary tampering via the API by an authorised user | Accepted | Any HA administrator can rewrite or delete anything; there is no second layer of authorisation below HA admin, by design (single-user, `panel_admin: true`). Non-admin HA users cannot reach the app at all |
-| 3.3 | Preset or bundled-data tampering | Mitigated (bundled), open (future import) | Bundled strain records are embedded in the signed-by-publishing binary and re-seed only into an empty table (D014). User presets are user data. The deferred CSV/JSON import is the risk: imported strains with extreme ranges would steer forecast and feed fit. Range validation is a hard requirement on that feature (tracked in R8's context, §14) |
+| 3.3 | Preset or bundled-data tampering | Mitigated (bundled), open (future import) | The only bundled data left is the feed and substrate presets (D075 removed the strain and equipment bundles): embedded in the signed-by-publishing binary, re-seeded only into empty tables (D079). User presets are user data. A future data-import feature is the risk: imported values with extreme ranges would steer forecast and feed fit. Range validation is a hard requirement on that feature (tracked in R8's context, §14) |
 | 3.4 | Clock or timestamp manipulation skewing day counts and phases | Accepted | Day derivation trusts grow start, logged flips/harvests and the clock. EXIF timestamps are stored naive-UTC (D018) and can shift a photo's day number by hours-to-a-day. Cosmetic-to-minor |
 | 3.5 | Feed-schedule sabotage (nutrient burn or deficiency) | Partially mitigated | Templates are editable by any app user, but the fitter's EC step clamp bounds how fast a sabotaged schedule can change concentrations (D026) |
 | 3.6 | Auto-log spam from a flapping `light.*` entity distorting the diary | Mitigated | Opt-out setting `auto_log_ha_events` (default on, D022); entries are labelled `auto:` in notes so they are distinguishable and prunable |
@@ -311,8 +311,9 @@ Re-open this document when any of the following happens:
   advice into dead plants and re-rates the whole category. The
   AGENTS.md opt-in gate is mandatory, and this model must be updated
   in the same change.
-- **The data-import feature** (CSV/JSON strains): activates TM2.2b and
-  TM3.3's validation requirements.
+- **Any data-import feature** (e.g. CSV/JSON of removed catalogue
+  data): activates TM3.3's validation requirements, and TM2.2b again
+  if imported URLs ever render as links.
 - **Multi-user or non-admin panel access**: re-opens TM5 and the
   repudiation acceptance in TM7.
 - **Any change to** the photo pipeline, `backup_exclude`, token

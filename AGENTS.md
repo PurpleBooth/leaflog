@@ -8,10 +8,12 @@ for features, seed data, and acceptance criteria (research snapshot 2026-11-08).
 
 ## Status
 
-v0.1.0 released (tagged 2026-11-08); M1-M8 complete, all docs/SPEC.md
-§13 acceptance criteria verified. Post-release hardening: keep commits
-lint-clean; open items R1-R9 in docs/THREAT-MODEL.md, one-off choices
-in docs/DECISIONS.md.
+v0.1.0 released (tagged 2026-11-08); M1-M8 complete. The feature strip
+(D075, M13) has since removed the strain catalogue, the seed bank, grow
+spaces and the equipment catalogue — the grow itself carries its strain
+label, photoperiod, tolerances and lamp facts. Post-release hardening:
+keep commits lint-clean; open items R1-R9 in docs/THREAT-MODEL.md (R3
+resolved by the strip), one-off choices in docs/DECISIONS.md.
 
 ## Non-negotiables (violating these breaks the product)
 
@@ -116,9 +118,9 @@ Automation lives in a `justfile` (or `xtask` crate) — no bash-only scripts.
 - Cite a source for every default number in preset files. Where sources disagree, store the
   **range** and mark it. Re-check each number against ≥2 sources; if impossible, mark `unverified`.
 - Presets are ranges, never single magic numbers. All user-editable with reset-to-default.
-- Every preset row carries a source label; strain fields carry an evidence tag
-  (`breeder` / `grower-reported` / `inferred`).
-- The code is Unlicense, but **bundled strain/seed data is third-party**: store source and
+- Every preset row carries a source label. The feed and substrate presets are the only
+  bundled data left (D075 removed the bundled strain and equipment records).
+- The code is Unlicense, but **bundled preset data is third-party**: store source and
   licence per record and check licences before bundling anything.
 
 ## Working agreements

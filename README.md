@@ -9,11 +9,14 @@ lives in your HA sidebar via ingress. Backend and frontend are both Rust.
 
 ## Features
 
-- Grows, plants, strains, equipment inventory and per-grow snapshots
+- Grows and plants — each grow carries its strain label, photoperiod,
+  tolerances and lamp facts in an Advanced Settings section
 - Action + photo log with automatic Home Assistant sensor capture
+  through per-grow sensor bindings
 - Phase forecast (germination → cure) with earliest/likely/latest windows
 - Feeding schedules stretched/shrunk to the plant's real timeline
-- VPD, lamp-height advisor, substrate-aware and strain-aware coaching
+- VPD, lamp-height advisor and substrate-aware coaching, with alert
+  thresholds shifted by the grow's tolerances
 - Fully local: no telemetry, no cloud calls, EXIF/GPS stripped from photos
 
 ## Development
@@ -74,5 +77,5 @@ just ci           # full gate: fmt, clippy, tests, WASM build
 ## License
 
 Released into the public domain via the [Unlicense](UNLICENSE)
-(SPDX: `Unlicense`). Bundled strain/seed data, when present, is third-party
-and carries its own source and licence per record.
+(SPDX: `Unlicense`). Bundled feed and substrate presets carry their
+source per record.
