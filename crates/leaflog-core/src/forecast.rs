@@ -111,11 +111,10 @@ pub struct ForecastInput {
     /// Autoflower total days from seed (overrides flower timing when
     /// present).
     pub auto_total_days: Option<(Day, Day)>,
-    /// Flower days (min, max); overrides the defaults. The name is
-    /// historical — any source may supply the override; the grow
-    /// carries no flower data, so [`input_for`] only fills it for the
-    /// auto default window.
-    pub strain_flower_days: Option<(Day, Day)>,
+    /// Flower days (min, max); overrides the defaults. Any source may
+    /// supply the override; the grow carries no flower data, so
+    /// [`input_for`] only fills it for the auto default window.
+    pub flower_days_override: Option<(Day, Day)>,
     /// The sourced default ranges (editable).
     pub defaults: PhaseDefaults,
     /// Logged actual events.
@@ -308,7 +307,7 @@ pub fn input_for(
     planned_veg_weeks: Option<u8>,
     actuals: Actuals,
 ) -> ForecastInput {
-    let (strain_flower_days, auto_total_days) = match photoperiod {
+    let (flower_days_override, auto_total_days) = match photoperiod {
         PhotoperiodType::Photoperiod => (None, None),
         PhotoperiodType::Auto => (
             Some((
@@ -322,7 +321,7 @@ pub fn input_for(
         photoperiod,
         planned_veg_weeks,
         auto_total_days,
-        strain_flower_days,
+        flower_days_override,
         defaults: PhaseDefaults::default(),
         actuals,
     }
@@ -401,7 +400,7 @@ fn add_vegetative(
     match input.photoperiod {
         PhotoperiodType::Photoperiod => {
             let flower = input
-                .strain_flower_days
+                .flower_days_override
                 .unwrap_or((d.flower_min, d.flower_max));
             let pinned = input.actuals.vegetative_start.is_some();
             let Some(weeks) = input.planned_veg_weeks else {
@@ -451,7 +450,7 @@ fn add_vegetative(
             // The flower window: an explicit override (the adapter's
             // derived default total) or the default ranges.
             let flower = input
-                .strain_flower_days
+                .flower_days_override
                 .unwrap_or((d.flower_min, d.flower_max));
             add(
                 windows,
@@ -584,7 +583,7 @@ mod tests {
             photoperiod: crate::grows::PhotoperiodType::Photoperiod,
             planned_veg_weeks: Some(4),
             auto_total_days: None,
-            strain_flower_days: None,
+            flower_days_override: None,
             defaults: PhaseDefaults::default(),
             actuals: Actuals::default(),
         }
@@ -599,7 +598,7 @@ mod tests {
                 for flower_max in [flower_min, flower_min + 21] {
                     let input = ForecastInput {
                         planned_veg_weeks: Some(veg),
-                        strain_flower_days: Some((Day::from(flower_min), Day::from(flower_max))),
+                        flower_days_override: Some((Day::from(flower_min), Day::from(flower_max))),
                         ..base_input()
                     };
                     let windows = forecast(&input);
@@ -1077,13 +1076,13 @@ mod tests {
     }
 
     #[test]
-    fn strain_flower_days_override_defaults() {
-        let with_strain = forecast(&ForecastInput {
-            strain_flower_days: Some((50, 60)),
+    fn flower_days_override_beats_defaults() {
+        let with_override = forecast(&ForecastInput {
+            flower_days_override: Some((50, 60)),
             ..base_input()
         });
         let without = forecast(&base_input());
-        let with = with_strain
+        let with = with_override
             .iter()
             .find(|w| w.phase == Phase::Flower)
             .expect("flower");

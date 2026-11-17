@@ -91,7 +91,7 @@ mod tests {
             photoperiod: PhotoperiodType::Photoperiod,
             planned_veg_weeks: Some(4),
             auto_total_days: None,
-            strain_flower_days: None,
+            flower_days_override: None,
             defaults: PhaseDefaults::default(),
             actuals: Actuals::default(),
         };

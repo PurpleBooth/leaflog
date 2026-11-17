@@ -126,6 +126,23 @@ as `seed_strains`'s side effect) into its own `seed_feed_presets`
 boot step, so first boot keeps seeding feed presets after the strain
 bundle — and the seeder itself — are gone.
 
+### D080: docs sweep — the flower override loses its name, SPEC keeps its numbering
+
+Ticket 06 (the docs sweep) settles two small shapes. First, the
+forecast seam's `strain_flower_days` input becomes
+`flower_days_override`: no strain feeds it any more, and the old name
+said otherwise. Call sites and tests follow; `input_for` still fills
+it only for the auto default window. The lamp advisor's `confidence`
+doc no longer promises a "high with a PPFD map" tier — the engine has
+always emitted "low", and no fixture map exists after D075. Second,
+SPEC.md keeps its section numbering while rewriting the removed
+sections in place (§4.1/§4.4/§4.13/§5.4 stay as headings marked
+"removed, D075"), so the cross-references from code comments, tests
+and the surviving sections survive the strip. THREAT-MODEL's stray
+references to bundled strain records and the CSV/JSON strain import
+are reworded to the surviving feed/substrate presets and a generic
+future data import.
+
 ---
 
 ## 2026-11-16 — grow overview redesign (D073 follow-up)

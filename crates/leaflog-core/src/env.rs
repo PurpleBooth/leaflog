@@ -373,8 +373,8 @@ pub struct LampAdvice {
     pub target_ppfd: Option<(u32, u32)>,
     /// Estimated DLI (mol/m²/day).
     pub dli: Option<f64>,
-    /// Confidence: "high" with a PPFD map, "low" from the wattage
-    /// table.
+    /// Confidence of the advice: always "low" — the wattage-class
+    /// table is the only source (no fixture map exists, D075).
     pub confidence: &'static str,
     /// Plain-English explanation.
     pub why: String,
