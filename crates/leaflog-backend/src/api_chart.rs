@@ -297,11 +297,7 @@ async fn fetch_light_staircase(
         Vec::new()
     };
     let merged = chart::merge_series(now, window, &ha_points, &points.snapshots);
-    merged
-        .points
-        .iter()
-        .filter_map(|point| Some((chart::parse_epoch(&point.at)?, point.value)))
-        .collect()
+    series_points(&merged)
 }
 
 /// The epochs of a series' points — the band builder's mean input.
@@ -555,7 +551,7 @@ fn resolve_light_timeline(
         loaded.photoperiod,
     );
     let sensor = chart::sensor_light_periods(from, to, staircase);
-    chart::resolve_light_periods(from, to, &schedule, &sensor)
+    chart::resolve_light_periods(from, &schedule, &sensor)
 }
 
 /// The stepped corridor for one role and light state: the day presets
