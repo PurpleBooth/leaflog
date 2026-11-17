@@ -528,6 +528,39 @@ pub fn resolve_light_periods(
     Some(resolved)
 }
 
+/// The Light Cycle schedule's light state at one instant — the point
+/// query behind the phase coach (the coach asks "are the lights on
+/// *now*", not for a timeline).
+///
+/// Expands the schedule over a window straddling `at` (one Chart day
+/// each side, plus the expansion's own one-day look-behind for
+/// on-periods that wrap midnight) and reads off the interval that
+/// covers `at`. Interval ends are exclusive, so an instant exactly at
+/// a lights-off boundary is already dark. `None` when the schedule
+/// has nothing to say at `at`: the unlit phases, an instant before
+/// the first phase span, or an unknown timezone — the caller decides
+/// what an unknown state means.
+#[must_use]
+pub fn schedule_light_on_at(
+    at: &str,
+    tz_name: &str,
+    spans: &[PhaseSpan],
+    cycle: &crate::light_cycle::LightCycle,
+    photoperiod: crate::strain::PhotoperiodType,
+) -> Option<bool> {
+    let moment: jiff::Timestamp = at.parse().ok()?;
+    let look_back = (moment - jiff::Span::new().hours(ChartWindow::Day.hours())).to_string();
+    let look_ahead = (moment + jiff::Span::new().hours(ChartWindow::Day.hours())).to_string();
+    let at_epoch = parse_epoch(at)?;
+    schedule_light_periods(&look_back, &look_ahead, tz_name, spans, cycle, photoperiod)
+        .iter()
+        .find_map(|interval| {
+            let start = parse_epoch(&interval.start)?;
+            let end = parse_epoch(&interval.end)?;
+            (start <= at_epoch && at_epoch < end).then_some(interval.on)
+        })
+}
+
 /// Builds the stepped band corridor for the window.
 ///
 /// Each phase span overlapping `[from, to]` is split at the
@@ -1025,7 +1058,7 @@ mod tests {
 mod light_timeline_tests {
     use super::{
         LightInterval, PhaseSpan, build_light_bands, parse_epoch, resolve_light_periods,
-        schedule_light_periods, sensor_light_periods,
+        schedule_light_on_at, schedule_light_periods, sensor_light_periods,
     };
     use crate::Phase;
     use crate::light_cycle::{ClockTime, LightCycle, PhaseHours};
@@ -1301,6 +1334,122 @@ mod light_timeline_tests {
                 PhotoperiodType::Photoperiod,
             ),
             Vec::new()
+        );
+    }
+
+    // --- the coach's point query ---
+
+    #[test]
+    fn light_on_at_reads_the_interval_covering_the_instant() {
+        // Berlin in November is UTC+1: a 08:00 lights-on with 12 h on
+        // runs 07:00Z–19:00Z. 12:00Z sits inside it, 20:00Z after it.
+        let spans = [span("2026-11-01T00:00:00Z", Phase::Germination)];
+        let cycle = cycle(ClockTime { hour: 8, minute: 0 }, 12);
+        assert_eq!(
+            schedule_light_on_at(
+                "2026-11-16T12:00:00Z",
+                "Europe/Berlin",
+                &spans,
+                &cycle,
+                PhotoperiodType::Photoperiod,
+            ),
+            Some(true)
+        );
+        assert_eq!(
+            schedule_light_on_at(
+                "2026-11-16T20:00:00Z",
+                "Europe/Berlin",
+                &spans,
+                &cycle,
+                PhotoperiodType::Photoperiod,
+            ),
+            Some(false)
+        );
+        // The boundary is half-open: the lights-off instant itself is
+        // already dark.
+        assert_eq!(
+            schedule_light_on_at(
+                "2026-11-16T19:00:00Z",
+                "Europe/Berlin",
+                &spans,
+                &cycle,
+                PhotoperiodType::Photoperiod,
+            ),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn light_on_at_sees_an_on_period_wrapping_from_the_previous_day() {
+        // 23:00 on with 4 h on spans midnight: at 01:00Z (02:00
+        // local) the previous day's on-period still covers the
+        // instant.
+        let spans = [span("2026-11-01T00:00:00Z", Phase::Germination)];
+        let cycle = cycle(
+            ClockTime {
+                hour: 23,
+                minute: 0,
+            },
+            4,
+        );
+        assert_eq!(
+            schedule_light_on_at(
+                "2026-11-16T01:00:00Z",
+                "Europe/Berlin",
+                &spans,
+                &cycle,
+                PhotoperiodType::Photoperiod,
+            ),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn light_on_at_has_nothing_to_say_without_a_schedule() {
+        // Before the first phase span, an unlit phase, a broken
+        // zone, or a broken instant: all unknown, not "off".
+        let germinating = [span("2026-11-01T00:00:00Z", Phase::Germination)];
+        let cycle = cycle(ClockTime { hour: 6, minute: 0 }, 18);
+        assert_eq!(
+            schedule_light_on_at(
+                "2026-10-15T12:00:00Z",
+                "Europe/Berlin",
+                &germinating,
+                &cycle,
+                PhotoperiodType::Photoperiod,
+            ),
+            None
+        );
+        let curing = [span("2026-11-01T00:00:00Z", Phase::Curing)];
+        assert_eq!(
+            schedule_light_on_at(
+                "2026-11-16T12:00:00Z",
+                "Europe/Berlin",
+                &curing,
+                &cycle,
+                PhotoperiodType::Photoperiod,
+            ),
+            None
+        );
+        assert_eq!(
+            schedule_light_on_at(
+                "2026-11-16T12:00:00Z",
+                "Mars/Olympus",
+                &germinating,
+                &cycle,
+                PhotoperiodType::Photoperiod,
+            ),
+            None
+        );
+        assert_eq!(
+            schedule_light_on_at(
+                "garbage",
+                "Europe/Berlin",
+                &germinating,
+                &cycle,
+                PhotoperiodType::Photoperiod,
+            ),
+            None
         );
     }
 

@@ -173,8 +173,9 @@ fn load_role(
 
 /// Loads the forecast windows for a grow: the same actuals as the
 /// forecast endpoint (D073 resolution), so the corridor matches the
-/// Gantt.
-fn load_windows(
+/// Gantt. Also the phase-span source for the coach's Light Cycle
+/// point query (D085).
+pub(crate) fn load_windows(
     conn: &rusqlite::Connection,
     grow: &Grow,
 ) -> Result<Vec<leaflog_core::forecast::PhaseWindow>, ApiError> {

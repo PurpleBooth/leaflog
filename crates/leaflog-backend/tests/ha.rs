@@ -1428,3 +1428,94 @@ async fn grow_history_steps_follow_the_bound_light_history() {
         Some(to)
     );
 }
+
+// --- Coach light state (ticket 08) ---
+
+/// The VPD tip's title out of a coach response.
+fn vpd_tip(coach: &Value) -> String {
+    coach["tips"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|tip| tip["title"].as_str().unwrap().to_owned())
+        .find(|title| title.contains("Keep VPD"))
+        .expect("the coach must carry the VPD tip")
+}
+
+/// The coach reads the bound light entity's live state: the fake room
+/// starts dark, so the VPD tip carries the researched night wording;
+/// flipping the fixture flips the tip (spec §4.9, D085).
+#[tokio::test]
+async fn coach_tips_follow_the_bound_light_state() {
+    let (mock_url, mock) = spawn_mock().await;
+    let (base, _db, bridge) = spawn_api(&mock_url).await;
+    wait_connected(&bridge).await;
+    let client = reqwest::Client::new();
+    let grow_id = create_germinating_grow(&base, "Coach light run").await;
+    client
+        .put(format!("{base}/api/grows/{grow_id}/bindings"))
+        .json(&json!({ "bindings": { "light": "light.grow_led" } }))
+        .send()
+        .await
+        .unwrap();
+
+    // The mock room starts with the light off; wait until the live
+    // map carries it.
+    assert!(!mock.room.lock().await.light_on);
+    for _ in 0..40 {
+        if bridge
+            .live_now()
+            .entities
+            .get("light.grow_led")
+            .is_some_and(|entity| entity.state == "off")
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+
+    let coach: Value = client
+        .get(format!("{base}/api/grows/{grow_id}/coach"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let tip = vpd_tip(&coach);
+    assert!(
+        tip.contains("(lights off: keep close to daytime; watch the RH spike)"),
+        "dark room must give the night wording, got {tip:?}"
+    );
+    assert!(
+        !tip.contains("run higher"),
+        "never 'run higher', got {tip:?}"
+    );
+
+    // Flip the fixture: the tip follows the live state.
+    mock.room.lock().await.toggle_light();
+    for _ in 0..40 {
+        if bridge
+            .live_now()
+            .entities
+            .get("light.grow_led")
+            .is_some_and(|entity| entity.state == "on")
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    let coach: Value = client
+        .get(format!("{base}/api/grows/{grow_id}/coach"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(
+        vpd_tip(&coach).contains("(lights on)"),
+        "lit room must give the day wording, got {:?}",
+        vpd_tip(&coach)
+    );
+}
