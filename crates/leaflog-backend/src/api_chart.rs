@@ -14,6 +14,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use leaflog_core::chart::{self, BandSegment, ChartSeries, ChartWindow, PhaseSpan, RawPoint};
 use leaflog_core::grows::Grow;
+use leaflog_core::strain::PhotoperiodType;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -70,6 +71,12 @@ struct LoadedGrow {
     windows: Vec<leaflog_core::forecast::PhaseWindow>,
     /// Per-role binding + snapshot points (VPD carries two).
     roles: Vec<(String, RolePoints)>,
+    /// The light role's binding + snapshot points, for the bound-light
+    /// staircase (only loaded for the stepped-band roles).
+    light: Option<RolePoints>,
+    /// The grow strain's photoperiod type, for the Light Cycle
+    /// defaults (the no-strain fallback matches the forecast's).
+    photoperiod: PhotoperiodType,
     /// The user's soil-moisture band override, when stored (else the
     /// core default applies).
     soil_band: Option<(f64, f64)>,
@@ -194,11 +201,15 @@ fn parse_soil_band(value: &Value) -> Option<(f64, f64)> {
 }
 
 /// The DB half of the chart: the grow, its forecast windows and the
-/// wanted roles' points, in one connection pass.
+/// wanted roles' points, in one connection pass. The stepped-band
+/// roles also load the light role's binding (the bound-light
+/// staircase) and the strain's photoperiod (the Light Cycle
+/// defaults).
 fn load_grow_db(
     conn: &rusqlite::Connection,
     grow_id: &str,
     wanted: &[String],
+    load_light: bool,
 ) -> Result<LoadedGrow, ApiError> {
     let grow = store::grows::get(conn, grow_id)?;
     let windows = load_windows(conn, &grow)?;
@@ -207,6 +218,14 @@ fn load_grow_db(
         let points = load_role(conn, &grow.id, role_name)?;
         roles.push((role_name.clone(), points));
     }
+    let light = load_light
+        .then(|| load_role(conn, &grow.id, "light"))
+        .transpose()?;
+    let strain = grow
+        .strain_id
+        .as_deref()
+        .and_then(|sid| store::strain::get(conn, sid).ok());
+    let photoperiod = strain.map_or(PhotoperiodType::Photoperiod, |s| s.photoperiod);
     let soil_band = store::settings::get(conn, "soil_moisture_band")
         .ok()
         .and_then(|value| parse_soil_band(&value));
@@ -214,60 +233,104 @@ fn load_grow_db(
         grow,
         windows,
         roles,
+        light,
+        photoperiod,
         soil_band,
     })
 }
 
-/// Fetches HA history per role, merges each with its snapshots, and
-/// reports whether HA degraded the chart and whether every needed
-/// role is bound.
+/// One role's fetched half: the merged windowed series plus whether
+/// HA degraded that role's fetch and whether it is bound.
+struct RoleFetch {
+    series: ChartSeries,
+    degraded: bool,
+    bound: bool,
+}
+
+/// Fetches HA history per role and merges each with its snapshots.
 async fn fetch_role_series(
     state: &AppState,
     loaded: &LoadedGrow,
     hours: u32,
     window: ChartWindow,
     now: &str,
-) -> (Vec<ChartSeries>, bool, bool) {
-    let mut degraded = false;
-    let mut series = Vec::new();
-    let mut all_bound = true;
+) -> Vec<RoleFetch> {
+    let mut fetched = Vec::new();
     for (role_name, points) in &loaded.roles {
         let mut ha_points = Vec::new();
+        let mut degraded = false;
         if let Some(entity_id) = &points.entity_id {
             match state.ha.history(entity_id, hours).await {
                 Ok(value) => ha_points = ha_history_points(role_name, &value),
                 Err(_) => degraded = true,
             }
         }
-        all_bound &= points.bound;
-        series.push(chart::merge_series(
-            now,
-            window,
-            &ha_points,
-            &points.snapshots,
-        ));
+        fetched.push(RoleFetch {
+            series: chart::merge_series(now, window, &ha_points, &points.snapshots),
+            degraded,
+            bound: points.bound,
+        });
     }
-    (series, degraded, all_bound)
+    fetched
+}
+
+/// The light role's staircase as `(epoch, value)` pairs, for the
+/// sensor-wins light timeline. A failed HA fetch contributes nothing —
+/// the Light Cycle schedule covers the window instead, and the chart
+/// is not marked degraded (the charted role's own fetch decides that).
+async fn fetch_light_staircase(
+    state: &AppState,
+    loaded: &LoadedGrow,
+    hours: u32,
+    window: ChartWindow,
+    now: &str,
+) -> Vec<(i64, f64)> {
+    let Some(points) = &loaded.light else {
+        return Vec::new();
+    };
+    let ha_points = if let Some(entity_id) = &points.entity_id
+        && let Ok(value) = state.ha.history(entity_id, hours).await
+    {
+        ha_history_points("light", &value)
+    } else {
+        Vec::new()
+    };
+    let merged = chart::merge_series(now, window, &ha_points, &points.snapshots);
+    merged
+        .points
+        .iter()
+        .filter_map(|point| Some((chart::parse_epoch(&point.at)?, point.value)))
+        .collect()
+}
+
+/// The epochs of a series' points — the band builder's mean input.
+fn series_points(series: &ChartSeries) -> Vec<(i64, f64)> {
+    series
+        .points
+        .iter()
+        .filter_map(|point| Some((chart::parse_epoch(&point.at)?, point.value)))
+        .collect()
 }
 
 /// Reduces the fetched per-role series to the response pair: the
-/// derived VPD from its two inputs, the input series with the runoff
-/// compare for pH/EC pairs, or the single role's series.
+/// derived VPD from its two inputs, or the single role's series.
+/// (The humidity and pH/EC pairs are handled by the caller — their
+/// degraded/bound state rides on one role only.)
 fn reduce_series(
     role: &str,
     is_vpd: bool,
-    mut role_series: Vec<ChartSeries>,
+    mut role_fetch: Vec<RoleFetch>,
     now: &str,
     window: ChartWindow,
 ) -> (ChartSeries, Option<ChartSeries>) {
     if is_vpd {
-        let mut series_iter = role_series.into_iter();
+        let mut series_iter = role_fetch.into_iter();
         let temperature = series_iter
             .next()
-            .unwrap_or_else(|| empty_series(now, window));
+            .map_or_else(|| empty_series(now, window), |fetch| fetch.series);
         let humidity = series_iter
             .next()
-            .unwrap_or_else(|| empty_series(now, window));
+            .map_or_else(|| empty_series(now, window), |fetch| fetch.series);
         let derived = chart::derive_vpd_series(
             &temperature,
             &humidity,
@@ -275,17 +338,11 @@ fn reduce_series(
         );
         return (derived, None);
     }
-    if matches!(role, "ph" | "ec") {
-        let compare = role_series.pop();
-        let series = role_series
-            .pop()
-            .unwrap_or_else(|| empty_series(now, window));
-        return (series, compare);
-    }
+    let _ = role;
     (
-        role_series
+        role_fetch
             .pop()
-            .unwrap_or_else(|| empty_series(now, window)),
+            .map_or_else(|| empty_series(now, window), |fetch| fetch.series),
         None,
     )
 }
@@ -308,6 +365,7 @@ async fn grow_history(
     if !is_vpd && !is_pair && !store::sensors::ROLES.contains(&role.as_str()) {
         return Err(ApiError::BadRequest(format!("unknown role {role}")));
     }
+    let is_stepped = matches!(role.as_str(), "temperature" | "humidity" | "vpd" | "co2");
     let window_label = query
         .window
         .ok_or_else(|| ApiError::BadRequest("window query parameter is required".to_owned()))?;
@@ -316,9 +374,14 @@ async fn grow_history(
     let tz = crate::app::canonical_timezone(&state).await;
 
     // The DB pass needs the role by value; the response echoes the
-    // original afterwards. pH/EC pairs read [input, runoff].
+    // original afterwards. pH/EC pairs read [input, runoff]; the
+    // humidity chart's band input is the temperature series (the
+    // humidity-as-temperature bug fixed at the root), so it fetches
+    // both.
     let wanted: Vec<String> = if is_vpd {
         vec!["temperature".to_owned(), "humidity".to_owned()]
+    } else if role == "humidity" {
+        vec!["humidity".to_owned(), "temperature".to_owned()]
     } else if role == "ph" {
         vec!["input_ph".to_owned(), "runoff_ph".to_owned()]
     } else if role == "ec" {
@@ -329,7 +392,7 @@ async fn grow_history(
     let id_for_db = id.clone();
     let loaded = state
         .db
-        .with(move |conn| load_grow_db(conn, &id_for_db, &wanted))
+        .with(move |conn| load_grow_db(conn, &id_for_db, &wanted, is_stepped))
         .await?;
 
     // HA history per bound entity (never the token itself). A failure
@@ -339,57 +402,73 @@ async fn grow_history(
     // Window hours are small positive constants (24 / 168 / 720).
     let hours = window.hours() as u32;
     let now = crate::db::now_rfc3339();
-    let (role_series, degraded, mut all_bound) =
-        fetch_role_series(&state, &loaded, hours, window, &now).await;
+    let mut role_fetch = fetch_role_series(&state, &loaded, hours, window, &now).await;
+    // The humidity band solves at the temperature series' points —
+    // pulled off before the reduce consumes the fetched series.
+    let humidity_band_points = role_fetch
+        .get(1)
+        .map_or_else(Vec::new, |fetch| series_points(&fetch.series));
 
     // Pair roles carry [input, runoff]: the input side decides the
-    // no-data state, the runoff side overlays as the compare series.
-    if is_pair {
-        all_bound = loaded.roles.first().is_some_and(|(_, points)| points.bound);
-    }
-
-    let (series, compare) = reduce_series(&role, is_vpd, role_series, &now, window);
+    // no-data state. The humidity chart's degraded/bound state rides
+    // on its own role; the temperature series only feeds the band.
+    let (series, compare, degraded, all_bound) = reduce_response(
+        &role,
+        is_pair,
+        is_vpd,
+        &loaded,
+        &mut role_fetch,
+        &now,
+        window,
+    );
 
     let spans: Vec<PhaseSpan> = chart::phase_spans(&loaded.grow.started_on, &tz, &loaded.windows);
-    let series_points: Vec<(i64, f64)> = series
-        .points
-        .iter()
-        .filter_map(|point| Some((chart::parse_epoch(&point.at)?, point.value)))
-        .collect();
-    let bands = chart::build_bands(
-        &series.from,
-        &series.to,
-        &series_points,
-        &spans,
-        |phase, mean| {
-            match role.as_str() {
-                "temperature" => {
-                    let corridor = leaflog_core::env::temperature_corridor(phase);
-                    Some((corridor.min_c, corridor.max_c))
-                }
-                // The RH window is the VPD band converted at the segment's
-                // mean temperature; no points, no honest window.
-                "humidity" => mean.map(|value| {
-                    leaflog_core::env::rh_window(
-                        value,
-                        leaflog_core::env::DEFAULT_LEAF_OFFSET_C,
-                        leaflog_core::env::vpd_band(phase),
-                    )
-                }),
-                "vpd" => {
-                    let (min, max) = leaflog_core::env::vpd_band(phase);
-                    Some((min, max))
-                }
-                // The user's override, else the sourced default preset.
-                "soil_moisture" => {
+
+    // The light-state timeline: the bound light entity's real history
+    // wins wherever it has readings; the Light Cycle schedule fills
+    // the gaps (and the whole window when unbound).
+    let light_periods = if is_stepped {
+        let staircase = fetch_light_staircase(&state, &loaded, hours, window, &now).await;
+        resolve_light_timeline(&staircase, &loaded, &tz, &spans, &series.from, &series.to)
+    } else {
+        None
+    };
+
+    // The humidity band solves at the temperature series' points; the
+    // other stepped roles use their own series (only the VPD band's
+    // input matters, and its corridor ignores the mean).
+    let band_points = if role == "humidity" {
+        humidity_band_points
+    } else {
+        series_points(&series)
+    };
+
+    let bands = match role.as_str() {
+        "temperature" | "humidity" | "vpd" | "co2" => chart::build_light_bands(
+            &series.from,
+            &series.to,
+            &band_points,
+            &spans,
+            light_periods.as_deref(),
+            |phase, light_on, mean| stepped_corridor(role.as_str(), phase, light_on, mean),
+        ),
+        // The soil band stays a single user-tunable corridor.
+        "soil_moisture" => {
+            let series_points = series_points(&series);
+            chart::build_bands(
+                &series.from,
+                &series.to,
+                &series_points,
+                &spans,
+                |_phase, _mean| {
                     let default = leaflog_core::env::SOIL_MOISTURE_BAND;
                     Some(loaded.soil_band.unwrap_or((default.min, default.max)))
-                }
-                // The remaining roles land with their own tickets.
-                _ => None,
-            }
-        },
-    );
+                },
+            )
+        }
+        // The remaining roles have no corridor.
+        _ => Vec::new(),
+    };
 
     Ok(Json(GrowHistory {
         role,
@@ -400,6 +479,140 @@ async fn grow_history(
         degraded,
         bound: all_bound,
     }))
+}
+
+/// Combines the fetched per-role series into the response series plus
+/// compare, degraded and bound flags. Pair roles ride on their input
+/// side; humidity's own fetch decides its chart's state (the
+/// temperature series only feeds the band).
+#[allow(clippy::type_complexity)] // the four-tuple mirrors the GrowHistory fields
+fn reduce_response(
+    role: &str,
+    is_pair: bool,
+    is_vpd: bool,
+    loaded: &LoadedGrow,
+    role_fetch: &mut [RoleFetch],
+    now: &str,
+    window: ChartWindow,
+) -> (ChartSeries, Option<ChartSeries>, bool, bool) {
+    let blank = || RoleFetch {
+        series: empty_series(now, window),
+        degraded: false,
+        bound: false,
+    };
+    if is_pair {
+        let mut role_series = role_fetch
+            .iter_mut()
+            .map(|fetch| std::mem::replace(&mut fetch.series, empty_series(now, window)))
+            .collect::<Vec<_>>();
+        let compare = role_series.pop();
+        let series = role_series
+            .pop()
+            .unwrap_or_else(|| empty_series(now, window));
+        let bound = loaded.roles.first().is_some_and(|(_, points)| points.bound);
+        return (series, compare, false, bound);
+    }
+    if role == "humidity" {
+        let humidity = role_fetch.first();
+        let series =
+            humidity.map_or_else(|| empty_series(now, window), |fetch| fetch.series.clone());
+        let degraded = humidity.is_some_and(|fetch| fetch.degraded);
+        let bound = humidity.is_some_and(|fetch| fetch.bound);
+        return (series, None, degraded, bound);
+    }
+    let mut degraded = false;
+    let mut all_bound = true;
+    for fetch in role_fetch.iter() {
+        degraded |= fetch.degraded;
+        all_bound &= fetch.bound;
+    }
+    let owned = role_fetch
+        .iter_mut()
+        .map(|fetch| std::mem::replace(fetch, blank()))
+        .collect();
+    let (series, compare) = reduce_series(role, is_vpd, owned, now, window);
+    (series, compare, degraded, all_bound)
+}
+
+/// Resolves the window's light-state timeline: the bound light
+/// entity's real staircase wins wherever it has readings; the Light
+/// Cycle schedule fills the gaps (and the whole window when unbound).
+fn resolve_light_timeline(
+    staircase: &[(i64, f64)],
+    loaded: &LoadedGrow,
+    tz: &str,
+    spans: &[PhaseSpan],
+    from: &str,
+    to: &str,
+) -> Option<Vec<chart::LightInterval>> {
+    let schedule = chart::schedule_light_periods(
+        from,
+        to,
+        tz,
+        spans,
+        &loaded.grow.light_cycle.unwrap_or_default(),
+        loaded.photoperiod,
+    );
+    let sensor = chart::sensor_light_periods(from, to, staircase);
+    chart::resolve_light_periods(from, to, &schedule, &sensor)
+}
+
+/// The stepped corridor for one role and light state: the day presets
+/// while lit (and when the state is unknown — today's behaviour), the
+/// sourced night presets in the dark. The humidity arm solves the RH
+/// window at the segment's actual mean temperature with the matching
+/// leaf offset; no points, no honest window.
+fn stepped_corridor(
+    role: &str,
+    phase: leaflog_core::Phase,
+    light_on: Option<bool>,
+    mean: Option<f64>,
+) -> Option<(f64, f64)> {
+    let dark = light_on == Some(false);
+    match role {
+        "temperature" => {
+            let day = leaflog_core::env::temperature_corridor(phase);
+            let night = dark
+                .then(|| leaflog_core::env::night_temperature_corridor(phase))
+                .flatten();
+            Some(night.map_or((day.min_c, day.max_c), |band| (band.min_c, band.max_c)))
+        }
+        "humidity" => {
+            let band = if dark {
+                leaflog_core::env::night_vpd_band(phase).map_or_else(
+                    || leaflog_core::env::vpd_band(phase),
+                    |night| (night.min_kpa, night.max_kpa),
+                )
+            } else {
+                leaflog_core::env::vpd_band(phase)
+            };
+            let offset = if dark {
+                leaflog_core::env::NIGHT_LEAF_OFFSET_C
+            } else {
+                leaflog_core::env::DEFAULT_LEAF_OFFSET_C
+            };
+            mean.map(|mean| leaflog_core::env::rh_window(mean, offset, band))
+        }
+        "vpd" => {
+            let day = leaflog_core::env::vpd_band(phase);
+            let night = dark
+                .then(|| leaflog_core::env::night_vpd_band(phase))
+                .flatten();
+            Some(night.map_or(day, |band| (band.min_kpa, band.max_kpa)))
+        }
+        // Enrichment while lit; ambient air in the dark.
+        "co2" => {
+            let (min, max) = if dark {
+                let night = leaflog_core::env::CO2_LIGHTS_OFF_PPM;
+                (night.min_ppm, night.max_ppm)
+            } else {
+                let day = leaflog_core::env::CO2_LIGHTS_ON_PPM;
+                (day.min_ppm, day.max_ppm)
+            };
+            Some((min, max))
+        }
+        _ => None,
+    }
 }
 
 /// An empty series covering the requested window (a role whose

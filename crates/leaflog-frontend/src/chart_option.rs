@@ -391,6 +391,7 @@ mod tests {
             min: 20.0,
             max: 26.0,
             phase: "vegetative".to_owned(),
+            light_on: None,
         }];
         let option = history_option(&banded, &look(), &style("temperature"));
         let area = &option["series"][0]["markArea"];
@@ -425,6 +426,7 @@ mod tests {
                 min: 20.0,
                 max: 26.0,
                 phase: "vegetative".to_owned(),
+                light_on: None,
             },
             // Half in: must clip to the window edge.
             BandSegmentData {
@@ -433,6 +435,7 @@ mod tests {
                 min: 20.0,
                 max: 26.0,
                 phase: "vegetative".to_owned(),
+                light_on: None,
             },
         ];
         let option = history_option(&banded, &look(), &style("temperature"));
@@ -457,6 +460,7 @@ mod tests {
             min: 20.0,
             max: 26.0,
             phase: "vegetative".to_owned(),
+            light_on: None,
         }];
         let option = history_option(&banded, &look(), &style("temperature"));
         let y_max = option["yAxis"]["max"].as_f64().expect("explicit max");
@@ -495,6 +499,7 @@ mod tests {
             min: 20.0,
             max: 26.0,
             phase: "vegetative".to_owned(),
+            light_on: None,
         }];
         let option = history_option(&banded, &look(), &style("temperature"));
         assert_eq!(option["series"][0]["lineStyle"]["color"], "#2e7d4f");
@@ -714,11 +719,159 @@ mod tests {
             min: 25.0,
             max: 45.0,
             phase: "vegetative".to_owned(),
+            light_on: None,
         }];
         let option = history_option(&soil, &look(), &style("soil_moisture"));
         assert_eq!(option["yAxis"]["name"], "%");
         let region = &option["series"][0]["markArea"]["data"][0];
         assert_eq!(region[0]["yAxis"].as_f64(), Some(45.0), "band top");
         assert_eq!(region[1]["yAxis"].as_f64(), Some(25.0), "band bottom");
+    }
+
+    // --- Stepped day/night bands (Light Cycle spec, ticket 07) ---
+
+    /// A day segment and a night segment with the germ-phase corridors
+    /// the backend emits: different ranges, stepping at the boundary.
+    fn stepped_bands() -> Vec<BandSegmentData> {
+        vec![
+            BandSegmentData {
+                start: "2026-11-16T00:00:00+00:00".to_owned(),
+                end: "2026-11-16T00:30:00+00:00".to_owned(),
+                min: 20.0,
+                max: 23.3,
+                phase: "germination".to_owned(),
+                light_on: Some(false),
+            },
+            BandSegmentData {
+                start: "2026-11-16T00:30:00+00:00".to_owned(),
+                end: "2026-11-16T01:00:00+00:00".to_owned(),
+                min: 21.1,
+                max: 26.7,
+                phase: "germination".to_owned(),
+                light_on: Some(true),
+            },
+        ]
+    }
+
+    #[test]
+    fn stepped_bands_render_one_region_per_segment_with_its_own_range() {
+        let mut stepped = sample_history();
+        stepped.bands = stepped_bands();
+        let option = history_option(&stepped, &look(), &style("temperature"));
+        let regions = option["series"][0]["markArea"]["data"]
+            .as_array()
+            .expect("mark area data");
+        assert_eq!(regions.len(), 2, "one region per stepped segment");
+        // Night first: its ceiling sits below the day's.
+        assert_eq!(regions[0][0]["yAxis"].as_f64(), Some(23.3));
+        assert_eq!(regions[0][1]["yAxis"].as_f64(), Some(20.0));
+        assert_eq!(
+            regions[0][0]["xAxis"].as_i64(),
+            Some(1_794_787_200_000),
+            "night region starts at the window"
+        );
+        assert_eq!(regions[1][0]["yAxis"].as_f64(), Some(26.7));
+        assert_eq!(regions[1][1]["yAxis"].as_f64(), Some(21.1));
+        assert_eq!(
+            regions[1][0]["xAxis"].as_i64(),
+            Some(1_794_789_000_000),
+            "day region starts at the step"
+        );
+        assert_eq!(
+            regions[1][1]["xAxis"].as_i64(),
+            Some(1_794_790_800_000),
+            "day region ends at the window end"
+        );
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)] // literal band edges compared for inequality, on purpose
+    fn many_varying_segments_all_reach_the_renderer() {
+        // A month window makes the backend emit dozens of alternating
+        // segments; none may collapse into another or drop out.
+        let mut stepped = sample_for_role("temperature");
+        stepped.series.from = "2026-11-16T00:00:00+00:00".to_owned();
+        stepped.series.to = "2026-11-20T00:00:00+00:00".to_owned();
+        // Four days of 12 h day/night alternation: 8 contiguous
+        // segments of varying heights.
+        stepped.bands = (0..8)
+            .map(|step| BandSegmentData {
+                start: format!(
+                    "2026-11-{}T{:02}:00:00+00:00",
+                    16 + step / 2,
+                    (step % 2) * 12
+                ),
+                end: format!(
+                    "2026-11-{}T{:02}:00:00+00:00",
+                    16 + (step + 1) / 2,
+                    ((step + 1) % 2) * 12
+                ),
+                min: if step % 2 == 0 { 20.0 } else { 21.1 },
+                max: if step % 2 == 0 { 23.3 } else { 26.7 },
+                phase: "germination".to_owned(),
+                light_on: Some(step % 2 == 1),
+            })
+            .collect();
+        let option = history_option(&stepped, &look(), &style("temperature"));
+        let regions = option["series"][0]["markArea"]["data"]
+            .as_array()
+            .expect("mark area data");
+        assert_eq!(regions.len(), 8, "every segment draws as its own region");
+        let ceilings: Vec<_> = regions
+            .iter()
+            .map(|region| region[0]["yAxis"].as_f64().unwrap())
+            .collect();
+        assert!(
+            ceilings.windows(2).any(|pair| pair[0] != pair[1]),
+            "the region heights vary between day and night"
+        );
+    }
+
+    #[test]
+    fn the_co2_chart_frames_its_day_and_night_ambient_bands() {
+        let mut co2 = sample_for_role("co2");
+        co2.bands = stepped_bands()
+            .into_iter()
+            .map(|mut band| {
+                band.min = if band.light_on == Some(true) {
+                    800.0
+                } else {
+                    400.0
+                };
+                band.max = if band.light_on == Some(true) {
+                    1500.0
+                } else {
+                    450.0
+                };
+                band
+            })
+            .collect();
+        let option = history_option(&co2, &look(), &style("co2"));
+        assert_eq!(option["yAxis"]["name"], "ppm");
+        let regions = option["series"][0]["markArea"]["data"]
+            .as_array()
+            .expect("mark area data");
+        assert_eq!(regions.len(), 2);
+        assert_eq!(
+            regions[0][0]["yAxis"].as_f64(),
+            Some(450.0),
+            "night ambient top"
+        );
+        assert_eq!(
+            regions[0][1]["yAxis"].as_f64(),
+            Some(400.0),
+            "night ambient floor"
+        );
+        assert_eq!(
+            regions[1][0]["yAxis"].as_f64(),
+            Some(1500.0),
+            "day enrichment top"
+        );
+        let y_max = option["yAxis"]["max"].as_f64().expect("explicit max");
+        let y_min = option["yAxis"]["min"].as_f64().expect("explicit min");
+        assert!(
+            y_max > 1500.0 && y_min < 400.0,
+            "axis frames both bands: {y_min}..{y_max}"
+        );
     }
 }
