@@ -1052,12 +1052,34 @@ async fn grow_history_serves_live_series_with_phase_bands() {
         "the auto-captured snapshot must back the series"
     );
     // The band corridor: the grow started today, so the window's
-    // current phase is germination with the §5.2 seedling/clone range.
+    // current phase is germination (§5.2 seedling/clone range). The
+    // default Light Cycle schedule fills the window from 06:00 local
+    // (D093: the schedule fills the gaps; D094: bands carry the light
+    // state), so how many segments appear depends on the run clock —
+    // assert every band carries its light state's corridor instead of
+    // a fixed count.
     let bands = body["bands"].as_array().unwrap();
-    assert_eq!(bands.len(), 1);
-    assert_eq!(bands[0]["phase"], "germination");
-    assert_eq!(bands[0]["min"], 21.1);
-    assert_eq!(bands[0]["max"], 26.7);
+    assert!(!bands.is_empty());
+    for pair in bands.windows(2) {
+        assert_eq!(pair[0]["end"], pair[1]["start"], "segments butt-join");
+    }
+    for band in bands {
+        assert_eq!(band["phase"], "germination");
+        let (min, max) = (band["min"].as_f64().unwrap(), band["max"].as_f64().unwrap());
+        if band["light_on"].as_bool() == Some(false) {
+            assert_eq!(
+                (min, max),
+                NIGHT_BAND,
+                "a dark stretch carries the lights-off corridor"
+            );
+        } else {
+            assert_eq!(
+                (min, max),
+                DAY_BAND,
+                "a lit (or unknown) stretch carries the day corridor"
+            );
+        }
+    }
 
     // Humidity's corridor is the phase's VPD band converted at the
     // segment's mean temperature (a clamped RH percentage). With the
