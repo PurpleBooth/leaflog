@@ -55,6 +55,7 @@ pub mod assets;
 pub mod db;
 pub mod ha;
 pub mod ingress;
+pub mod observed;
 pub mod photos;
 pub mod seed;
 pub mod store;

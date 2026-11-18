@@ -1120,6 +1120,7 @@ dependencies = [
  "futures-util",
  "image",
  "include_dir",
+ "jiff",
  "kamadak-exif",
  "leaflog-core",
  "mock-ha",

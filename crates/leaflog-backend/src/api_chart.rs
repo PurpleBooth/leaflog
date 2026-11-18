@@ -85,10 +85,10 @@ struct LoadedGrow {
 /// One role's storage half: the binding and the role's snapshot
 /// points.
 #[derive(Debug)]
-struct RolePoints {
-    bound: bool,
-    entity_id: Option<String>,
-    snapshots: Vec<RawPoint>,
+pub(crate) struct RolePoints {
+    pub(crate) bound: bool,
+    pub(crate) entity_id: Option<String>,
+    pub(crate) snapshots: Vec<RawPoint>,
 }
 
 /// Parses one raw sensor state into a series value. The `light` role
@@ -145,7 +145,7 @@ fn load_detail_role(
 
 /// Loads one role's storage half: the binding and the role's snapshot
 /// points (pH/EC roles read their points from log-entry details).
-fn load_role(
+pub(crate) fn load_role(
     conn: &rusqlite::Connection,
     grow_id: &str,
     role: &str,
@@ -293,7 +293,7 @@ async fn fetch_light_staircase(
 }
 
 /// The epochs of a series' points — the band builder's mean input.
-fn series_points(series: &ChartSeries) -> Vec<(i64, f64)> {
+pub(crate) fn series_points(series: &ChartSeries) -> Vec<(i64, f64)> {
     series
         .points
         .iter()
@@ -616,7 +616,7 @@ fn empty_series(now: &str, window: ChartWindow) -> ChartSeries {
 /// unparseable states (a sensor reporting `unavailable`) and objects
 /// without a usable timestamp are skipped.
 #[must_use]
-fn ha_history_points(role: &str, history: &Value) -> Vec<RawPoint> {
+pub(crate) fn ha_history_points(role: &str, history: &Value) -> Vec<RawPoint> {
     let Some(series_list) = history.as_array() else {
         return Vec::new();
     };

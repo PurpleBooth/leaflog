@@ -29,7 +29,7 @@ pub const BINDING_ROLES: &[(&str, &str)] = &[
 /// payload are unchanged from the overview's old live-panel pickers.
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
-pub fn EntityBindings(grow_id: String) -> impl IntoView {
+pub fn EntityBindings(grow_id: String, bindings_epoch: RwSignal<u64>) -> impl IntoView {
     let bindings = RwSignal::<BTreeMap<String, String>>::new(BTreeMap::new());
     let entities = RwSignal::<Vec<serde_json::Value>>::new(Vec::new());
     let error = RwSignal::<Option<String>>::new(None);
@@ -74,7 +74,13 @@ pub fn EntityBindings(grow_id: String) -> impl IntoView {
             )
             .await
             {
-                Ok(_) => error.set(None),
+                Ok(_) => {
+                    error.set(None);
+                    // Saved bindings change what the grow's observed
+                    // reality says: bump the epoch so the Light Cycle
+                    // caption re-derives (D102).
+                    bindings_epoch.update(|epoch| *epoch += 1);
+                }
                 Err(failure) => error.set(Some(failure.message)),
             }
         });

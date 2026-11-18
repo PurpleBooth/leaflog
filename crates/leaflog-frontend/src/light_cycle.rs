@@ -11,7 +11,8 @@ use leptos::task::spawn_local;
 use leaflog_core::Phase;
 use leaflog_core::grows::PhotoperiodType;
 use leaflog_core::light_cycle::{
-    LIT_PHASES, LightCycle, LightCycleInput, PhaseHoursInput, default_hours_on,
+    LIT_PHASES, LightCycle, LightCycleInput, LightCycleResponse, ObservedReality, PhaseHoursInput,
+    default_hours_on,
 };
 
 use crate::api;
@@ -99,29 +100,46 @@ fn optional_field(hours: Option<u8>) -> String {
     hours.map_or_else(String::new, |hours| hours.to_string())
 }
 
+/// The one-line reality caption for a bound light entity (grow-page
+/// rework, ticket 03): names the entity and the pattern learned from
+/// it, so the defaults' override status is visible. Display only —
+/// the learned values never reach the editable fields (ADR 0002).
+fn reality_caption(observed: &ObservedReality) -> String {
+    format!(
+        "Reality from: {} · learned {} · {} h",
+        observed.entity_id, observed.lights_on, observed.hours_on
+    )
+}
+
 /// The Light Cycle editor form: one lights-on time input plus
 /// hours-on per lit phase. Placeholders show the photoperiod-aware preset
-/// defaults; reset clears the whole override.
+/// defaults; reset clears the whole override. When a light entity is
+/// bound, a caption reports the pattern learned from its history
+/// (D102); `bindings_epoch` bumps when the entity bindings save, so
+/// the caption re-derives without a page reload.
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
 pub fn LightCycleEditor(
     grow_id: Signal<String>,
     photoperiod: Signal<PhotoperiodType>,
+    bindings_epoch: Signal<u64>,
 ) -> impl IntoView {
     let lights_on = RwSignal::<String>::new(String::new());
     let hours = RwSignal::<HoursText>::new(HoursText::default());
     let stored = RwSignal::<bool>::new(false);
     let status = RwSignal::<Option<String>>::new(None);
+    let observed = RwSignal::<Option<ObservedReality>>::new(None);
 
     // Loads whatever is stored (the endpoint answers the empty cycle
     // when nothing is, so blanks always mean "on the default").
     let reload = move || {
         let id = grow_id.get();
         spawn_local(async move {
-            match api::get::<LightCycle>(&format!("api/grows/{id}/light-cycle")).await {
-                Ok(cycle) => {
-                    let (time, fields) = fields_of(&cycle);
-                    stored.set(cycle.has_override());
+            match api::get::<LightCycleResponse>(&format!("api/grows/{id}/light-cycle")).await {
+                Ok(response) => {
+                    let (time, fields) = fields_of(&response.cycle);
+                    stored.set(response.cycle.has_override());
+                    observed.set(response.observed);
                     lights_on.set(time);
                     hours.set(fields);
                 }
@@ -130,6 +148,9 @@ pub fn LightCycleEditor(
         });
     };
     Effect::new(move |_| {
+        // A binding change re-derives the observed reality (D102):
+        // tracking the epoch reloads alongside the grow id.
+        bindings_epoch.get();
         reload();
     });
 
@@ -182,6 +203,15 @@ pub fn LightCycleEditor(
         <p class="text-base-content/70 text-sm">
             "Empty fields use the cited preset defaults; hover a field for its source."
         </p>
+        {move || {
+            observed.get().map(|reality| {
+                view! {
+                    <p class="text-base-content/70 text-sm" data-testid="light-reality">
+                        {reality_caption(&reality)}
+                    </p>
+                }
+            })
+        }}
         <form class="flex flex-wrap gap-2 items-end my-2" on:submit=save>
             <label class="fieldset">
                 <span class="fieldset-label">"Lights on time (local)"</span>
@@ -298,5 +328,18 @@ mod tests {
         assert_eq!(time, "21:15");
         assert_eq!(fields.flower, "11");
         assert_eq!(fields.vegetative, "");
+    }
+
+    #[test]
+    fn the_caption_names_the_entity_and_its_learned_pattern() {
+        let reality = leaflog_core::light_cycle::ObservedReality {
+            entity_id: "switch.grow_led".to_owned(),
+            lights_on: ClockTime { hour: 6, minute: 0 },
+            hours_on: 18,
+        };
+        assert_eq!(
+            super::reality_caption(&reality),
+            "Reality from: switch.grow_led · learned 06:00 · 18 h"
+        );
     }
 }

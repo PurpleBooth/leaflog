@@ -3,7 +3,9 @@
 // preset defaults as placeholders (photoperiod 12 h flower vs an
 // autoflower's long days) and clear errors for out-of-range hours.
 // The editor lives on the grow edit page since the grow-page rework
-// (ticket 01).
+// (ticket 01). When a light entity is bound, a caption reports the
+// pattern learned from its history (grow-page rework, ticket 03) —
+// display only, the fields stay editable defaults.
 
 import { test, expect } from '@playwright/test';
 import {
@@ -112,6 +114,59 @@ test('an autoflower grow defaults to long days through flower', async ({
     'placeholder',
     '18',
   );
+});
+
+test('the bound light captions the editor with its learned reality', async ({
+  page,
+  request,
+}) => {
+  const growId = await createGrow(request, uniqueName('E2E Cycle Reality'));
+  // The mock HA's light.grow_led history is a staircase with one lit
+  // stretch: on 20 h ago, off 18 h ago — two learned hours on.
+  await api(request, 'PUT', `api/grows/${growId}/bindings`, {
+    bindings: { light: 'light.grow_led' },
+  });
+  await page.goto(url(`/grows/${growId}/edit`));
+
+  // The learned time follows the mock's wall clock, the hours do not.
+  await expect(page.getByTestId('light-reality')).toHaveText(
+    /Reality from: light\.grow_led · learned \d{2}:\d{2} · 2 h/,
+  );
+
+  // The learned values stay display-only: blanks still mean the
+  // defaults, never a write-back from reality (ADR 0002).
+  await expect(page.getByLabel('Lights on time (local)')).toHaveValue('');
+  await expect(page.getByLabel('Vegetative hours on')).toHaveValue('');
+});
+
+test('binding a light through the picker captions without a reload', async ({
+  page,
+  request,
+}) => {
+  const growId = await createGrow(request, uniqueName('E2E Cycle Live'));
+  await page.goto(url(`/grows/${growId}/edit`));
+
+  // Unbound: only the editable defaults, no caption.
+  await expect(page.getByTestId('light-reality')).toHaveCount(0);
+
+  // The form's "Light tolerance" select shares the word: scope to
+  // the bindings row whose label text is exactly "Light".
+  const lightPicker = page
+    .locator('label.fieldset', {
+      has: page.getByText('Light', { exact: true }),
+    })
+    .getByRole('combobox');
+  armNoReloadGuard(page);
+  await lightPicker.selectOption('light.grow_led');
+  await expectNoReload(page);
+  await expect(page.getByTestId('light-reality')).toHaveText(
+    /Reality from: light\.grow_led · learned \d{2}:\d{2} · 2 h/,
+  );
+
+  // Unbinding drops it again, still inside the SPA.
+  await lightPicker.selectOption('');
+  await expectNoReload(page);
+  await expect(page.getByTestId('light-reality')).toHaveCount(0);
 });
 
 test('out-of-range hours are rejected with a clear error', async ({

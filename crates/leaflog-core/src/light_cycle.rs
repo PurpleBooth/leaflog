@@ -7,6 +7,7 @@
 //! photoperiod-aware defaults. Period expansion against a timezone is
 //! later work (ticket 07) and keeps living in the chart engine.
 
+use std::collections::BTreeMap;
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
@@ -331,6 +332,143 @@ pub const fn default_hours_on(
     }
 }
 
+/// Staircase values at or above this threshold read as lit.
+pub const ON_THRESHOLD: f64 = 0.5;
+
+/// The light pattern learned from a bound entity's real history:
+/// when its light comes on, and how long it stays on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObservedCycle {
+    /// The learned daily lights-on wall-clock time, local to the
+    /// grow's canonical timezone.
+    pub lights_on: ClockTime,
+    /// The learned daily lit hours, rounded to whole hours.
+    pub hours_on: u8,
+}
+
+/// The observed reality served with the editable Light Cycle: the
+/// bound light entity plus the pattern learned from its history.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObservedReality {
+    /// The entity id the pattern was learned from.
+    pub entity_id: String,
+    /// The learned daily lights-on time.
+    pub lights_on: ClockTime,
+    /// The learned daily lit hours.
+    pub hours_on: u8,
+}
+
+/// GET payload of the light-cycle endpoint.
+///
+/// The stored editable cycle (all-`None` reads as the defaults)
+/// plus, when a light entity is bound and has history, the observed
+/// reality that overrides the defaults for display (D102, ADR 0002).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct LightCycleResponse {
+    /// The stored editable cycle.
+    #[serde(flatten)]
+    pub cycle: LightCycle,
+    /// The observed reality, omitted when unbound or without usable
+    /// history.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed: Option<ObservedReality>,
+}
+
+/// Derives the observed cycle from a light entity's staircase
+/// history.
+///
+/// ([`crate::chart::sensor_light_periods`] semantics: a
+/// reading holds until the next, the last until `now_epoch`, values
+/// at or above [`ON_THRESHOLD`] count as lit).
+///
+/// `hours_on` is the lit share of the observed span expressed as
+/// 24-hour days, rounded to a whole hour and clamped to the legal
+/// range: absolute durations, so DST transitions shift a day's lit
+/// length by exactly the offset change. `lights_on` is the circular
+/// mean of each local day's first lit start, so midnight-crossing
+/// schedules and offset changes cannot wrap it. Histories that never
+/// light up (or cover zero seconds) yield `None`.
+///
+/// # Panics
+///
+/// Never: unresolvable zone names fall back to UTC.
+///
+/// Lossy casts are sound here: epoch seconds sit far below f64's
+/// exact-integer range, and both results are clamped into range
+/// before narrowing (same allow as `env.rs`'s rounding).
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss
+)]
+#[must_use]
+pub fn observed_cycle(
+    staircase: &[(i64, f64)],
+    now_epoch: i64,
+    tz_name: &str,
+) -> Option<ObservedCycle> {
+    let first = staircase.first()?;
+    let span = now_epoch - first.0;
+    if span <= 0 {
+        return None;
+    }
+    let zone = jiff::tz::TimeZone::get(tz_name).unwrap_or(jiff::tz::TimeZone::UTC);
+
+    let mut lit_secs: i64 = 0;
+    // Local date -> minutes since local midnight of that day's
+    // earliest lit start.
+    let mut first_lit_per_day: BTreeMap<String, i64> = BTreeMap::new();
+    for index in 0..staircase.len() {
+        let (start, value) = staircase[index];
+        if value < ON_THRESHOLD {
+            continue;
+        }
+        // A reading holds until the next; the last until now.
+        let end = staircase
+            .get(index + 1)
+            .map_or(now_epoch, |next| next.0.min(now_epoch));
+        let length = end - start;
+        if length <= 0 {
+            continue;
+        }
+        lit_secs += length;
+        if let Ok(stamp) = jiff::Timestamp::from_second(start) {
+            let local = stamp.to_zoned(zone.clone());
+            let minute = i64::from(local.hour()) * 60 + i64::from(local.minute());
+            first_lit_per_day
+                .entry(local.date().to_string())
+                .and_modify(|kept| *kept = (*kept).min(minute))
+                .or_insert(minute);
+        }
+    }
+    if lit_secs == 0 {
+        return None;
+    }
+
+    let hours_on = ((lit_secs as f64 / span as f64) * 24.0)
+        .round()
+        .clamp(f64::from(MIN_HOURS_ON), f64::from(MAX_HOURS_ON)) as u8;
+
+    let mut sin_sum = 0.0_f64;
+    let mut cos_sum = 0.0_f64;
+    for &minute in first_lit_per_day.values() {
+        let angle = minute as f64 * std::f64::consts::TAU / 1440.0;
+        sin_sum += angle.sin();
+        cos_sum += angle.cos();
+    }
+    let mean_minute = (sin_sum.atan2(cos_sum) * 1440.0 / std::f64::consts::TAU)
+        .round()
+        .rem_euclid(1440.0) as u32;
+    let minute = mean_minute.clamp(0, 1439);
+    Some(ObservedCycle {
+        lights_on: ClockTime {
+            hour: (minute / 60) as u8,
+            minute: (minute % 60) as u8,
+        },
+        hours_on,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -621,5 +759,251 @@ mod tests {
         assert!(json.contains("\"flower\":12"));
         let back: LightCycle = serde_json::from_str(&json).unwrap();
         assert_eq!(back, cycle);
+    }
+
+    // --- Observed reality (grow-page rework, ticket 03) -------------------
+
+    /// Builds a staircase from RFC 3339 stamps, the shape HA history
+    /// merges into.
+    fn stairs(entries: &[(&str, f64)]) -> Vec<(i64, f64)> {
+        entries
+            .iter()
+            .map(|(at, value)| {
+                let ts: jiff::Timestamp = at.parse().unwrap();
+                (ts.as_second(), *value)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn observed_cycle_learns_a_clean_utc_schedule() {
+        // Three days of lights on 06:00-24:00 UTC: 18 h lit per day,
+        // first on at 06:00 each day.
+        let staircase = stairs(&[
+            ("2026-01-05T00:00:00Z", 0.0),
+            ("2026-01-05T06:00:00Z", 1.0),
+            ("2026-01-06T00:00:00Z", 0.0),
+            ("2026-01-06T06:00:00Z", 1.0),
+            ("2026-01-07T00:00:00Z", 0.0),
+            ("2026-01-07T06:00:00Z", 1.0),
+        ]);
+        let now: jiff::Timestamp = "2026-01-08T00:00:00Z".parse().unwrap();
+        assert_eq!(
+            super::observed_cycle(&staircase, now.as_second(), "UTC"),
+            Some(super::ObservedCycle {
+                lights_on: super::ClockTime { hour: 6, minute: 0 },
+                hours_on: 18,
+            })
+        );
+    }
+
+    #[test]
+    fn observed_cycle_is_midnight_crossing_safe() {
+        // Lights on 18:00 to next-day 12:00: 18 h lit, learned on-time
+        // must not wrap to the afternoon off marker.
+        let staircase = stairs(&[
+            ("2026-01-05T12:00:00Z", 0.0),
+            ("2026-01-05T18:00:00Z", 1.0),
+            ("2026-01-06T12:00:00Z", 0.0),
+            ("2026-01-06T18:00:00Z", 1.0),
+            ("2026-01-07T12:00:00Z", 0.0),
+        ]);
+        let now: jiff::Timestamp = "2026-01-07T12:00:00Z".parse().unwrap();
+        assert_eq!(
+            super::observed_cycle(&staircase, now.as_second(), "UTC"),
+            Some(super::ObservedCycle {
+                lights_on: super::ClockTime {
+                    hour: 18,
+                    minute: 0
+                },
+                hours_on: 18,
+            })
+        );
+    }
+
+    #[test]
+    fn observed_cycle_survives_dst_fall_back() {
+        // Europe/Berlin falls back on 2026-10-25 (03:00 CEST -> 02:00
+        // CET). Lights 01:00-19:00 local: the Sunday gains an hour of
+        // absolute light (19 h), 55 h lit over the 72 h span still
+        // rounds to 18 h, and each day's first on is still 01:00
+        // local despite the offset change.
+        let staircase = stairs(&[
+            ("2026-10-23T18:00:00Z", 0.0),
+            ("2026-10-23T23:00:00Z", 1.0),
+            ("2026-10-24T17:00:00Z", 0.0),
+            ("2026-10-24T23:00:00Z", 1.0),
+            ("2026-10-25T18:00:00Z", 0.0),
+            ("2026-10-26T00:00:00Z", 1.0),
+            ("2026-10-26T18:00:00Z", 0.0),
+        ]);
+        let now: jiff::Timestamp = "2026-10-26T18:00:00Z".parse().unwrap();
+        assert_eq!(
+            super::observed_cycle(&staircase, now.as_second(), "Europe/Berlin"),
+            Some(super::ObservedCycle {
+                lights_on: super::ClockTime { hour: 1, minute: 0 },
+                hours_on: 18,
+            })
+        );
+    }
+
+    #[test]
+    fn observed_cycle_survives_dst_spring_forward() {
+        // Europe/Berlin springs forward on 2026-03-29 (02:00 -> 03:00
+        // CEST). Lights 01:00-19:00 local: the Sunday loses an hour of
+        // absolute light (17 h), the learned hours stay 18, and each
+        // day's first on is still 01:00 local despite the offset
+        // change.
+        let staircase = stairs(&[
+            ("2026-03-27T19:00:00Z", 0.0),
+            ("2026-03-28T00:00:00Z", 1.0),
+            ("2026-03-28T18:00:00Z", 0.0),
+            ("2026-03-29T00:00:00Z", 1.0),
+            ("2026-03-29T17:00:00Z", 0.0),
+            ("2026-03-29T23:00:00Z", 1.0),
+            ("2026-03-30T17:00:00Z", 0.0),
+        ]);
+        let now: jiff::Timestamp = "2026-03-30T17:00:00Z".parse().unwrap();
+        assert_eq!(
+            super::observed_cycle(&staircase, now.as_second(), "Europe/Berlin"),
+            Some(super::ObservedCycle {
+                lights_on: super::ClockTime { hour: 1, minute: 0 },
+                hours_on: 18,
+            })
+        );
+    }
+
+    #[test]
+    fn observed_cycle_handles_irregular_histories() {
+        // A split day (06:00-12:00 plus 13:00-24:00, 17 h lit) with
+        // mid-day off gaps: hours from the lit share of the span,
+        // on-time from each day's FIRST on start.
+        let staircase = stairs(&[
+            ("2026-01-05T00:00:00Z", 0.0),
+            ("2026-01-05T06:00:00Z", 1.0),
+            ("2026-01-05T12:00:00Z", 0.0),
+            ("2026-01-05T13:00:00Z", 1.0),
+            ("2026-01-06T00:00:00Z", 0.0),
+            ("2026-01-06T06:00:00Z", 1.0),
+            ("2026-01-06T12:00:00Z", 0.0),
+            ("2026-01-06T13:00:00Z", 1.0),
+            ("2026-01-07T00:00:00Z", 0.0),
+        ]);
+        let now: jiff::Timestamp = "2026-01-07T00:00:00Z".parse().unwrap();
+        assert_eq!(
+            super::observed_cycle(&staircase, now.as_second(), "UTC"),
+            Some(super::ObservedCycle {
+                lights_on: super::ClockTime { hour: 6, minute: 0 },
+                hours_on: 17,
+            })
+        );
+    }
+
+    #[test]
+    fn observed_cycle_smooths_drifting_on_times_circularly() {
+        // Day one on 06:00-24:00, day two on 06:30-23:30: 35 h lit
+        // over 48 h (17.5 -> 18 h), on-time the circular mean 06:15.
+        let staircase = stairs(&[
+            ("2026-01-05T00:00:00Z", 0.0),
+            ("2026-01-05T06:00:00Z", 1.0),
+            ("2026-01-06T00:00:00Z", 0.0),
+            ("2026-01-06T06:30:00Z", 1.0),
+            ("2026-01-06T23:30:00Z", 0.0),
+        ]);
+        let now: jiff::Timestamp = "2026-01-07T00:00:00Z".parse().unwrap();
+        assert_eq!(
+            super::observed_cycle(&staircase, now.as_second(), "UTC"),
+            Some(super::ObservedCycle {
+                lights_on: super::ClockTime {
+                    hour: 6,
+                    minute: 15
+                },
+                hours_on: 18,
+            })
+        );
+    }
+
+    #[test]
+    fn observed_cycle_returns_none_without_usable_data() {
+        let now: jiff::Timestamp = "2026-01-08T00:00:00Z".parse().unwrap();
+        // No history at all.
+        assert_eq!(super::observed_cycle(&[], now.as_second(), "UTC"), None);
+        // History, but never lit.
+        let dark = stairs(&[("2026-01-05T00:00:00Z", 0.0)]);
+        assert_eq!(super::observed_cycle(&dark, now.as_second(), "UTC"), None);
+        // A single lit reading at "now" covers zero seconds.
+        let instant = stairs(&[("2026-01-08T00:00:00Z", 1.0)]);
+        assert_eq!(
+            super::observed_cycle(&instant, now.as_second(), "UTC"),
+            None
+        );
+    }
+
+    #[test]
+    fn observed_cycle_falls_back_to_whatever_exists() {
+        // One lit minute is all there is: fully lit over its span, so
+        // 24 h, on-time that minute's local stamp.
+        let staircase = stairs(&[("2026-01-08T11:59:00Z", 1.0)]);
+        let now: jiff::Timestamp = "2026-01-08T12:00:00Z".parse().unwrap();
+        assert_eq!(
+            super::observed_cycle(&staircase, now.as_second(), "UTC"),
+            Some(super::ObservedCycle {
+                lights_on: super::ClockTime {
+                    hour: 11,
+                    minute: 59
+                },
+                hours_on: 24,
+            })
+        );
+    }
+
+    #[test]
+    fn observed_cycle_falls_back_to_utc_for_unknown_zones() {
+        let staircase = stairs(&[
+            ("2026-01-05T00:00:00Z", 0.0),
+            ("2026-01-05T06:00:00Z", 1.0),
+            ("2026-01-06T00:00:00Z", 0.0),
+            ("2026-01-06T06:00:00Z", 1.0),
+        ]);
+        let now: jiff::Timestamp = "2026-01-07T00:00:00Z".parse().unwrap();
+        assert_eq!(
+            super::observed_cycle(&staircase, now.as_second(), "Mars/Olympus"),
+            Some(super::ObservedCycle {
+                lights_on: super::ClockTime { hour: 6, minute: 0 },
+                hours_on: 18,
+            })
+        );
+    }
+
+    #[test]
+    fn light_cycle_response_omits_observed_when_absent() {
+        let response = super::LightCycleResponse {
+            cycle: super::LightCycle::default(),
+            observed: None,
+        };
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(!json.contains("observed"));
+        let back: super::LightCycleResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.observed, None);
+    }
+
+    #[test]
+    fn light_cycle_response_round_trips_observed() {
+        let response = super::LightCycleResponse {
+            cycle: super::LightCycle {
+                lights_on: Some(super::ClockTime { hour: 6, minute: 0 }),
+                hours_on: super::PhaseHours::default(),
+            },
+            observed: Some(super::ObservedReality {
+                entity_id: "switch.grow_led".to_owned(),
+                lights_on: super::ClockTime { hour: 6, minute: 0 },
+                hours_on: 18,
+            }),
+        };
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"observed\":{"));
+        assert!(json.contains("\"entity_id\":\"switch.grow_led\""));
+        let back: super::LightCycleResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.observed, response.observed);
     }
 }
