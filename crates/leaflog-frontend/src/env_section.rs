@@ -10,7 +10,10 @@
 //! existing binding flow. Ticket 05 folds the light story into the
 //! Air charts: a night shading behind them (the bound light's
 //! history, or the Light Cycle when no light is bound) replaces the
-//! standalone Light card.
+//! standalone Light card. Ticket 07 mounts the Root zone chart grid
+//! lazily — the charts wait for the group's first scroll into view
+//! (with an immediate-render fallback), while the group labels stay
+//! structural so the section's outline never flickers.
 
 use std::collections::BTreeMap;
 
@@ -24,6 +27,7 @@ use crate::route_href;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::components::A;
+use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 
 /// localStorage key holding the shared chart window as a wire label
 /// (`day` / `week` / `month`).
@@ -134,6 +138,105 @@ fn GroupLabel(text: &'static str, #[prop(default = "")] hint: &'static str) -> i
     }
 }
 
+/// Whether this browser exposes `IntersectionObserver` — the gate
+/// between the lazy and immediate mount paths. Probed reflectively
+/// (the same seam the `ECharts` bridge uses) so availability is one
+/// lookup, not a constructor round-trip.
+fn intersection_observer_available() -> bool {
+    web_sys::window()
+        .and_then(|window| {
+            js_sys::Reflect::get(window.as_ref(), &JsValue::from_str("IntersectionObserver")).ok()
+        })
+        .is_some_and(|candidate| candidate.dyn_into::<js_sys::Function>().is_ok())
+}
+
+/// The lazy group's initial render state (ticket 07): with an
+/// observer the charts wait for the first intersection; without one
+/// there is nothing to wait for, so they render immediately — the
+/// fallback keeps the group readable on every browser.
+const fn initial_visible(observer_available: bool) -> bool {
+    !observer_available
+}
+
+/// A lazily mounted block of the section (ticket 07): the Root zone
+/// chart grid renders only once its anchor scrolls into view, so the
+/// first paint skips the three history fetches a visitor may never
+/// scroll to. The block mounts once — the observer disconnects on
+/// the first intersection and never re-runs the work, whatever the
+/// scroll does afterwards. The group's label is deliberately not
+/// part of the block: the section's outline stays structural, so a
+/// visitor always sees what is coming, and the label is the natural
+/// scroll target for it.
+#[component]
+fn LazyCharts(children: ChildrenFn) -> impl IntoView {
+    let visible = RwSignal::new(initial_visible(intersection_observer_available()));
+    // The observer slot: filled once the anchor mounts, taken (and
+    // disconnected) at the first intersection or at cleanup,
+    // whichever comes first. The callback rides in the same slot so
+    // its lifetime matches the observer's exactly.
+    let observer_slot = StoredValue::new_local(
+        Option::<(
+            web_sys::IntersectionObserver,
+            Closure<dyn FnMut(js_sys::Array)>,
+        )>::None,
+    );
+    let anchor = NodeRef::<leptos::html::Div>::new();
+
+    // Disconnect the observer (if any) and drop the slot's pair —
+    // closure and observer live and die together.
+    let drop_observer = move || {
+        observer_slot.update_value(|slot| {
+            if let Some((observer, _callback)) = slot.take() {
+                observer.disconnect();
+            }
+        });
+    };
+
+    Effect::new(move |_| {
+        if visible.get() {
+            drop_observer();
+            return;
+        }
+        // Wait for the anchor element to exist before observing it.
+        let Some(anchor) = anchor.get() else { return };
+        let entered = visible;
+        let callback = Closure::<dyn FnMut(js_sys::Array)>::new(move |entries: js_sys::Array| {
+            let intersected = entries.to_vec().iter().any(|entry| {
+                entry
+                    .dyn_ref::<web_sys::IntersectionObserverEntry>()
+                    .is_some_and(web_sys::IntersectionObserverEntry::is_intersecting)
+            });
+            if intersected {
+                entered.set(true);
+            }
+        });
+        // The new wasm-bindgen closures hand JavaScript a function,
+        // not themselves (theme.rs keeps a pair alive the same way).
+        let handler = js_sys::Function::from(callback.as_js_value().clone());
+        let Ok(observer) = web_sys::IntersectionObserver::new(&handler) else {
+            // The availability probe lied (the constructor threw):
+            // take the immediate path rather than hiding the group
+            // behind a sentinel no callback will ever fire for.
+            visible.set(true);
+            return;
+        };
+        observer.observe(&anchor);
+        observer_slot.set_value(Some((observer, callback)));
+    });
+    on_cleanup(drop_observer);
+
+    view! {
+        // The one-pixel anchor the observer watches: tall enough to
+        // register as a real rect, too small to shift layout, and
+        // out of the accessibility tree.
+        <div node_ref=anchor class="h-px w-full" aria-hidden="true"></div>
+        {move || {
+            let children = children.clone();
+            visible.get().then(move || children())
+        }}
+    }
+}
+
 /// The Environment section: the live tiles as its top row, then the
 /// history charts in two groups — Air and Root zone, each under its
 /// micro-label header — with one shared window control in the header
@@ -145,6 +248,9 @@ fn GroupLabel(text: &'static str, #[prop(default = "")] hint: &'static str) -> i
 /// standalone Light card is gone and its legend rides the Air label.
 #[component]
 pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
+    // The lazy Root zone grid captures `grow_id` into its children
+    // closure; the not-measured card keeps its own copy.
+    let not_measured_grow_id = grow_id.clone();
     let window = RwSignal::new(load_history_window());
     // The shared marker toggle: on until the visitor turns it off,
     // per visit (only the window persists — the tick choice is a
@@ -159,7 +265,7 @@ pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
     });
 
     view! {
-        <div>
+        <div id="env-section">
             <div class="flex flex-wrap items-center justify-between gap-2">
                 <h3>"Environment"</h3>
                 <HistoryWindowControl window=window markers=markers />
@@ -189,22 +295,28 @@ pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
                     shared_window=window shared_markers=markers format_value=format_ppm
                 />
             </div>
-            // The Root zone group: below-ground concerns.
+            // The Root zone group: below-ground concerns. Its chart
+            // grid mounts lazily (ticket 07) once the group scrolls
+            // into view; the label above stays structural, so the
+            // section's outline reads at first paint and the lazy
+            // anchor sits right where the grid begins.
             <GroupLabel text="Root zone" />
-            <div class="grid grid-cols-1 gap-4 items-start lg:grid-cols-2">
-                <HistoryChart grow_id=grow_id.clone() role="soil_moisture" title="Soil moisture"
-                    shared_window=window shared_markers=markers format_value=format_pct
-                >
-                    <BandEditor />
-                </HistoryChart>
-                <HistoryChart grow_id=grow_id.clone() role="ph" title="pH"
-                    shared_window=window shared_markers=markers format_value=format_ph
-                />
-                <HistoryChart grow_id=grow_id.clone() role="ec" title="EC"
-                    shared_window=window shared_markers=markers format_value=format_ec_us
-                />
-            </div>
-            <NotMeasuredCard grow_id />
+            <LazyCharts>
+                <div class="grid grid-cols-1 gap-4 items-start lg:grid-cols-2">
+                    <HistoryChart grow_id=grow_id.clone() role="soil_moisture" title="Soil moisture"
+                        shared_window=window shared_markers=markers format_value=format_pct
+                    >
+                        <BandEditor />
+                    </HistoryChart>
+                    <HistoryChart grow_id=grow_id.clone() role="ph" title="pH"
+                        shared_window=window shared_markers=markers format_value=format_ph
+                    />
+                    <HistoryChart grow_id=grow_id.clone() role="ec" title="EC"
+                        shared_window=window shared_markers=markers format_value=format_ec_us
+                    />
+                </div>
+            </LazyCharts>
+            <NotMeasuredCard grow_id=not_measured_grow_id />
         </div>
     }
 }
@@ -355,5 +467,21 @@ mod tests {
             .map(|(_, label)| *label)
             .collect();
         assert_eq!(labels, ["Temperature", "Humidity", "CO₂", "Soil moisture"]);
+    }
+
+    #[test]
+    fn without_an_observer_the_group_renders_immediately() {
+        // The immediate-render fallback (ticket 07): with no
+        // IntersectionObserver there is nothing to wait for — the
+        // charts mount with the page instead of staying hidden
+        // behind a sentinel no callback will ever fire for.
+        assert!(initial_visible(false));
+    }
+
+    #[test]
+    fn with_an_observer_the_group_waits_for_the_first_intersection() {
+        // The lazy path: the charts wait below the fold until the
+        // group scrolls into view, keeping the first paint cheap.
+        assert!(!initial_visible(true));
     }
 }

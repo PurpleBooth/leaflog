@@ -268,12 +268,14 @@ pub fn HistoryChart(
                                 }
                             })
                         }}
-                        // An empty window renders an honest hint, not a
-                        // frame with degenerate axes: the card says the
-                        // quiet is data, not breakage.
+                        // A window without readings renders an honest
+                        // hint, not a frame of silence: the card says
+                        // the quiet is data, not breakage. Target Bands
+                        // never count as readings (ticket 07), so a
+                        // banded-but-dataless window says so too.
                         {move || {
                             data.get()
-                                .filter(chart_option::window_is_empty)
+                                .filter(chart_option::series_is_empty)
                                 .map(|chart| {
                                     let hint = if chart.role == "ph" || chart.role == "ec" {
                                         "No feed entries in this window."

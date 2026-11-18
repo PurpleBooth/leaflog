@@ -191,6 +191,23 @@ pub fn window_is_empty(chart: &GrowHistory) -> bool {
         && chart.bands.is_empty()
 }
 
+/// Whether the loaded window holds no readings on either series —
+/// the main series or its pair (ticket 07). This is the card hint's
+/// question ("no readings in this window"), and the Target Bands
+/// never answer it: they ride every temperature, humidity, VPD and
+/// soil window regardless of data, so [`window_is_empty`] — the
+/// quiet-axis question, "nothing drawable" — is a stricter test
+/// the hint cannot key on. A banded window with zero readings keeps
+/// its labelled axis and still says the quiet is data, not breakage.
+#[must_use]
+pub fn series_is_empty(chart: &GrowHistory) -> bool {
+    chart.series.points.is_empty()
+        && chart
+            .compare
+            .as_ref()
+            .is_none_or(|compare| compare.points.is_empty())
+}
+
 /// The main series as a line: width-2 accent stroke, the Target Band
 /// regions as `markArea`, and (stepped) the staircase semantics — each
 /// value holds until the next reading's x, then jumps.
@@ -457,7 +474,7 @@ fn window_bounds(chart: &GrowHistory) -> (serde_json::Value, serde_json::Value) 
 mod tests {
     use super::{
         CONNECT_LABEL_WIDTH, ChartLook, ChartStyle, SeriesKind, history_option, marker_label,
-        role_style, window_is_empty,
+        role_style, series_is_empty, window_is_empty,
     };
     use crate::api::{
         BandSegmentData, ChartPointData, ChartSeriesData, EventMarkerData, GrowHistory,
@@ -641,6 +658,45 @@ mod tests {
         let option = history_option(&empty, &look(), &style("ec"));
         assert_eq!(option["yAxis"]["name"], "µS/cm");
         assert_eq!(option["yAxis"]["axisLabel"]["show"], true);
+    }
+
+    #[test]
+    fn bands_alone_do_not_make_a_window_with_readings() {
+        // Target Bands ride every temperature, humidity, VPD and
+        // soil window, so "nothing drawable" and "no readings yet"
+        // are different questions (ticket 07): the quiet axis keys
+        // on the drawable, the card's hint on the readings.
+        let mut banded = sample_history();
+        banded.series.points = Vec::new();
+        banded.bands = vec![BandSegmentData {
+            start: "2026-11-16T00:00:00+00:00".to_owned(),
+            end: "2026-11-16T01:00:00+00:00".to_owned(),
+            min: 20.0,
+            max: 26.0,
+            phase: "vegetative".to_owned(),
+            light_on: None,
+        }];
+        assert!(!window_is_empty(&banded), "the band is drawable");
+        assert!(series_is_empty(&banded), "yet no reading exists");
+    }
+
+    #[test]
+    fn readings_on_either_series_answer_the_hint() {
+        // A pair chart (input beside runoff) is only empty when both
+        // sides are quiet; one point on either side is a reading.
+        let mut paired = sample_for_role("ph");
+        paired.series.points = Vec::new();
+        assert!(series_is_empty(&paired), "both sides quiet");
+        paired.compare = Some(ChartSeriesData {
+            from: paired.series.from.clone(),
+            to: paired.series.to.clone(),
+            points: vec![ChartPointData {
+                at: "2026-11-16T00:30:00+00:00".to_owned(),
+                value: 6.8,
+                source: "log".to_owned(),
+            }],
+        });
+        assert!(!series_is_empty(&paired), "a runoff point is a reading");
     }
 
     #[test]
