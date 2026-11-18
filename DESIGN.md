@@ -139,9 +139,10 @@ recipes; both must always work.
 
 An incumbent calm-botanical palette in two mirrored themes; desaturated
 greens do the structural work, status hues and chart phase accents carry
-the colour. **Owner verdict on record: these hex values are tolerated, not
-loved — treat them as incumbent fact, not endorsement. A palette revision
-is a deliberate redesign decision (new-work), not drift.**
+the colour. **Owner verdict on record (endorsed 2026-11-18): the palette
+is accepted as-is — it deliberately tracks the Home Assistant theme so
+the app sits quietly inside the host. A palette revision stays a
+deliberate redesign decision (new-work), not drift.**
 
 ### Primary
 - **Cultivar Green** (`#2e7d4f`, light `--color-primary`): primary
@@ -351,9 +352,9 @@ frame itself.
 - **Don't** let chrome borrow chart hues: no phase purple outside
   charts, no Marker Red outside the today-marker and destructive
   feedback.
-- **Don't** treat the incumbent palette as endorsed — it is documented
-  fact the owner has not fallen in love with; propose a deliberate
-  redesign instead of drifting hue-by-hue.
+- **Don't** drift the palette hue-by-hue — it is owner-endorsed as-is
+  (2026-11-18) precisely because it tracks the Home Assistant theme;
+  change it as one deliberate redesign, not as accumulated exceptions.
 - **Don't** build dark-only or light-only styling; a `prefers-color-scheme`
   media query is a smell — the daisyUI `--prefersdark` theme switch is
   the mechanism.

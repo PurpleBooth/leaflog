@@ -6,6 +6,54 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-18 — lazy root zone, empty-window honesty, verification sweep (env-section ticket 07, git-bug 70f3303)
+
+### D111: the lazy watch arms late; the hint keys on readings, not bands
+
+The Root-zone grid mounts through an `IntersectionObserver` on a
+wrapper that reserves the block's height (`min-h-[620px]
+lg:min-h-[480px]`). Two details keep the first intersection honest.
+First, the Air cards above render only after their first history
+fetches, so the page grows by hundreds of pixels after first paint —
+a watch armed at mount reports the block "in view" on that short
+page. The watch therefore arms after a 500 ms delay
+(`LAZY_WATCH_ARM_DELAY_MS`); on a network so slow the growth
+outlasts it, the block mounts a little early — once, as always — so
+the failure mode degrades towards eager, never towards broken.
+Second, the reservation holds the block's place so the mount does
+not jump the page under the visitor. The mount latches once: the
+observer disconnects on the first intersection and never re-runs
+the work (scroll-away-and-back is still one fetch per role, and a
+window switch adds exactly one more). Browsers without
+`IntersectionObserver` — or a throwing constructor — take the
+immediate path; the group is never held hostage to the API. The
+group label stays outside the lazy block so the section's outline
+never flickers, and it is the scroll target the e2e suite uses
+(`revealRootZone`).
+
+The empty-window hint now keys on `series_is_empty` (series and
+compare points; Target Bands deliberately excluded) instead of
+`window_is_empty` (which also ignores nights and markers). Since
+ticket 06, temperature, VPD and soil always carry bands, so the old
+key could never fire for them and a bound-but-dataless window drew
+silent bands with no hint. Against the e2e mock the sensor variant
+of that state is unreachable — the mock serves fresh points for
+every bound sensor — so the chart_option unit tests carry the
+banded sensor case and the spec asserts the feed variant (one entry
+just outside the selected window). No new user-visible strings: the
+hints and labels are the earlier tickets' inline English (the D089
+i18n gap, as D110).
+
+The verification sweep (spec 24) pins the quietness mechanically
+where it can: marker ticks single-glyph across every window switch,
+the Markers switch clearing and restoring them, and the svg root
+surviving a switch via a dataset probe. The same sweep captures one
+screenshot per viewport × colour-scheme × markers × window as the
+pass artefact for the visual review. The DESIGN.md palette verdict
+is refreshed to the owner's endorsement (2026-11-18): the palette
+tracks the Home Assistant theme and revision stays a deliberate
+redesign, not drift. No new `#[allow]` exceptions.
+
 ## 2026-11-18 — night shading behind the Air charts (env-section ticket 05, git-bug 114a85c)
 
 ### D110: the night tint is history payload + a silent markArea back layer; the Light card retires
