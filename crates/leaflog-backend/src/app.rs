@@ -123,12 +123,16 @@ pub fn local_date_in(occurred_at: &str, tz: &str) -> Option<String> {
     leaflog_core::tz::local_date(occurred_at, tz).or_else(|| local_date_utc(occurred_at))
 }
 
-/// The UTC calendar date of a timestamp — the fallback anchor for
-/// unknown zones.
+/// Parses an RFC 3339 timestamp — the shared first step of the UTC
+/// fallbacks (log `occurred_at` payloads are RFC 3339 strings).
+fn utc_instant_of(occurred_at: &str) -> Option<time::OffsetDateTime> {
+    time::OffsetDateTime::parse(occurred_at, &time::format_description::well_known::Rfc3339).ok()
+}
+
+/// The UTC calendar date of a UTC instant — the fallback anchor for
+/// unknown zones (`occurred_at` payloads are UTC RFC 3339 stamps).
 fn local_date_utc(occurred_at: &str) -> Option<String> {
-    let stamp =
-        time::OffsetDateTime::parse(occurred_at, &time::format_description::well_known::Rfc3339)
-            .ok()?;
+    let stamp = utc_instant_of(occurred_at)?;
     stamp
         .date()
         .format(&time::macros::format_description!("[year]-[month]-[day]"))
@@ -143,9 +147,7 @@ fn day_number_utc(started_on: &str, occurred_at: &str) -> Option<u16> {
         &time::macros::format_description!("[year]-[month]-[day]"),
     )
     .ok()?;
-    let occurred =
-        time::OffsetDateTime::parse(occurred_at, &time::format_description::well_known::Rfc3339)
-            .ok()?;
+    let occurred = utc_instant_of(occurred_at)?;
     u16::try_from((occurred.date() - start).whole_days().max(0)).ok()
 }
 
@@ -421,7 +423,9 @@ mod tests {
     use axum::body::Body;
     use axum::http::Request;
 
-    use super::{Mode, SUPERVISOR_INGRESS_IP, peer_allowed, strip_dev_prefix};
+    use super::{
+        Mode, SUPERVISOR_INGRESS_IP, day_number_utc, local_date_utc, peer_allowed, strip_dev_prefix,
+    };
 
     #[test]
     fn production_allows_exactly_the_ingress_proxy() {
@@ -472,6 +476,31 @@ mod tests {
         assert_eq!(
             rewritten(&format!("{prefix}9/pkg/app.css"), prefix),
             "/api/hassio_ingress/dev-429/pkg/app.css"
+        );
+    }
+
+    #[test]
+    fn the_utc_fallbacks_reject_invalid_input() {
+        assert_eq!(local_date_utc("not-a-timestamp"), None);
+        assert_eq!(day_number_utc("2026-03-01", "also-bad"), None);
+        assert_eq!(day_number_utc("not-a-date", "2026-03-05T00:00:00Z"), None);
+    }
+
+    #[test]
+    fn the_utc_fallbacks_compute_in_utc() {
+        assert_eq!(
+            local_date_utc("2026-03-05T23:30:00+00:00").as_deref(),
+            Some("2026-03-05")
+        );
+        assert_eq!(
+            day_number_utc("2026-03-01", "2026-03-05T23:30:00+00:00"),
+            Some(4)
+        );
+        // Day numbers never go negative: an occurred_at before the
+        // start date floors at day 0.
+        assert_eq!(
+            day_number_utc("2026-03-10", "2026-03-05T23:30:00+00:00"),
+            Some(0)
         );
     }
 }
