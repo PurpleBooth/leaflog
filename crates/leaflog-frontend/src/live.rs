@@ -105,7 +105,7 @@ fn live_number(
 /// strings — Tailwind only compiles literals it can scan out of the
 /// sources, so no format! fragments.
 #[must_use]
-pub fn tile_class(ok: Option<bool>) -> &'static str {
+pub const fn tile_class(ok: Option<bool>) -> &'static str {
     match ok {
         Some(true) => "rounded-box border border-success/50 bg-success/10 px-3 py-2 grid gap-0.5",
         Some(false) => "rounded-box border border-warning/60 bg-warning/10 px-3 py-2 grid gap-0.5",
