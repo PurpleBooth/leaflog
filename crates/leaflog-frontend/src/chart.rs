@@ -200,6 +200,13 @@ pub fn HistoryChart(
             }
         });
     }
+    // The shared toggle follows the same rule as the shared window:
+    // one switch in the section header moves every card.
+    if let Some(shared) = shared_markers {
+        Effect::new(move |_| {
+            show_markers.set(shared.get());
+        });
+    }
     let data = RwSignal::<Option<GrowHistory>>::new(None);
     // The last fetch failure, if any: the degraded banner's text. A
     // successful response clears it (the chart recovered).
