@@ -196,10 +196,13 @@ pub fn FeedPanel(grow_id: String) -> impl IntoView {
                                     .iter()
                                     .map(|day| {
                                         let height = f64::from(day.ec_target_us) / f64::from(max_ec) * 100.0;
+                                        // Theme roles, not raw hex: the
+                                        // daisyUI variables already carry
+                                        // the light/dark values for both.
                                         let color = if day.protected {
-                                            "#ff9800"
+                                            "var(--color-warning)"
                                         } else {
-                                            "#4caf50"
+                                            "var(--color-success)"
                                         };
                                         view! {
                                             <div class="feed-bar-container"

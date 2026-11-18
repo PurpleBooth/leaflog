@@ -19,6 +19,7 @@ use leptos_router::components::A;
 use leptos_router::hooks::use_params_map;
 use serde::de::DeserializeOwned;
 use std::future::Future;
+use wasm_bindgen::JsCast;
 
 use crate::ErrorIf;
 use crate::Home;
@@ -227,6 +228,14 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
     let chip = RwSignal::<Option<ActionType>>::new(None);
     let draft = RwSignal::<ActionInput>::new(empty_action());
     let upload_note = RwSignal::<Option<String>>::new(None);
+    // Set once a quick-add entry saves; cleared the moment the next
+    // entry is picked, so the note always names the latest save.
+    let just_logged = RwSignal::new(false);
+    Effect::new(move |_| {
+        if chip.get().is_some() {
+            just_logged.set(false);
+        }
+    });
 
     // The phase picker (D073): the grow's photoperiod toggle decides
     // the Flowering mapping — a photoperiod grow records the flip, an
@@ -286,6 +295,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                 Ok(_) => {
                     chip.set(None);
                     error.set(None);
+                    just_logged.set(true);
                     refresh();
                 }
                 Err(failure) => error.set(Some(failure.message)),
@@ -383,16 +393,14 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                         let archived = current.status == GrowStatus::Archived;
                         view! {
                             <div>
-                                <div class="flex flex-wrap items-center justify-between gap-4">
-                                    // One left-aligned quiet cluster:
-                                    // name · glyph + medium · strain
-                                    // label, with the status badge
-                                    // joining it. The buttons
-                                    // are the row's second child, so
-                                    // justify-between keeps them clear
-                                    // on the right. An unlabelled grow
-                                    // leaves the label slot empty — no
-                                    // placeholder.
+                                // One left-aligned quiet cluster: name ·
+                                // glyph + medium · strain label, with the
+                                // status badge joining it. The actions sit
+                                // on the same wrap row, pushed right:
+                                // quick add is the page's primary loop, edit
+                                // the rare one. An unlabelled grow leaves the
+                                // label slot empty — no placeholder.
+                                <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
                                     <div class="flex flex-wrap items-center gap-2">
                                         <h2>{current.name.clone()}</h2>
                                         <span class="badge badge-ghost">
@@ -427,10 +435,11 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                                 </span>
                                             })}
                                     </div>
-                                    // Configuration lives on the edit page
-                                    // (grow-page rework ticket 01): the
-                                    // header control is a link there.
-                                    <div class="flex flex-wrap gap-2">
+                                    // The logging menu lives in the header
+                                    // (the loop's first tap); the chosen
+                                    // form opens right below it.
+                                    <div class="flex items-center gap-2 ml-auto">
+                                        <QuickAddMenu chip draft />
                                         <A href=route_href(&format!("/grows/{}/edit", current.id))
                                             attr:class="btn btn-sm"
                                         >
@@ -438,7 +447,9 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                         </A>
                                     </div>
                                 </div>
-                                <p class="text-base-content/70">"Started "{current.started_on}</p>
+                                <p class="m-0 text-sm text-base-content/60">
+                                    "Started " {current.started_on}
+                                </p>
                                 {current.notes.map(|notes| view! {
                                     <p class="text-base-content/70">{notes}</p>
                                 })}
@@ -450,6 +461,34 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             }}
 
             <ErrorIf error />
+
+            // The chosen entry form opens directly under the header —
+            // the loop is pick, fill, log, without a scroll (PRODUCT
+            // principle 2). A quiet status line confirms the save; the
+            // entry itself lands in the timeline at the foot.
+            <Show when=move || chip.get().is_some()>
+                <form
+                    id="quick-add-form"
+                    tabindex="-1"
+                    class="card bg-base-100 shadow-sm px-5 py-4 mt-4"
+                    on:submit=save_action
+                >
+                    <ActionForm draft kind=chip />
+                    <div class="flex flex-wrap gap-2 mt-4">
+                        <button class="btn btn-primary btn-sm" type="submit">"Log it"</button>
+                        <button class="btn btn-sm" type="button" on:click=move |_| chip.set(None)>"Cancel"</button>
+                    </div>
+                </form>
+            </Show>
+            {move || {
+                just_logged.get().then(|| {
+                    view! {
+                        <p class="mt-2 mb-0 text-sm text-base-content/60" role="status">
+                            "Logged to the timeline below."
+                        </p>
+                    }
+                })
+            }}
 
             <h3>"Forecast"</h3>
             <form id="phase-picker" class="flex flex-wrap gap-2 items-end my-2" on:submit=save_pick>
@@ -488,41 +527,32 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             </form>
             <GanttTimeline grow_id=grow_id.get() />
 
+            <h3>"Environment"</h3>
             <EnvDashboard grow_id=grow_id.get() />
-            // Every chart card renders through the ECharts option-builder
-            // seam (tickets 02–04); a role with no binding (or no pH/EC
-            // entries) renders no card at all.
-            <HistoryChart grow_id=grow_id.get() format_value=leaflog_core::units::temp_both />
-            <HistoryChart grow_id=grow_id.get() role="humidity" title="Humidity" format_value=format_pct />
-            <HistoryChart grow_id=grow_id.get() role="vpd" title="VPD" format_value=format_kpa />
-            <HistoryChart grow_id=grow_id.get() role="co2" title="CO₂" format_value=format_ppm />
-            <HistoryChart grow_id=grow_id.get() role="light" title="Light" format_value=format_on_off />
-            <HistoryChart grow_id=grow_id.get() role="soil_moisture" title="Soil moisture" format_value=format_pct>
-                <BandEditor />
-            </HistoryChart>
-            <HistoryChart grow_id=grow_id.get() role="ph" title="pH" format_value=format_ph />
-            <HistoryChart grow_id=grow_id.get() role="ec" title="EC" format_value=format_ec_us />
+
+            // Two-up on wide screens: the paired roles read side by
+            // side and the scroll shortens by half. Explicit
+            // `grid-cols-1` at the base keeps every track
+            // `minmax(0, 1fr)`: an implicit auto track would let a
+            // not-yet-resized chart SVG stretch the column, and
+            // `resize()` — which re-reads the container — would then
+            // confirm the stale width instead of shrinking into it.
+            <h3>"History"</h3>
+            <div class="grid grid-cols-1 gap-4 items-start lg:grid-cols-2">
+                <HistoryChart grow_id=grow_id.get() format_value=leaflog_core::units::temp_both />
+                <HistoryChart grow_id=grow_id.get() role="humidity" title="Humidity" format_value=format_pct />
+                <HistoryChart grow_id=grow_id.get() role="vpd" title="VPD" format_value=format_kpa />
+                <HistoryChart grow_id=grow_id.get() role="co2" title="CO₂" format_value=format_ppm />
+                <HistoryChart grow_id=grow_id.get() role="light" title="Light" format_value=format_on_off />
+                <HistoryChart grow_id=grow_id.get() role="soil_moisture" title="Soil moisture" format_value=format_pct>
+                    <BandEditor />
+                </HistoryChart>
+                <HistoryChart grow_id=grow_id.get() role="ph" title="pH" format_value=format_ph />
+                <HistoryChart grow_id=grow_id.get() role="ec" title="EC" format_value=format_ec_us />
+            </div>
 
             <h3>"Feed schedule"</h3>
             <FeedPanel grow_id=grow_id.get() />
-
-            <h3>"Quick add"</h3>
-            <QuickAddMenu chip draft />
-
-            <Show when=move || chip.get().is_some()>
-                <form
-                    id="quick-add-form"
-                    tabindex="-1"
-                    class="card bg-base-100 shadow-sm px-5 py-4 my-4"
-                    on:submit=save_action
-                >
-                    <ActionForm draft kind=chip />
-                    <div class="flex flex-wrap gap-2 mt-4">
-                        <button class="btn btn-primary btn-sm" type="submit">"Log it"</button>
-                        <button class="btn btn-sm" type="button" on:click=move |_| chip.set(None)>"Cancel"</button>
-                    </div>
-                </form>
-            </Show>
 
             <div class="grid gap-6 items-start lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
                 <div>
@@ -534,7 +564,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                 .into_iter()
                                 .map(|entry| {
                                     view! {
-                                        <li class="card bg-base-100 shadow-sm px-5 py-4">
+                                        <li class="card bg-base-100 shadow-sm px-4 py-3">
                                             <div class="flex flex-wrap items-baseline gap-2">
                                                 <strong>{entry.action_type.display()}</strong>
                                                 <span class="badge badge-ghost">{"day "}{entry.grow_day}</span>
@@ -579,7 +609,9 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                                     </p>
                                                 }
                                             })}
-                                            <p class="text-base-content/70 text-sm">{entry.occurred_at.clone()}</p>
+                                            <p class="text-base-content/70 text-sm">
+                                                {local_stamp(&entry.occurred_at)}
+                                            </p>
                                         </li>
                                     }
                                 })
@@ -1112,6 +1144,42 @@ fn datetime_local_now() -> String {
         .get(..16)
         .unwrap_or_default()
         .to_owned()
+}
+
+/// The browser's locale rendering of an RFC 3339 timestamp (`Nov 15,
+/// 2026, 7:20 PM`): the timeline is a diary read by a human in their
+/// own zone, so machine-formatted UTC would read like an error.
+/// Explicit components (no seconds — diary precision is minutes);
+/// falls back to the raw string when the browser APIs refuse the
+/// value.
+fn local_stamp(iso: &str) -> String {
+    let date = js_sys::Date::new(&wasm_bindgen::JsValue::from_str(iso));
+    if date.get_time().is_nan() {
+        return iso.to_owned();
+    }
+    let Ok(fmt) = js_sys::Reflect::get(&date, &wasm_bindgen::JsValue::from_str("toLocaleString"))
+        .and_then(wasm_bindgen::JsValue::dyn_into::<js_sys::Function>)
+    else {
+        return iso.to_owned();
+    };
+    let options = js_sys::Object::new();
+    for (key, value) in [
+        ("year", "numeric"),
+        ("month", "short"),
+        ("day", "numeric"),
+        ("hour", "numeric"),
+        ("minute", "2-digit"),
+    ] {
+        let _ = js_sys::Reflect::set(
+            &options,
+            &wasm_bindgen::JsValue::from_str(key),
+            &wasm_bindgen::JsValue::from_str(value),
+        );
+    }
+    fmt.call1(&date, &options)
+        .ok()
+        .and_then(|value| value.as_string())
+        .unwrap_or_else(|| iso.to_owned())
 }
 
 /// The spot-it-without-reading glyph shown beside a grow's medium in

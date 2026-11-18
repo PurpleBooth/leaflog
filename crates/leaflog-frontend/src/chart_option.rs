@@ -85,6 +85,12 @@ pub fn history_option(
     style: &ChartStyle,
 ) -> serde_json::Value {
     let (y_min, y_max) = padded_range(chart);
+    // An empty window has no values to label: with the padded fallback
+    // range the axis draws "2 1 0 0 −0"-style degenerate ticks. The
+    // frame stays (the window toggles keep their meaning), but the
+    // value axis goes quiet — the hint line above the chart explains
+    // why.
+    let bare_axis = window_is_empty(chart);
     // The x axis spans the whole Chart window (the old SVG geometry put
     // the window edges at the canvas edges), so sparse data cannot
     // zoom the axis in and fake density. An unparseable window bound
@@ -108,15 +114,29 @@ pub fn history_option(
         },
         "yAxis": {
             "type": "value",
-            "name": style.axis_name,
+            "name": if bare_axis { "" } else { style.axis_name },
             "nameTextStyle": { "color": look.text, "align": "left" },
             "min": y_min,
             "max": y_max,
             "splitLine": { "show": true, "lineStyle": { "color": look.muted } },
-            "axisLabel": { "hideOverlap": true, "color": look.text },
+            "axisLabel": { "show": !bare_axis, "hideOverlap": true, "color": look.text },
         },
         "series": series,
     })
+}
+
+/// Whether the loaded window carries nothing drawable: no points, no
+/// pair series, no band segments. `history_option` quiets the value
+/// axis for such a window, and the chart card shows a hint line so
+/// the empty frame reads as data, not breakage.
+#[must_use]
+pub fn window_is_empty(chart: &GrowHistory) -> bool {
+    chart.series.points.is_empty()
+        && chart
+            .compare
+            .as_ref()
+            .is_none_or(|compare| compare.points.is_empty())
+        && chart.bands.is_empty()
 }
 
 /// The main series as a line: width-2 accent stroke, the Target Band
@@ -265,7 +285,7 @@ fn window_bounds(chart: &GrowHistory) -> (serde_json::Value, serde_json::Value) 
 
 #[cfg(test)]
 mod tests {
-    use super::{ChartLook, ChartStyle, SeriesKind, history_option, role_style};
+    use super::{ChartLook, ChartStyle, SeriesKind, history_option, role_style, window_is_empty};
     use crate::api::{BandSegmentData, ChartPointData, ChartSeriesData, GrowHistory};
 
     /// Fixed test colours (the fallbacks the component probes for).
@@ -380,6 +400,35 @@ mod tests {
             y_max > 21.0 && y_min < 21.0,
             "flat line needs room: {y_min}..{y_max}"
         );
+    }
+
+    #[test]
+    fn an_empty_window_quiets_the_value_axis_until_something_is_drawable() {
+        let mut empty = sample_history();
+        empty.series.points = Vec::new();
+        assert!(window_is_empty(&empty));
+        let option = history_option(&empty, &look(), &style("ec"));
+        assert_eq!(
+            option["yAxis"]["name"], "",
+            "no unit label on an empty window"
+        );
+        assert_eq!(
+            option["yAxis"]["axisLabel"]["show"], false,
+            "the degenerate tick labels hide on an empty window"
+        );
+        // Any drawable content — even bands alone — restores the axis.
+        empty.bands = vec![BandSegmentData {
+            start: "2026-11-16T00:00:00+00:00".to_owned(),
+            end: "2026-11-16T01:00:00+00:00".to_owned(),
+            min: 20.0,
+            max: 26.0,
+            phase: "vegetative".to_owned(),
+            light_on: None,
+        }];
+        assert!(!window_is_empty(&empty));
+        let option = history_option(&empty, &look(), &style("ec"));
+        assert_eq!(option["yAxis"]["name"], "µS/cm");
+        assert_eq!(option["yAxis"]["axisLabel"]["show"], true);
     }
 
     #[test]

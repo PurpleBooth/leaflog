@@ -230,46 +230,55 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                 }}
             </div>
 
-            {move || {
-                lamp.get().map(|advice| {
-                    view! {
-                        <div class="card bg-base-100 shadow-sm px-4 py-3 my-3">
-                            <h4>"Lamp height"</h4>
-                            <p>{format!("{:.0}–{:.0} in / {:.0}–{:.0} cm from canopy", advice.height.min_in, advice.height.max_in, leaflog_core::units::inches_to_cm(advice.height.min_in), leaflog_core::units::inches_to_cm(advice.height.max_in))}</p>
-                            {advice.dim_pct.map(|d| view! { <p class="text-base-content/70">"Dim to "{d}"%"</p> })}
-                            <p class="text-base-content/70 text-sm">{advice.why}</p>
-                        </div>
-                    }
-                })
-            }}
+            // Lamp advice and phase coach pair on wide screens — two
+            // cards with one short fact each stop wasting a full row
+            // of whitespace each. Explicit base track, same reasoning
+            // as the history grid in grows.rs.
+            <div class="grid grid-cols-1 gap-4 items-start lg:grid-cols-2">
+                {move || {
+                    lamp.get().map(|advice| {
+                        view! {
+                            <div class="card bg-base-100 shadow-sm px-4 py-3">
+                                <h4>"Lamp height"</h4>
+                                <p>{format!("{:.0}–{:.0} in / {:.0}–{:.0} cm from canopy", advice.height.min_in, advice.height.max_in, leaflog_core::units::inches_to_cm(advice.height.min_in), leaflog_core::units::inches_to_cm(advice.height.max_in))}</p>
+                                {advice.dim_pct.map(|d| view! { <p class="text-base-content/70">"Dim to " {d} "%"</p> })}
+                                <p class="text-base-content/70 text-sm">{advice.why}</p>
+                            </div>
+                        }
+                    })
+                }}
 
-            {move || {
-                coach.get().map(|c| {
-                    view! {
-                        <div class="card bg-base-100 shadow-sm px-4 py-3 my-3">
-                            <h4>{move || {
-                                let raw_phase = c.phase.clone();
-                                let spelled = crate::phase_pick::phase_from_label(&raw_phase)
-                                    .map_or_else(
-                                        || raw_phase.clone(),
-                                        |phase| crate::phase_pick::phase_display(phase).to_owned(),
-                                    );
-                                format!("Phase coach ({spelled})")
-                            }}</h4>
-                            <ul class="list-none m-0 p-0 grid gap-2">
-                                {c.tips.iter().map(|tip| {
-                                    view! {
-                                        <li class="border-l-4 border-primary pl-3">
-                                            <strong>{tip.title.clone()}</strong>
-                                            <p class="text-base-content/70 text-sm">{tip.why.clone()}</p>
-                                        </li>
-                                    }
-                                }).collect::<Vec<_>>()}
-                            </ul>
-                        </div>
-                    }
-                })
-            }}
+                {move || {
+                    coach.get().map(|c| {
+                        view! {
+                            <div class="card bg-base-100 shadow-sm px-4 py-3">
+                                <h4>{move || {
+                                    let raw_phase = c.phase.clone();
+                                    let spelled = crate::phase_pick::phase_from_label(&raw_phase)
+                                        .map_or_else(
+                                            || raw_phase.clone(),
+                                            |phase| crate::phase_pick::phase_display(phase).to_owned(),
+                                        );
+                                    format!("Phase coach ({spelled})")
+                                }}</h4>
+                                // Hairline dividers between tips: a loud
+                                // colored border per tip is chrome shouting
+                                // where quiet structure reads the list.
+                                <ul class="list-none m-0 p-0 divide-y divide-base-300">
+                                    {c.tips.iter().map(|tip| {
+                                        view! {
+                                            <li class="py-2 first:pt-0 last:pb-0">
+                                                <strong>{tip.title.clone()}</strong>
+                                                <p class="text-base-content/70 text-sm">{tip.why.clone()}</p>
+                                            </li>
+                                        }
+                                    }).collect::<Vec<_>>()}
+                                </ul>
+                            </div>
+                        }
+                    })
+                }}
+            </div>
         </div>
     }
 }

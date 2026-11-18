@@ -240,7 +240,7 @@ pub fn HistoryChart(
                 // and its own signals re-run.
                 let footer = children.clone().map(|build| build());
                 view! {
-                    <div class="card bg-base-100 shadow-sm px-4 py-3 my-3">
+                    <div class="card bg-base-100 shadow-sm px-4 py-3">
                         <div class="flex flex-wrap items-baseline gap-2">
                             <h4 class="m-0">{title}</h4>
                             <WindowToggles window=window />
@@ -259,6 +259,23 @@ pub fn HistoryChart(
                                     </p>
                                 }
                             })
+                        }}
+                        // An empty window renders an honest hint, not a
+                        // frame with degenerate axes: the card says the
+                        // quiet is data, not breakage.
+                        {move || {
+                            data.get()
+                                .filter(chart_option::window_is_empty)
+                                .map(|chart| {
+                                    let hint = if chart.role == "ph" || chart.role == "ec" {
+                                        "No feed entries in this window."
+                                    } else {
+                                        "No readings in this window."
+                                    };
+                                    view! {
+                                        <p class="my-2 text-sm text-base-content/60">{hint}</p>
+                                    }
+                                })
                         }}
                         <EChartsHistory data=data format_value=format_value />
                         {footer}
