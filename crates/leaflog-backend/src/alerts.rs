@@ -10,6 +10,7 @@ use std::sync::Arc;
 use leaflog_core::tz::QuietHours;
 use tokio::time::Instant;
 
+use crate::catalog::{self, Locale, Message};
 use crate::ha::HaBridge;
 use crate::store::settings;
 
@@ -172,6 +173,10 @@ pub async fn evaluate<S: std::hash::BuildHasher>(
     if !pass.enabled {
         return Ok(());
     }
+    // The notification language follows the HA config language
+    // (D112); kinds and grow names stay English inside the template.
+    let locale = Locale::from_language(bridge.cached_language().as_deref());
+    let title = catalog::render(Message::EnvAlertTitle, locale);
     let wall_minutes = leaflog_core::tz::local_wall_minutes_now(&pass.tz);
     for (grow_id, grow_name, verdict) in pass.grows {
         for kind in verdict.kinds() {
@@ -179,9 +184,14 @@ pub async fn evaluate<S: std::hash::BuildHasher>(
             if !should_send(last_sent.get(&key).copied(), now, pass.quiet, wall_minutes) {
                 continue;
             }
-            let message =
-                format!("Leaflog: {kind} out of band in \"{grow_name}\" — check the panel.");
-            match bridge.notify("Leaflog environment", &message).await {
+            let message = catalog::render(
+                Message::EnvAlertBody {
+                    kind,
+                    grow_name: &grow_name,
+                },
+                locale,
+            );
+            match bridge.notify(&title, &message).await {
                 Ok(()) => {
                     last_sent.insert(key, now);
                 }

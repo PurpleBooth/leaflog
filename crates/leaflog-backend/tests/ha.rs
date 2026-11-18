@@ -2173,3 +2173,128 @@ async fn locale_endpoint_defaults_to_english() {
     wait_connected(&bridge).await;
     wait_language(&base, "en").await;
 }
+
+// --- Alert catalog (D113) -------------------------------------------------
+
+/// Hot room, alert opt-in on, one grow bound to the mock's temperature
+/// sensor: the full alert path up to the evaluator pass (the tests
+/// read `mock.notifications` after evaluating themselves).
+async fn run_one_alert_pass(mock: &mock_ha::MockState, base: &str, bridge: &HaBridge) {
+    let client = reqwest::Client::new();
+    *mock.room.lock().await = mock_ha::FakeRoom {
+        temperature: 32.0,
+        humidity: 40.0,
+        soil_moisture: 30.0,
+        co2: 850.0,
+        light_on: true,
+    };
+    client
+        .put(format!("{base}/api/settings"))
+        .json(&json!({ "env_alert_notifications": true }))
+        .send()
+        .await
+        .unwrap();
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&json!({
+            "name": "Hot run",
+            "feed_template_id": null,
+            "substrate": "soil",
+            "started_on": "2026-10-01",
+            "status": "active",
+            "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    client
+        .put(format!(
+            "{}/api/grows/{}/bindings",
+            base,
+            grow["id"].as_str().unwrap()
+        ))
+        .json(&json!({
+            "bindings": { "temperature": "sensor.grow_temperature" }
+        }))
+        .send()
+        .await
+        .unwrap();
+    // Wait for the bridge to carry the hot reading, then evaluate.
+    for _ in 0..100 {
+        let hot = bridge
+            .live_now()
+            .entities
+            .get("sensor.grow_temperature")
+            .and_then(|entity| entity.state.parse::<f64>().ok())
+            .is_some_and(|celsius| celsius > 30.0);
+        if hot {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+/// The alert renders German when the mock Supervisor config declares
+/// `de` (D113): title and wrapper template follow the HA language
+/// while the kind and grow name stay English.
+#[tokio::test]
+async fn env_alerts_render_german_from_the_mock_language() {
+    let (mock_url, mock) = spawn_mock().await;
+    *mock.language.lock().await = "de".to_owned();
+    let (base, db, bridge) = spawn_api(&mock_url).await;
+    wait_connected(&bridge).await;
+    wait_language(&base, "de").await;
+    run_one_alert_pass(&mock, &base, &bridge).await;
+
+    let mut last_sent = HashMap::new();
+    leaflog_backend::alerts::evaluate(&db, &bridge, &mut last_sent)
+        .await
+        .unwrap();
+    let sent = mock.notifications.lock().await.clone();
+    let german = sent
+        .iter()
+        .find(|body| body.contains("Leaflog-Umgebung"))
+        .expect("the German alert title notifies");
+    assert!(
+        german.contains("außerhalb des Sollbereichs"),
+        "du-form body, got {german:?}"
+    );
+    assert!(german.contains("temperature"), "kind stays English");
+    assert!(german.contains("Hot run"), "grow name interpolated");
+    assert!(
+        !sent.iter().any(|body| body.contains("out of band")),
+        "no English template leaks: {sent:?}"
+    );
+}
+
+/// With the mock at its default (`en`), the alert stays English.
+#[tokio::test]
+async fn env_alerts_render_english_by_default() {
+    let (mock_url, mock) = spawn_mock().await;
+    let (base, db, bridge) = spawn_api(&mock_url).await;
+    wait_connected(&bridge).await;
+    wait_language(&base, "en").await;
+    run_one_alert_pass(&mock, &base, &bridge).await;
+
+    let mut last_sent = HashMap::new();
+    leaflog_backend::alerts::evaluate(&db, &bridge, &mut last_sent)
+        .await
+        .unwrap();
+    let sent = mock.notifications.lock().await.clone();
+    let english = sent
+        .iter()
+        .find(|body| body.contains("Leaflog environment"))
+        .expect("the English alert title notifies");
+    assert!(
+        english.contains("out of band"),
+        "English template, got {english:?}"
+    );
+    assert!(english.contains("Hot run"), "grow name interpolated");
+    assert!(
+        !sent.iter().any(|body| body.contains("Sollbereich")),
+        "no German template leaks: {sent:?}"
+    );
+}

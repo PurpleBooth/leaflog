@@ -14,6 +14,7 @@ use axum::{Json, Router};
 use serde_json::{Value, json};
 
 use crate::app::AppState;
+use crate::catalog::{self, Message};
 use crate::db::StoreError;
 use crate::store::{self, StoreOrNotFound};
 
@@ -49,6 +50,19 @@ pub enum ApiError {
     Internal(String),
 }
 
+impl ApiError {
+    /// The catalog message for this error: the wrapper phrase is
+    /// keyed, the detail rides along in English (D112).
+    fn message(&self) -> Message<'_> {
+        match self {
+            Self::NotFound => Message::NotFound,
+            Self::BadRequest(detail) => Message::BadRequest { detail },
+            Self::Conflict(detail) => Message::Conflict { detail },
+            Self::Internal(detail) => Message::Internal { detail },
+        }
+    }
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let status = match &self {
@@ -57,7 +71,10 @@ impl IntoResponse for ApiError {
             Self::Conflict(_) => StatusCode::CONFLICT,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        (status, Json(json!({ "error": self.to_string() }))).into_response()
+        // The wrapper phrase follows the HA language (D112); the
+        // detail payload stays English.
+        let error = catalog::render(self.message(), catalog::current_locale());
+        (status, Json(json!({ "error": error }))).into_response()
     }
 }
 

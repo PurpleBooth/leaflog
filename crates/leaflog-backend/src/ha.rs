@@ -395,6 +395,9 @@ async fn refresh_config(rest_base: &str, token: &SupervisorToken, watches: &Conf
     }
     if let Some(language) = config["language"].as_str() {
         let _ = watches.language_tx.send(Some(language.to_owned()));
+        // The API error wrappers read the language from the catalog's
+        // process-global (D113) — published alongside the watch.
+        crate::catalog::publish_language(Some(language));
     }
 }
 

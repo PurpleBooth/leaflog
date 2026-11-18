@@ -6,6 +6,34 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-18 — backend message catalog (locale ticket 05, git-bug a0d6639)
+
+### D113: the backend speaks through a hand-rolled catalog; wrappers read a process-global language
+
+`leaflog-backend` gained `src/catalog.rs`: an exhaustive
+`(locale, message)` `match` with `format!` interpolation covering the
+environment-alert templates (title + body) and the four standard error
+wrapper phrases (not found, bad request, conflict, internal error). No
+new dependencies, nothing fetched at runtime. EN↔DE key parity is
+compile-time here: the match must cover both locales, so a message
+missing in one locale fails the build — the backend analogue of the
+frontend catalogs' parity panic (D112).
+
+Locale source: the HA config `language` (D112), English fallback for
+absent or unmapped tags. The alert path reads the bridge's cached
+language. The API error wrappers cannot: axum's `IntoResponse` for
+`ApiError` runs without state access. They read a process-global
+`RwLock<Option<String>>` in the catalog that the same config fetch
+publishes next to the bridge's language watch. One HA instance per
+process makes that sound: the language is app-wide, and a fetch failure
+keeps the previous value. The plain-text unknown-API 404 in `app.rs`
+joins the same wrapper.
+
+Deep interpolated detail text stays English by design: store errors,
+alert kinds, grow names ride inside the templates as-is. The German
+templates are du-form in Home Assistant register ("Ungültige Anfrage:",
+"schau im Panel nach").
+
 ## 2026-11-18 — EN+DE localisation plumbing (locale ticket 01, git-bug b67691f)
 
 ### D112: leptos_i18n 0.6.3 compile-time catalogs; the chain is HA language → browser locale → English

@@ -53,6 +53,7 @@ pub mod api_locale;
 pub mod api_phase;
 pub mod app;
 pub mod assets;
+pub mod catalog;
 pub mod db;
 pub mod ha;
 pub mod ingress;

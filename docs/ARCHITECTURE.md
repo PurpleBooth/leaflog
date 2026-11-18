@@ -139,6 +139,16 @@ config endpoint on every reconnect), then the browser locale, then
 English. Tags map by prefix (`de*` → de, `en*` → en); anything else
 falls through. No picker, no persistence.
 
+The backend has its own small catalog (D113) for the strings it owns:
+the environment-alert notification templates and the four standard
+error wrapper phrases. `crates/leaflog-backend/src/catalog.rs` holds
+an exhaustive `(locale, message)` match — key parity is a build error,
+not a runtime check. The alert path follows the bridge's cached
+language; the wrappers follow the language the config fetch publishes
+process-wide, because a response conversion has no state access.
+Interpolated detail text (store errors, entity and category names,
+alert kinds) stays English.
+
 ### Keying a string (the pattern for the keying batches)
 
 An English literal becomes a key, one catalog entry per locale, and a

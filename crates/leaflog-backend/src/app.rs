@@ -13,6 +13,7 @@ use axum::{Json, Router};
 use serde::Serialize;
 
 use crate::assets::{Assets, content_type};
+use crate::catalog::{self, Message};
 use crate::ingress::{IngressPath, content_security_policy, render_index};
 
 /// The single fixed remote address Home Assistant's ingress proxy
@@ -275,7 +276,10 @@ async fn fallback(
 ) -> Response {
     let path = uri.path();
     if path.starts_with("/api/") {
-        return (StatusCode::NOT_FOUND, "not found").into_response();
+        // The unknown-API 404 is one of the four wrapper phrases; it
+        // follows the HA language like the JSON wrappers (D112).
+        let text = catalog::render(Message::NotFound, catalog::current_locale());
+        return (StatusCode::NOT_FOUND, text).into_response();
     }
     if method != Method::GET && method != Method::HEAD {
         return (StatusCode::METHOD_NOT_ALLOWED, "method not allowed").into_response();
