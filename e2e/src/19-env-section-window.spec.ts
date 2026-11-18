@@ -3,8 +3,9 @@
 // History heading, the section opens above the Forecast, and one
 // segmented 24h / 7d / 30d control in the section header drives every
 // chart card. The default window is 7 days on a first visit, and the
-// choice persists across page loads in localStorage. Per-card toggles
-// stay until the grouping ticket retires them.
+// choice persists across page loads in localStorage. The per-card
+// toggles are retired (ticket 02): the section control is the only
+// window control in the section.
 
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { api, createGrow, dismissOnboarding, url } from './helpers';
@@ -117,12 +118,10 @@ test('the shared control defaults to 7d and drives every chart card', async ({
   await expect(control.getByRole('button', { name: '24h' })).not.toHaveClass(/btn-primary/);
   await expect(control.getByRole('button', { name: '30d' })).not.toHaveClass(/btn-primary/);
 
-  // Every card follows the shared window: both cards' own toggles
-  // (still present until the grouping ticket) read 7d active.
+  // Every card follows the shared window — and carries no window
+  // control of its own: the section control is the only one.
   for (const role of ['temperature history', 'humidity history']) {
-    const card = cardOf(page, role);
-    await expect(card.getByRole('group', { name: 'Chart window' })).toHaveCount(1);
-    await expect(card.getByRole('button', { name: '7d' })).toHaveClass(/btn-primary/);
+    await expect(cardOf(page, role).getByRole('group', { name: 'Chart window' })).toHaveCount(0);
   }
 
   // Selecting 24h refetches every chart for the new window.
@@ -139,11 +138,11 @@ test('the shared control defaults to 7d and drives every chart card', async ({
   await control.getByRole('button', { name: '24h' }).click();
   await Promise.all(dayFetches);
 
-  // The section control and every card's toggle now read 24h.
+  // The section control reads 24h; the cards still carry no control.
   await expect(control.getByRole('button', { name: '24h' })).toHaveClass(/btn-primary/);
-  for (const role of ['temperature history', 'humidity history']) {
-    await expect(cardOf(page, role).getByRole('button', { name: '24h' })).toHaveClass(/btn-primary/);
-  }
+  await expect(
+    cardOf(page, 'temperature history').getByRole('group', { name: 'Chart window' }),
+  ).toHaveCount(0);
 });
 
 test('the chosen window persists across page loads in localStorage', async ({
@@ -179,7 +178,9 @@ test('the chosen window persists across page loads in localStorage', async ({
   await expect(
     sectionControl(page).getByRole('button', { name: '7d' }),
   ).not.toHaveClass(/btn-primary/);
+  // The card itself stays control-free; the stored window speaks
+  // through the section control and the charts' refetch.
   await expect(
-    cardOf(page, 'temperature history').getByRole('button', { name: '30d' }),
-  ).toHaveClass(/btn-primary/);
+    cardOf(page, 'temperature history').getByRole('group', { name: 'Chart window' }),
+  ).toHaveCount(0);
 });

@@ -18,6 +18,14 @@ _Avoid_: Sensor type, channel kind
 A binding whose entity Home Assistant currently reports as unavailable or unknown. Dead bindings are the only ones the grow page may call "no data".
 _Avoid_: Broken sensor
 
+**Air**:
+The above-ground chart group on the grow page — temperature, humidity, VPD, and CO₂ — under its uppercase micro-label header. The group shares one crosshair-synced connect group and one Chart window with the whole section; it is a UI grouping term, not a sensor type.
+_Avoid_: Climate, atmosphere, air zone
+
+**Root zone**:
+The below-ground chart group on the grow page — soil moisture, pH, and EC — under its uppercase micro-label header, synced with the Air group's crosshair and window. A UI grouping term for what the substrate and root environment charts show, not a sensor type.
+_Avoid_: Substrate, medium, soil zone
+
 **Chart window**:
 The rolling time span an environment chart covers, always ending at now; the toggles read 24h / 7d / 30d. A Chart window is never a calendar day, and the word "day" on its own belongs to the Light Cycle.
 _Avoid_: Day, Week, Month (as toggle captions), period

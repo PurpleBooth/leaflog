@@ -104,38 +104,38 @@ test('env strip spans the container and wraps without overflow', async ({
     page.getByText('No sensor bound for this role.'),
   ).toHaveCount(0);
 
-  // Chart window toggles read 24h / 7d / 30d (ticket 02): rolling
-  // windows ending now, never a calendar day. Only the bound roles
-  // carry cards (temperature, humidity, and VPD derived from both —
-  // ticket 04's visibility rule), so three toggle groups. The
-  // Environment section's shared control (env-section ticket 01)
-  // adds a fourth 24h/7d/30d trio at page level, so the per-window
-  // counts scope into the cards.
+  // Chart windows are the section's one shared control (ticket 02
+  // retired the per-card toggles): 24h / 7d / 30d, rolling windows
+  // ending now, never a calendar day. Only the bound roles carry
+  // cards (temperature, humidity, and VPD derived from both —
+  // ticket 04's visibility rule), and no card carries a window
+  // control of its own.
+  const sectionControl = page.getByRole('group', { name: 'History window' });
   const chartCards = page.locator('.card', {
-    has: page.getByRole('group', { name: 'Chart window' }),
+    has: page.locator('svg[aria-label$=" history"]'),
   });
   await expect(chartCards).toHaveCount(3);
+  await expect(
+    page.getByRole('group', { name: 'Chart window' }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole('button', { name: /^(Day|Week|Month)$/ }),
   ).toHaveCount(0);
   await expect(
-    chartCards.getByRole('button', { name: '24h', exact: true }),
-  ).toHaveCount(3);
+    sectionControl.getByRole('button', { name: '24h', exact: true }),
+  ).toHaveCount(1);
   await expect(
-    chartCards.getByRole('button', { name: '7d', exact: true }),
-  ).toHaveCount(3);
+    sectionControl.getByRole('button', { name: '7d', exact: true }),
+  ).toHaveCount(1);
   await expect(
-    chartCards.getByRole('button', { name: '30d', exact: true }),
-  ).toHaveCount(3);
+    sectionControl.getByRole('button', { name: '30d', exact: true }),
+  ).toHaveCount(1);
 
-  // Switching a Chart window refetches and re-renders (the
+  // Switching the Chart window refetches and re-renders (the
   // temperature card now goes through ECharts; ticket 02).
-  const tempCard = page.locator('.card', {
-    has: page.locator('svg[aria-label="temperature history"]'),
-  });
-  await tempCard.getByRole('button', { name: '7d', exact: true }).click();
+  await sectionControl.getByRole('button', { name: '24h', exact: true }).click();
   await expect(
-    tempCard.getByRole('button', { name: '7d', exact: true }),
+    sectionControl.getByRole('button', { name: '24h', exact: true }),
   ).toHaveClass(/btn-primary/);
   await expect(
     page.locator('svg[aria-label="temperature history"]'),
@@ -221,12 +221,16 @@ test('an aborted history fetch keeps the bound card and names the failure', asyn
   await expect(tempCard).toBeVisible();
 
   // Abort the temperature role's history fetches, then switch the
-  // window: the fetch fails, and the bound card stays — with the
-  // degraded banner naming the failure. Hiding is the unbound state;
-  // a bound card never vanishes on a failed fetch.
+  // section's shared window: the fetch fails, and the bound card
+  // stays — with the degraded banner naming the failure. Hiding is
+  // the unbound state; a bound card never vanishes on a failed
+  // fetch.
   const historyRoute = url(`api/grows/${growId}/history*role=temperature*`);
   await page.route(historyRoute, (route) => route.abort());
-  await tempCard.getByRole('button', { name: '7d', exact: true }).click();
+  await page
+    .getByRole('group', { name: 'History window' })
+    .getByRole('button', { name: '24h', exact: true })
+    .click();
   await expect(tempCard.getByRole('alert')).toContainText(
     'History unavailable',
   );
@@ -237,7 +241,10 @@ test('an aborted history fetch keeps the bound card and names the failure', asyn
   // Lifting the abort recovers without a reload: the next window
   // switch retries, the banner clears, the chart redraws.
   await page.unroute(historyRoute);
-  await tempCard.getByRole('button', { name: '24h', exact: true }).click();
+  await page
+    .getByRole('group', { name: 'History window' })
+    .getByRole('button', { name: '7d', exact: true })
+    .click();
   await expect(tempCard.getByRole('alert')).toHaveCount(0);
   await expect(
     page.locator('svg[aria-label="temperature history"]'),

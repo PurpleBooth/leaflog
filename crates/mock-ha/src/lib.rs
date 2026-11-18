@@ -304,6 +304,12 @@ async fn history(State(state): State<MockState>, Query(query): Query<HistoryQuer
                 "Grow tent temperature",
             )
         });
+    // The eleven loop points spread two hours apart, anchored at
+    // request time from now−23 h to now−3 h. Every rolling window
+    // (24 h / 7 d / 30 d) carries them, and the charts get distinct
+    // timestamps to read — a fixed far-past date put every point on
+    // one instant, which no crosshair-sync test could discriminate.
+    let now = jiff::Timestamp::now();
     let mut series = vec![full];
     for step in 1..12 {
         let value = match entity.as_str() {
@@ -312,7 +318,8 @@ async fn history(State(state): State<MockState>, Query(query): Query<HistoryQuer
             "sensor.grow_co2" => (-2.0_f64).mul_add(f64::from(step), co2),
             _ => (-0.1_f64).mul_add(f64::from(step), temperature),
         };
-        series.push(json!({ "s": format!("{value:.1}"), "lu": "2026-11-08T11:00:00+00:00" }));
+        let last_update = now - jiff::Span::new().hours(25 - 2 * i64::from(step));
+        series.push(json!({ "s": format!("{value:.1}"), "lu": last_update.to_string() }));
     }
     json!([series]).into()
 }
