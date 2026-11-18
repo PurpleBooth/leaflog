@@ -12,16 +12,39 @@ use crate::api;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
+/// The canonical sensor roles, as stored in the entity map and
+/// matched by the live merge: one spelling each, never re-typed
+/// literals.
+pub const ROLE_TEMPERATURE: &str = "temperature";
+
+/// See [`ROLE_TEMPERATURE`].
+pub const ROLE_HUMIDITY: &str = "humidity";
+
+/// See [`ROLE_TEMPERATURE`].
+pub const ROLE_CO2: &str = "co2";
+
+/// See [`ROLE_TEMPERATURE`].
+pub const ROLE_SOIL_MOISTURE: &str = "soil_moisture";
+
+/// See [`ROLE_TEMPERATURE`].
+pub const ROLE_LIGHT: &str = "light";
+
+/// See [`ROLE_TEMPERATURE`].
+pub const ROLE_RESERVOIR_PH: &str = "reservoir_ph";
+
+/// See [`ROLE_TEMPERATURE`].
+pub const ROLE_RESERVOIR_EC: &str = "reservoir_ec";
+
 /// The binding roles the UI offers (shared by the live tiles, the
 /// onboarding wizard's step 1 and this section's pickers).
 pub const BINDING_ROLES: &[(&str, &str)] = &[
-    ("temperature", "Temperature"),
-    ("humidity", "Humidity"),
-    ("co2", "CO2"),
-    ("soil_moisture", "Soil moisture"),
-    ("light", "Light"),
-    ("reservoir_ph", "Reservoir pH"),
-    ("reservoir_ec", "Reservoir EC"),
+    (ROLE_TEMPERATURE, "Temperature"),
+    (ROLE_HUMIDITY, "Humidity"),
+    (ROLE_CO2, "CO2"),
+    (ROLE_SOIL_MOISTURE, "Soil moisture"),
+    (ROLE_LIGHT, "Light"),
+    (ROLE_RESERVOIR_PH, "Reservoir pH"),
+    (ROLE_RESERVOIR_EC, "Reservoir EC"),
 ];
 
 /// The Entity bindings section of the grow edit page: one picker per

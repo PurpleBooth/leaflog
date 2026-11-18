@@ -9,6 +9,7 @@
 //! quiet-degradation rule: backend values or "—", never an alarm).
 
 use crate::api;
+use crate::bindings::{ROLE_CO2, ROLE_HUMIDITY, ROLE_SOIL_MOISTURE, ROLE_TEMPERATURE};
 use crate::dashboard::{BindingStatus, EnvSnapshot};
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
@@ -106,8 +107,8 @@ fn live_number(
 #[must_use]
 pub fn strip_values(env: &EnvSnapshot, live: Option<&api::LiveData>) -> StripValues {
     let band = env.vpd_band;
-    let live_temperature = live_number(live, &env.bindings, "temperature");
-    let live_humidity = live_number(live, &env.bindings, "humidity");
+    let live_temperature = live_number(live, &env.bindings, ROLE_TEMPERATURE);
+    let live_humidity = live_number(live, &env.bindings, ROLE_HUMIDITY);
     // The SSE snapshot wins when it carries the bound entity; the
     // backend snapshot stands in for everything else (and for the
     // readings it never carries — CO₂ and soil moisture — the tile
@@ -144,8 +145,8 @@ pub fn strip_values(env: &EnvSnapshot, live: Option<&api::LiveData>) -> StripVal
         humidity_pct,
         vpd_kpa,
         rh_window,
-        co2_ppm: live_number(live, &env.bindings, "co2"),
-        soil_moisture_pct: live_number(live, &env.bindings, "soil_moisture"),
+        co2_ppm: live_number(live, &env.bindings, ROLE_CO2),
+        soil_moisture_pct: live_number(live, &env.bindings, ROLE_SOIL_MOISTURE),
         temp_ok,
         vpd_ok,
     }
