@@ -73,6 +73,16 @@ pub fn role_style(role: &str) -> ChartStyle {
     ChartStyle { axis_name, kind }
 }
 
+/// The fixed value-axis label width every role's chart shares. The
+/// section's charts join one `ECharts` connect group, and a connected
+/// hover is broadcast in *pixels* — so every chart must reserve the
+/// same y-label gutter for `containLabel` to place the plot origin at
+/// the same x, or the same pixels would land on different timestamps
+/// chart-to-chart. Wide enough for the widest role label (the
+/// temperature card's dual-unit "18.0 °C / 64.4 °F" measures ~89 px
+/// at the 12 px label font; negatives run ~93 px).
+const CONNECT_LABEL_WIDTH: f64 = 96.0;
+
 /// The option for one history chart: a time axis spanning the whole
 /// Chart window, a value axis labelled with the role's unit, gridlines,
 /// the Target Band regions, and an axis-triggered hover tooltip. The
@@ -104,7 +114,14 @@ pub fn history_option(
     serde_json::json!({
         "animation": false,
         "grid": { "left": 8, "right": 16, "top": 28, "bottom": 8, "containLabel": true },
-        "tooltip": { "trigger": "axis", "confine": true },
+        "tooltip": {
+            "trigger": "axis",
+            "confine": true,
+            // The line crosshair is the connect group's shared
+            // pointer: the section's charts all draw it at the same
+            // timestamp.
+            "axisPointer": { "type": "line" },
+        },
         "xAxis": {
             "type": "time",
             "min": x_min,
@@ -119,7 +136,19 @@ pub fn history_option(
             "min": y_min,
             "max": y_max,
             "splitLine": { "show": true, "lineStyle": { "color": look.muted } },
-            "axisLabel": { "show": !bare_axis, "hideOverlap": true, "color": look.text },
+            "axisLabel": {
+                "show": !bare_axis,
+                "hideOverlap": true,
+                "color": look.text,
+                // The shared connect-group gutter: a fixed label box
+                // (with truncation overflow) makes `containLabel`
+                // reserve the same plot origin on every chart. A bare
+                // axis (empty window) hides its labels and drifts its
+                // own origin, but an empty chart shows nothing for a
+                // crosshair to misread.
+                "width": CONNECT_LABEL_WIDTH,
+                "overflow": "truncate",
+            },
         },
         "series": series,
     })
@@ -285,7 +314,10 @@ fn window_bounds(chart: &GrowHistory) -> (serde_json::Value, serde_json::Value) 
 
 #[cfg(test)]
 mod tests {
-    use super::{ChartLook, ChartStyle, SeriesKind, history_option, role_style, window_is_empty};
+    use super::{
+        CONNECT_LABEL_WIDTH, ChartLook, ChartStyle, SeriesKind, history_option, role_style,
+        window_is_empty,
+    };
     use crate::api::{BandSegmentData, ChartPointData, ChartSeriesData, GrowHistory};
 
     /// Fixed test colours (the fallbacks the component probes for).
@@ -333,6 +365,27 @@ mod tests {
             bands: Vec::new(),
             degraded: false,
             bound: true,
+        }
+    }
+
+    #[test]
+    fn connected_charts_share_one_label_gutter_and_a_line_crosshair() {
+        // The section's charts join one `ECharts` connect group, and a
+        // connected hover is broadcast in pixels: every role's chart
+        // must reserve the same value-axis label gutter (`containLabel`
+        // would otherwise pad each plot origin by its own role's label
+        // width, so the same pixels would land on different timestamps
+        // chart-to-chart). The axis pointer is pinned to the line
+        // crosshair the group contract names.
+        for role in ["temperature", "humidity", "ph"] {
+            let option = history_option(&sample_for_role(role), &look(), &style(role));
+            assert_eq!(
+                option["yAxis"]["axisLabel"]["width"],
+                serde_json::json!(CONNECT_LABEL_WIDTH),
+                "{role}: the shared y-label gutter"
+            );
+            assert_eq!(option["yAxis"]["axisLabel"]["overflow"], "truncate");
+            assert_eq!(option["tooltip"]["axisPointer"]["type"], "line");
         }
     }
 
