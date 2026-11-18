@@ -64,11 +64,15 @@ test('grow: edit from the detail page', async ({ page, request }) => {
   await page.goto(url(`/grows/${id}`));
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Edit grow' }).click();
+  // The header Edit control navigates to the edit page (grow-page
+  // rework ticket 01); saving returns to the overview.
+  await page.getByRole('link', { name: 'Edit grow' }).click();
+  await expect(page).toHaveURL(url(`/grows/${id}/edit`));
   const renamed = uniqueName('E2E Grow v2');
   await page.getByLabel('Name *', { exact: true }).fill(renamed);
   await armNoReloadGuard(page);
   await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page).toHaveURL(url(`/grows/${id}`));
   await expect(page.getByRole('heading', { name: renamed, exact: true })).toBeVisible();
   await expectNoReload(page);
   await page.reload();
@@ -82,7 +86,8 @@ test('grow: strain label, photoperiod and advanced settings persist', async ({
   const name = uniqueName('E2E Advanced Grow');
   const id = await createGrow(request, name);
   await page.goto(url(`/grows/${id}`));
-  await page.getByRole('button', { name: 'Edit grow' }).click();
+  await page.getByRole('link', { name: 'Edit grow' }).click();
+  await expect(page).toHaveURL(url(`/grows/${id}/edit`));
 
   // The strain facts sit with the main grow fields.
   await page.getByLabel('Strain label', { exact: true }).fill('Moby Dick');
@@ -101,6 +106,7 @@ test('grow: strain label, photoperiod and advanced settings persist', async ({
 
   await armNoReloadGuard(page);
   await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page).toHaveURL(url(`/grows/${id}`));
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
   await expectNoReload(page);
 
@@ -124,7 +130,8 @@ test('grow: strain label, photoperiod and advanced settings persist', async ({
 
   // Reopening the edit form shows the stored values, not defaults.
   await page.reload();
-  await page.getByRole('button', { name: 'Edit grow' }).click();
+  await page.getByRole('link', { name: 'Edit grow' }).click();
+  await expect(page).toHaveURL(url(`/grows/${id}/edit`));
   await expect(page.getByLabel('Strain label', { exact: true })).toHaveValue(
     'Moby Dick',
   );
@@ -152,11 +159,12 @@ test('grow header cluster: the strain label shows, left of the buttons', async (
   await expect(labelBadge).toBeVisible();
   await expect(page.locator('[aria-hidden="true"]', { hasText: '🪴' })).toBeVisible();
 
-  // The action buttons sit right of the cluster — loose geometry, like
-  // the today-marker case: x position only, never pixel-exact.
-  const editButton = page.getByRole('button', { name: 'Edit grow' });
-  await expect(editButton).toBeVisible();
-  expect((await editButton.boundingBox())!.x).toBeGreaterThan(
+  // The header's Edit control (a link since the grow-page rework,
+  // ticket 01) sits right of the cluster — loose geometry, like the
+  // today-marker case: x position only, never pixel-exact.
+  const editLink = page.getByRole('link', { name: 'Edit grow' });
+  await expect(editLink).toBeVisible();
+  expect((await editLink.boundingBox())!.x).toBeGreaterThan(
     (await labelBadge.boundingBox())!.x,
   );
 
@@ -176,12 +184,13 @@ test('grow header cluster: an unlabelled grow shows no placeholder', async ({
   await page.goto(url(`/grows/${id}`));
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
   await expect(page.locator('span.badge', { hasText: '🪴' })).toHaveCount(1);
-  // Exactly one badge (the medium): no strain badge beside it.
+  // Two badges (medium and phase day): no strain badge beside them.
+  // The phase-day badge arrives with the forecast fetch.
   const badges = page
     .locator('div.flex.flex-wrap.items-center.gap-2')
     .first()
     .locator('span.badge');
-  await expect(badges).toHaveCount(1);
+  await expect(badges).toHaveCount(2);
 });
 
 test('quick add menu: trigger, sixteen iconified actions, keyboard access', async ({

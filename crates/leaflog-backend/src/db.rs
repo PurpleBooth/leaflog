@@ -62,6 +62,10 @@ pub enum StoreError {
     /// The connection mutex was poisoned by a panic in another task.
     #[error("database connection poisoned")]
     Poisoned,
+    /// A stored timestamp does not parse, so a derived value (a grow
+    /// day under a new anchor) cannot be recomputed.
+    #[error("unparsable stored timestamp: {0}")]
+    Unparsable(String),
     /// A blocking task panicked or was cancelled.
     #[error("database task join error: {0}")]
     Join(#[from] tokio::task::JoinError),

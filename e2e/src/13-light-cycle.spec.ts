@@ -2,6 +2,8 @@
 // per-grow lights-on time and hours-on per phase, with the cited
 // preset defaults as placeholders (photoperiod 12 h flower vs an
 // autoflower's long days) and clear errors for out-of-range hours.
+// The editor lives on the grow edit page since the grow-page rework
+// (ticket 01).
 
 import { test, expect } from '@playwright/test';
 import {
@@ -28,7 +30,7 @@ test('photoperiod defaults show, the cycle saves, persists and resets', async ({
   request,
 }) => {
   const growId = await createGrow(request, uniqueName('E2E Cycle'));
-  await page.goto(url(`/grows/${growId}`));
+  await page.goto(url(`/grows/${growId}/edit`));
 
   // No strain linked: photoperiod semantics. The placeholders carry
   // the cited defaults — 18 h through veg, 12 h flower.
@@ -99,7 +101,7 @@ test('an autoflower grow defaults to long days through flower', async ({
   const growId = await createGrow(request, uniqueName('E2E Cycle Auto'), {
     photoperiod: 'auto',
   });
-  await page.goto(url(`/grows/${growId}`));
+  await page.goto(url(`/grows/${growId}/edit`));
 
   // Autos keep long days: the flower field prefills 18, not 12.
   await expect(page.getByLabel('Flowering hours on')).toHaveAttribute(
@@ -117,7 +119,7 @@ test('out-of-range hours are rejected with a clear error', async ({
   request,
 }) => {
   const growId = await createGrow(request, uniqueName('E2E Cycle Bad'));
-  await page.goto(url(`/grows/${growId}`));
+  await page.goto(url(`/grows/${growId}/edit`));
 
   await page.getByLabel('Flowering hours on').fill('30');
   armNoReloadGuard(page);
