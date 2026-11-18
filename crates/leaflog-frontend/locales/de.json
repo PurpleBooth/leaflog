@@ -234,6 +234,7 @@
         "height_cm": "Pflanzenhöhe (cm)",
         "light_tolerance": "Lichttoleranz",
         "name": "Name *",
+        "name_placeholder": "Schrank-Anbau",
         "notes": "Notizen",
         "photoperiod": "Fotoperiode",
         "real_watts": "Tatsächliche Wattzahl",

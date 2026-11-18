@@ -234,6 +234,7 @@
         "height_cm": "Plant height (cm)",
         "light_tolerance": "Light tolerance",
         "name": "Name *",
+        "name_placeholder": "Closet run",
         "notes": "Notes",
         "photoperiod": "Photoperiod",
         "real_watts": "Real wall watts",

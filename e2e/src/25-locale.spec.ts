@@ -50,6 +50,41 @@ test.describe('german-forced browser', () => {
     // language, so the browser locale stands).
     await expect(page.getByRole('heading', { name: 'Grows', exact: true })).toHaveCount(0);
   });
+
+  test('grow detail renders german surfaces', async ({ page, request }) => {
+    const name = uniqueName('E2E Deutsche Details');
+    const growId = await createGrow(request, name);
+
+    await page.goto(url(`/grows/${growId}`));
+
+    // Heading area (the grow's own h2 stays data) with the keyed
+    // phase-day badge beside it: phase name (catalog phases.*) plus
+    // the German day count (catalog grow.day, singular "Tag").
+    await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+    await expect(page.locator('#phase-day')).toHaveText(/· Tag \d+$/);
+
+    // Coach card heading (catalog env.coach_heading).
+    await expect(
+      page.getByRole('heading', { name: /Phasen-Coach/ }),
+    ).toBeVisible();
+
+    // Environment section heading and a group micro-label
+    // (catalog env.heading, env.group_air).
+    await expect(
+      page.getByRole('heading', { name: 'Umwelt', exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText('Luft', { exact: true })).toBeVisible();
+
+    // Feed schedule section heading (catalog grow.feed_schedule).
+    await expect(
+      page.getByRole('heading', { name: 'Düngeplan', exact: true }),
+    ).toBeVisible();
+
+    // And nothing drifted back to English.
+    await expect(
+      page.getByRole('heading', { name: 'Environment', exact: true }),
+    ).toHaveCount(0);
+  });
 });
 
 test.describe('default locale', () => {

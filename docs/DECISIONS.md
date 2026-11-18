@@ -6,6 +6,32 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-18 — keying the grow pages (locale ticket 02, git-bug 390fbde)
+
+### D114: core-generated coach and lamp-why strings travel as wire codes, not text
+
+The backend and `leaflog-core` compose English coaching prose from
+interpolated numbers (`"Keep VPD 0.75–0.95 kPa …"`, lamp-why sentences).
+Matching rendered English against a catalog to translate it is brittle,
+so the generators now emit a stable **code alongside the English text**:
+`CoachTip` gains `code: &'static str` (ten tip codes, `vpd_band` …
+`curing_jars`), `LampAdvice` gains `why_codes: Vec<&'static str>` (eight
+sentence codes plus `default_starting_points` for the empty-why case),
+and the coach response carries `light_on` so the frontend can pick the
+VPD when-on/when-off phrasing. The English strings stay on the wire
+unchanged (older consumers, tests, and the unknown-code fallback all
+keep working). The frontend maps code → catalog key (`env.coach_*`,
+`env.lamp_*`) in the active locale, reads the VPD band numbers straight
+from `leaflog_core::env::vpd_band` instead of scraping them out of the
+English title, and falls back to the wire text for unknown codes.
+Deliberately **not** localised: the chart SVG `aria-label` suffix
+(`"{role} history"` — the e2e suite and the connect-group contract
+match on it), the `"No data: "` banner prefix and the
+`" — rebind it on the grow edit page"` link phrasing (same e2e anchors),
+the ECharts debug/tooltip series token `"Events"` (never displayed),
+and appearance-tag `meaning` prose (core documentation text shown as a
+hover title).
+
 ## 2026-11-18 — backend message catalog (locale ticket 05, git-bug a0d6639)
 
 ### D113: the backend speaks through a hand-rolled catalog; wrappers read a process-global language
@@ -33,6 +59,7 @@ Deep interpolated detail text stays English by design: store errors,
 alert kinds, grow names ride inside the templates as-is. The German
 templates are du-form in Home Assistant register ("Ungültige Anfrage:",
 "schau im Panel nach").
+||||||| parent of 8146b40 (feat(frontend): key the grow-form name placeholder; e2e and docs)
 
 ## 2026-11-18 — EN+DE localisation plumbing (locale ticket 01, git-bug b67691f)
 
@@ -77,6 +104,11 @@ trips the crate's pedantic/nursery denies and omits item docs). The
 `#[component]` `must_use_candidate` pattern extends to the new `Home`,
 `LocaleChain` and `AppShell` components, and the Axum
 `needless_pass_by_value` pattern to the `locale` handler (register below).
+
+**Addendum 2026-11-18**: the owner removed the spec § citations from UI
+strings during keying — the `" (spec §5.2)"`-style suffixes several
+seeded entries carried are gone from the English catalog and were never
+carried into the German one (citations live in the docs, not the UI).
 
 ## 2026-11-18 — lazy root zone, empty-window honesty, verification sweep (env-section ticket 07, git-bug 70f3303)
 

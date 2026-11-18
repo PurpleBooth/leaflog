@@ -691,7 +691,7 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
         <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
             <label class="fieldset">
                 <span class="fieldset-label">{t!(i18n, form.name)}</span>
-                <input class="input" type="text" required placeholder="Closet run"
+                <input class="input" type="text" required placeholder={t_string!(i18n, form.name_placeholder)}
                     prop:value=move || draft.get().name
                     on:input=move |ev| draft.update(|d| d.name = event_target_value(&ev))
                 />
