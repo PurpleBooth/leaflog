@@ -123,3 +123,52 @@ Three subsystems and one rule, per D073/D074:
   outages degrade to snapshot-only, per the Dead binding rule.
 - **The app lands on the active grow's overview**, not a marketing
   page; fresh installs still meet the onboarding wizard.
+
+## Localisation (D112)
+
+The app speaks English and German. Strings live in compile-time
+catalogs (`leptos_i18n` 0.6.3): `crates/leaflog-frontend/locales/en.json`
+is the key source of truth, `de.json` mirrors it key-for-key in du-form.
+The generated i18n module lands in `OUT_DIR`; `build.rs` panics on
+EN↔DE key drift, so a missing key never ships. Nothing is fetched at
+runtime.
+
+The locale chain: Home Assistant user language first (`GET /api/locale`
+carries the `language` field the backend captures from the documented
+config endpoint on every reconnect), then the browser locale, then
+English. Tags map by prefix (`de*` → de, `en*` → en); anything else
+falls through. No picker, no persistence.
+
+### Keying a string (the pattern for the keying batches)
+
+An English literal becomes a key, one catalog entry per locale, and a
+`t!()` call. Worked example — the Grows empty state:
+
+```rust
+// 1. The literal in the view:
+<p class="py-6 text-center text-base-content/60">"No grows yet — start your first one."</p>
+
+// 2. The key path mirrors the page and purpose (grows.empty).
+//    Add it to BOTH catalogs in the same edit; the build fails
+//    otherwise (key parity).
+{
+  "grows": {
+    "empty": "No grows yet — start your first one."
+  }
+}
+{
+  "grows": {
+    "empty": "Noch keine Anbauten — starte deinen ersten."
+  }
+}
+
+// 3. The call: grab the context once per component, use it in the
+//    view. Interpolated values use {{ name }} in both catalogs and
+//    named arguments at the call site.
+let i18n = use_i18n();
+<p class="py-6 text-center text-base-content/60">{t!(i18n, grows.empty)}</p>
+<p>{t!(i18n, grows.started, date = grow.started_on)}</p>
+```
+
+German drafts du-form ("starte deinen ersten", never "starten Sie").
+Seed data, evidence tags and breeder names stay untranslated.

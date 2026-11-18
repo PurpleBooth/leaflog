@@ -6,6 +6,50 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-18 — EN+DE localisation plumbing (locale ticket 01, git-bug b67691f)
+
+### D112: leptos_i18n 0.6.3 compile-time catalogs; the chain is HA language → browser locale → English
+
+The frontend localises through **leptos_i18n 0.6.3** (CSR-compatible,
+compile-time macro) with JSON catalogs under `crates/leaflog-frontend/locales/`:
+`en.json` is the default locale and the **key source of truth**; `de.json`
+mirrors it key-for-key in **du-form**. `build.rs` generates the i18n module
+into `OUT_DIR` and additionally **panics on EN↔DE key drift** — the crate's
+own codegen only warns and falls back, but the ticket requires the build to
+fail (the parity proof is a one-key removal; the panic names the missing
+keys). Nothing is fetched at runtime.
+
+**Locale chain (frontend)**: `en`/`de` catalogs negotiate from the browser
+at first paint (leptos_i18n's navigator matching, cookie disabled — no
+persistence), then the backend half applies: the bridge captures the HA
+config `language` on every reconnect alongside the timezone
+(`GET /core/api/config`, documented surface), `GET /api/locale` carries it
+to the frontend, and `LocaleChain` sets the locale only when the tag maps
+(`de*` → de, `en*` → en — an explicit English from HA must beat a German
+browser). Any other tag (or HA unreachable, or before the first fetch —
+the endpoint reports `null`) falls through to the browser locale, then
+English. The backend itself never translates in this ticket — it forwards
+the observed field only.
+
+**Ship shape**: big-bang — one release where German exists fully;
+incremental per-page mixes are rejected. This ticket seeds nav labels, page
+headings and the Grows page; everything unseeded stays English, acceptable
+only within ticket 01's batch.
+
+**Prose gate narrowing (noted, not implemented here)**: once the keying
+batches land, the D065 UI-string extractor leaves `lint-prose` — locale
+text lives in catalog files the extractor never reads and Rust keeps keys,
+not literals. The narrowing (markdown and Rust comments stay gated) is
+ticket 06 (cbfde49).
+
+**Lint exceptions**: the generated i18n module is the one codegen allow in
+the frontend crate — `#[allow(missing_docs, clippy::pedantic,
+clippy::nursery)]` on the `generated_i18n` include module (macro output
+trips the crate's pedantic/nursery denies and omits item docs). The
+`#[component]` `must_use_candidate` pattern extends to the new `Home`,
+`LocaleChain` and `AppShell` components, and the Axum
+`needless_pass_by_value` pattern to the `locale` handler (register below).
+
 ## 2026-11-18 — lazy root zone, empty-window honesty, verification sweep (env-section ticket 07, git-bug 70f3303)
 
 ### D111: the lazy watch arms late; the hint keys on readings, not bands
@@ -2649,8 +2693,10 @@ once per crate.
 |---|---|---|---|
 | leaflog-backend | `ingress::IngressPath` | `clippy::module_name_repetitions` | The domain name (`IngressPath`) is the right name; the module is `ingress` |
 | leaflog-backend | `app.rs` handlers `health`, `index`, `fallback` and middlewares `supervisor_gate`, `security_headers`, `dev_prefix_strip` | `clippy::needless_pass_by_value` | Axum handlers/middlewares must take extractors (`State`, `HeaderMap`, `Request`) by value |
+| leaflog-backend | `api_locale.rs` handler `locale` | `clippy::needless_pass_by_value` | Same Axum handler contract as above (D112) |
 | leaflog-backend | `app.rs` handler `health` | `clippy::unused_async` | Axum handlers must be `async fn` even when they never await |
 | mock-ha | handlers `root`, `ping`, `states` | `clippy::unused_async` | Same Axum contract as above |
 | leaflog-frontend | component `App` | `clippy::must_use_candidate` | The Leptos `#[component]` macro drops a hand-written `#[must_use]`, so the lint fires on the generated function |
+| leaflog-frontend | components `Home`, `LocaleChain`, `AppShell` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` (`Home` predates the register row; `LocaleChain`/`AppShell` arrive with D112) |
 | leaflog-frontend | component `ErrorIf` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` |
 | leaflog-frontend | component `LightCycleEditor` in `light_cycle.rs` | `clippy::too_many_lines` | Declarative view code, not logic; splitting would obscure the form (same pattern as the M2 register row) |
