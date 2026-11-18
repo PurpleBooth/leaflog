@@ -746,8 +746,7 @@ pub fn coach_tips(phase: Phase, substrate_label: &str, light_on: bool) -> Vec<Co
             });
             tips.push(CoachTip {
                 title: "Raise the lamp 2–4 in during stretch".to_owned(),
-                why: "Plants can double in height during the first 1–3 weeks of flower."
-                    .to_owned(),
+                why: "Plants can double in height during the first 1–3 weeks of flower.".to_owned(),
                 code: "flower_stretch",
             });
         }

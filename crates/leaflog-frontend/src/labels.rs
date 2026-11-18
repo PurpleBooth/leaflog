@@ -96,6 +96,41 @@ pub fn status_label(locale: Locale, status: GrowStatus) -> String {
     }
 }
 
+/// The appearance category heading for the given locale (the group
+/// caption above one set of trait checkboxes).
+#[must_use]
+pub fn appearance_category_label(locale: Locale, category: appearance::Category) -> String {
+    match category {
+        appearance::Category::OverallHealth => {
+            td_string!(locale, form.cat_overall_health).to_owned()
+        }
+        appearance::Category::Colour => td_string!(locale, form.cat_colour).to_owned(),
+        appearance::Category::LightStress => td_string!(locale, form.cat_light_stress).to_owned(),
+        appearance::Category::NutrientAndWater => {
+            td_string!(locale, form.cat_nutrient_water).to_owned()
+        }
+        appearance::Category::GrowthShape => td_string!(locale, form.cat_growth_shape).to_owned(),
+    }
+}
+
+/// The feed template phase name for a `FeedPhase` wire label; the
+/// 8 known labels map to catalog strings, unknown ones echo through
+/// (matching the backend's tolerant rendering of stray phases).
+#[must_use]
+pub fn feed_phase_label(locale: Locale, label: &str) -> String {
+    match label {
+        "seedling" => td_string!(locale, feed.phase_seedling).to_owned(),
+        "early_veg" => td_string!(locale, feed.phase_early_veg).to_owned(),
+        "late_veg" => td_string!(locale, feed.phase_late_veg).to_owned(),
+        "early_flower" => td_string!(locale, feed.phase_early_flower).to_owned(),
+        "mid_flower" => td_string!(locale, feed.phase_mid_flower).to_owned(),
+        "late_flower" => td_string!(locale, feed.phase_late_flower).to_owned(),
+        "ripen" => td_string!(locale, feed.phase_ripen).to_owned(),
+        "flush" => td_string!(locale, feed.phase_flush).to_owned(),
+        other => other.to_owned(),
+    }
+}
+
 /// The chart card title for a history role in the given locale; the
 /// titles double as the not-measured card's chip labels, so both go
 /// through this one mapping. Unknown roles echo through.
@@ -115,8 +150,10 @@ pub fn chart_title(locale: Locale, role: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Locale, action_label, action_label_for_kind, appearance_label, chart_title,
-        phase_label, status_label};
+    use super::{
+        Locale, action_label, action_label_for_kind, appearance_category_label, appearance_label,
+        chart_title, feed_phase_label, phase_label, status_label,
+    };
     use leaflog_core::Phase;
     use leaflog_core::actions::ActionType;
     use leaflog_core::grows::GrowStatus;
@@ -126,7 +163,10 @@ mod tests {
     #[test]
     fn english_matches_the_core_spellings() {
         for phase in Phase::all() {
-            assert_eq!(phase_label(Locale::en, phase), phase.display());
+            assert_eq!(
+                phase_label(Locale::en, phase),
+                crate::phase_pick::phase_display(phase)
+            );
         }
         for kind in ActionType::all() {
             assert_eq!(action_label(Locale::en, kind), kind.display());
@@ -172,6 +212,38 @@ mod tests {
     fn action_kind_labels_map_and_echo() {
         assert_eq!(action_label_for_kind(Locale::en, "trim_defoliate"), "Trim");
         assert_eq!(action_label_for_kind(Locale::de, "flip"), "Flip 12/12");
-        assert_eq!(action_label_for_kind(Locale::en, "seeds popped"), "seeds popped");
+        assert_eq!(
+            action_label_for_kind(Locale::en, "seeds popped"),
+            "seeds popped"
+        );
+    }
+
+    /// The appearance category headings spell out in both locales.
+    /// Feed phase names: English matches the core wire spellings
+    /// spelled out; German renders the horticulture terms; unknown
+    /// labels echo through.
+    #[test]
+    fn feed_phase_labels_map_and_echo() {
+        assert_eq!(feed_phase_label(Locale::en, "seedling"), "Seedling");
+        assert_eq!(feed_phase_label(Locale::en, "late_flower"), "Late flower");
+        assert_eq!(feed_phase_label(Locale::de, "seedling"), "Sämling");
+        assert_eq!(feed_phase_label(Locale::de, "flush"), "Wässern");
+        assert_eq!(
+            feed_phase_label(Locale::en, "something_else"),
+            "something_else"
+        );
+    }
+
+    #[test]
+    fn appearance_categories_map() {
+        use leaflog_core::appearance::Category;
+        assert_eq!(
+            appearance_category_label(Locale::en, Category::OverallHealth),
+            "Overall health"
+        );
+        assert_eq!(
+            appearance_category_label(Locale::de, Category::NutrientAndWater),
+            "Düngung & Wasser"
+        );
     }
 }

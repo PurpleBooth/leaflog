@@ -2,6 +2,8 @@
 //! daisyUI dropdown with Lucide SVG icons (ticket 06, spec 95b2e66).
 
 use crate::grows::empty_action;
+use crate::i18n::{t, t_string, use_i18n};
+use crate::labels;
 use leaflog_core::actions::ActionType;
 use leaflog_core::grows::ActionInput;
 use leptos::prelude::*;
@@ -122,6 +124,7 @@ pub(crate) fn QuickAddMenu(
     draft: RwSignal<ActionInput>,
 ) -> impl IntoView {
     let open = RwSignal::new(false);
+    let i18n = use_i18n();
     let root = NodeRef::<leptos::html::Div>::new();
     let trigger = NodeRef::<leptos::html::Button>::new();
     let menu = NodeRef::<leptos::html::Ul>::new();
@@ -261,31 +264,34 @@ pub(crate) fn QuickAddMenu(
                 on:keydown=on_trigger_keydown
             >
                 <Icon icon=icondata_lu::LuCirclePlus />
-                "Quick add"
+                {t!(i18n, quick_add.trigger)}
                 <Icon icon=icondata_lu::LuChevronDown />
             </button>
             <ul
                 node_ref=menu
                 id="quick-add-menu"
                 role="menu"
-                aria-label="Quick add action"
+                aria-label=move || t_string!(i18n, quick_add.menu_aria).into_owned()
                 class="dropdown-content menu bg-base-100 rounded-box shadow-sm z-1 w-56 p-2"
                 on:keydown=on_menu_keydown
             >
-                {menu_actions()
-                    .into_iter()
-                    .map(|kind| {
-                        view! {
-                            <li role="none">
-                                <button type="button" role="menuitem" on:click=move |_| pick(kind)>
-                                    {icon_for(kind)
-                                        .map(|icon| view! { <Icon icon=icon /> })}
-                                    {kind.display()}
-                                </button>
-                            </li>
-                        }
-                    })
-                    .collect::<Vec<_>>()}
+                {move || {
+                    let locale = i18n.get_locale();
+                    menu_actions()
+                        .into_iter()
+                        .map(|kind| {
+                            view! {
+                                <li role="none">
+                                    <button type="button" role="menuitem" on:click=move |_| pick(kind)>
+                                        {icon_for(kind)
+                                            .map(|icon| view! { <Icon icon=icon /> })}
+                                        {labels::action_label(locale, kind)}
+                                    </button>
+                                </li>
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                }}
             </ul>
         </div>
     }

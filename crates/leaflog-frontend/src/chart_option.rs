@@ -6,6 +6,9 @@
 //! lives here, and this seam serves every chart in the app.
 
 use crate::api::{ChartSeriesData, GrowHistory};
+use crate::i18n::Locale;
+use crate::labels::action_label_for_kind;
+use leptos_i18n::td_string;
 
 /// The chart's colours, resolved from the app theme at runtime
 /// (probe `text-primary` / `text-secondary` / `text-base-content` / a
@@ -95,6 +98,7 @@ pub fn history_option(
     chart: &GrowHistory,
     look: &ChartLook,
     style: &ChartStyle,
+    locale: Locale,
 ) -> serde_json::Value {
     let (y_min, y_max) = padded_range(chart);
     // An empty window has no values to label: with the padded fallback
@@ -109,7 +113,7 @@ pub fn history_option(
     // would be a backend contract break; the axis then auto-scales.
     let (x_min, x_max) = window_bounds(chart);
     let series = match style.kind {
-        SeriesKind::Scatter => scatter_series(chart, look),
+        SeriesKind::Scatter => scatter_series(chart, look, locale),
         SeriesKind::StepLine => vec![line_series(chart, look, true)],
         SeriesKind::Line => vec![line_series(chart, look, false)],
     };
@@ -119,7 +123,7 @@ pub fn history_option(
     // only, the z level below is what puts it behind everything.
     let mut series = series;
     if !chart.markers.is_empty() {
-        series.push(marker_series(chart, look, y_min, y_max));
+        series.push(marker_series(chart, look, y_min, y_max, locale));
     }
     if !chart.nights.is_empty() {
         series.push(night_series(chart, look));
@@ -230,15 +234,17 @@ fn line_series(chart: &GrowHistory, look: &ChartLook, step: bool) -> serde_json:
 /// The pair role's two dot series: the input readings in the accent
 /// colour and the runoff compare beside them in the distinct compare
 /// colour (the old `fill-primary` / `fill-secondary` pair). Named, so
-/// the hover tooltip tells the two apart.
-fn scatter_series(chart: &GrowHistory, look: &ChartLook) -> Vec<serde_json::Value> {
+/// the hover tooltip tells the two apart — the names come from the
+/// catalog in the active locale (`env.input_series` /
+/// `env.runoff_series`).
+fn scatter_series(chart: &GrowHistory, look: &ChartLook, locale: Locale) -> Vec<serde_json::Value> {
     let compare_data = chart
         .compare
         .as_ref()
         .map_or_else(Vec::new, compare_ms_data);
     vec![
         serde_json::json!({
-            "name": "Input",
+            "name": td_string!(locale, env.input_series),
             "type": "scatter",
             "symbolSize": 8,
             "itemStyle": { "color": look.accent },
@@ -246,7 +252,7 @@ fn scatter_series(chart: &GrowHistory, look: &ChartLook) -> Vec<serde_json::Valu
             "markArea": band_mark_area(chart, &look.accent),
         }),
         serde_json::json!({
-            "name": "Runoff",
+            "name": td_string!(locale, env.runoff_series),
             "type": "scatter",
             "symbolSize": 8,
             "itemStyle": { "color": look.compare },
@@ -345,19 +351,10 @@ fn window_ms(at: &str) -> Option<i64> {
 
 /// The series name every chart's log-event markers travel under: the
 /// component's tooltip recognises it and names the event instead of
-/// formatting the tick's placement y as a reading.
+/// formatting the tick's placement y as a reading. A wire token,
+/// never displayed — the tooltip's special case renders the event's
+/// own name (the action's localised caption) instead.
 pub const MARKER_SERIES_NAME: &str = "Events";
-
-/// The UI caption for one marker kind: the action log's own chip
-/// caption for the wire label (one spelling per concept). An unknown
-/// label echoes through so the tooltip never blanks.
-#[must_use]
-pub fn marker_label(kind: &str) -> &str {
-    leaflog_core::actions::ActionType::all()
-        .iter()
-        .find(|action| action.label() == kind)
-        .map_or(kind, |action| action.display())
-}
 
 /// The log-event markers as one scatter series of narrow vertical
 /// ticks: `rect` symbols 2×12 in the muted gridline colour — geometry
@@ -369,6 +366,7 @@ fn marker_series(
     look: &ChartLook,
     y_min: f64,
     y_max: f64,
+    locale: Locale,
 ) -> serde_json::Value {
     let floor = 0.05_f64.mul_add(y_max - y_min, y_min);
     let data: Vec<serde_json::Value> = chart
@@ -378,7 +376,7 @@ fn marker_series(
             window_ms(&marker.at).map(|at| {
                 serde_json::json!({
                     "value": [at, floor],
-                    "name": marker_label(&marker.kind),
+                    "name": action_label_for_kind(locale, &marker.kind),
                 })
             })
         })
@@ -473,13 +471,15 @@ fn window_bounds(chart: &GrowHistory) -> (serde_json::Value, serde_json::Value) 
 #[cfg(test)]
 mod tests {
     use super::{
-        CONNECT_LABEL_WIDTH, ChartLook, ChartStyle, SeriesKind, history_option, marker_label,
-        role_style, series_is_empty, window_is_empty,
+        CONNECT_LABEL_WIDTH, ChartLook, ChartStyle, SeriesKind, history_option, role_style,
+        series_is_empty, window_is_empty,
     };
     use crate::api::{
         BandSegmentData, ChartPointData, ChartSeriesData, EventMarkerData, GrowHistory,
         LightIntervalData,
     };
+    use crate::i18n::Locale;
+    use crate::labels::action_label_for_kind;
 
     /// Fixed test colours (the fallbacks the component probes for).
     fn look() -> ChartLook {
@@ -544,7 +544,7 @@ mod tests {
         // timestamps chart-to-chart. The axis pointer is pinned to
         // the line crosshair the group contract names.
         for role in ["temperature", "humidity", "ph"] {
-            let option = history_option(&sample_for_role(role), &look(), &style(role));
+            let option = history_option(&sample_for_role(role), &look(), &style(role), Locale::en);
             assert_eq!(
                 option["grid"]["left"],
                 serde_json::json!(CONNECT_LABEL_WIDTH + 14.0),
@@ -567,7 +567,12 @@ mod tests {
 
     #[test]
     fn the_option_labels_axes_and_gridlines_and_arms_the_tooltip() {
-        let option = history_option(&sample_history(), &look(), &style("temperature"));
+        let option = history_option(
+            &sample_history(),
+            &look(),
+            &style("temperature"),
+            Locale::en,
+        );
         assert_eq!(option["xAxis"]["type"], "time");
         assert_eq!(option["xAxis"]["axisLabel"]["hideOverlap"], true);
         assert_eq!(option["yAxis"]["type"], "value");
@@ -579,7 +584,12 @@ mod tests {
 
     #[test]
     fn the_x_axis_spans_the_whole_chart_window() {
-        let option = history_option(&sample_history(), &look(), &style("temperature"));
+        let option = history_option(
+            &sample_history(),
+            &look(),
+            &style("temperature"),
+            Locale::en,
+        );
         assert_eq!(
             option["xAxis"]["min"].as_i64(),
             Some(1_794_787_200_000),
@@ -596,7 +606,7 @@ mod tests {
     fn an_unparseable_window_falls_back_to_auto_scaling() {
         let mut broken = sample_history();
         broken.series.from = "not-a-timestamp".to_owned();
-        let option = history_option(&broken, &look(), &style("temperature"));
+        let option = history_option(&broken, &look(), &style("temperature"), Locale::en);
         assert!(
             option["xAxis"]["min"].is_null(),
             "broken window start auto-scales"
@@ -609,7 +619,12 @@ mod tests {
 
     #[test]
     fn the_value_range_keeps_headroom_above_the_peak() {
-        let option = history_option(&sample_history(), &look(), &style("temperature"));
+        let option = history_option(
+            &sample_history(),
+            &look(),
+            &style("temperature"),
+            Locale::en,
+        );
         let y_max = option["yAxis"]["max"].as_f64().expect("explicit max");
         assert!(y_max > 24.5, "axis must clear the peak reading: {y_max}");
         let y_min = option["yAxis"]["min"].as_f64().expect("explicit min");
@@ -622,7 +637,7 @@ mod tests {
         for point in &mut flat.series.points {
             point.value = 21.0;
         }
-        let option = history_option(&flat, &look(), &style("temperature"));
+        let option = history_option(&flat, &look(), &style("temperature"), Locale::en);
         let y_max = option["yAxis"]["max"].as_f64().expect("explicit max");
         let y_min = option["yAxis"]["min"].as_f64().expect("explicit min");
         assert!(
@@ -636,7 +651,7 @@ mod tests {
         let mut empty = sample_history();
         empty.series.points = Vec::new();
         assert!(window_is_empty(&empty));
-        let option = history_option(&empty, &look(), &style("ec"));
+        let option = history_option(&empty, &look(), &style("ec"), Locale::en);
         assert_eq!(
             option["yAxis"]["name"], "",
             "no unit label on an empty window"
@@ -655,7 +670,7 @@ mod tests {
             light_on: None,
         }];
         assert!(!window_is_empty(&empty));
-        let option = history_option(&empty, &look(), &style("ec"));
+        let option = history_option(&empty, &look(), &style("ec"), Locale::en);
         assert_eq!(option["yAxis"]["name"], "µS/cm");
         assert_eq!(option["yAxis"]["axisLabel"]["show"], true);
     }
@@ -710,7 +725,7 @@ mod tests {
             phase: "vegetative".to_owned(),
             light_on: None,
         }];
-        let option = history_option(&banded, &look(), &style("temperature"));
+        let option = history_option(&banded, &look(), &style("temperature"), Locale::en);
         let area = &option["series"][0]["markArea"];
         let region = &area["data"][0];
         assert_eq!(
@@ -755,7 +770,7 @@ mod tests {
                 light_on: None,
             },
         ];
-        let option = history_option(&banded, &look(), &style("temperature"));
+        let option = history_option(&banded, &look(), &style("temperature"), Locale::en);
         let regions = option["series"][0]["markArea"]["data"]
             .as_array()
             .expect("mark area data");
@@ -779,7 +794,7 @@ mod tests {
             phase: "vegetative".to_owned(),
             light_on: None,
         }];
-        let option = history_option(&banded, &look(), &style("temperature"));
+        let option = history_option(&banded, &look(), &style("temperature"), Locale::en);
         let y_max = option["yAxis"]["max"].as_f64().expect("explicit max");
         let y_min = option["yAxis"]["min"].as_f64().expect("explicit min");
         assert!(
@@ -797,7 +812,7 @@ mod tests {
     fn a_window_without_data_or_bands_still_gets_a_sane_axis() {
         let mut empty = sample_history();
         empty.series.points = Vec::new();
-        let option = history_option(&empty, &look(), &style("temperature"));
+        let option = history_option(&empty, &look(), &style("temperature"), Locale::en);
         let y_max = option["yAxis"]["max"].as_f64().expect("explicit max");
         let y_min = option["yAxis"]["min"].as_f64().expect("explicit min");
         assert!(y_min < y_max, "axis stays sane: {y_min}..{y_max}");
@@ -818,7 +833,7 @@ mod tests {
             phase: "vegetative".to_owned(),
             light_on: None,
         }];
-        let option = history_option(&banded, &look(), &style("temperature"));
+        let option = history_option(&banded, &look(), &style("temperature"), Locale::en);
         assert_eq!(option["series"][0]["lineStyle"]["color"], "#2e7d4f");
         assert_eq!(
             option["series"][0]["markArea"]["itemStyle"]["color"],
@@ -868,7 +883,7 @@ mod tests {
 
     #[test]
     fn the_axis_name_reaches_the_option() {
-        let option = history_option(&sample_for_role("vpd"), &look(), &style("vpd"));
+        let option = history_option(&sample_for_role("vpd"), &look(), &style("vpd"), Locale::en);
         assert_eq!(option["yAxis"]["name"], "kPa");
     }
 
@@ -908,7 +923,7 @@ mod tests {
     #[test]
     fn the_pair_roles_draw_two_named_scatter_series_in_distinct_colours() {
         for role in ["ph", "ec"] {
-            let option = history_option(&pair_history(), &look(), &style(role));
+            let option = history_option(&pair_history(), &look(), &style(role), Locale::en);
             let input = &option["series"][0];
             let runoff = &option["series"][1];
             assert_eq!(input["type"], "scatter", "{role} input series is dots");
@@ -928,7 +943,7 @@ mod tests {
 
     #[test]
     fn the_pair_scatter_data_are_epoch_ms_value_pairs() {
-        let option = history_option(&pair_history(), &look(), &style("ph"));
+        let option = history_option(&pair_history(), &look(), &style("ph"), Locale::en);
         let input = &option["series"][0]["data"][0];
         assert_eq!(
             input[0].as_f64(),
@@ -943,7 +958,7 @@ mod tests {
 
     #[test]
     fn runoff_values_join_the_value_axis_range() {
-        let option = history_option(&pair_history(), &look(), &style("ph"));
+        let option = history_option(&pair_history(), &look(), &style("ph"), Locale::en);
         let y_max = option["yAxis"]["max"].as_f64().expect("explicit max");
         let y_min = option["yAxis"]["min"].as_f64().expect("explicit min");
         assert!(
@@ -960,7 +975,7 @@ mod tests {
     fn a_pair_without_runoff_still_draws_the_input_series() {
         let mut alone = pair_history();
         alone.compare = None;
-        let option = history_option(&alone, &look(), &style("ph"));
+        let option = history_option(&alone, &look(), &style("ph"), Locale::en);
         let runoff = option["series"][1]["data"].as_array().expect("runoff data");
         assert!(runoff.is_empty(), "no runoff, no runoff dots");
         let input = option["series"][0]["data"].as_array().expect("input data");
@@ -971,13 +986,13 @@ mod tests {
     fn each_pair_role_labels_its_axis_with_its_unit() {
         assert_eq!(style("ph").axis_name, "pH", "pH is dimensionless");
         assert_eq!(style("ec").axis_name, "µS/cm", "EC is canonical µS/cm");
-        let option = history_option(&pair_history(), &look(), &style("ec"));
+        let option = history_option(&pair_history(), &look(), &style("ec"), Locale::en);
         assert_eq!(option["yAxis"]["name"], "µS/cm");
     }
 
     #[test]
     fn the_staircase_holds_each_value_until_the_next_reading() {
-        let option = history_option(&light_history(), &look(), &style("light"));
+        let option = history_option(&light_history(), &look(), &style("light"), Locale::en);
         // `step: "end"`: from each reading the line runs horizontally
         // at its value until the next reading's x, then jumps — the
         // old `step_points` semantics, so an off at 00:10 draws on/1.0
@@ -987,7 +1002,7 @@ mod tests {
 
     #[test]
     fn a_continuous_role_draws_a_plain_line_without_a_step_marker() {
-        let option = history_option(&sample_history(), &look(), &style("humidity"));
+        let option = history_option(&sample_history(), &look(), &style("humidity"), Locale::en);
         assert!(
             option["series"][0]["step"].is_null(),
             "no step key on plain lines"
@@ -998,7 +1013,7 @@ mod tests {
 
     #[test]
     fn the_series_data_are_epoch_ms_value_pairs() {
-        let option = history_option(&light_history(), &look(), &style("light"));
+        let option = history_option(&light_history(), &look(), &style("light"), Locale::en);
         let data = option["series"][0]["data"].as_array().expect("series data");
         assert_eq!(data.len(), 3);
         let first = &data[0];
@@ -1017,7 +1032,7 @@ mod tests {
         // and still yield a sane axis.
         let mut co2 = sample_for_role("co2");
         co2.bands = Vec::new();
-        let option = history_option(&co2, &look(), &style("co2"));
+        let option = history_option(&co2, &look(), &style("co2"), Locale::en);
         assert_eq!(option["yAxis"]["name"], "ppm");
         let regions = option["series"][0]["markArea"]["data"]
             .as_array()
@@ -1039,7 +1054,7 @@ mod tests {
             phase: "vegetative".to_owned(),
             light_on: None,
         }];
-        let option = history_option(&soil, &look(), &style("soil_moisture"));
+        let option = history_option(&soil, &look(), &style("soil_moisture"), Locale::en);
         assert_eq!(option["yAxis"]["name"], "%");
         let region = &option["series"][0]["markArea"]["data"][0];
         assert_eq!(region[0]["yAxis"].as_f64(), Some(45.0), "band top");
@@ -1076,7 +1091,7 @@ mod tests {
     fn stepped_bands_render_one_region_per_segment_with_its_own_range() {
         let mut stepped = sample_for_role("vpd");
         stepped.bands = stepped_bands();
-        let option = history_option(&stepped, &look(), &style("vpd"));
+        let option = history_option(&stepped, &look(), &style("vpd"), Locale::en);
         let regions = option["series"][0]["markArea"]["data"]
             .as_array()
             .expect("mark area data");
@@ -1131,7 +1146,7 @@ mod tests {
                 light_on: Some(step % 2 == 1),
             })
             .collect();
-        let option = history_option(&stepped, &look(), &style("vpd"));
+        let option = history_option(&stepped, &look(), &style("vpd"), Locale::en);
         let regions = option["series"][0]["markArea"]["data"]
             .as_array()
             .expect("mark area data");
@@ -1170,7 +1185,7 @@ mod tests {
             muted: "#e1e1e180".to_owned(),
         };
         for theme_look in [look(), dark] {
-            let option = history_option(&banded, &theme_look, &style("temperature"));
+            let option = history_option(&banded, &theme_look, &style("temperature"), Locale::en);
             let area = &option["series"][0]["markArea"];
             assert_eq!(
                 area["itemStyle"]["color"].as_str(),
@@ -1211,6 +1226,7 @@ mod tests {
             &history_with_markers("temperature"),
             &look(),
             &style("temperature"),
+            Locale::en,
         );
         let series = option["series"].as_array().expect("series array");
         assert_eq!(series.len(), 2, "the tick series appends after the line");
@@ -1239,12 +1255,17 @@ mod tests {
 
     #[test]
     fn charts_without_markers_stay_marker_free() {
-        let plain = history_option(&sample_history(), &look(), &style("temperature"));
+        let plain = history_option(
+            &sample_history(),
+            &look(),
+            &style("temperature"),
+            Locale::en,
+        );
         assert_eq!(plain["series"].as_array().expect("series").len(), 1);
         // A hidden marker set is stripped before the builder sees it.
         let mut hidden = history_with_markers("temperature");
         hidden.markers.clear();
-        let stripped = history_option(&hidden, &look(), &style("temperature"));
+        let stripped = history_option(&hidden, &look(), &style("temperature"), Locale::en);
         assert_eq!(stripped["series"].as_array().expect("series").len(), 1);
     }
 
@@ -1261,6 +1282,7 @@ mod tests {
                 &history_with_markers("temperature"),
                 &theme_look,
                 &style("temperature"),
+                Locale::en,
             );
             assert_eq!(
                 option["series"][1]["itemStyle"]["color"].as_str(),
@@ -1272,7 +1294,12 @@ mod tests {
 
     #[test]
     fn pair_charts_append_the_ticks_after_their_two_series() {
-        let option = history_option(&history_with_markers("ph"), &look(), &style("ph"));
+        let option = history_option(
+            &history_with_markers("ph"),
+            &look(),
+            &style("ph"),
+            Locale::en,
+        );
         let series = option["series"].as_array().expect("series array");
         assert_eq!(series.len(), 3, "input, runoff, ticks");
         assert_eq!(series[0]["name"], "Input");
@@ -1284,21 +1311,35 @@ mod tests {
     fn marker_ticks_drop_unparseable_timestamps() {
         let mut broken = history_with_markers("soil_moisture");
         broken.markers[0].at = "not-a-timestamp".to_owned();
-        let option = history_option(&broken, &look(), &style("soil_moisture"));
+        let option = history_option(&broken, &look(), &style("soil_moisture"), Locale::en);
         let data = option["series"][1]["data"].as_array().expect("tick data");
         assert_eq!(data.len(), 1, "only the parseable marker draws");
     }
 
     #[test]
-    fn marker_label_names_events_and_echoes_unknown_kinds() {
-        assert_eq!(marker_label("water"), "Water");
-        assert_eq!(marker_label("feed"), "Feed");
-        assert_eq!(marker_label("transplant"), "Transplant");
-        assert_eq!(marker_label("lights"), "Lights");
-        assert_eq!(marker_label("light_change"), "Light change");
-        assert_eq!(marker_label("flip"), "Flip 12/12");
-        assert_eq!(marker_label("phase_change"), "Phase change");
-        assert_eq!(marker_label("mystery"), "mystery");
+    fn marker_labels_name_events_and_echo_unknown_kinds() {
+        assert_eq!(action_label_for_kind(Locale::en, "water"), "Water");
+        assert_eq!(action_label_for_kind(Locale::en, "feed"), "Feed");
+        assert_eq!(
+            action_label_for_kind(Locale::en, "transplant"),
+            "Transplant"
+        );
+        assert_eq!(action_label_for_kind(Locale::en, "lights"), "Lights");
+        assert_eq!(
+            action_label_for_kind(Locale::en, "light_change"),
+            "Light change"
+        );
+        assert_eq!(action_label_for_kind(Locale::en, "flip"), "Flip 12/12");
+        assert_eq!(
+            action_label_for_kind(Locale::en, "phase_change"),
+            "Phase change"
+        );
+        assert_eq!(
+            action_label_for_kind(Locale::en, "seeds popped"),
+            "seeds popped"
+        );
+        assert_eq!(action_label_for_kind(Locale::de, "water"), "Gießen");
+        assert_eq!(action_label_for_kind(Locale::en, "mystery"), "mystery");
     }
 
     // ── Night shading (ticket 05) ─────────────────────────────
@@ -1326,7 +1367,12 @@ mod tests {
 
     #[test]
     fn nights_render_as_a_silent_back_series_of_full_height_regions() {
-        let option = history_option(&history_with_nights(), &look(), &style("temperature"));
+        let option = history_option(
+            &history_with_nights(),
+            &look(),
+            &style("temperature"),
+            Locale::en,
+        );
         let series = option["series"].as_array().expect("series array");
         assert_eq!(series.len(), 2, "the night series appends after the line");
         let shade = &series[1];
@@ -1386,7 +1432,7 @@ mod tests {
                 on: false,
             },
         ];
-        let option = history_option(&chart, &look(), &style("temperature"));
+        let option = history_option(&chart, &look(), &style("temperature"), Locale::en);
         let regions = option["series"][1]["markArea"]["data"]
             .as_array()
             .expect("night regions");
@@ -1408,7 +1454,7 @@ mod tests {
             dark("2026-11-16T00:00:00+00:00", "2026-11-16T00:20:00+00:00"),
             dark("2026-11-16T00:20:00+00:00", "2026-11-16T00:40:00+00:00"),
         ];
-        let option = history_option(&chart, &look(), &style("temperature"));
+        let option = history_option(&chart, &look(), &style("temperature"), Locale::en);
         let regions = option["series"][1]["markArea"]["data"]
             .as_array()
             .expect("night regions");
@@ -1428,6 +1474,7 @@ mod tests {
             &sample_for_role("temperature"),
             &look(),
             &style("temperature"),
+            Locale::en,
         );
         let series = option["series"].as_array().expect("series array");
         assert_eq!(series.len(), 1, "no nights, no extra series");
@@ -1437,7 +1484,7 @@ mod tests {
     fn night_shading_appends_after_the_marker_ticks() {
         let mut chart = history_with_markers("temperature");
         chart.nights = history_with_nights().nights;
-        let option = history_option(&chart, &look(), &style("temperature"));
+        let option = history_option(&chart, &look(), &style("temperature"), Locale::en);
         let series = option["series"].as_array().expect("series array");
         assert_eq!(series.len(), 3, "line, ticks, night");
         assert_eq!(series[1]["name"], "Events");
@@ -1454,13 +1501,13 @@ mod tests {
         chart.series.points = Vec::new();
         chart.nights = history_with_nights().nights;
         assert!(window_is_empty(&chart));
-        let option = history_option(&chart, &look(), &style("temperature"));
+        let option = history_option(&chart, &look(), &style("temperature"), Locale::en);
         assert_eq!(option["yAxis"]["axisLabel"]["show"], false);
         // The y range is exactly what the same window without nights
         // gets: a tint spanning the full height never widens it.
         let mut bare = sample_for_role("temperature");
         bare.series.points = Vec::new();
-        let bare_option = history_option(&bare, &look(), &style("temperature"));
+        let bare_option = history_option(&bare, &look(), &style("temperature"), Locale::en);
         assert_eq!(option["yAxis"]["min"], bare_option["yAxis"]["min"]);
         assert_eq!(option["yAxis"]["max"], bare_option["yAxis"]["max"]);
         assert_eq!(option["series"][1]["name"], "Night");

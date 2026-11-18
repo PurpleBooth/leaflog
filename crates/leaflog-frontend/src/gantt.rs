@@ -6,8 +6,11 @@
 
 use crate::ErrorIf;
 use crate::api::{Forecast, PhaseWindowData};
+use crate::i18n::use_i18n;
+use crate::labels;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use leptos_i18n::td_string;
 
 /// Phase display colors (calm botanical palette).
 fn phase_color(label: &str) -> &'static str {
@@ -88,6 +91,7 @@ fn track_percentages(
 // Component prop; Leptos takes owned props.
 #[allow(clippy::needless_pass_by_value)] // Leptos component prop contract; see docs/DECISIONS.md
 pub fn GanttTimeline(grow_id: String) -> impl IntoView {
+    let i18n = use_i18n();
     let forecast = RwSignal::<Option<Forecast>>::new(None);
     let error = RwSignal::<Option<String>>::new(None);
 
@@ -106,12 +110,15 @@ pub fn GanttTimeline(grow_id: String) -> impl IntoView {
             <ErrorIf error />
             {move || {
                 let Some(data) = forecast.get() else {
-                    return view! { <p class="text-base-content/70">"Loading forecast…"</p> }.into_any();
+                    return view! { <p class="text-base-content/70">{
+                        td_string!(i18n.get_locale(), gantt.loading)
+                    }</p> }.into_any();
                 };
                 // An open-ended photoperiod veg (no flip pin, no plan)
                 // projects no flower, drying or curing window: there is
                 // no total to count towards, so the chart horizon runs
                 // through today and the caption shows only the count.
+                let locale = i18n.get_locale();
                 let open = is_open_ended(&data.windows);
                 let total_days = forecast_horizon(&data);
                 let today_pct =
@@ -121,7 +128,8 @@ pub fn GanttTimeline(grow_id: String) -> impl IntoView {
                     .iter()
                     .enumerate()
                     .map(|(index, window)| {
-                        gantt_row(window, total_days, open && index + 1 == data.windows.len())
+                        gantt_row(locale, window, total_days,
+                            open && index + 1 == data.windows.len())
                     })
                     .collect();
                 let count_suffix = if open {
@@ -131,7 +139,7 @@ pub fn GanttTimeline(grow_id: String) -> impl IntoView {
                 };
                 view! {
                     <div class="gantt-chart" role="img"
-                        aria-label="Phase forecast timeline">
+                        aria-label=td_string!(locale, gantt.aria)>
                         <div class="gantt-rows">
                             {rows}
                         </div>
@@ -141,15 +149,16 @@ pub fn GanttTimeline(grow_id: String) -> impl IntoView {
                         // (see `.gantt-today-area` in tailwind.css).
                         <div class="gantt-today-area">
                             <div class="gantt-today" style=format!("left: {today_pct:.1}%")
-                                title=format!("today (day {})", data.today_day)
+                                title=td_string!(locale, gantt.today_title,
+                                    day = data.today_day.to_string())
                             >
                                 <span class="gantt-today-line"></span>
-                                <span class="gantt-today-label">"today"</span>
+                                <span class="gantt-today-label">{td_string!(locale, gantt.today)}</span>
                             </div>
                         </div>
                     </div>
                     <p class="text-base-content/70 text-sm">
-                        "Bars show the likely window; light extensions show the earliest/latest range. Day count: "
+                        {td_string!(locale, gantt.caption)}
                         {data.today_day}
                         {count_suffix}
                     </p>
@@ -163,22 +172,43 @@ pub fn GanttTimeline(grow_id: String) -> impl IntoView {
 /// Renders one row of the Gantt chart. The last row of an open-ended
 /// forecast (the ongoing veg) has no projected end, so `open` is true
 /// and its bar stretches to the track end.
-fn gantt_row(window: &PhaseWindowData, total_days: i64, open: bool) -> impl IntoView {
+fn gantt_row(
+    locale: crate::i18n::Locale,
+    window: &PhaseWindowData,
+    total_days: i64,
+    open: bool,
+) -> impl IntoView {
     let (start, bar_start, bar_end, end) = track_percentages(window, total_days, open);
     let color = phase_color(&window.phase);
     let name = crate::phase_pick::phase_from_label(&window.phase).map_or_else(
         || window.phase.replace('_', " "),
-        |phase| crate::phase_pick::phase_display(phase).to_owned(),
+        |phase| labels::phase_label(locale, phase),
     );
     let label = if open {
-        format!("{name} (day {}–ongoing)", window.likely_start)
+        td_string!(
+            locale,
+            gantt.range_open,
+            name = name.clone(),
+            from = window.likely_start.to_string()
+        )
     } else {
-        format!("{name} (day {}–{})", window.likely_start, window.likely_end)
+        td_string!(
+            locale,
+            gantt.range,
+            name = name.clone(),
+            from = window.likely_start.to_string(),
+            to = window.likely_end.to_string()
+        )
     };
     let duration = if open {
-        "ongoing".to_owned()
+        td_string!(locale, gantt.ongoing).into_owned()
     } else {
-        format!("{}d", window.likely_end - window.likely_start)
+        td_string!(
+            locale,
+            gantt.duration,
+            count = (window.likely_end - window.likely_start).to_string()
+        )
+        .into_owned()
     };
 
     view! {

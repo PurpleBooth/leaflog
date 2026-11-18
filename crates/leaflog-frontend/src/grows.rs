@@ -2,7 +2,7 @@
 //! page with quick-add action chips, the timeline, plant management and
 //! the photo gallery with uploads.
 
-use crate::phase_pick::{self, phase_display, phase_from_label, picker_phases};
+use crate::phase_pick::{self, phase_from_label, picker_phases};
 use crate::quick_add::QuickAddMenu;
 use futures::future::Either;
 use gloo_timers::future::TimeoutFuture;
@@ -385,7 +385,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             let result = api::post_form(&url, &form).await;
             match result {
                 Ok(()) => {
-                    upload_note.set(Some("Photos uploaded".to_owned()));
+                    upload_note.set(Some(t_string!(i18n, grow.photos_uploaded).into_owned()));
                     refresh();
                 }
                 Err(failure) => upload_note.set(Some(failure.message)),
@@ -433,7 +433,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                                     <span id="phase-day" class="badge badge-ghost">
                                                         {labels::phase_label(i18n.get_locale(), phase)}
                                                         {" · "}
-                                                        {t_string!(i18n.get_locale(), grow.day, day = data.phase_day.to_string())}
+                                                        {td_string!(i18n.get_locale(), grow.day, day = data.phase_day.to_string())}
                                                     </span>
                                                 })
                                             })
@@ -559,11 +559,12 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                 .get()
                                 .into_iter()
                                 .map(|entry| {
+                                    let tags = entry.appearance_tags.clone();
                                     view! {
                                         <li class="card bg-base-100 shadow-sm px-4 py-3">
                                             <div class="flex flex-wrap items-baseline gap-2">
                                                 <strong>{labels::action_label(locale, entry.action_type)}</strong>
-                                                <span class="badge badge-ghost">{t_string!(locale, grow.day, day = entry.grow_day.to_string())}</span>
+                                                <span class="badge badge-ghost">{td_string!(locale, grow.day, day = entry.grow_day.to_string())}</span>
                                                 {entry.phase.map(|phase| view! {
                                                     <span class="badge badge-ghost">{labels::phase_label(locale, phase)}</span>
                                                 })}
@@ -591,7 +592,6 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                             {entry.notes.clone().map(|notes| view! {
                                                 <p class="mt-2 text-base-content/70">{notes}</p>
                                             })}
-                                            let tags = entry.appearance_tags.clone();
                                             {(!tags.is_empty()).then(move || {
                                                 view! {
                                                         <p class="flex flex-wrap gap-1.5 mt-2">
@@ -657,14 +657,14 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                 .map(|photo| {
                                     let url = format!("api/photos/{}/thumbnail", photo.id);
                                     let full = format!("api/photos/{}/original", photo.id);
-                                    let alt = t_string!(locale, grow.day, day = photo.grow_day.to_string());
+                                    let alt = td_string!(locale, grow.day, day = photo.grow_day.to_string());
                                     view! {
                                         <a href=full target="_blank" rel="noreferrer"
                                             class="grid gap-1 text-center no-underline"
                                         >
                                             <img class="w-full h-auto rounded-lg border border-base-300"
                                                 src=url alt=alt />
-                                            <span class="text-base-content/70 text-sm">{t_string!(locale, grow.day, day = photo.grow_day.to_string())}</span>
+                                            <span class="text-base-content/70 text-sm">{td_string!(locale, grow.day, day = photo.grow_day.to_string())}</span>
                                         </a>
                                     }
                                 })
@@ -686,17 +686,18 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
 pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
+    let i18n = use_i18n();
     view! {
         <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
             <label class="fieldset">
-                <span class="fieldset-label">"Name *"</span>
+                <span class="fieldset-label">{t!(i18n, form.name)}</span>
                 <input class="input" type="text" required placeholder="Closet run"
                     prop:value=move || draft.get().name
                     on:input=move |ev| draft.update(|d| d.name = event_target_value(&ev))
                 />
             </label>
             <label class="fieldset">
-                <span class="fieldset-label">"Strain label"</span>
+                <span class="fieldset-label">{t!(i18n, form.strain_label)}</span>
                 <input class="input" type="text" placeholder="Northern Lights #5"
                     prop:value=move || draft.get().strain_label
                     on:input=move |ev| {
@@ -705,7 +706,7 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
                 />
             </label>
             <label class="fieldset">
-                <span class="fieldset-label">"Photoperiod"</span>
+                <span class="fieldset-label">{t!(i18n, form.photoperiod)}</span>
                 <select class="select"
                     prop:value=move || draft.get().photoperiod.label().to_owned()
                     on:change=move |ev| {
@@ -716,11 +717,11 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
                         });
                     }
                 >
-                    {photoperiod_options()}
+                    {photoperiod_options(i18n.get_locale())}
                 </select>
             </label>
             <label class="fieldset">
-                <span class="fieldset-label">"Substrate *"</span>
+                <span class="fieldset-label">{t!(i18n, form.substrate)}</span>
                 <select class="select"
                     prop:value=move || draft.get().substrate
                     on:change=move |ev| draft.update(|d| d.substrate = event_target_value(&ev))
@@ -732,14 +733,14 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
                 </select>
             </label>
             <label class="fieldset">
-                <span class="fieldset-label">"Started (seed/clone) *"</span>
+                <span class="fieldset-label">{t!(i18n, form.started_seed_clone)}</span>
                 <input class="input" type="date" required
                     prop:value=move || draft.get().started_on
                     on:input=move |ev| draft.update(|d| d.started_on = event_target_value(&ev))
                 />
             </label>
             <label class="fieldset">
-                <span class="fieldset-label">"Planned vegetative weeks"</span>
+                <span class="fieldset-label">{t!(i18n, form.veg_weeks)}</span>
                 <input class="input" type="number" min="1" max="52"
                     placeholder="—"
                     prop:value=move || draft
@@ -756,7 +757,7 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
                 />
             </label>
             <label class="fieldset">
-                <span class="fieldset-label">"Status"</span>
+                <span class="fieldset-label">{t!(i18n, form.status)}</span>
                 <select class="select"
                     prop:value=move || draft.get().status.label().to_owned()
                     on:change=move |ev| {
@@ -770,12 +771,12 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
                         });
                     }
                 >
-                    <option value=GrowStatus::Active.label()>{GrowStatus::Active.label()}</option>
-                    <option value=GrowStatus::Archived.label()>{GrowStatus::Archived.label()}</option>
+                    <option value=GrowStatus::Active.label()>{labels::status_label(i18n.get_locale(), GrowStatus::Active)}</option>
+                    <option value=GrowStatus::Archived.label()>{labels::status_label(i18n.get_locale(), GrowStatus::Archived)}</option>
                 </select>
             </label>
             <label class="fieldset col-span-full">
-                <span class="fieldset-label">"Notes"</span>
+                <span class="fieldset-label">{t!(i18n, form.notes)}</span>
                 <textarea class="textarea" rows="2"
                     prop:value=move || draft.get().notes.unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.notes = non_empty(event_target_value(&ev)))
@@ -786,11 +787,11 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
             // is sensible, so expanding this is always optional.
             <details class="col-span-full">
                 <summary class="cursor-pointer select-none text-sm font-medium">
-                    "Advanced settings"
+                    {t!(i18n, form.advanced)}
                 </summary>
                 <div class="grid gap-3 mt-2 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
                     <label class="fieldset">
-                        <span class="fieldset-label">"Heat tolerance"</span>
+                        <span class="fieldset-label">{t!(i18n, form.heat_tolerance)}</span>
                         <select class="select"
                             prop:value=move || draft.get().heat_tolerance.label().to_owned()
                             on:change=move |ev| {
@@ -801,11 +802,11 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
                                 });
                             }
                         >
-                            {tolerance_options()}
+                            {tolerance_options(i18n.get_locale())}
                         </select>
                     </label>
                     <label class="fieldset">
-                        <span class="fieldset-label">"Cold tolerance"</span>
+                        <span class="fieldset-label">{t!(i18n, form.cold_tolerance)}</span>
                         <select class="select"
                             prop:value=move || draft.get().cold_tolerance.label().to_owned()
                             on:change=move |ev| {
@@ -816,11 +817,11 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
                                 });
                             }
                         >
-                            {tolerance_options()}
+                            {tolerance_options(i18n.get_locale())}
                         </select>
                     </label>
                     <label class="fieldset">
-                        <span class="fieldset-label">"Light tolerance"</span>
+                        <span class="fieldset-label">{t!(i18n, form.light_tolerance)}</span>
                         <select class="select"
                             prop:value=move || draft.get().light_tolerance.label().to_owned()
                             on:change=move |ev| {
@@ -831,11 +832,11 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
                                 });
                             }
                         >
-                            {tolerance_options()}
+                            {tolerance_options(i18n.get_locale())}
                         </select>
                     </label>
                     <label class="fieldset">
-                        <span class="fieldset-label">"Real wall watts"</span>
+                        <span class="fieldset-label">{t!(i18n, form.real_watts)}</span>
                         <input class="input" type="number" min="0" step="0.1"
                             placeholder="—"
                             prop:value=move || draft
@@ -854,7 +855,7 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
                         />
                     </label>
                     <label class="fieldset">
-                        <span class="fieldset-label">"Dimmable"</span>
+                        <span class="fieldset-label">{t!(i18n, form.dimmable)}</span>
                         <input class="checkbox" type="checkbox"
                             prop:checked=move || draft.get().dimmable
                             on:change=move |ev| {
@@ -873,10 +874,11 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
 fn ActionForm(draft: RwSignal<ActionInput>, kind: RwSignal<Option<ActionType>>) -> impl IntoView {
+    let i18n = use_i18n();
     view! {
         <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
             <label class="fieldset">
-                <span class="fieldset-label">"When (UTC) *"</span>
+                <span class="fieldset-label">{t!(i18n, form.when_utc)}</span>
                 <input class="input" type="datetime-local" required
                     prop:value=move || draft.get().occurred_at
                     on:input=move |ev| draft.update(|d| d.occurred_at = event_target_value(&ev))
@@ -888,29 +890,29 @@ fn ActionForm(draft: RwSignal<ActionInput>, kind: RwSignal<Option<ActionType>>) 
                 let kind = kind.get()?;
                 Some(match kind {
                     ActionType::Water | ActionType::Feed => view! {
-                        {num_field("Volume (ml)", "1", d, |a| a.details.volume_ml, |a, v| a.details.volume_ml = v)}
-                        {num_field("pH in", "0.1", d, |a| a.details.input_ph, |a, v| a.details.input_ph = v)}
-                        {num_field("pH out", "0.1", d, |a| a.details.runoff_ph, |a, v| a.details.runoff_ph = v)}
-                        {num_field("EC in (µS/cm)", "10", d, |a| a.details.input_ec_us.map(f64::from), |a, v| a.details.input_ec_us = clamp_int(v))}
-                        {num_field("EC out (µS/cm)", "10", d, |a| a.details.runoff_ec_us.map(f64::from), |a, v| a.details.runoff_ec_us = clamp_int(v))}
+                        {num_field(td_string!(i18n.get_locale(), form.volume_ml).to_owned(), "1", d, |a| a.details.volume_ml, |a, v| a.details.volume_ml = v)}
+                        {num_field(td_string!(i18n.get_locale(), grow.ph_in).to_owned(), "0.1", d, |a| a.details.input_ph, |a, v| a.details.input_ph = v)}
+                        {num_field(td_string!(i18n.get_locale(), grow.ph_out).to_owned(), "0.1", d, |a| a.details.runoff_ph, |a, v| a.details.runoff_ph = v)}
+                        {num_field(td_string!(i18n.get_locale(), form.ec_in_us).to_owned(), "10", d, |a| a.details.input_ec_us.map(f64::from), |a, v| a.details.input_ec_us = clamp_int(v))}
+                        {num_field(td_string!(i18n.get_locale(), form.ec_out_us).to_owned(), "10", d, |a| a.details.runoff_ec_us.map(f64::from), |a, v| a.details.runoff_ec_us = clamp_int(v))}
                     }
                         .into_any(),
                     ActionType::Measurement => view! {
-                        {num_field("Plant height (cm)", "1", d, |a| a.details.plant_height_cm, |a, v| a.details.plant_height_cm = v)}
+                        {num_field(td_string!(i18n.get_locale(), form.height_cm).to_owned(), "1", d, |a| a.details.plant_height_cm, |a, v| a.details.plant_height_cm = v)}
                     }
                         .into_any(),
                     ActionType::LightChange => view! {
-                        {num_field("Height above canopy (cm)", "1", d, |a| a.details.height_cm, |a, v| a.details.height_cm = v)}
-                        {num_field("Dimmer (%)", "5", d, |a| a.details.dim_pct.map(f64::from), |a, v| a.details.dim_pct = clamp_int(v))}
+                        {num_field(td_string!(i18n.get_locale(), form.canopy_cm).to_owned(), "1", d, |a| a.details.height_cm, |a, v| a.details.height_cm = v)}
+                        {num_field(td_string!(i18n.get_locale(), form.dim_pct).to_owned(), "5", d, |a| a.details.dim_pct.map(f64::from), |a, v| a.details.dim_pct = clamp_int(v))}
                     }
                         .into_any(),
                     ActionType::TrichomeCheck => view! {
-                        {num_field("Cloudy (%)", "5", d, |a| a.details.cloudy_pct.map(f64::from), |a, v| a.details.cloudy_pct = clamp_int(v))}
-                        {num_field("Amber (%)", "5", d, |a| a.details.amber_pct.map(f64::from), |a, v| a.details.amber_pct = clamp_int(v))}
+                        {num_field(td_string!(i18n.get_locale(), form.cloudy_pct).to_owned(), "5", d, |a| a.details.cloudy_pct.map(f64::from), |a, v| a.details.cloudy_pct = clamp_int(v))}
+                        {num_field(td_string!(i18n.get_locale(), form.amber_pct).to_owned(), "5", d, |a| a.details.amber_pct.map(f64::from), |a, v| a.details.amber_pct = clamp_int(v))}
                     }
                         .into_any(),
                     ActionType::Harvest => view! {
-                        {num_field("Wet weight (g)", "1", d, |a| a.details.weight_g, |a, v| a.details.weight_g = v)}
+                        {num_field(td_string!(i18n.get_locale(), form.wet_weight_g).to_owned(), "1", d, |a| a.details.weight_g, |a, v| a.details.weight_g = v)}
                     }
                         .into_any(),
                     _ => ().into_any(),
@@ -918,7 +920,7 @@ fn ActionForm(draft: RwSignal<ActionInput>, kind: RwSignal<Option<ActionType>>) 
             }}
 
             <label class="fieldset col-span-full">
-                <span class="fieldset-label">"Notes"</span>
+                <span class="fieldset-label">{t!(i18n, form.notes)}</span>
                 <textarea class="textarea" rows="2"
                     prop:value=move || draft.get().notes.unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.notes = non_empty(event_target_value(&ev)))
@@ -926,17 +928,18 @@ fn ActionForm(draft: RwSignal<ActionInput>, kind: RwSignal<Option<ActionType>>) 
             </label>
         </div>
         <fieldset class="fieldset mt-3">
-            <legend class="fieldset-legend">"Appearance"</legend>
+            <legend class="fieldset-legend">{t!(i18n, form.appearance)}</legend>
             {leaflog_core::appearance::Category::all()
                 .into_iter()
                 .map(|category| {
+                    let locale = i18n.get_locale();
                     let traits = leaflog_core::appearance::TRAITS
                         .iter()
                         .filter(|entry| entry.category == category);
                     view! {
                         <div class="mt-2">
                             <p class="text-base-content/60 text-xs uppercase tracking-wide">
-                                {category.label()}
+                                {labels::appearance_category_label(locale, category)}
                             </p>
                             <div class="flex flex-wrap gap-x-4 gap-y-1 mt-1">
                                 {traits
@@ -966,7 +969,9 @@ fn ActionForm(draft: RwSignal<ActionInput>, kind: RwSignal<Option<ActionType>>) 
                                                         });
                                                     }
                                                 />
-                                                <span class="text-sm">{entry.label}</span>
+                                                <span class="text-sm">{
+                                                    labels::appearance_label(locale, entry.tag)
+                                                }</span>
                                             </label>
                                         }
                                     })
@@ -991,7 +996,7 @@ fn clamp_int<T: TryFrom<i64>>(value: Option<f64>) -> Option<T> {
 
 /// One labelled numeric input bound to a spot in the draft's details.
 fn num_field(
-    label: &'static str,
+    label: String,
     step: &'static str,
     draft: RwSignal<ActionInput>,
     read: impl Fn(&ActionInput) -> Option<f64> + Clone + Send + 'static,
@@ -1032,7 +1037,10 @@ const REQUEST_TIMEOUT_MS: u32 = 10_000;
 // WASM is single-threaded; the gloo timer/request types are not `Send`
 // and `spawn_local` does not require it (same allowance as api.rs).
 #[allow(clippy::future_not_send)]
-async fn fetch_list<T: DeserializeOwned>(path: &str, timeout_message: String) -> Result<T, ApiFailure> {
+async fn fetch_list<T: DeserializeOwned>(
+    path: &str,
+    timeout_message: String,
+) -> Result<T, ApiFailure> {
     retry_once_after_timeout(
         || api::get::<T>(path),
         || TimeoutFuture::new(REQUEST_TIMEOUT_MS),
@@ -1194,12 +1202,15 @@ fn substrate_glyph(substrate: &str) -> Option<&'static str> {
 }
 
 /// The Photoperiod/Autoflower choices for a grow form select: stable
-/// enum-label values, glossary terms as the visible text. Shared by
-/// the grow form and the onboarding wizard's grow step.
-pub fn photoperiod_options() -> impl IntoView {
+/// enum-label values, localised glossary terms as the visible text.
+/// Shared by the grow form and the onboarding wizard's grow step.
+pub fn photoperiod_options(locale: Locale) -> impl IntoView {
     [
-        (PhotoperiodType::Photoperiod, "Photoperiod"),
-        (PhotoperiodType::Auto, "Autoflower"),
+        (
+            PhotoperiodType::Photoperiod,
+            td_string!(locale, form.photoperiod),
+        ),
+        (PhotoperiodType::Auto, td_string!(locale, form.autoflower)),
     ]
     .into_iter()
     .map(|(kind, display)| {
@@ -1209,11 +1220,20 @@ pub fn photoperiod_options() -> impl IntoView {
 }
 
 /// The Sensitive/Average/Tolerant choices for a grow form select.
-fn tolerance_options() -> impl IntoView {
+fn tolerance_options(locale: Locale) -> impl IntoView {
     [
-        (Tolerance::Sensitive, "Sensitive"),
-        (Tolerance::Average, "Average"),
-        (Tolerance::Tolerant, "Tolerant"),
+        (
+            Tolerance::Sensitive,
+            td_string!(locale, form.tolerance_sensitive),
+        ),
+        (
+            Tolerance::Average,
+            td_string!(locale, form.tolerance_average),
+        ),
+        (
+            Tolerance::Tolerant,
+            td_string!(locale, form.tolerance_tolerant),
+        ),
     ]
     .into_iter()
     .map(|(level, display)| {

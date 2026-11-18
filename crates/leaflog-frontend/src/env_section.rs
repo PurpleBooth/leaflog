@@ -23,6 +23,8 @@ use crate::chart::{
     format_ppm,
 };
 use crate::dashboard::EnvDashboard;
+use crate::i18n::{t_string, use_i18n};
+use crate::labels;
 use crate::route_href;
 use leaflog_core::chart::{ChartGroup, chart_group};
 use leptos::prelude::*;
@@ -137,14 +139,13 @@ fn section_chart_card(
     markers: RwSignal<bool>,
 ) -> AnyView {
     let role = chart.role;
-    let title = chart.title;
     let format_value = chart.format_value;
     if role == "soil_moisture" {
         // A fresh editor view per call: the children closure may run
         // more than once (Leptos re-invokes it on re-render).
         let children: ChildrenFn = std::sync::Arc::new(|| view! { <BandEditor /> }.into_any());
         view! {
-            <HistoryChart grow_id=grow_id role=role title=title
+            <HistoryChart grow_id=grow_id role=role
                 shared_window=window shared_markers=markers
                 format_value=format_value children=children
             />
@@ -152,7 +153,7 @@ fn section_chart_card(
         .into_any()
     } else {
         view! {
-            <HistoryChart grow_id=grow_id role=role title=title
+            <HistoryChart grow_id=grow_id role=role
                 shared_window=window shared_markers=markers
                 format_value=format_value
             />
@@ -203,9 +204,10 @@ fn save_history_window(label: &str) {
 /// per visit; only the window persists.
 #[component]
 fn HistoryWindowControl(window: RwSignal<String>, markers: RwSignal<bool>) -> impl IntoView {
+    let i18n = use_i18n();
     view! {
         <div class="flex items-center gap-3">
-            <WindowToggles window aria_label="History window" />
+            <WindowToggles window />
             <span class="w-9 h-6" aria-hidden="true"></span>
             <label class="flex items-center gap-1 cursor-pointer text-sm text-base-content/70">
                 <input class="checkbox checkbox-xs" type="checkbox"
@@ -214,7 +216,7 @@ fn HistoryWindowControl(window: RwSignal<String>, markers: RwSignal<bool>) -> im
                         markers.set(event_target_checked(&ev));
                     }
                 />
-                "Markers"
+                {t_string!(i18n, env.markers)}
             </label>
         </div>
     }
@@ -223,16 +225,25 @@ fn HistoryWindowControl(window: RwSignal<String>, markers: RwSignal<bool>) -> im
 /// A group's micro-label header: the group's name — a glossary term —
 /// in the section's quiet uppercase register, above its chart grid,
 /// with an optional legend hint beside it (the Air group names its
-/// night shading there).
+/// night shading there). The label resolves from the catalog in the
+/// active locale, re-reading when the locale swaps.
 #[component]
-fn GroupLabel(text: &'static str, #[prop(default = "")] hint: &'static str) -> impl IntoView {
+fn GroupLabel(group: ChartGroup, #[prop(default = false)] night_hint: bool) -> impl IntoView {
+    let i18n = use_i18n();
+    let text = move || -> std::borrow::Cow<'static, str> {
+        match group {
+            ChartGroup::Air => t_string!(i18n, env.group_air).into(),
+            ChartGroup::RootZone => t_string!(i18n, env.group_root).into(),
+            ChartGroup::Untracked => String::new().into(),
+        }
+    };
     view! {
         <div class="flex flex-wrap items-baseline gap-2 mt-4">
             <h4 class="m-0 text-xs font-semibold uppercase tracking-wider text-base-content/60">
                 {text}
             </h4>
-            {(!hint.is_empty()).then(|| {
-                view! { <span class="text-xs text-base-content/50">{hint}</span> }
+            {night_hint.then(|| {
+                view! { <span class="text-xs text-base-content/50">{move || t_string!(i18n, env.night_hint)}</span> }
             })}
         </div>
     }
@@ -400,6 +411,7 @@ fn LazyCharts(children: ChildrenFn) -> impl IntoView {
 /// standalone Light card is gone and its legend rides the Air label.
 #[component]
 pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
+    let i18n = use_i18n();
     // The lazy Root zone grid captures `grow_id` into its children
     // closure; the not-measured card keeps its own copy.
     let not_measured_grow_id = grow_id.clone();
@@ -440,20 +452,20 @@ pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
     view! {
         <div id="env-section">
             <div class="flex flex-wrap items-center justify-between gap-2">
-                <h3>"Environment"</h3>
+                <h3>{move || t_string!(i18n, env.heading)}</h3>
                 <HistoryWindowControl window=window markers=markers />
             </div>
             <EnvDashboard grow_id=grow_id />
             // The Air group: above-ground concerns under their
             // micro-label header.
-            <GroupLabel text="Air" hint="Shaded areas mark night periods." />
+            <GroupLabel group=ChartGroup::Air night_hint=true />
             <div class=CARD_GRID>{air_cards}</div>
             // The Root zone group: below-ground concerns. Its chart
             // grid mounts lazily (ticket 07) once the group scrolls
             // into view; the label above stays structural, so the
             // section's outline reads at first paint and the lazy
             // anchor sits right where the grid begins.
-            <GroupLabel text="Root zone" />
+            <GroupLabel group=ChartGroup::RootZone />
             <LazyCharts children=root_zone_grid />
             <NotMeasuredCard grow_id=not_measured_grow_id />
         </div>
@@ -473,6 +485,7 @@ pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
 /// here.
 #[component]
 fn NotMeasuredCard(grow_id: String) -> impl IntoView {
+    let i18n = use_i18n();
     // `None` until the bindings response arrives: no card while the
     // fetch is in flight or after it failed.
     let unbound = RwSignal::<Option<Vec<(&'static str, &'static str)>>>::new(None);
@@ -502,25 +515,30 @@ fn NotMeasuredCard(grow_id: String) -> impl IntoView {
                 view! {
                     <div class="card border border-base-300 bg-base-100 px-4 py-3 mt-4">
                         <div class="flex flex-wrap items-baseline gap-2">
-                            <h4 class="m-0">"Not measured"</h4>
+                            <h4 class="m-0">{t_string!(i18n, env.not_measured)}</h4>
                             <span class="text-sm text-base-content/60">
-                                "No sensor is bound for these readings — each chart
-                                 appears once one is."
+                                {t_string!(i18n, env.not_measured_hint)}
                             </span>
                         </div>
                         <ul class="list-none m-0 p-0 mt-2 flex flex-wrap gap-2">
                             {roles
                                 .into_iter()
-                                .map(|(_, label)| {
+                                .map(|(role, _)| {
                                     // The chip itself is the bind affordance,
                                     // one tab stop per role, into the edit
-                                    // page's Entity bindings flow.
+                                    // page's Entity bindings flow. The chip
+                                    // label is the role's localised card
+                                    // title — one spelling per concept.
                                     let href = edit_href.clone();
+                                    let label = labels::chart_title(
+                                        i18n.get_locale(),
+                                        role,
+                                    );
                                     view! {
                                         <li>
                                             <A attr:class="badge badge-ghost gap-1" href=href>
                                                 {label}" "
-                                                <span class="link">"Bind"</span>
+                                                <span class="link">{t_string!(i18n, env.bind)}</span>
                                             </A>
                                         </li>
                                     }

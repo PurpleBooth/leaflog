@@ -20,6 +20,7 @@ use crate::ErrorIf;
 use crate::api;
 use crate::bindings::BINDING_ROLES;
 use crate::grows::photoperiod_options;
+use crate::i18n::use_i18n;
 use crate::non_empty;
 
 /// The `GET /api/onboarding` state.
@@ -322,7 +323,7 @@ pub fn OnboardingWizard() -> impl IntoView {
                                         );
                                     }
                                 >
-                                    {photoperiod_options()}
+                                    {photoperiod_options(use_i18n().get_locale())}
                                 </select>
                             </label>
                             <label class="fieldset"><span class="fieldset-label">"Name prefix"</span>

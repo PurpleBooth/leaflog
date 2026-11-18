@@ -16,9 +16,12 @@
 use crate::api;
 use crate::api::{GrowHistory, SoilBand};
 use crate::chart_option;
+use crate::i18n::{t, t_string, use_i18n};
+use crate::labels;
 use js_sys::{Function, Reflect};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use leptos_i18n::td_string;
 use serde::Serialize;
 use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 
@@ -33,6 +36,7 @@ pub fn format_pct(value: f64) -> String {
 /// key. The chart card reads the same override for its corridor.
 #[component]
 pub fn BandEditor() -> impl IntoView {
+    let i18n = use_i18n();
     let min = RwSignal::<String>::new(String::new());
     let max = RwSignal::<String>::new(String::new());
     let stored = RwSignal::<bool>::new(false);
@@ -71,7 +75,9 @@ pub fn BandEditor() -> impl IntoView {
                     })
                 }
                 _ => {
-                    status.set(Some("Enter 0–100 with min ≤ max.".to_owned()));
+                    status.set(Some(
+                        td_string!(i18n.get_locale_untracked(), env.band_invalid).into_owned(),
+                    ));
                     return;
                 }
             }
@@ -79,11 +85,12 @@ pub fn BandEditor() -> impl IntoView {
         spawn_local(async move {
             match api::put::<serde_json::Value, serde_json::Value>("api/settings", &payload).await {
                 Ok(_) => {
+                    let locale = i18n.get_locale_untracked();
                     stored.set(!reset);
                     status.set(Some(if reset {
-                        "Reset to default.".to_owned()
+                        td_string!(locale, env.band_reset).into_owned()
                     } else {
-                        "Saved.".to_owned()
+                        td_string!(locale, env.band_saved).into_owned()
                     }));
                 }
                 Err(failure) => status.set(Some(failure.message)),
@@ -94,25 +101,25 @@ pub fn BandEditor() -> impl IntoView {
     view! {
         <div class="flex flex-wrap items-end gap-2 my-1">
             <label class="fieldset">
-                <span class="fieldset-label">"Band min %"</span>
+                <span class="fieldset-label">{t!(i18n, env.band_min)}</span>
                 <input class="input input-sm w-24" type="number" min="0" max="100"
                     prop:value=move || min.get()
                     on:input=move |ev| min.set(event_target_value(&ev))
                 />
             </label>
             <label class="fieldset">
-                <span class="fieldset-label">"Band max %"</span>
+                <span class="fieldset-label">{t!(i18n, env.band_max)}</span>
                 <input class="input input-sm w-24" type="number" min="0" max="100"
                     prop:value=move || max.get()
                     on:input=move |ev| max.set(event_target_value(&ev))
                 />
             </label>
             <button class="btn btn-sm self-end" on:click=move |_| save(false)>
-                "Apply band"
+                {t!(i18n, env.apply_band)}
             </button>
             <Show when=move || stored.get() fallback=|| ()>
                 <button class="btn btn-sm btn-ghost self-end" on:click=move |_| save(true)>
-                    "Reset to default"
+                    {t!(i18n, env.band_reset_button)}
                 </button>
             </Show>
             {move || {
@@ -175,12 +182,12 @@ pub fn format_ec_us(value: f64) -> String {
 pub fn HistoryChart(
     grow_id: String,
     #[prop(default = "temperature")] role: &'static str,
-    #[prop(default = "Temperature")] title: &'static str,
     format_value: fn(f64) -> String,
     shared_window: RwSignal<String>,
     shared_markers: RwSignal<bool>,
     #[prop(optional)] children: Option<ChildrenFn>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     let data = RwSignal::<Option<GrowHistory>>::new(None);
     // The last fetch failure, if any: the degraded banner's text. A
     // successful response clears it (the chart recovered).
@@ -239,23 +246,28 @@ pub fn HistoryChart(
                 // The card builds per visibility activation; the
                 // footer (the soil band editor) re-mounts with it
                 // and its own signals re-run.
+                let locale = i18n.get_locale();
                 let footer = children.clone().map(|build| build());
                 view! {
                     <div class="card bg-base-100 shadow-sm px-4 py-3">
                         <div class="flex flex-wrap items-baseline gap-2">
-                            <h5 class="m-0 text-base font-semibold">{title}</h5>
+                            <h5 class="m-0 text-base font-semibold">{
+                                labels::chart_title(locale, role)
+                            }</h5>
                             <Show
                                 when=move || data.get().is_some_and(|chart| chart.degraded)
                                 fallback=|| ()
                             >
-                                <span class="badge badge-warning badge-sm">"snapshot only"</span>
+                                <span class="badge badge-warning badge-sm">{
+                                    t_string!(i18n, env.snapshot_only)
+                                }</span>
                             </Show>
                         </div>
                         {move || {
                             fetch_failed.get().map(|message| {
                                 view! {
                                     <p class="alert alert-warning py-2 px-4 text-sm" role="alert">
-                                        "History unavailable — " {message}
+                                        {t_string!(i18n, env.history_unavailable, message = message)}
                                     </p>
                                 }
                             })
@@ -270,9 +282,9 @@ pub fn HistoryChart(
                                 .filter(chart_option::series_is_empty)
                                 .map(|chart| {
                                     let hint = if chart.role == "ph" || chart.role == "ec" {
-                                        "No feed entries in this window."
+                                        t_string!(i18n, env.no_feed_entries)
                                     } else {
-                                        "No readings in this window."
+                                        t_string!(i18n, env.no_readings)
                                     };
                                     view! {
                                         <p class="my-2 text-sm text-base-content/60">{hint}</p>
@@ -300,8 +312,10 @@ pub fn HistoryChart(
 #[component]
 pub(crate) fn WindowToggles(
     window: RwSignal<String>,
-    #[prop(default = "Chart window")] aria_label: &'static str,
+    #[prop(optional)] aria_label: Option<String>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
+    let aria_label = aria_label.unwrap_or_else(|| t_string!(i18n, env.history_window).into_owned());
     view! {
         <div class="flex gap-1" role="group" aria-label=aria_label>
             {["day", "week", "month"]
@@ -344,6 +358,7 @@ fn EChartsHistory(
     markers: RwSignal<bool>,
 ) -> impl IntoView {
     let container = NodeRef::<leptos::html::Div>::new();
+    let i18n = use_i18n();
     let instance = StoredValue::new_local(None::<JsValue>);
 
     Effect::new(move |_| {
@@ -354,9 +369,12 @@ fn EChartsHistory(
         if !markers.get() {
             chart.markers.clear();
         }
+        // Reading the locale here makes a locale swap rebuild the
+        // option (series names, marker captions) in the new language.
+        let locale = i18n.get_locale();
         let Some(el) = container.get() else { return };
         let style = chart_option::role_style(&chart.role);
-        let option = chart_option::history_option(&chart, &theme_look(), &style);
+        let option = chart_option::history_option(&chart, &theme_look(), &style, locale);
         // serde_wasm_bindgen's default maps `serde_json::Value::Object`
         // through `serialize_map`, which produces a JS `Map` — and
         // `setOption` reads plain objects only, so a Map option renders

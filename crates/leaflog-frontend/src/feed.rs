@@ -3,8 +3,11 @@
 
 use crate::ErrorIf;
 use crate::api;
+use crate::i18n::{t_string, use_i18n};
+use crate::labels;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use leptos_i18n::td_string;
 use serde::Deserialize;
 
 /// One template row as the API returns it (for the "before" list).
@@ -68,6 +71,7 @@ pub struct FeedTemplateInfo {
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
 pub fn FeedPanel(grow_id: String) -> impl IntoView {
+    let i18n = use_i18n();
     let templates = RwSignal::<Vec<FeedTemplateInfo>>::new(Vec::new());
     let selected = RwSignal::<String>::new(String::new());
     let fit = RwSignal::<Option<FitResponse>>::new(None);
@@ -125,17 +129,20 @@ pub fn FeedPanel(grow_id: String) -> impl IntoView {
             <ErrorIf error />
             <div class="flex flex-wrap gap-3 items-end mb-3">
                 <label class="fieldset">
-                    <span class="fieldset-label">"Feed template"</span>
+                    <span class="fieldset-label">{t_string!(i18n, feed.template_label)}</span>
                     <select class="select"
                         prop:value=move || selected.get()
                         on:change=move |ev| selected.set(event_target_value(&ev))
                     >
-                        <option value="">"— pick a template —"</option>
+                        <option value="">{t_string!(i18n, feed.pick_placeholder)}</option>
                         {move || {
                             templates
                                 .get()
                                 .into_iter()
                                 .map(|template| {
+                                    // Template name and substrate are
+                                    // data (user/seed-defined), not UI
+                                    // copy — they render verbatim.
                                     view! {
                                         <option value=template.id>
                                             {format!("{} ({})", template.name, template.substrate)}
@@ -146,15 +153,16 @@ pub fn FeedPanel(grow_id: String) -> impl IntoView {
                         }}
                     </select>
                 </label>
-                <button class="btn btn-primary btn-sm" on:click=do_fit>"Fit to timeline"</button>
+                <button class="btn btn-primary btn-sm" on:click=do_fit>{t_string!(i18n, feed.fit)}</button>
             </div>
 
             {move || {
                 let Some(result) = fit.get() else {
                     return view! {
-                        <p class="text-base-content/70">"Pick a template and fit it to see the feeding schedule."</p>
+                        <p class="text-base-content/70">{t_string!(i18n, feed.empty)}</p>
                     }.into_any();
                 };
+                let locale = i18n.get_locale();
                 let max_ec = result
                     .after
                     .days
@@ -169,7 +177,7 @@ pub fn FeedPanel(grow_id: String) -> impl IntoView {
                         {result.before.first().map(|_| {
                             view! {
                                 <div class="feed-before">
-                                    <h4>"Template (before)"</h4>
+                                    <h4>{td_string!(locale, feed.before_heading)}</h4>
                                     <ul class="list-none m-0 p-0 grid gap-1">
                                         {result
                                             .before
@@ -177,7 +185,9 @@ pub fn FeedPanel(grow_id: String) -> impl IntoView {
                                             .map(|row| {
                                                 view! {
                                                     <li class="flex justify-between gap-2 text-sm">
-                                                        <span class="text-base-content/70">{row.phase.replace('_', " ")}</span>
+                                                        <span class="text-base-content/70">{
+                                                            labels::feed_phase_label(locale, &row.phase)
+                                                        }</span>
                                                         <span>{format!("{} µS/cm", row.ec_target_us)}</span>
                                                     </li>
                                                 }
@@ -188,8 +198,8 @@ pub fn FeedPanel(grow_id: String) -> impl IntoView {
                             }
                         })}
                         <div class="feed-after">
-                            <h4>"Fitted schedule (after)"</h4>
-                            <div class="feed-chart" role="img" aria-label="Feed schedule chart">
+                            <h4>{td_string!(locale, feed.after_heading)}</h4>
+                            <div class="feed-chart" role="img" aria-label=td_string!(locale, feed.chart_aria)>
                                 {result
                                     .after
                                     .days
@@ -206,7 +216,10 @@ pub fn FeedPanel(grow_id: String) -> impl IntoView {
                                         };
                                         view! {
                                             <div class="feed-bar-container"
-                                                title=format!("day {}: {} µS/cm ({})", day.grow_day, day.ec_target_us, day.phase)
+                                                title=td_string!(locale, feed.bar_title,
+                                                    day = day.grow_day.to_string(),
+                                                    ec = day.ec_target_us.to_string(),
+                                                    phase = labels::feed_phase_label(locale, &day.phase))
                                             >
                                                 <div class="feed-bar"
                                                     style=format!("height: {height:.0}%; background: {color};")
@@ -217,16 +230,31 @@ pub fn FeedPanel(grow_id: String) -> impl IntoView {
                                     .collect::<Vec<_>>()}
                             </div>
                             <p class="text-base-content/70 text-sm">
-                                {format!(
-                                    "{} days (template: {})",
-                                    total_days,
-                                    if result.after.template_total_days > 0 {
-                                        format!("{} days", result.after.template_total_days)
+                                {
+                                    // German pluralises "days" (1 Tag /
+                                    // 2 Tage), so both counts go through
+                                    // the plural keys; the template count
+                                    // falls back to a dash when the plan
+                                    // predates the fit (template: 0).
+                                    let days = |count: usize| td_string!(
+                                        locale,
+                                        feed.days,
+                                        count = count,
+                                    )
+                                    .into_owned();
+                                    let template_count = if result.after.template_total_days > 0 {
+                                        days(usize::from(result.after.template_total_days))
                                     } else {
                                         "—".to_owned()
-                                    }
-                                )}
-                                " · orange bars = ripen/flush (protected)"
+                                    };
+                                    format!(
+                                        "{} ({}: {})",
+                                        days(total_days),
+                                        td_string!(locale, feed.template_word),
+                                        template_count,
+                                    )
+                                }
+                                {td_string!(locale, feed.protected_hint)}
                             </p>
                         </div>
                     </div>
