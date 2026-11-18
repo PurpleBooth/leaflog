@@ -85,6 +85,45 @@ test.describe('german-forced browser', () => {
       page.getByRole('heading', { name: 'Environment', exact: true }),
     ).toHaveCount(0);
   });
+
+  test('grow edit form renders german labels', async ({ page, request }) => {
+    const name = uniqueName('E2E Deutsche Bearbeitung');
+    const growId = await createGrow(request, name);
+
+    await page.goto(url(`/grows/${growId}/edit`));
+
+    // The form surface (ticket 03): page heading plus keyed field
+    // labels and buttons (catalog form.*, grows.save).
+    await expect(
+      page.getByRole('heading', { name: 'Anbau bearbeiten' }),
+    ).toBeVisible();
+    await expect(page.getByLabel('Sortenetikett')).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Speichern' }),
+    ).toBeVisible();
+
+    // Bindings grid (catalog binding.heading) and its German role
+    // labels (catalog binding.role_temperature).
+    await expect(
+      page.getByRole('heading', { name: 'Entitäts-Bindungen' }),
+    ).toBeVisible();
+    await expect(page.getByText('Temperatur', { exact: true })).toBeVisible();
+
+    // Light cycle editor (catalog light_cycle.heading/lights_on).
+    await expect(page.getByRole('heading', { name: 'Lichtzyklus' })).toBeVisible();
+    await expect(page.getByLabel('Licht-An-Zeit (lokal)')).toBeVisible();
+
+    // Danger zone (catalog grow_edit.*).
+    await expect(
+      page.getByRole('heading', { name: 'Gefahrenzone' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Anbau löschen' }),
+    ).toBeVisible();
+
+    // And nothing drifted back to English.
+    await expect(page.getByLabel('Strain label')).toHaveCount(0);
+  });
 });
 
 test.describe('default locale', () => {
