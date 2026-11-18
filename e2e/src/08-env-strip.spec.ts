@@ -1,15 +1,17 @@
-// Env strip layout (grow-overview ticket 09): the four reading tiles
-// (Temp, RH, VPD, RH window) share one row that spans the full
-// container width with equal tiles on desktop, wrap to two columns on
-// phones and a single column on very narrow screens — and never spill
-// into horizontal overflow. Live mock-HA sensors feed the tiles so the
-// assertions run on real values (same setup as 07-grow-page).
+// Env strip layout (grow-overview ticket 09, live values ticket 02):
+// the six reading tiles (Temp, RH, VPD, RH window, CO₂, soil
+// moisture) share one row that spans the full container width with
+// equal tiles on desktop, wrap to two columns on phones and a single
+// column on very narrow screens — and never spill into horizontal
+// overflow. Live mock-HA sensors feed the tiles so the assertions run
+// on real values (same setup as 07-grow-page); the CO₂ and soil tiles
+// stay present even when their roles are unbound (they read "—").
 
 import { test, expect, type Page } from '@playwright/test';
 import { api, createGrow, uniqueName, url } from './helpers';
 
-/** The four tile labels, in strip order. */
-const LABELS = ['Temp', 'RH', 'VPD', 'RH window'];
+/** The six tile labels, in strip order. */
+const LABELS = ['Temp', 'RH', 'VPD', 'RH window', 'CO₂', 'Soil moisture'];
 
 /** The bounding box of one tile, found by its exact label. Scoped to
  * the strip — role charts carry the same labels ("VPD", "RH"). */
@@ -136,7 +138,7 @@ test('env strip spans the container and wraps without overflow', async ({
     page.locator('svg[aria-label="temperature history"]'),
   ).toBeVisible();
 
-  // Desktop: all four tiles in one row, equally wide, spanning the
+  // Desktop: all six tiles in one row, equally wide, spanning the
   // strip edge to edge.
   const strip = await stripBox(page);
   const boxes = await Promise.all(
@@ -156,7 +158,7 @@ test('env strip spans the container and wraps without overflow', async ({
     Math.abs(strip.x - boxes[0].x),
     'strip starts at its first tile',
   ).toBeLessThanOrEqual(2);
-  const lastRight = boxes[3].x + boxes[3].width;
+  const lastRight = boxes[5].x + boxes[5].width;
   expect(
     Math.abs(strip.x + strip.width - lastRight),
     'strip ends at its last tile (full container width)',

@@ -714,6 +714,7 @@ async fn env_alerts_route_to_ha_under_optin_rate_limited_and_quiet() {
         temperature: 32.0,
         humidity: 40.0,
         soil_moisture: 30.0,
+        co2: 850.0,
         light_on: true,
     };
 
