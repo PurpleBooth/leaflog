@@ -16,8 +16,8 @@ use time::macros::format_description;
 
 use crate::api::ApiError;
 use crate::app::AppState;
-use crate::app::canonical_timezone;
-use crate::app::day_number_in;
+use crate::app::local_date_in;
+use crate::app::{canonical_timezone, day_number_in};
 use crate::db::StoreError;
 use crate::db::now_rfc3339;
 use crate::store::{self, StoreOrNotFound};
@@ -292,6 +292,39 @@ async fn create_action(
         .db
         .with(move |conn| -> Result<_, ApiError> {
             let grow = store::grows::get(conn, &id)?;
+            // A Germination pick re-anchors the grow (ticket 04): the
+            // pick's local date becomes the start date and every
+            // stored grow day is recomputed from its own timestamp.
+            // One transaction — anchor, re-dating and the pick row
+            // itself land together or not at all (D098).
+            if input.action_type == ActionType::PhaseChange
+                && input.details.target_phase == Some(leaflog_core::Phase::Germination)
+            {
+                let started_on = local_date_in(&input.occurred_at, &tz).ok_or_else(|| {
+                    ApiError::BadRequest("invalid occurred_at for the anchor".to_owned())
+                })?;
+                let day = day_number_in(&started_on, &input.occurred_at, &tz).ok_or_else(|| {
+                    ApiError::BadRequest("invalid occurred_at for the anchor".to_owned())
+                })?;
+                let entry =
+                    store::actions::from_input(&id, &input, leaflog_core::Phase::Germination, day);
+                let tx = conn
+                    .unchecked_transaction()
+                    .map_err(StoreError::from)
+                    .map_err(ApiError::from)?;
+                store::grows::set_started_on(&tx, &id, &started_on)?;
+                store::actions::redate(&tx, &id, &|occurred| {
+                    day_number_in(&started_on, occurred, &tz)
+                })?;
+                store::photos::redate(&tx, &id, &|captured| {
+                    day_number_in(&started_on, captured, &tz)
+                })?;
+                store::actions::create(&tx, &entry)?;
+                tx.commit()
+                    .map_err(StoreError::from)
+                    .map_err(ApiError::from)?;
+                return Ok(entry);
+            }
             let day =
                 day_number_in(&grow.started_on, &input.occurred_at, &tz).ok_or_else(|| {
                     ApiError::BadRequest("invalid occurred_at or started_on date".to_owned())
