@@ -187,24 +187,19 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                     let Some(e) = env.get() else { return Vec::<_>::new() };
                     // Streamed values override the snapshot's; without a
                     // live reading the backend values stand (live.rs).
+                    // The tile colours read the same merged values, so
+                    // they track the live stream too.
                     let v = crate::live::strip_values(&e, live.get().as_ref());
                     let temp_display = v.temperature_c.map_or_else(|| "—".to_owned(), leaflog_core::units::temp_both);
                     let rh_display = v.humidity_pct.map_or_else(|| "—".to_owned(), crate::chart::format_pct);
                     let vpd_display = v.vpd_kpa.map_or_else(|| "—".to_owned(), crate::chart::format_kpa);
                     let co2_display = v.co2_ppm.map_or_else(|| "—".to_owned(), crate::chart::format_ppm);
                     let soil_display = v.soil_moisture_pct.map_or_else(|| "—".to_owned(), crate::chart::format_pct);
-                    // Full class strings (Tailwind only compiles literals it
-                    // can scan out of the sources; no format! fragments).
-                    let temp_class = match e.temp_ok {
-                        Some(true) => "rounded-box border border-success/50 bg-success/10 px-3 py-2 grid gap-0.5",
-                        Some(false) => "rounded-box border border-warning/60 bg-warning/10 px-3 py-2 grid gap-0.5",
-                        None => "rounded-box border border-base-300 bg-base-100 px-3 py-2 grid gap-0.5",
-                    };
-                    let vpd_class = match e.vpd_ok {
-                        Some(true) => "rounded-box border border-success/50 bg-success/10 px-3 py-2 grid gap-0.5",
-                        Some(false) => "rounded-box border border-warning/60 bg-warning/10 px-3 py-2 grid gap-0.5",
-                        None => "rounded-box border border-base-300 bg-base-100 px-3 py-2 grid gap-0.5",
-                    };
+                    // The colours come from the merged StripValues, not
+                    // the page-load snapshot: a live push that crosses
+                    // the threshold recolours the tile on the spot.
+                    let temp_class = crate::live::tile_class(v.temp_ok);
+                    let vpd_class = crate::live::tile_class(v.vpd_ok);
                     vec![
                         view! { <div class=temp_class>
                             <span class="text-xs uppercase tracking-wide text-base-content/60">"Temp"</span>

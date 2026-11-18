@@ -27,6 +27,11 @@ function tileValue(page: Page, label: string) {
   return tile(page, label).locator('xpath=following-sibling::span[1]');
 }
 
+/** The tile's frame div (the caption span's parent) — its class is the colour. */
+function tileFrame(page: Page, label: string) {
+  return tile(page, label).locator('xpath=..');
+}
+
 test('six env tiles update live over one SSE connection', async ({
   page,
   request,
@@ -118,6 +123,73 @@ test('six env tiles update live over one SSE connection', async ({
     liveRequests,
     'still one request after another poll interval would have fired',
   ).toBe(1);
+});
+
+test('tile colours follow a live push across the threshold', async ({
+  page,
+  request,
+}) => {
+  const name = uniqueName('E2E Live Colour Grow');
+  const growId = await createGrow(request, name);
+  await api(request, 'PUT', `api/grows/${growId}/bindings`, {
+    bindings: {
+      temperature: 'sensor.grow_temperature',
+      humidity: 'sensor.grow_humidity',
+    },
+  });
+
+  // Read the grow's thresholds to derive deterministic readings
+  // (rounded to the display's one decimal); the mock's own drift is
+  // irrelevant — the crafted events below control exactly what the
+  // tile sees.
+  const env = await api<{
+    thresholds: { floor_c: number; ceiling_c: number };
+  }>(request, 'GET', `api/grows/${growId}/env`);
+  const round1 = (celsius: number) => Math.round(celsius * 10) / 10;
+
+  // Fulfil the SSE endpoint with crafted events instead of the
+  // mock's drift. The browser reconnects after each fulfilled
+  // one-event stream and picks up the current reading, so flipping
+  // `reading` moves the tile twice: an in-band value first (success
+  // tint), then one past the ceiling (warning tint).
+  let reading = round1(env!.thresholds.ceiling_c - 5);
+  await page.route('**/api/live*', (route) =>
+    route.fulfill({
+      status: 200,
+      headers: {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+      },
+      body: `retry: 1000\ndata: ${JSON.stringify({
+        connected: true,
+        entities: {
+          'sensor.grow_temperature': {
+            entity_id: 'sensor.grow_temperature',
+            state: String(reading),
+            attributes: {},
+          },
+          'sensor.grow_humidity': {
+            entity_id: 'sensor.grow_humidity',
+            state: '60',
+            attributes: {},
+          },
+        },
+      })}\n\n`,
+    }),
+  );
+
+  await page.goto(url(`/grows/${growId}`));
+  await expect(tile(page, 'Temp')).toBeVisible();
+
+  // The in-band live reading paints the tile with the success tint —
+  // the colour tracks the merged live values, not the page-load
+  // snapshot's flags.
+  await expect(tileValue(page, 'Temp')).toContainText(String(reading));
+  await expect(tileFrame(page, 'Temp')).toHaveClass(/border-success/);
+
+  reading = round1(env!.thresholds.ceiling_c + 10);
+  await expect(tileValue(page, 'Temp')).toContainText(String(reading));
+  await expect(tileFrame(page, 'Temp')).toHaveClass(/border-warning/);
 });
 
 test('a dead SSE stream degrades quietly, without an alarm banner', async ({

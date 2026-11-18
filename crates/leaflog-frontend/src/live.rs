@@ -100,6 +100,19 @@ fn live_number(
     live?.entities.get(entity_id)?.state.parse::<f64>().ok()
 }
 
+/// The frame classes a tile wears for an ok flag: in-band (success
+/// tint), out-of-band (warning tint), unknown (neutral). Full literal
+/// strings — Tailwind only compiles literals it can scan out of the
+/// sources, so no format! fragments.
+#[must_use]
+pub fn tile_class(ok: Option<bool>) -> &'static str {
+    match ok {
+        Some(true) => "rounded-box border border-success/50 bg-success/10 px-3 py-2 grid gap-0.5",
+        Some(false) => "rounded-box border border-warning/60 bg-warning/10 px-3 py-2 grid gap-0.5",
+        None => "rounded-box border border-base-300 bg-base-100 px-3 py-2 grid gap-0.5",
+    }
+}
+
 /// Merges the env snapshot with the live-data snapshot into the
 /// strip's tile values (see [`StripValues`]). Derived readings (VPD,
 /// RH window, both ok flags) recompute from the merged inputs so the
@@ -280,6 +293,20 @@ mod tests {
     }
 
     #[test]
+    fn stale_snapshot_flags_correct_themselves_from_live_readings() {
+        let mut env = healthy_snapshot();
+        // The snapshot's own flags lag its (healthy) readings.
+        env.temp_ok = Some(false);
+        env.vpd_ok = Some(false);
+        // The live stream carries readings equal to the snapshot's —
+        // recomputation, not the stale flags, must drive the tiles.
+        let live = live_data("24.3", "58.0", "850", "31");
+        let values = strip_values(&env, Some(&live));
+        assert_eq!(values.temp_ok, Some(true));
+        assert_eq!(values.vpd_ok, Some(true));
+    }
+
+    #[test]
     fn an_outage_cleared_live_map_falls_back_to_the_snapshot() {
         let env = healthy_snapshot();
         // The backend clears its live map on an HA outage, so the SSE
@@ -291,6 +318,27 @@ mod tests {
         let values = strip_values(&env, Some(&outage));
         assert_eq!(values.temperature_c, Some(24.3));
         assert_eq!(values.vpd_kpa, Some(1.0));
+        // The snapshot's own ok flags stand too (the tile colours fall
+        // back with the values).
+        assert_eq!(values.temp_ok, Some(true));
+        assert_eq!(values.vpd_ok, Some(true));
         assert_eq!(values.co2_ppm, None);
+    }
+
+    #[test]
+    fn tile_classes_match_the_ok_flag() {
+        use super::tile_class;
+        assert_eq!(
+            tile_class(Some(true)),
+            "rounded-box border border-success/50 bg-success/10 px-3 py-2 grid gap-0.5",
+        );
+        assert_eq!(
+            tile_class(Some(false)),
+            "rounded-box border border-warning/60 bg-warning/10 px-3 py-2 grid gap-0.5",
+        );
+        assert_eq!(
+            tile_class(None),
+            "rounded-box border border-base-300 bg-base-100 px-3 py-2 grid gap-0.5",
+        );
     }
 }
