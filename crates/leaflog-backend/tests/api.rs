@@ -292,6 +292,18 @@ fn started_today() -> String {
     )
 }
 
+/// A UTC date `days` before today, `YYYY-MM-DD`, for backdated
+/// fixtures that must stay current as real time advances.
+fn utc_date_days_ago(days: i64) -> String {
+    let date = time::OffsetDateTime::now_utc().date() - time::Duration::days(days);
+    format!(
+        "{:04}-{:02}-{:02}",
+        date.year(),
+        u8::from(date.month()),
+        date.day()
+    )
+}
+
 #[tokio::test]
 async fn lamp_advisor_reads_the_grow_watts_with_the_default_fallback() {
     let base = spawn_api().await;
@@ -523,6 +535,78 @@ async fn autoflower_grow_forecasts_and_fits_without_a_strain() {
         .unwrap()
         .status();
     assert_eq!(status, reqwest::StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn forecast_exposes_phase_day_anchored_at_the_transition_event() {
+    // Ticket 05 (grow page rework): the forecast response carries the
+    // current phase and its Phase day, anchored at the recorded
+    // transition event. The offline bridge pins the timezone to UTC,
+    // so day math is deterministic.
+    let db = Db::open_in_memory().unwrap();
+    leaflog_backend::seed::seed_feed_presets(&db).await.unwrap();
+    let base = spawn_with(db).await;
+    let client = reqwest::Client::new();
+
+    // Photoperiod grow started ten days ago; the flip below is
+    // dated three days ago, which lands on grow day 7.
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&json!({
+            "name": "Backdated flip",
+            "substrate": "soil",
+            "started_on": utc_date_days_ago(10),
+            "status": "active",
+            "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let grow_id = grow["id"].as_str().unwrap().to_owned();
+
+    let fetch = || async {
+        client
+            .get(format!("{base}/api/grows/{grow_id}/forecast"))
+            .send()
+            .await
+            .unwrap()
+            .json::<Value>()
+            .await
+            .unwrap()
+    };
+
+    // Pre-event: no phase events exist yet, so Phase day equals the
+    // Day count. Day 10 sits inside the projected seedling window
+    // (6..23) of the open-ended photoperiod forecast.
+    let forecast = fetch().await;
+    let today_day = forecast["today_day"].as_u64().unwrap();
+    assert_eq!(forecast["phase"], "seedling");
+    assert_eq!(forecast["phase_day"].as_u64().unwrap(), today_day);
+
+    // A flip recorded now but dated three days ago anchors the
+    // flower phase on grow day 7: Phase day counts from there, not
+    // from the clamp that keeps the projected windows contiguous.
+    client
+        .post(format!("{base}/api/grows/{grow_id}/actions"))
+        .json(&json!({
+            "plant_ids": [],
+            "occurred_at": format!("{}T12:00:00Z", utc_date_days_ago(3)),
+            "action_type": "flip",
+            "details": {},
+            "notes": null,
+            "appearance_tags": [],
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    let forecast = fetch().await;
+    let today_day = forecast["today_day"].as_u64().unwrap();
+    assert_eq!(forecast["phase"], "flower");
+    assert_eq!(forecast["phase_day"].as_u64().unwrap(), today_day - 7);
 }
 
 /// Logs one note entry carrying `tags` and returns the lamp advice's

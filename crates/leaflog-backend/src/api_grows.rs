@@ -406,6 +406,11 @@ async fn delete_action(
 pub struct ForecastResponse {
     /// Days since the grow start (today marker for the UI).
     pub today_day: u16,
+    /// Current phase label (the phase whose window holds today).
+    pub phase: String,
+    /// Days elapsed in the current phase, anchored at its
+    /// transition event (GLOSSARY.md).
+    pub phase_day: i64,
     /// Phase windows in chronological order.
     pub windows: Vec<leaflog_core::forecast::PhaseWindow>,
 }
@@ -430,7 +435,15 @@ async fn get_forecast(
             let windows = leaflog_core::forecast::forecast(&input);
             let today_day = day_number_in(&grow.started_on, &crate::db::now_rfc3339(), &tz)
                 .ok_or_else(|| ApiError::BadRequest("invalid started_on date".to_owned()))?;
-            Ok(ForecastResponse { today_day, windows })
+            let phase = crate::api_phase::phase_at(&windows, i64::from(today_day));
+            let phase_day =
+                leaflog_core::forecast::phase_day(&actuals, phase, i64::from(today_day));
+            Ok(ForecastResponse {
+                today_day,
+                phase: phase.label().to_owned(),
+                phase_day,
+                windows,
+            })
         })
         .await?;
     Ok(Json(response))
