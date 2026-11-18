@@ -220,6 +220,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
     let plants = RwSignal::<Vec<Plant>>::new(Vec::new());
     let actions = RwSignal::<Vec<ActionEntry>>::new(Vec::new());
     let photos = RwSignal::<Vec<Photo>>::new(Vec::new());
+    let forecast = RwSignal::<Option<api::Forecast>>::new(None);
     let error = RwSignal::<Option<String>>::new(None);
 
     let chip = RwSignal::<Option<ActionType>>::new(None);
@@ -260,6 +261,12 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             }
             match api::get::<Vec<Photo>>(&format!("{base}/photos")).await {
                 Ok(value) => photos.set(value),
+                Err(failure) => error.set(Some(failure.message)),
+            }
+            // The phase-day badge rides the same refresh, so a new
+            // phase pick re-anchors it without a reload.
+            match api::get::<api::Forecast>(&format!("{base}/forecast")).await {
+                Ok(value) => forecast.set(Some(value)),
                 Err(failure) => error.set(Some(failure.message)),
             }
         });
@@ -461,6 +468,17 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                                 </span>
                                             }
                                         })}
+                                        {move || {
+                                            forecast.get().and_then(|data| {
+                                                phase_from_label(&data.phase).map(|phase| view! {
+                                                    <span id="phase-day" class="badge badge-ghost">
+                                                        {phase_display(phase)}
+                                                        {" · day "}
+                                                        {data.phase_day}
+                                                    </span>
+                                                })
+                                            })
+                                        }}
                                         {archived
                                             .then(|| view! {
                                                 <span class="badge badge-ghost">

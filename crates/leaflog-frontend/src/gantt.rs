@@ -263,6 +263,8 @@ mod open_ended_forecast_tests {
     fn projected_total_comes_from_the_last_window() {
         let forecast = Forecast {
             today_day: 10,
+            phase: "vegetative".to_owned(),
+            phase_day: 10,
             windows: full_windows(),
         };
         assert_eq!(forecast_horizon(&forecast), 142);
@@ -272,11 +274,15 @@ mod open_ended_forecast_tests {
     fn open_ended_horizon_extends_through_today() {
         let late = Forecast {
             today_day: 40,
+            phase: "vegetative".to_owned(),
+            phase_day: 40,
             windows: open_windows(),
         };
         assert_eq!(forecast_horizon(&late), 40);
         let early = Forecast {
             today_day: 5,
+            phase: "germination".to_owned(),
+            phase_day: 5,
             windows: open_windows(),
         };
         assert_eq!(forecast_horizon(&early), 23);
