@@ -276,17 +276,15 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                                     // renders as text, so it carries the
                                     // wrap-anywhere treatment (the long-id
                                     // regression, ticket 10) and the full
-                                    // id on hover.
-                                    let entity_id = binding.entity_id.clone();
-                                    let role = labels::chart_title(
-                                        i18n.get_locale(),
-                                        &binding.role,
-                                    );
+                                    // id on hover. The id itself is data,
+                                    // not copy — it renders verbatim.
+                                    let entity_id = binding.entity_id;
+                                    let title_id = entity_id.clone();
                                     view! {
                                         <span class="badge badge-ghost entity-id"
-                                            title=entity_id
+                                            title=title_id
                                         >
-                                            {format!("{} ({role})", binding.role)}
+                                            {entity_id}
                                         </span>
                                     }
                                 })
