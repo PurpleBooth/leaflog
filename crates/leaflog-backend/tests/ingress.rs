@@ -405,3 +405,35 @@ fn offline_bridge() -> std::sync::Arc<leaflog_backend::ha::HaBridge> {
         leaflog_backend::Db::open_in_memory().unwrap(),
     ))
 }
+
+#[tokio::test]
+async fn theme_harness_serves_in_dev_mode_under_the_prefix() {
+    let base = spawn_backend(Mode::Dev, Some(DEV_PREFIX.to_owned())).await;
+    let response = reqwest::get(format!("{base}{DEV_PREFIX}/theme-harness"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(
+        response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .is_some_and(|value| value.to_str().unwrap().starts_with("text/html"))
+    );
+    let html = response.text().await.unwrap();
+    assert!(
+        html.contains("setHaTheme"),
+        "harness must expose the switcher"
+    );
+    // The app is framed relatively so the page stays prefix-safe.
+    assert!(html.contains(r#"src="./""#));
+    assert_relative_assets_only(&html);
+}
+
+#[tokio::test]
+async fn theme_harness_is_not_routed_in_production() {
+    let base = spawn_backend(Mode::Production, None).await;
+    // The connection gate rejects foreign peers first; the harness
+    // route is not even registered in production mode.
+    let response = reqwest::get(format!("{base}/theme-harness")).await.unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}

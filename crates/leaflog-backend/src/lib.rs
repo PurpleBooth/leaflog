@@ -58,6 +58,7 @@ pub mod ingress;
 pub mod photos;
 pub mod seed;
 pub mod store;
+pub mod theme_harness;
 
 use std::path::PathBuf;
 

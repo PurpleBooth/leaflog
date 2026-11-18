@@ -131,10 +131,18 @@ fn day_number_utc(started_on: &str, occurred_at: &str) -> Option<u16> {
 /// prefix and sets `X-Ingress-Path`; the injected `<base href>` is what
 /// makes the browser build prefixed URLs.
 pub fn build_router(state: AppState) -> Router {
-    Router::new()
+    let router = Router::new()
         .route("/api/health", get(health))
         .route("/", get(index))
-        .merge(crate::api::router())
+        .merge(crate::api::router());
+    // The theme harness is a dev/test host for the e2e suite (ticket
+    // 07); it must never exist in the production image.
+    let router = if state.mode == Mode::Dev {
+        router.route("/theme-harness", get(crate::theme_harness::harness_page))
+    } else {
+        router
+    };
+    router
         .fallback(fallback)
         .layer(middleware::from_fn_with_state(
             state.clone(),
