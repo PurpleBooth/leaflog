@@ -29,6 +29,21 @@ pub fn day_number_local(started_on: &str, occurred_at_utc: &str, tz_name: &str) 
     u16::try_from(days.max(0)).ok()
 }
 
+/// The local calendar date (`YYYY-MM-DD`) of a UTC instant in
+/// `tz_name`.
+///
+/// `None` when the timestamp or the zone name does not parse. The
+/// Germination pick's anchor (ticket 04) is the local date of the
+/// pick's instant, so the pick itself lands on day 0 whatever the
+/// wall clock.
+#[must_use]
+pub fn local_date(occurred_at_utc: &str, tz_name: &str) -> Option<String> {
+    let zone = jiff::tz::TimeZone::get(tz_name).ok()?;
+    let timestamp: jiff::Timestamp = occurred_at_utc.parse().ok()?;
+    let occurred: Zoned = timestamp.to_zoned(zone);
+    Some(occurred.date().to_string())
+}
+
 /// A quiet-hours window on the grower's wall clock (spec §4.9).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuietHours {
@@ -77,7 +92,7 @@ fn parse_local_date(date: &str) -> Option<jiff::civil::Date> {
 
 #[cfg(test)]
 mod tests {
-    use super::{QuietHours, UTC, day_number_local};
+    use super::{QuietHours, UTC, day_number_local, local_date};
 
     #[test]
     fn utc_days_match_plain_date_math() {
@@ -151,5 +166,25 @@ mod tests {
         };
         assert!(day.contains(14 * 60));
         assert!(!day.contains(15 * 60), "the window is half-open");
+    }
+
+    #[test]
+    fn local_date_returns_the_zones_calendar_date() {
+        assert_eq!(
+            local_date("2026-11-08T10:20:30Z", UTC).as_deref(),
+            Some("2026-11-08")
+        );
+        // 23:30 UTC is already the next day in Berlin (CET, UTC+1).
+        assert_eq!(
+            local_date("2026-11-08T23:30:00Z", "Europe/Berlin").as_deref(),
+            Some("2026-11-09")
+        );
+        // An explicit offset also resolves through the same instant.
+        assert_eq!(
+            local_date("2026-11-09T01:30:00+02:00", "Europe/Berlin").as_deref(),
+            Some("2026-11-09")
+        );
+        assert_eq!(local_date("nonsense", UTC), None);
+        assert_eq!(local_date("2026-11-08T10:20:30Z", "Mars/Olympus"), None);
     }
 }

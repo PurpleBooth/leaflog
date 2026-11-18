@@ -8,6 +8,45 @@ use rusqlite::{Connection, OptionalExtension, params};
 use super::{NotFound, StoreOrNotFound};
 use crate::db::{StoreError, new_id, now_rfc3339};
 
+/// Re-dates every photo of `grow_id` under `day_of`.
+///
+/// `day_of` maps a stored `captured_at` to its grow day under a new
+/// anchor — the Germination pick's recompute (ticket 04). Callers
+/// run this inside the pick's transaction; an unmappable timestamp
+/// aborts it before any row moves.
+///
+/// # Errors
+///
+/// Returns [`StoreError::Unparsable`] when a stored `captured_at`
+/// does not parse, and SQLite failures as-is.
+pub fn redate(
+    conn: &Connection,
+    grow_id: &str,
+    day_of: &dyn Fn(&str) -> Option<u16>,
+) -> Result<usize, StoreError> {
+    let rows: Vec<(String, String)> = conn
+        .prepare("SELECT id, captured_at FROM photo WHERE grow_id = ?1")?
+        .query_map(params![grow_id], |row| {
+            Ok((
+                row.get::<_, String>("id")?,
+                row.get::<_, String>("captured_at")?,
+            ))
+        })?
+        .collect::<Result<_, _>>()?;
+    let stamp = now_rfc3339();
+    let mut moved = 0;
+    for (row_id, captured_at) in rows {
+        let day =
+            day_of(&captured_at).ok_or_else(|| StoreError::Unparsable(captured_at.clone()))?;
+        conn.execute(
+            "UPDATE photo SET grow_day = ?2, updated_at = ?3 WHERE id = ?1",
+            params![row_id, i64::from(day), stamp],
+        )?;
+        moved += 1;
+    }
+    Ok(moved)
+}
+
 /// The facts the API layer derives before inserting a photo row.
 #[derive(Debug, Clone)]
 pub struct NewPhoto {

@@ -6,6 +6,34 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-18 — the Germination pick owns the start date (ticket 04)
+
+### D098: recompute, not migrate — the pick re-dates stored grow days in one transaction
+
+A Germination pick now writes the grow's `started_on`: the anchor is
+the pick's local calendar date in the canonical timezone (a new
+`leaflog_core::tz::local_date`, mirroring `day_number_local`), so the
+pick row itself lands on day 0 whatever the wall clock. Every stored
+grow-day value is then recomputed from its own timestamp —
+`action_log.occurred_at` and `photo.captured_at` — under the new
+anchor, inside the same SQLite transaction that moves the anchor and
+inserts the pick (the `unchecked_transaction` pattern, D012). A
+re-dating step that fails aborts the whole pick; nothing half-lands.
+
+No migration: recomputation beat a schema change because the stored
+columns already carry the timestamps they need, and `feed_plan_day` is
+index-based with no timestamp, so its day numbers keep their
+day-index meaning untouched. A stored timestamp that does not parse
+fails the transaction as `StoreError::Unparsable` rather than
+silently keeping the old day. Scope notes: photos keep their phase
+labels (only day values move); editing a germination row through
+`PUT /api/actions/{id}` does not re-anchor — a pick is a create; and
+the forecast pin mechanism (D073) is unchanged, it just reads the
+re-dated rows. Other picks and plain actions never touch
+`started_on`.
+
+---
+
 ## 2026-11-18 — Phase day badge (grow page rework, ticket 05)
 
 ### D104: Phase day anchors on the raw transition event, not the clamped window start
