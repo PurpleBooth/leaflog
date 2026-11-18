@@ -404,8 +404,10 @@ async fn grow_history(
     }
     // The Air-group charts share the light timeline: the stepped
     // bands read it directly, and every Air chart shades its nights
-    // from it (env-section ticket 05).
-    let is_air_group = matches!(role.as_str(), "temperature" | "humidity" | "vpd" | "co2");
+    // from it (env-section ticket 05). Group membership is the
+    // core's [`chart::chart_group`] — the same table the frontend
+    // lays out its cards from.
+    let is_air_group = chart::chart_group(&role) == chart::ChartGroup::Air;
     let window_label = query
         .window
         .ok_or_else(|| ApiError::BadRequest("window query parameter is required".to_owned()))?;

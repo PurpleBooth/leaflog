@@ -827,9 +827,41 @@ pub struct EventMarker {
     pub kind: String,
 }
 
-/// Marker kinds for one role: root-zone charts correlate with
-/// substrate interventions (water, feed, repot), air charts with
-/// light transitions and phase picks; every other role takes none.
+/// Which chart group a sensor role renders in.
+///
+/// The single source of truth for role membership: the backend gates
+/// its Air-group light-timeline work on it and the frontend lays out
+/// its card grid from it, so a role's group lives in exactly one
+/// place.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChartGroup {
+    /// Above-ground concerns: temperature, humidity, vpd, co2. Air
+    /// charts shade their nights and share the crosshair group.
+    Air,
+    /// Below-ground concerns: `soil_moisture`, `ph`, `ec`, mounted
+    /// lazily below the Air cards.
+    RootZone,
+    /// Not charted in the environment section (light, the reservoir
+    /// roles, unknown labels).
+    Untracked,
+}
+
+/// A role's chart group membership (see [`ChartGroup`]).
+#[must_use]
+pub fn chart_group(role: &str) -> ChartGroup {
+    match role {
+        "temperature" | "humidity" | "vpd" | "co2" => ChartGroup::Air,
+        "soil_moisture" | "ph" | "ec" => ChartGroup::RootZone,
+        _ => ChartGroup::Untracked,
+    }
+}
+
+/// Marker kinds for one role.
+///
+/// Root-zone charts correlate with substrate interventions (water,
+/// feed, repot), air charts with light transitions and phase picks;
+/// every other role takes none. The split follows [`chart_group`]:
+/// the group decides which interventions correlate with a chart.
 #[must_use]
 pub fn marker_kinds(role: &str) -> &'static [ActionType] {
     const ROOT_ZONE: &[ActionType] = &[ActionType::Water, ActionType::Feed, ActionType::Transplant];
@@ -839,10 +871,10 @@ pub fn marker_kinds(role: &str) -> &'static [ActionType] {
         ActionType::Flip,
         ActionType::PhaseChange,
     ];
-    match role {
-        "soil_moisture" | "ph" | "ec" => ROOT_ZONE,
-        "temperature" | "humidity" | "vpd" | "co2" => AIR,
-        _ => &[],
+    match chart_group(role) {
+        ChartGroup::RootZone => ROOT_ZONE,
+        ChartGroup::Air => AIR,
+        ChartGroup::Untracked => &[],
     }
 }
 
@@ -1207,6 +1239,46 @@ mod tests {
         assert_eq!(marker_kinds("light"), &[] as &[ActionType]);
         assert_eq!(marker_kinds("reservoir_ph"), &[] as &[ActionType]);
         assert_eq!(marker_kinds("mystery"), &[] as &[ActionType]);
+    }
+
+    #[test]
+    fn chart_group_splits_the_section_roles_as_marker_kinds_do() {
+        for (role, group) in [
+            ("temperature", ChartGroup::Air),
+            ("humidity", ChartGroup::Air),
+            ("vpd", ChartGroup::Air),
+            ("co2", ChartGroup::Air),
+            ("soil_moisture", ChartGroup::RootZone),
+            ("ph", ChartGroup::RootZone),
+            ("ec", ChartGroup::RootZone),
+            ("light", ChartGroup::Untracked),
+            ("reservoir_ph", ChartGroup::Untracked),
+            ("mystery", ChartGroup::Untracked),
+        ] {
+            assert_eq!(chart_group(role), group, "role {role}");
+        }
+    }
+
+    #[test]
+    fn every_charted_group_takes_markers_and_untracked_takes_none() {
+        // marker_kinds keys off chart_group: a charted role always
+        // correlates with some event kind, an untracked one never
+        // does. If these drift apart a chart loses its markers or
+        // draws someone else's.
+        for role in [
+            "temperature",
+            "humidity",
+            "vpd",
+            "co2",
+            "soil_moisture",
+            "ph",
+            "ec",
+        ] {
+            assert!(!marker_kinds(role).is_empty(), "role {role}");
+        }
+        for role in ["light", "reservoir_ph", "reservoir_ec", "mystery"] {
+            assert!(marker_kinds(role).is_empty(), "role {role}");
+        }
     }
 
     #[test]
