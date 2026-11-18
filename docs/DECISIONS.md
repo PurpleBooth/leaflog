@@ -116,6 +116,9 @@ full-width slot between the groups, so its pixel scale differs and it
 opts out of the connect group (`joined_crosshair=false`) — the later
 night-shading ticket retires the card.
 
+Correction (review b1): with the Light card retired (D110) the opt-out
+prop is gone — every remaining chart joins the group unconditionally.
+
 Chart heights land at ~144 px mobile / ~176 px desktop
 (`h-36 lg:h-44`) — the ticket's compact instrument-panel heights,
 with the two-up grid per group on wide screens. The group headers

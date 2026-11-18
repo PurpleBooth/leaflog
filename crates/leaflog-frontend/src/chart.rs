@@ -171,13 +171,6 @@ pub fn format_ec_us(value: f64) -> String {
 ///
 /// `shared_markers` is the section's log-event marker toggle — the
 /// same rule: one switch in the section header moves every card.
-///
-/// `joined_crosshair` opts a card out of the section's `ECharts`
-/// connect group. The connected hover is broadcast in pixels, so a
-/// chart at a different pixel scale would translate the same pixels
-/// to a different timestamp. The light card sits in the full-width
-/// slot between the Air and Root zone grids (the later shading
-/// ticket retires it), so it stays out of the group.
 #[component]
 pub fn HistoryChart(
     grow_id: String,
@@ -186,7 +179,6 @@ pub fn HistoryChart(
     format_value: fn(f64) -> String,
     shared_window: RwSignal<String>,
     shared_markers: RwSignal<bool>,
-    #[prop(default = true)] joined_crosshair: bool,
     #[prop(optional)] children: Option<ChildrenFn>,
 ) -> impl IntoView {
     let data = RwSignal::<Option<GrowHistory>>::new(None);
@@ -290,7 +282,6 @@ pub fn HistoryChart(
                         <EChartsHistory
                             data=data
                             format_value=format_value
-                            joined_crosshair=joined_crosshair
                             markers=shared_markers
                         />
                         {footer}
@@ -350,7 +341,6 @@ pub(crate) fn WindowToggles(
 fn EChartsHistory(
     data: RwSignal<Option<GrowHistory>>,
     format_value: fn(f64) -> String,
-    joined_crosshair: bool,
     markers: RwSignal<bool>,
 ) -> impl IntoView {
     let container = NodeRef::<leptos::html::Div>::new();
@@ -402,11 +392,14 @@ fn EChartsHistory(
             label_svg_root(el.as_ref(), &format!("{} history", chart.role));
             // The mounted chart joins the section's connect group so
             // a hover anywhere moves the crosshair on every chart at
-            // the same timestamp. Full-width cards opt out: their
-            // pixel scale differs, so the broadcast would misalign.
-            if joined_crosshair {
-                join_connect_group(&echarts, &mounted);
-            }
+            // the same timestamp — every remaining chart sits in one
+            // of the section grids, so all of them join. The pixel
+            // broadcast stays aligned because the shared y-label
+            // gutter gives every plot the same pixel scale; a
+            // different-scale card would translate the same pixels
+            // to a different timestamp (the full-width light card
+            // that once opted out is retired — D110).
+            join_connect_group(&echarts, &mounted);
         }
     });
 
