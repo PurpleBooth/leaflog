@@ -14,7 +14,9 @@
 use axum::extract::{Path, Query, State};
 use axum::routing::get;
 use axum::{Json, Router};
-use leaflog_core::chart::{self, BandSegment, ChartSeries, ChartWindow, PhaseSpan, RawPoint};
+use leaflog_core::chart::{
+    self, BandSegment, ChartSeries, ChartWindow, EventMarker, PhaseSpan, RawPoint,
+};
 use leaflog_core::grows::Grow;
 use leaflog_core::grows::PhotoperiodType;
 use serde::Deserialize;
@@ -28,6 +30,11 @@ use crate::store;
 pub fn router() -> Router<AppState> {
     Router::new().route("/api/grows/{id}/history", get(grow_history))
 }
+
+/// Newest action-log entries the marker scan reads. The log page
+/// fetches 200; 1000 bounds the read with room for a heavy log's
+/// window.
+const MARKER_SCAN_LIMIT: u32 = 1000;
 
 /// Query of `GET /api/grows/{id}/history`.
 #[derive(Debug, Default, Deserialize)]
@@ -55,6 +62,9 @@ pub struct GrowHistory {
     /// Phase corridor segments clipped to the window (empty for roles
     /// without a corridor).
     pub bands: Vec<BandSegment>,
+    /// The role's log-event markers inside the window, ascending by
+    /// time (each renders as one tick glyph; ticket 04).
+    pub markers: Vec<EventMarker>,
     /// Home Assistant's history was unavailable, so the chart is
     /// snapshot-only (the Dead binding rule).
     pub degraded: bool,
@@ -444,12 +454,27 @@ async fn grow_history(
         &loaded,
     );
 
+    // The log-event markers come from the action log, not the sensor
+    // stores, so they load in their own small pass after the chart
+    // pass — same window, same `now`.
+    let from = chart::window_from(&now, window).unwrap_or_default();
+    let marker_grow_id = id.clone();
+    let marker_role = role.clone();
+    let markers = state
+        .db
+        .with(move |conn| -> Result<Vec<EventMarker>, ApiError> {
+            let entries = store::actions::list(conn, &marker_grow_id, None, MARKER_SCAN_LIMIT)?;
+            Ok(chart::event_markers(&marker_role, &from, &now, &entries))
+        })
+        .await?;
+
     Ok(Json(GrowHistory {
         role,
         window: window.label().to_owned(),
         series,
         compare,
         bands,
+        markers,
         degraded,
         bound: all_bound,
     }))

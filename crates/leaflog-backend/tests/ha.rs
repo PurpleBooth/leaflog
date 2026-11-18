@@ -1661,3 +1661,110 @@ async fn coach_tips_follow_the_bound_light_state() {
         vpd_tip(&coach)
     );
 }
+
+#[tokio::test]
+async fn grow_history_carries_role_relevant_windowed_markers() {
+    // Ticket 04: the history response carries the action log's
+    // role-relevant events inside the window as `markers` — root-zone
+    // roles get water/feed/transplant, air roles lights/light-change/
+    // flip/phase-change, and every other kind (and out-of-window
+    // event) drops. Timestamps run relative to the real clock so the
+    // day/week windows filter like they do in production.
+    let dead_url = "http://127.0.0.1:1".to_owned();
+    let (base, _db, _bridge) = spawn_api(&dead_url).await;
+    let client = reqwest::Client::new();
+    let grow_id = create_grow(&base).await;
+
+    let now = time::OffsetDateTime::now_utc();
+    let at = |hours_ago: i64| {
+        (now - time::Duration::hours(hours_ago))
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap()
+    };
+    let events = [
+        ("water", json!({}), 2),
+        ("feed", json!({}), 3),
+        ("transplant", json!({}), 5),
+        ("lights", json!({}), 4),
+        ("phase_change", json!({"target_phase": "vegetative"}), 6),
+        ("water", json!({}), 30), // week-only: outside the day window
+        ("note", json!({}), 1),   // never a marker
+    ];
+    for (action_type, details, hours_ago) in events {
+        let response = client
+            .post(format!("{base}/api/grows/{grow_id}/actions"))
+            .json(&json!({
+                "plant_ids": [], "occurred_at": at(hours_ago),
+                "action_type": action_type, "details": details, "notes": null,
+                "appearance_tags": [],
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            reqwest::StatusCode::CREATED,
+            "{action_type}"
+        );
+    }
+
+    async fn fetch_history(
+        client: &reqwest::Client,
+        base: &str,
+        grow_id: &str,
+        role: &str,
+        window: &str,
+    ) -> Value {
+        client
+            .get(format!(
+                "{base}/api/grows/{grow_id}/history?role={role}&window={window}"
+            ))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap()
+    }
+
+    // Root zone, day window: transplant, feed, water ascending, each
+    // `at` inside the window; lights, phase picks and notes drop.
+    let soil_day = fetch_history(&client, &base, &grow_id, "soil_moisture", "day").await;
+    let kinds = |body: &Value| -> Vec<String> {
+        body["markers"]
+            .as_array()
+            .expect("markers array")
+            .iter()
+            .map(|marker| marker["kind"].as_str().unwrap().to_owned())
+            .collect()
+    };
+
+    assert_eq!(kinds(&soil_day), ["transplant", "feed", "water"]);
+    let soil_ats: Vec<i64> = soil_day["markers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|marker| {
+            time::OffsetDateTime::parse(
+                marker["at"].as_str().unwrap(),
+                &time::format_description::well_known::Rfc3339,
+            )
+            .unwrap()
+            .unix_timestamp()
+        })
+        .collect();
+    let window = soil_ats.windows(2).all(|pair| pair[0] <= pair[1]);
+    assert!(window, "markers must ascend: {soil_ats:?}");
+
+    // Air roles read light and phase events only.
+    let air_day = fetch_history(&client, &base, &grow_id, "temperature", "day").await;
+    assert_eq!(kinds(&air_day), ["phase_change", "lights"]);
+
+    // The week window also holds the 30-hour-old watering.
+    let soil_week = fetch_history(&client, &base, &grow_id, "soil_moisture", "week").await;
+    assert_eq!(kinds(&soil_week), ["water", "transplant", "feed", "water"]);
+
+    // Roles outside the environment section take no markers at all.
+    let light = fetch_history(&client, &base, &grow_id, "light", "day").await;
+    assert_eq!(light["markers"], json!([]));
+}
