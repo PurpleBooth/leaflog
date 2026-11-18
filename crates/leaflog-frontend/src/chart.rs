@@ -1,9 +1,12 @@
 //! History charts (spec §3): a series over the shaded recommended-band
 //! corridor, fed by the grow history endpoint, with rolling chart
-//! windows (24 h / 7 d / 30 d). Every card — the continuous-role
-//! lines (temperature, humidity, VPD, CO₂, light, soil moisture) and
-//! the pH/EC pair scatters — renders through `ECharts` (SVG renderer)
-//! via the option-builder seam. The card-visibility rule: a role with
+//! windows (24 h / 7 d / 30 d) owned by the Environment section's one
+//! shared control. Every card — the continuous-role lines (temperature,
+//! humidity, VPD, CO₂, light, soil moisture) and the pH/EC pair
+//! scatters — renders through `ECharts` (SVG renderer) via the
+//! option-builder seam, and every mounted chart joins one connect
+//! group so a hover anywhere shows the crosshair everywhere. The
+//! card-visibility rule: a role with
 //! no binding (or, for the pH/EC log-detail roles, no entries) renders
 //! no card at all. A dead binding is `bound: true`, so its card stays
 //! and the env dashboard's No-data banner names it. A bound role whose
@@ -172,29 +175,18 @@ pub fn format_ec_us(value: f64) -> String {
 /// in-flight hiding. `children` render inside the card under the
 /// chart (the soil card carries its band editor).
 ///
-/// `shared_window` is the Environment section's window signal: when
-/// the section control moves, every card follows. The card's own
-/// toggle stays until the grouping ticket and retargets only this
-/// card; the next shared change wins again.
+/// `shared_window` is the Environment section's window signal — the
+/// section control owns the window for every card (the per-card
+/// toggles are gone; one instrument panel, one window).
 #[component]
 pub fn HistoryChart(
     grow_id: String,
     #[prop(default = "temperature")] role: &'static str,
     #[prop(default = "Temperature")] title: &'static str,
     format_value: fn(f64) -> String,
-    #[prop(optional, into)] shared_window: Option<RwSignal<String>>,
+    shared_window: RwSignal<String>,
     #[prop(optional)] children: Option<ChildrenFn>,
 ) -> impl IntoView {
-    let window =
-        RwSignal::new(shared_window.map_or_else(|| "day".to_owned(), |shared| shared.get()));
-    if let Some(shared) = shared_window {
-        Effect::new(move |_| {
-            let label = shared.get();
-            if window.get() != label {
-                window.set(label);
-            }
-        });
-    }
     let data = RwSignal::<Option<GrowHistory>>::new(None);
     // The last fetch failure, if any: the degraded banner's text. A
     // successful response clears it (the chart recovered).
@@ -212,7 +204,7 @@ pub fn HistoryChart(
 
     Effect::new(move |_| {
         let id = grow_id.clone();
-        let window_label = window.get();
+        let window_label = shared_window.get();
         spawn_local(async move {
             match api::get::<GrowHistory>(&format!(
                 "api/grows/{id}/history?role={role}&window={window_label}"
@@ -257,8 +249,7 @@ pub fn HistoryChart(
                 view! {
                     <div class="card bg-base-100 shadow-sm px-4 py-3">
                         <div class="flex flex-wrap items-baseline gap-2">
-                            <h4 class="m-0">{title}</h4>
-                            <WindowToggles window=window />
+                            <h5 class="m-0 text-base font-semibold">{title}</h5>
                             <Show
                                 when=move || data.get().is_some_and(|chart| chart.degraded)
                                 fallback=|| ()
@@ -303,9 +294,9 @@ pub fn HistoryChart(
 
 /// The Chart window toggle group: three rolling windows ending now,
 /// labelled 24h / 7d / 30d (the old "Day" collided with the Light
-/// Cycle's day). The API labels stay `day` / `week` / `month`. Each
-/// card carries one (`Chart window`); the Environment section's
-/// header control reuses it labelled as the history window.
+/// Cycle's day). The API labels stay `day` / `week` / `month`. The
+/// Environment section's header control carries it — one window for
+/// the whole instrument panel, no per-card toggles.
 #[component]
 pub(crate) fn WindowToggles(
     window: RwSignal<String>,
@@ -384,6 +375,9 @@ fn EChartsHistory(
             instance.set_value(Some(mounted.clone()));
             call_chart_method(&mounted, "setOption", Some(&option_js));
             label_svg_root(el.as_ref(), &format!("{} history", chart.role));
+            // The mounted chart joins the section's connect group so
+            // a hover anywhere moves the crosshair on every chart.
+            join_connect_group(&echarts, &mounted);
         }
     });
 
@@ -400,7 +394,31 @@ fn EChartsHistory(
         resize.remove();
     });
 
-    view! { <div node_ref=container class="h-56 w-full" /> }
+    view! { <div node_ref=container class="h-36 lg:h-44 w-full" /> }
+}
+
+/// The connect-group id the section's history charts share: hovering
+/// any chart moves the axis pointer and shows the role-scoped tooltip
+/// on every chart in the group at the same timestamp. The shared
+/// y-label gutter the option builder emits keeps the pixel broadcast
+/// aligned across the plots.
+const CONNECT_GROUP: &str = "leaflog-env-history";
+
+/// Joins a mounted chart instance to the section's connect group: the
+/// instance's `group` property names it, and `echarts.connect`
+/// registers the group so hover actions broadcast. Both are
+/// idempotent, so the per-mount repetition is safe; a disposed
+/// instance leaves the group with its registration.
+fn join_connect_group(echarts: &js_sys::Object, instance: &JsValue) {
+    let group = JsValue::from_str(CONNECT_GROUP);
+    let _ = Reflect::set(instance, &JsValue::from_str("group"), &group);
+    let Some(connect) = Reflect::get(echarts, &JsValue::from_str("connect"))
+        .ok()
+        .and_then(|value| value.dyn_into::<Function>().ok())
+    else {
+        return;
+    };
+    let _ = connect.call1(echarts, &group);
 }
 
 /// Reads `window.echarts`; `None` when the bundle script did not load

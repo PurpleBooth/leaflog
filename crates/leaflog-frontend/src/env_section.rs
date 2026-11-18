@@ -1,8 +1,11 @@
 //! The Environment section on the grow page (env-section rework
 //! ticket 01): the live tiles as the top row, the history charts
-//! beneath them, and one shared chart-window control in the section
-//! header. The window choice persists per browser in localStorage.
-//! Ticket 03 closes the section with one quiet "not measured" card
+//! beneath them in two groups — **Air** and **Root zone**, each under
+//! an uppercase micro-label header — and one shared chart-window
+//! control in the section header that every chart follows. The window
+//! choice persists per browser in localStorage. Ticket 02 groups the
+//! charts and joins them in one crosshair-synced connect group;
+//! ticket 03 closes the section with one quiet "not measured" card
 //! that chips every sensor role the grow has not bound yet, each
 //! chip linking into the existing binding flow.
 
@@ -97,12 +100,23 @@ fn HistoryWindowControl(window: RwSignal<String>) -> impl IntoView {
     }
 }
 
-/// The Environment section: the live tiles as its top row, the
-/// history charts beneath them, and one shared window control in the
-/// header that every chart follows. Each card keeps its own toggle
-/// until the grouping ticket retires it; while both exist, a shared
-/// change wins on every card and a card's own toggle retargets that
-/// card alone.
+/// A group's micro-label header: the group's name — a glossary term —
+/// in the section's quiet uppercase register, above its chart grid.
+#[component]
+fn GroupLabel(text: &'static str) -> impl IntoView {
+    view! {
+        <h4 class="m-0 mt-4 text-xs font-semibold uppercase tracking-wider text-base-content/60">
+            {text}
+        </h4>
+    }
+}
+
+/// The Environment section: the live tiles as its top row, then the
+/// history charts in two groups — Air and Root zone, each under its
+/// micro-label header — with the Light card between them, and one
+/// shared window control in the header that every chart follows.
+/// Every mounted chart joins the connect group, so a hover anywhere
+/// shows the crosshair on every chart at the same timestamp.
 #[component]
 pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
     let window = RwSignal::new(load_history_window());
@@ -121,13 +135,15 @@ pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
                 <HistoryWindowControl window=window />
             </div>
             <EnvDashboard grow_id=grow_id.clone() />
-            // Two-up on wide screens: the paired roles read side by
-            // side and the scroll shortens by half. Explicit
-            // `grid-cols-1` at the base keeps every track
+            // The Air group: above-ground concerns under their
+            // micro-label header. Two-up on wide screens: the paired
+            // roles read side by side and the scroll shortens by half.
+            // Explicit `grid-cols-1` at the base keeps every track
             // `minmax(0, 1fr)`: an implicit auto track would let a
             // not-yet-resized chart SVG stretch the column, and
             // `resize()` — which re-reads the container — would then
             // confirm the stale width instead of shrinking into it.
+            <GroupLabel text="Air" />
             <div class="grid grid-cols-1 gap-4 items-start lg:grid-cols-2">
                 <HistoryChart grow_id=grow_id.clone() shared_window=window
                     format_value=leaflog_core::units::temp_both
@@ -141,9 +157,18 @@ pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
                 <HistoryChart grow_id=grow_id.clone() role="co2" title="CO₂"
                     shared_window=window format_value=format_ppm
                 />
+            </div>
+            // The Light card keeps its own slot between the groups —
+            // the fixture hangs above the soil — until the
+            // night-shading ticket folds it into the Air charts.
+            <div class="mt-4">
                 <HistoryChart grow_id=grow_id.clone() role="light" title="Light"
                     shared_window=window format_value=format_on_off
                 />
+            </div>
+            // The Root zone group: below-ground concerns.
+            <GroupLabel text="Root zone" />
+            <div class="grid grid-cols-1 gap-4 items-start lg:grid-cols-2">
                 <HistoryChart grow_id=grow_id.clone() role="soil_moisture" title="Soil moisture"
                     shared_window=window format_value=format_pct
                 >
