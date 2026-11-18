@@ -194,6 +194,9 @@ unbound: its chart card stays with the degraded banner, so it must
 not chip. The in-card hiding and pH/EC fallback rules are untouched
 (ticket 03 preserves them). No new `#[allow]` exceptions.
 
+Correction (review c1): `light` left the chip list when the Light
+card retired (D110) — the shipped list is the four remaining roles.
+
 ---
 
 ## 2026-11-18 — temperature and VPD Target Bands (env-section ticket 06, git-bug 74cba42)
