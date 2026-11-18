@@ -184,12 +184,13 @@ test('grow header cluster: an unlabelled grow shows no placeholder', async ({
   await page.goto(url(`/grows/${id}`));
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
   await expect(page.locator('span.badge', { hasText: '🪴' })).toHaveCount(1);
-  // Exactly one badge (the medium): no strain badge beside it.
+  // Two badges (medium and phase day): no strain badge beside them.
+  // The phase-day badge arrives with the forecast fetch.
   const badges = page
     .locator('div.flex.flex-wrap.items-center.gap-2')
     .first()
     .locator('span.badge');
-  await expect(badges).toHaveCount(1);
+  await expect(badges).toHaveCount(2);
 });
 
 test('quick add: log a watering from the grow page', async ({ page, request }) => {

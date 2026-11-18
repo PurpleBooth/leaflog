@@ -161,6 +161,11 @@ pub struct LiveEntity {
 pub struct Forecast {
     /// Days since the grow start (today marker).
     pub today_day: i64,
+    /// Current phase label (the phase whose window holds today).
+    pub phase: String,
+    /// Days elapsed in the current phase, anchored at its
+    /// transition event (GLOSSARY.md).
+    pub phase_day: i64,
     /// Phase windows in chronological order.
     pub windows: Vec<PhaseWindowData>,
 }
