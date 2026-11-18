@@ -48,18 +48,23 @@ impl Rgb {
     /// Assistant's own contrast helper).
     #[must_use]
     pub fn relative_luminance(self) -> f64 {
-        let linear = |channel: f64| -> f64 {
-            let c = channel / 255.0;
-            if c <= 0.04045 {
-                c / 12.92
-            } else {
-                ((c + 0.055) / 1.055).powf(2.4)
-            }
-        };
         0.2126_f64.mul_add(
-            linear(self.red),
-            0.7152_f64.mul_add(linear(self.green), 0.0722 * linear(self.blue)),
+            srgb_linear(self.red),
+            0.7152_f64.mul_add(srgb_linear(self.green), 0.0722 * srgb_linear(self.blue)),
         )
+    }
+}
+
+/// The IEC 61966-2-1 sRGB electro-optical transfer: a 0..=255 channel
+/// to linear light, shared by the WCAG luminance and the Oklab
+/// conversion (both consume linearised channels).
+#[must_use]
+fn srgb_linear(channel: f64) -> f64 {
+    let c = channel / 255.0;
+    if c <= 0.04045 {
+        c / 12.92
+    } else {
+        ((c + 0.055) / 1.055).powf(2.4)
     }
 }
 
@@ -130,15 +135,11 @@ pub struct Oklch {
 /// Lab to `LCh`.
 #[must_use]
 pub fn rgb_to_oklch(color: Rgb) -> Oklch {
-    let linear = |channel: f64| -> f64 {
-        let c = channel / 255.0;
-        if c <= 0.04045 {
-            c / 12.92
-        } else {
-            ((c + 0.055) / 1.055).powf(2.4)
-        }
-    };
-    let (red, green, blue) = (linear(color.red), linear(color.green), linear(color.blue));
+    let (red, green, blue) = (
+        srgb_linear(color.red),
+        srgb_linear(color.green),
+        srgb_linear(color.blue),
+    );
 
     // Linear sRGB → cone response.
     let l = 0.412_221_470_8_f64.mul_add(
