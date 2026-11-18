@@ -107,6 +107,7 @@ struct BridgeInner {
     token: SupervisorToken,
     live_rx: watch::Receiver<LiveData>,
     timezone_rx: watch::Receiver<Option<String>>,
+    language_rx: watch::Receiver<Option<String>>,
 }
 
 /// Commands from the API layer to the socket task.
@@ -123,6 +124,7 @@ impl HaBridge {
     pub fn spawn(base_url: String, token: SupervisorToken, db: Db) -> Self {
         let (live_tx, live_rx) = watch::channel(LiveData::offline());
         let (timezone_tx, timezone_rx) = watch::channel(None);
+        let (language_tx, language_rx) = watch::channel(None);
         let (updates_tx, updates_rx) = mpsc::unbounded_channel();
         let ws_base = base_url.trim_end_matches('/').replacen("http", "ws", 1);
         let rest_base = base_url.trim_end_matches('/').to_owned();
@@ -134,7 +136,10 @@ impl HaBridge {
             updates_rx,
             db,
             rest_base,
-            timezone_tx,
+            ConfigWatches {
+                timezone_tx,
+                language_tx,
+            },
         ));
         Self {
             inner: Arc::new(BridgeInner {
@@ -142,6 +147,7 @@ impl HaBridge {
                 token: handle_token,
                 live_rx,
                 timezone_rx,
+                language_rx,
             }),
             updates_tx,
         }
@@ -154,6 +160,16 @@ impl HaBridge {
     #[must_use]
     pub fn cached_timezone(&self) -> Option<String> {
         self.inner.timezone_rx.borrow().clone()
+    }
+
+    /// The Home Assistant user language (BCP-47 tag) from the
+    /// documented `GET /core/api/config`, refreshed with every
+    /// reconnect; `None` until fetched or when HA is unreachable (the
+    /// locale chain falls through to the browser locale, then
+    /// English). Read-only plumbing — the backend never translates.
+    #[must_use]
+    pub fn cached_language(&self) -> Option<String> {
+        self.inner.language_rx.borrow().clone()
     }
 
     /// A receiver of live-data snapshots (for the SSE endpoint).
@@ -292,6 +308,17 @@ pub fn backoff_for(attempt: u32) -> Duration {
     Duration::from_secs(seconds.min(60))
 }
 
+/// The watch publishers for the config fields refreshed on every
+/// reconnect: the canonical timezone (spec §2) and the user language
+/// (D112), bundled so `socket_task` stays within its argument budget.
+#[derive(Debug)]
+struct ConfigWatches {
+    /// Canonical IANA timezone of the HA instance.
+    timezone_tx: watch::Sender<Option<String>>,
+    /// BCP-47 user language of the HA instance.
+    language_tx: watch::Sender<Option<String>>,
+}
+
 /// The socket task: connect, auth, subscribe, stream; reconnect
 /// forever. `db` writes auto-log entries when a bound light entity
 /// changes state and auto-logging is on.
@@ -302,7 +329,7 @@ async fn socket_task(
     mut updates: mpsc::UnboundedReceiver<Update>,
     db: Db,
     rest_base: String,
-    timezone_tx: watch::Sender<Option<String>>,
+    watches: ConfigWatches,
 ) {
     let url = format!("{ws_base}/core/websocket");
     let mut tracked: Vec<String> = Vec::new();
@@ -312,10 +339,11 @@ async fn socket_task(
         while let Ok(Update::Entities(entities)) = updates.try_recv() {
             tracked = entities;
         }
-        // Refresh the canonical timezone (spec §2) on every
-        // (re)connect; unreachable HA keeps the last known value.
-        refresh_timezone(&rest_base, &token, &timezone_tx).await;
-        let timezone = timezone_tx.borrow().clone();
+        // Refresh the canonical timezone (spec §2) and the user
+        // language (D112) on every (re)connect; unreachable HA keeps
+        // the last known values.
+        refresh_config(&rest_base, &token, &watches).await;
+        let timezone = watches.timezone_tx.borrow().clone();
         match run_socket(
             &url,
             &token,
@@ -343,14 +371,11 @@ async fn socket_task(
 }
 
 /// Fetches `GET /core/api/config` and publishes its `timezone` (the
-/// documented field, spec §2) to the bridge's watch channel. Failures
-/// leave the previous value untouched — unreachable HA keeps the last
-/// known zone.
-async fn refresh_timezone(
-    rest_base: &str,
-    token: &SupervisorToken,
-    timezone_tx: &watch::Sender<Option<String>>,
-) {
+/// documented field, spec §2) and `language` (the user language,
+/// D112) to the bridge's watch channels. Failures leave the previous
+/// values untouched — unreachable HA keeps the last known zone and
+/// language.
+async fn refresh_config(rest_base: &str, token: &SupervisorToken, watches: &ConfigWatches) {
     let url = format!("{rest_base}/core/api/config");
     let fetched = reqwest::Client::new()
         .get(&url)
@@ -362,10 +387,14 @@ async fn refresh_timezone(
         Ok(response) => HaBridge::json_response::<serde_json::Value>(response).await,
         Err(error) => Err(HaError::Unreachable(error.to_string())),
     };
-    if let Ok(config) = fetched
-        && let Some(zone) = config["timezone"].as_str()
-    {
-        let _ = timezone_tx.send(Some(zone.to_owned()));
+    let Ok(config) = fetched else {
+        return;
+    };
+    if let Some(zone) = config["timezone"].as_str() {
+        let _ = watches.timezone_tx.send(Some(zone.to_owned()));
+    }
+    if let Some(language) = config["language"].as_str() {
+        let _ = watches.language_tx.send(Some(language.to_owned()));
     }
 }
 

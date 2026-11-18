@@ -127,6 +127,7 @@ async fn spawn_mock_api() -> (String, std::sync::Arc<leaflog_backend::ha::HaBrid
     let mock_state = mock_ha::MockState {
         room: std::sync::Arc::new(tokio::sync::Mutex::new(mock_ha::FakeRoom::new())),
         notifications: std::sync::Arc::new(tokio::sync::Mutex::new(Vec::new())),
+        language: std::sync::Arc::new(tokio::sync::Mutex::new("en".to_owned())),
     };
     let mock_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let mock_addr = mock_listener.local_addr().unwrap();

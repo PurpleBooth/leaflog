@@ -29,6 +29,7 @@ async fn spawn_mock() -> (String, mock_ha::MockState) {
     let state = mock_ha::MockState {
         room: Arc::new(tokio::sync::Mutex::new(mock_ha::FakeRoom::new())),
         notifications: Arc::new(tokio::sync::Mutex::new(Vec::new())),
+        language: Arc::new(tokio::sync::Mutex::new("en".to_owned())),
     };
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -439,6 +440,7 @@ async fn bridge_reconnects_after_the_socket_drops() {
     let state = mock_ha::MockState {
         room: Arc::new(tokio::sync::Mutex::new(mock_ha::FakeRoom::new())),
         notifications: Arc::new(tokio::sync::Mutex::new(Vec::new())),
+        language: Arc::new(tokio::sync::Mutex::new("en".to_owned())),
     };
     let router = mock_ha::app(state.clone());
     let server = tokio::spawn(async move {
@@ -473,6 +475,7 @@ async fn bridge_reconnects_after_the_socket_drops() {
     let router = mock_ha::app(mock_ha::MockState {
         room: Arc::new(tokio::sync::Mutex::new(mock_ha::FakeRoom::new())),
         notifications: Arc::new(tokio::sync::Mutex::new(Vec::new())),
+        language: Arc::new(tokio::sync::Mutex::new("en".to_owned())),
     });
     tokio::spawn(async move {
         axum::serve(listener, router).await.unwrap();
@@ -2124,4 +2127,49 @@ async fn grow_history_shades_nights_from_the_bound_light_history() {
         .await
         .unwrap();
     assert_eq!(co2["nights"], body["nights"], "Air roles share the shading");
+}
+
+// --- Locale endpoint (D112) ----------------------------------------------
+
+/// Polls `GET /api/locale` until the reported language matches `want`
+/// (the config fetch races the test start).
+async fn wait_language(base: &str, want: &str) {
+    let client = reqwest::Client::new();
+    for _ in 0..40 {
+        let body: Value = client
+            .get(format!("{base}/api/locale"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        if body["language"].as_str() == Some(want) {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    panic!("locale endpoint never reported {want:?}");
+}
+
+/// The locale endpoint reflects the mock Supervisor's configured user
+/// language (D112): the mock's `language` config field flows through
+/// the bridge config refresh into `GET /api/locale`.
+#[tokio::test]
+async fn locale_endpoint_reports_mock_language() {
+    let (mock_url, mock_state) = spawn_mock().await;
+    *mock_state.language.lock().await = "de-DE".to_owned();
+    let (base, _db, bridge) = spawn_api(&mock_url).await;
+    wait_connected(&bridge).await;
+    wait_language(&base, "de-DE").await;
+}
+
+/// With the mock left at its default (`en`), the endpoint reports
+/// English — the chain's fallback anchor for German-forced browsers.
+#[tokio::test]
+async fn locale_endpoint_defaults_to_english() {
+    let (mock_url, _mock) = spawn_mock().await;
+    let (base, _db, bridge) = spawn_api(&mock_url).await;
+    wait_connected(&bridge).await;
+    wait_language(&base, "en").await;
 }

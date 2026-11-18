@@ -187,13 +187,26 @@ fn entity_state(entity_id: &str, state: &str, unit: &str, name: &str) -> Value {
 }
 
 /// Shared mock state.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct MockState {
     /// The mutable fake room (ticked by WS sessions).
     pub room: Arc<Mutex<FakeRoom>>,
     /// Notifications received on the `persistent_notification` service
     /// (asserted by tests).
     pub notifications: Arc<Mutex<Vec<String>>>,
+    /// The user language reported by `GET /core/api/config` (BCP-47
+    /// tag, default `en`; tests set it to exercise the locale chain).
+    pub language: Arc<Mutex<String>>,
+}
+
+impl Default for MockState {
+    fn default() -> Self {
+        Self {
+            room: Arc::new(Mutex::new(FakeRoom::default())),
+            notifications: Arc::new(Mutex::new(Vec::new())),
+            language: Arc::new(Mutex::new("en".to_owned())),
+        }
+    }
 }
 
 /// Builds the mock Supervisor router (REST + WS).
@@ -242,11 +255,21 @@ async fn ping() -> Json<Value> {
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 #[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
-async fn config() -> Json<Value> {
+async fn config(State(state): State<MockState>) -> Json<Value> {
     // The documented config surface Leaflog reads (spec §2): the
-    // canonical timezone for display and grow-day numbering.
+    // canonical timezone for display and grow-day numbering, and the
+    // user language (D112, default `en`, settable for tests). An
+    // empty `MOCK_HA_LANGUAGE` means "no language": HA reports none,
+    // so the frontend locale chain falls through to the browser
+    // locale — that is the step the e2e German case exercises.
+    let language = state.language.lock().await.clone();
     json!({
         "timezone": "Europe/Berlin",
+        "language": if language.is_empty() {
+            Value::Null
+        } else {
+            json!(language)
+        },
         "unit_system": { "temperature": "°C", "length": "mm", "volume": "L" },
     })
     .into()

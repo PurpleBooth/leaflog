@@ -12,9 +12,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok()
         .and_then(|p| p.parse().ok())
         .unwrap_or(8098);
+    let language = std::env::var("MOCK_HA_LANGUAGE").unwrap_or_else(|_| "en".to_owned());
     let app = mock_ha::app(MockState {
         notifications: std::sync::Arc::new(tokio::sync::Mutex::new(Vec::new())),
         room: std::sync::Arc::new(tokio::sync::Mutex::new(FakeRoom::new())),
+        language: std::sync::Arc::new(tokio::sync::Mutex::new(language)),
     });
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let listener = tokio::net::TcpListener::bind(addr).await?;

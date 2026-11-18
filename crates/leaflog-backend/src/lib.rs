@@ -49,6 +49,7 @@ pub mod api_feeds;
 pub mod api_grows;
 pub mod api_ha;
 pub mod api_history;
+pub mod api_locale;
 pub mod api_phase;
 pub mod app;
 pub mod assets;
