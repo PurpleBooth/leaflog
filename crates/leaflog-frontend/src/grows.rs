@@ -349,7 +349,11 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
     let add_plant = move |_ev: leptos::ev::MouseEvent| {
         let id = grow_id.get();
         spawn_local(async move {
-            let name = format!("Plant {}", plants.get().len() + 1);
+            let name = t_string!(
+                i18n,
+                grow.plant_default_name,
+                count = plants.get().len() + 1
+            );
             match api::post::<PlantInput, Plant>(
                 &format!("api/grows/{id}/plants"),
                 &PlantInput {

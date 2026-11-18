@@ -4,6 +4,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use leptos_i18n::td_string;
 use leptos_router::components::A;
 use serde::Deserialize;
 
@@ -234,6 +235,8 @@ struct PlantView {
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
 pub fn PlantViewPage() -> impl IntoView {
+    let i18n = use_i18n();
+    let locale = i18n.get_locale();
     let params = leptos_router::hooks::use_params_map();
     let view = RwSignal::<Option<PlantView>>::new(None);
     let error = RwSignal::<Option<String>>::new(None);
@@ -297,26 +300,26 @@ pub fn PlantViewPage() -> impl IntoView {
                         <div class="card bg-base-100 shadow-sm px-5 py-4 my-4">
                             <div class="flex flex-wrap items-baseline gap-2">
                                 <strong>{data.plant.name.clone()}</strong>
-                                <A href=route_href(&format!("/grows/{grow_id}"))>"back to the grow"</A>
+                                <A href=route_href(&format!("/grows/{grow_id}"))>{t!(i18n, plant.back_to_grow)}</A>
                                 <button class="btn btn-sm" on:click=move |_| start_edit(&for_edit)>
-                                    "Edit plant"
+                                    {t!(i18n, plant.edit)}
                                 </button>
                             </div>
                             <dl class="facts">
                                 {data.plant.wet_g.map(|grams| view! {
-                                    <div><dt>"Wet"</dt><dd>{format!("{grams:.0} g")}</dd></div>
+                                    <div><dt>{t!(i18n, plant.wet)}</dt><dd>{format!("{grams:.0} g")}</dd></div>
                                 })}
                                 {data.plant.dry_g.map(|grams| view! {
-                                    <div><dt>"Dry"</dt><dd>{format!("{grams:.0} g")}</dd></div>
+                                    <div><dt>{t!(i18n, plant.dry)}</dt><dd>{format!("{grams:.0} g")}</dd></div>
                                 })}
                                 {data.plant.trimmed_g.map(|grams| view! {
-                                    <div><dt>"Trimmed"</dt><dd>{format!("{grams:.0} g")}</dd></div>
+                                    <div><dt>{t!(i18n, plant.trimmed)}</dt><dd>{format!("{grams:.0} g")}</dd></div>
                                 })}
                             </dl>
-                            <h3>"Log"</h3>
+                            <h3>{t!(i18n, plant.log_heading)}</h3>
                             <Show
                                 when=move || has_actions
-                                fallback=move || view! { <p class="py-6 text-center text-base-content/60">"No entries name this plant."</p> }
+                                fallback=move || view! { <p class="py-6 text-center text-base-content/60">{t!(i18n, plant.log_empty)}</p> }
                             >
                                 <ul class="list-disc pl-5">
                                     {actions
@@ -335,8 +338,10 @@ pub fn PlantViewPage() -> impl IntoView {
                                         .collect::<Vec<_>>()}
                                 </ul>
                             </Show>
-                            <h3>"Photos"</h3>
-                            <p class="py-6 text-center text-base-content/60">{format!("{photos} photo(s) linked")}</p>
+                            <h3>{t!(i18n, grow.photos)}</h3>
+                            <p class="py-6 text-center text-base-content/60">
+                                {td_string!(locale, plant.photos_linked, count = photos)}
+                            </p>
                         </div>
                     }
                 })
@@ -344,23 +349,38 @@ pub fn PlantViewPage() -> impl IntoView {
 
             <Show when=move || edit_open.get()>
                 <form class="card bg-base-100 shadow-sm px-5 py-4 my-4" on:submit=save>
-                    <h3>"Edit plant"</h3>
+                    <h3>{t!(i18n, plant.edit)}</h3>
                     <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
                         <label class="fieldset">
-                            <span class="fieldset-label">"Name *"</span>
+                            <span class="fieldset-label">{t!(i18n, form.name)}</span>
                             <input class="input" type="text" required
                                 prop:value=move || draft.get().name
                                 on:input=move |ev| draft.update(|d| d.name = event_target_value(&ev))
                             />
                         </label>
-                        {weight_field("Wet weight (g)", draft, |d| d.wet_g, |d, v| d.wet_g = v)}
-                        {weight_field("Dry weight (g)", draft, |d| d.dry_g, |d, v| d.dry_g = v)}
-                        {weight_field("Trimmed weight (g)", draft, |d| d.trimmed_g, |d, v| d.trimmed_g = v)}
+                        {weight_field(
+                            td_string!(locale, form.wet_weight_g).into_owned(),
+                            draft,
+                            |d| d.wet_g,
+                            |d, v| d.wet_g = v,
+                        )}
+                        {weight_field(
+                            td_string!(locale, form.dry_weight_g).into_owned(),
+                            draft,
+                            |d| d.dry_g,
+                            |d, v| d.dry_g = v,
+                        )}
+                        {weight_field(
+                            td_string!(locale, form.trimmed_weight_g).into_owned(),
+                            draft,
+                            |d| d.trimmed_g,
+                            |d, v| d.trimmed_g = v,
+                        )}
                     </div>
                     <div class="flex flex-wrap gap-2 mt-4">
-                        <button class="btn btn-primary btn-sm" type="submit">"Save"</button>
+                        <button class="btn btn-primary btn-sm" type="submit">{t!(i18n, grows.save)}</button>
                         <button class="btn btn-sm" type="button" on:click=move |_| edit_open.set(false)>
-                            "Cancel"
+                            {t!(i18n, grows.cancel)}
                         </button>
                     </div>
                 </form>
@@ -371,7 +391,7 @@ pub fn PlantViewPage() -> impl IntoView {
 
 /// One harvest-weight input bound to a spot in the plant draft.
 fn weight_field(
-    label: &'static str,
+    label: String,
     draft: RwSignal<PlantInput>,
     read: impl Fn(&PlantInput) -> Option<f64> + Clone + Send + 'static,
     write: impl Fn(&mut PlantInput, Option<f64>) + Clone + Send + 'static,
