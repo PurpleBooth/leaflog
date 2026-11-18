@@ -7,14 +7,17 @@
 //! them in one crosshair-synced connect group; ticket 03 closes the
 //! section with one quiet "not measured" card that chips every
 //! sensor role the grow has not bound yet, each chip linking into the
-//! existing binding flow.
+//! existing binding flow. Ticket 05 folds the light story into the
+//! Air charts: a night shading behind them (the bound light's
+//! history, or the Light Cycle when no light is bound) replaces the
+//! standalone Light card.
 
 use std::collections::BTreeMap;
 
 use crate::api;
 use crate::chart::{
-    BandEditor, HistoryChart, WindowToggles, format_ec_us, format_kpa, format_on_off, format_pct,
-    format_ph, format_ppm,
+    BandEditor, HistoryChart, WindowToggles, format_ec_us, format_kpa, format_pct, format_ph,
+    format_ppm,
 };
 use crate::dashboard::EnvDashboard;
 use crate::route_href;
@@ -44,12 +47,13 @@ fn normalize_history_window(stored: &str) -> &'static str {
 /// no chip (it derives from temperature + humidity, so one of those
 /// chips explains its absence), pH and EC are log-detail roles with
 /// their own fallback rules, and the reservoir roles carry no chart
-/// card in this section.
+/// card in this section. Light has no card either (ticket 05 folded
+/// it into the Air charts' night shading), so it chips nowhere —
+/// the edit page still takes the binding, and the shading reads it.
 const CHART_SENSOR_ROLES: &[(&str, &str)] = &[
     ("temperature", "Temperature"),
     ("humidity", "Humidity"),
     ("co2", "CO₂"),
-    ("light", "Light"),
     ("soil_moisture", "Soil moisture"),
 ];
 
@@ -113,23 +117,32 @@ fn HistoryWindowControl(window: RwSignal<String>, markers: RwSignal<bool>) -> im
 }
 
 /// A group's micro-label header: the group's name — a glossary term —
-/// in the section's quiet uppercase register, above its chart grid.
+/// in the section's quiet uppercase register, above its chart grid,
+/// with an optional legend hint beside it (the Air group names its
+/// night shading there).
 #[component]
-fn GroupLabel(text: &'static str) -> impl IntoView {
+fn GroupLabel(text: &'static str, #[prop(default = "")] hint: &'static str) -> impl IntoView {
     view! {
-        <h4 class="m-0 mt-4 text-xs font-semibold uppercase tracking-wider text-base-content/60">
-            {text}
-        </h4>
+        <div class="flex flex-wrap items-baseline gap-2 mt-4">
+            <h4 class="m-0 text-xs font-semibold uppercase tracking-wider text-base-content/60">
+                {text}
+            </h4>
+            {(!hint.is_empty()).then(|| {
+                view! { <span class="text-xs text-base-content/50">{hint}</span> }
+            })}
+        </div>
     }
 }
 
 /// The Environment section: the live tiles as its top row, then the
 /// history charts in two groups — Air and Root zone, each under its
-/// micro-label header — with the Light card between them, and one
-/// shared window control in the header that every chart follows.
-/// Every group chart joins the connect group, so a hover anywhere
-/// shows the crosshair on every chart at the same timestamp; the
-/// full-width Light card stays out (its pixel scale differs).
+/// micro-label header — with one shared window control in the header
+/// that every chart follows. Every group chart joins the connect
+/// group, so a hover anywhere shows the crosshair on every chart at
+/// the same timestamp. The Air charts carry the light story as a
+/// night shading behind them (ticket 05) — observed light states
+/// when a light entity is bound, the Light Cycle otherwise — so the
+/// standalone Light card is gone and its legend rides the Air label.
 #[component]
 pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
     let window = RwSignal::new(load_history_window());
@@ -160,7 +173,7 @@ pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
             // not-yet-resized chart SVG stretch the column, and
             // `resize()` — which re-reads the container — would then
             // confirm the stale width instead of shrinking into it.
-            <GroupLabel text="Air" />
+            <GroupLabel text="Air" hint="Shaded areas mark night periods." />
             <div class="grid grid-cols-1 gap-4 items-start lg:grid-cols-2">
                 <HistoryChart grow_id=grow_id.clone() shared_window=window
                     shared_markers=markers
@@ -174,15 +187,6 @@ pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
                 />
                 <HistoryChart grow_id=grow_id.clone() role="co2" title="CO₂"
                     shared_window=window shared_markers=markers format_value=format_ppm
-                />
-            </div>
-            // The Light card keeps its own slot between the groups —
-            // the fixture hangs above the soil — until the
-            // night-shading ticket folds it into the Air charts.
-            <div class="mt-4">
-                <HistoryChart grow_id=grow_id.clone() role="light" title="Light"
-                    shared_window=window shared_markers=markers format_value=format_on_off
-                    joined_crosshair=false
                 />
             </div>
             // The Root zone group: below-ground concerns.
@@ -308,10 +312,7 @@ mod tests {
     fn an_empty_binding_map_leaves_every_chart_role_unbound() {
         let unbound = unbound_chart_roles(&std::collections::BTreeMap::new());
         let roles: Vec<&str> = unbound.iter().map(|(role, _)| *role).collect();
-        assert_eq!(
-            roles,
-            ["temperature", "humidity", "co2", "light", "soil_moisture"]
-        );
+        assert_eq!(roles, ["temperature", "humidity", "co2", "soil_moisture"]);
     }
 
     #[test]
@@ -325,7 +326,7 @@ mod tests {
         ]);
         let unbound = unbound_chart_roles(&bindings);
         let roles: Vec<&str> = unbound.iter().map(|(role, _)| *role).collect();
-        assert_eq!(roles, ["humidity", "light", "soil_moisture"]);
+        assert_eq!(roles, ["humidity", "soil_moisture"]);
     }
 
     #[test]
@@ -342,10 +343,7 @@ mod tests {
         ]);
         let unbound = unbound_chart_roles(&bindings);
         let roles: Vec<&str> = unbound.iter().map(|(role, _)| *role).collect();
-        assert_eq!(
-            roles,
-            ["temperature", "humidity", "co2", "light", "soil_moisture"]
-        );
+        assert_eq!(roles, ["temperature", "humidity", "co2", "soil_moisture"]);
     }
 
     #[test]
@@ -356,9 +354,6 @@ mod tests {
             .iter()
             .map(|(_, label)| *label)
             .collect();
-        assert_eq!(
-            labels,
-            ["Temperature", "Humidity", "CO₂", "Light", "Soil moisture"]
-        );
+        assert_eq!(labels, ["Temperature", "Humidity", "CO₂", "Soil moisture"]);
     }
 }

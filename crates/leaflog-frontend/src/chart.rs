@@ -136,16 +136,6 @@ pub fn format_ppm(value: f64) -> String {
     format!("{value:.0} ppm")
 }
 
-/// Axis formatter: a binary entity's on/off state.
-#[must_use]
-pub fn format_on_off(value: f64) -> String {
-    if value >= 0.5 {
-        "on".to_owned()
-    } else {
-        "off".to_owned()
-    }
-}
-
 /// Axis formatter: pH values (dimensionless).
 #[must_use]
 pub fn format_ph(value: f64) -> String {
