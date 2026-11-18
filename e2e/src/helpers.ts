@@ -144,15 +144,50 @@ export async function markerTicks(
   });
 }
 
+/** The night-shading regions of one chart's ECharts SVG (ticket
+ *  05): filled paths spanning the plot's full height — the plot
+ *  rectangle is the SVG minus the grid insets (top 36, bottom 24),
+ *  and a region qualifies at ≥ 95 % of that height. Height is the
+ *  discriminator: Target Band shading sits inside the padded value
+ *  range (≤ ~80 % of the plot) and the log-event ticks are narrow.
+ *  zrender's clip shapes are excluded as with the bands. Returns
+ *  viewport boxes so specs can count and locate them. */
+export async function nightShades(
+  svg: Locator,
+): Promise<{ x: number; width: number; height: number }[]> {
+  return svg.evaluate((root) => {
+    const plotHeight = root.getBoundingClientRect().height - 60;
+    const shades: { x: number; width: number; height: number }[] = [];
+    for (const path of root.querySelectorAll<SVGPathElement>(
+      'path[fill]:not([fill="none"])',
+    )) {
+      if (path.closest('clipPath')) {
+        continue;
+      }
+      const box = path.getBoundingClientRect();
+      if (box.width > 4 && box.height >= plotHeight * 0.95) {
+        shades.push({ x: box.x, width: box.width, height: box.height });
+      }
+    }
+    return shades;
+  });
+}
+
 /** The filled (non-line) paths of one chart's ECharts SVG: the
  *  rendered Target Band regions, as top/height boxes (viewport
  *  coordinates — comparisons only). zrender's clip shapes carry a
  *  fill but live inside `<clipPath>` and never paint, so they are
- *  excluded: what remains is real shading. */
+ *  excluded: what remains is real shading. The night layer (ticket
+ *  05) also paints filled paths, but spans the full plot height
+ *  (the SVG minus the grid insets, top 36 bottom 24) — bands sit
+ *  inside the padded value range and never reach it, so the
+ *  full-height paths are filtered out here and counted by
+ *  nightShades instead. */
 export async function bandRegions(
   svg: Locator,
 ): Promise<{ top: number; height: number }[]> {
   return svg.evaluate((root) => {
+    const plotHeight = root.getBoundingClientRect().height - 60;
     const regions: { top: number; height: number }[] = [];
     for (const path of root.querySelectorAll<SVGPathElement>(
       'path[fill]:not([fill="none"])',
@@ -161,7 +196,7 @@ export async function bandRegions(
         continue;
       }
       const box = path.getBoundingClientRect();
-      if (box.height > 1) {
+      if (box.height > 1 && box.height < plotHeight * 0.95) {
         regions.push({ top: box.top, height: box.height });
       }
     }

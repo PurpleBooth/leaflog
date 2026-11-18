@@ -1,11 +1,14 @@
-// Environment charts (ticket 03): humidity, VPD, the light staircase
-// and soil moisture render through the ECharts option-builder seam —
-// a value axis named with the role's unit, time tick labels, and a
-// hover tooltip with value, unit, and UTC time. CO₂ has no mock
+// Environment charts (ticket 03): humidity, VPD and soil moisture
+// render through the ECharts option-builder seam — a value axis
+// named with the role's unit, time tick labels, and a hover tooltip
+// with value, unit, and UTC time. CO₂ has no mock
 // sensor, so it asserts the ticket 04 card-visibility rule: an
 // unbound role renders no card at all. The pH/EC pair scatters are
 // ticket 04's own flow (12-ph-ec.spec.ts). Ticket 06 adds the bare
-// counter-case: a bound CO₂ chart draws no Target Band at all.
+// counter-case: a bound CO₂ chart draws no Target Band at all. The
+// light binding still feeds the Air charts' night shading, but the
+// standalone Light card is gone — 22-night-shading.spec.ts owns
+// that story.
 
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
@@ -31,7 +34,7 @@ async function hoverCenter(page: Page, svg: Locator) {
   });
 }
 
-test('humidity, vpd, light and soil charts draw axes and tooltips', async ({
+test('humidity, vpd and soil charts draw axes and tooltips', async ({
   page,
   request,
 }) => {
@@ -97,16 +100,6 @@ test('humidity, vpd, light and soil charts draw axes and tooltips', async ({
   ).toBeAttached();
   await hoverCenter(page, vpdSvg);
   await expect(cardOf('vpd history').getByText(/kPa.*UTC/)).toBeVisible();
-
-  // Light: the staircase draws as a step series; its axis reads
-  // on / off and the tooltip speaks the state, not a bare number.
-  const lightSvg = page.locator('svg[aria-label="light history"]');
-  await expect(lightSvg).toBeVisible();
-  await expect(
-    lightSvg.locator('text').filter({ hasText: 'on / off' }).first(),
-  ).toBeAttached();
-  await hoverCenter(page, lightSvg);
-  await expect(cardOf('light history').getByText(/(on|off).*UTC/)).toBeVisible();
 
   // Soil moisture: the % axis and tooltip, with the band editor in
   // the same card (its flow is 11-soil-band.spec.ts).

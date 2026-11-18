@@ -6,7 +6,9 @@
 // one hover moves the crosshair on every chart and each chart's own
 // tooltip reads its role at the same shared timestamp. The per-card
 // window controls are gone (19-env-section-window.spec.ts owns that
-// half); the shared window control stays the only one.
+// half); the shared window control stays the only one. The Light
+// card that used to sit outside the group is gone too (ticket 05
+// folded it into the Air charts' night shading).
 
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { api, createGrow, dismissOnboarding, url } from './helpers';
@@ -81,7 +83,7 @@ test('Air and Root zone group their charts under micro-label headers', async ({
 }) => {
   const growId = await createGrow(request, 'E2E Chart Groups');
   // CO₂ stays unbound: its card must not render at all, group or no
-  // group. Light binds, so its card keeps its own slot.
+  // group. Light binds, feeding the Air charts' night shading.
   await bindAndAwaitLive(request, growId);
   await page.goto(url(`/grows/${growId}`));
   await expect(chartSvg(page, 'temperature')).toBeVisible();
@@ -95,9 +97,8 @@ test('Air and Root zone group their charts under micro-label headers', async ({
   expect(await air.evaluate((el) => getComputedStyle(el).textTransform)).toBe('uppercase');
   expect(await root.evaluate((el) => getComputedStyle(el).textTransform)).toBe('uppercase');
 
-  // Document order: Air, its charts, the Light card's own slot, Root
-  // zone, its charts. The card titles step down to h5 under the h4
-  // group labels.
+  // Document order: Air, its charts, Root zone, its charts. The
+  // card titles step down to h5 under the h4 group labels.
   const sequence = await page.evaluate(() =>
     Array.from(document.querySelectorAll('h4, h5, svg[aria-label$=" history"]')).map((el) =>
       el instanceof SVGElement ? el.getAttribute('aria-label') : el.textContent?.trim(),
@@ -108,9 +109,11 @@ test('Air and Root zone group their charts under micro-label headers', async ({
   expect(at('Air'), seq).toBeGreaterThanOrEqual(0);
   expect(at('Air'), seq).toBeLessThan(at('temperature history'));
   expect(at('temperature history'), seq).toBeLessThan(at('humidity history'));
-  expect(at('humidity history'), seq).toBeLessThan(at('light history'));
-  expect(at('light history'), seq).toBeLessThan(at('Root zone'));
+  expect(at('humidity history'), seq).toBeLessThan(at('Root zone'));
   expect(at('Root zone'), seq).toBeLessThan(at('soil_moisture history'));
+
+  // Ticket 05: no standalone Light card anywhere in the section.
+  await expect(page.locator('svg[aria-label="light history"]')).toHaveCount(0);
 
   // The Air card titles sit under their group label, not beside it.
   expect(at('Air'), seq).toBeLessThan(at('Temperature'));
@@ -142,7 +145,7 @@ test('one hover moves every chart at the same shared timestamp', async ({
     await page.waitForTimeout(1_200);
   }
   await page.goto(url(`/grows/${growId}`));
-  for (const role of ['temperature', 'humidity', 'soil_moisture', 'light']) {
+  for (const role of ['temperature', 'humidity', 'soil_moisture']) {
     await expect(chartSvg(page, role)).toBeVisible();
   }
 
@@ -162,11 +165,6 @@ test('one hover moves every chart at the same shared timestamp', async ({
   expect(tooltips.soil_moisture, 'role-scoped tooltip text').toContain('%');
   const stamps = Object.values(tooltips).map(stampOf);
   expect(new Set(stamps).size, `timestamps: ${stamps.join(', ')}`).toBe(1);
-
-  // The Light card stays out of the connect group — its full-width
-  // slot scales pixels differently, so the broadcast would land on a
-  // different timestamp. No tooltip follows this hover there.
-  expect(await tooltipText(page, 'light')).not.toMatch(/UTC/);
 
   // Hover a Root zone chart instead: the Air charts follow it too.
   await hoverCenter(page, chartSvg(page, 'soil_moisture'));

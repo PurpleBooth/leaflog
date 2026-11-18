@@ -41,8 +41,10 @@ test('partial bindings chip the unbound roles with a bind affordance', async ({
   request,
 }) => {
   const growId = await createGrow(request, 'E2E Not Measured');
-  // Partial: only temperature is bound, so humidity, CO₂, light and
-  // soil moisture have neither a chart card nor a binding row.
+  // Partial: only temperature is bound, so humidity, CO₂ and
+  // soil moisture have neither a chart card nor a binding row. Light
+  // is unbound too but chips nowhere since ticket 05 retired its
+  // card — the binding would feed the Air charts' night shading.
   await bind(request, growId, { temperature: 'sensor.grow_temperature' });
 
   await page.goto(url(`/grows/${growId}`));
@@ -50,13 +52,13 @@ test('partial bindings chip the unbound roles with a bind affordance', async ({
     page.locator('svg[aria-label="temperature history"]'),
   ).toBeVisible();
 
-  // One quiet card, exactly the four unbound roles in card order.
+  // One quiet card, exactly the three unbound charted roles in
+  // card order.
   const card = cardOf(page);
   await expect(card).toBeVisible();
   await expect(card.getByRole('listitem')).toHaveText([
     'Humidity Bind',
     'CO₂ Bind',
-    'Light Bind',
     'Soil moisture Bind',
   ]);
 
