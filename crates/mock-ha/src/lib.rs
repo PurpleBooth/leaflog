@@ -43,6 +43,8 @@ pub struct FakeRoom {
     pub humidity: f64,
     /// soil moisture %
     pub soil_moisture: f64,
+    /// CO₂ ppm
+    pub co2: f64,
     /// light on/off
     pub light_on: bool,
 }
@@ -55,6 +57,7 @@ impl FakeRoom {
             temperature: 24.3,
             humidity: 58.0,
             soil_moisture: 31.0,
+            co2: 850.0,
             light_on: false,
         }
     }
@@ -82,6 +85,12 @@ impl FakeRoom {
                 "Soil moisture"
             ),
             entity_state(
+                "sensor.grow_co2",
+                &format!("{:.0}", self.co2),
+                "ppm",
+                "Grow tent CO₂"
+            ),
+            entity_state(
                 "light.grow_led",
                 if self.light_on { "on" } else { "off" },
                 "",
@@ -100,6 +109,7 @@ impl FakeRoom {
             "sensor.grow_temperature": { "+": { "s": format!("{:.1}", self.temperature), "a": { "unit_of_measurement": "°C" } } },
             "sensor.grow_humidity": { "+": { "s": format!("{:.0}", self.humidity), "a": { "unit_of_measurement": "%" } } },
             "sensor.grow_soil_moisture": { "+": { "s": format!("{:.0}", self.soil_moisture), "a": { "unit_of_measurement": "%" } } },
+            "sensor.grow_co2": { "+": { "s": format!("{:.0}", self.co2), "a": { "unit_of_measurement": "ppm" } } },
             "light.grow_led": { "+": { "s": if self.light_on { "on" } else { "off" }, "a": {} } },
         })
     }
@@ -108,8 +118,27 @@ impl FakeRoom {
     fn tick(&mut self) {
         let delta = if self.light_on { 0.2_f64 } else { -0.1_f64 };
         self.temperature += delta;
-        self.humidity = (self.humidity - 0.3).max(35.0);
-        self.soil_moisture = (self.soil_moisture - 0.8).max(15.0);
+        // The tent dries down to 35 %, then a humidifier kicks in
+        // and the sawtooth restarts — a clamped floor would freeze
+        // the live RH tile on one reading forever.
+        self.humidity = if self.humidity <= 35.0 {
+            44.9
+        } else {
+            self.humidity - 0.3
+        };
+        // The wet–dry cycle the coach preaches: dry out to 15 %,
+        // then a watering resets the pot. Every tick still moves, so
+        // the live soil-moisture tile never freezes on its floor.
+        self.soil_moisture = if self.soil_moisture <= 15.0 {
+            27.0
+        } else {
+            (self.soil_moisture - 0.8).max(15.0)
+        };
+        // Photosynthesis with the light on draws CO₂ down; a dark
+        // tent accumulates it. Always non-zero, so every push gives
+        // the live CO₂ tile a fresh value.
+        let co2_delta = if self.light_on { -4.0_f64 } else { 2.0_f64 };
+        self.co2 += co2_delta;
     }
 
     /// The next change batch after a tick. Home Assistant only
@@ -122,6 +151,7 @@ impl FakeRoom {
             "sensor.grow_temperature": { "s": format!("{:.1}", self.temperature) },
             "sensor.grow_humidity": { "s": format!("{:.0}", self.humidity) },
             "sensor.grow_soil_moisture": { "s": format!("{:.0}", self.soil_moisture) },
+            "sensor.grow_co2": { "s": format!("{:.0}", self.co2) },
         });
         if light_changed {
             changes["light.grow_led"] = json!({ "s": if self.light_on { "on" } else { "off" } });
@@ -137,10 +167,13 @@ fn entity_state(entity_id: &str, state: &str, unit: &str, name: &str) -> Value {
         attributes["unit_of_measurement"] = json!(unit);
     }
     // Real HA exposes the device class the sensor-item picker filters
-    // on (spec §4.1); the grow sensors carry theirs.
+    // on (spec §4.1); the grow sensors carry theirs. CO₂ joins soil
+    // moisture in the exclusion: its real enum is carbon_dioxide, not
+    // the entity-id suffix, and a wrong class would lie harder than
+    // none.
     if let Some(class) = entity_id
         .strip_prefix("sensor.grow_")
-        .filter(|class| *class != "soil_moisture")
+        .filter(|class| *class != "soil_moisture" && *class != "co2")
     {
         attributes["device_class"] = json!(class);
     }
@@ -245,13 +278,14 @@ async fn history(State(state): State<MockState>, Query(query): Query<HistoryQuer
     if entity == "light.grow_led" || entity == "switch.grow_panel" {
         return Json(on_off_history(&entity));
     }
-    let (base, temperature, humidity, soil_moisture) = {
+    let (base, temperature, humidity, soil_moisture, co2) = {
         let room = state.room.lock().await;
         (
             room.states(),
             room.temperature,
             room.humidity,
             room.soil_moisture,
+            room.co2,
         )
     };
     // minimal_response shape: first full object, then {"s": ..., "lu": ...}.
@@ -275,6 +309,7 @@ async fn history(State(state): State<MockState>, Query(query): Query<HistoryQuer
         let value = match entity.as_str() {
             "sensor.grow_humidity" => (-0.3_f64).mul_add(f64::from(step), humidity),
             "sensor.grow_soil_moisture" => (-0.8_f64).mul_add(f64::from(step), soil_moisture),
+            "sensor.grow_co2" => (-2.0_f64).mul_add(f64::from(step), co2),
             _ => (-0.1_f64).mul_add(f64::from(step), temperature),
         };
         series.push(json!({ "s": format!("{value:.1}"), "lu": "2026-11-08T11:00:00+00:00" }));
@@ -488,4 +523,79 @@ impl FakeRoom {
 #[must_use]
 pub fn initial_changes(room: &FakeRoom) -> Value {
     room.initial_changes()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The CO₂ fixture feeds the env strip's live CO₂ tile (grow-page
+    /// rework ticket 02): a bound grow must see a ppm reading that
+    /// moves every tick, through the initial batch, the tick pushes
+    /// and the REST states alike.
+    #[test]
+    fn co2_fixture_serves_a_moving_ppm_reading() {
+        let room = FakeRoom::new();
+        let states = room.states();
+        let co2 = states
+            .as_array()
+            .expect("states is an array")
+            .iter()
+            .find(|entity| entity["entity_id"] == "sensor.grow_co2")
+            .expect("states carry sensor.grow_co2")
+            .clone();
+        assert_eq!(co2["attributes"]["unit_of_measurement"], "ppm");
+        assert_eq!(co2["state"], "850");
+
+        // The subscribe_entities initial batch seeds the same reading.
+        let initial = initial_changes(&room);
+        assert_eq!(
+            initial["sensor.grow_co2"]["+"]["s"], "850",
+            "initial batch seeds CO₂"
+        );
+        assert_eq!(
+            initial["sensor.grow_co2"]["+"]["a"]["unit_of_measurement"],
+            "ppm"
+        );
+
+        // Every tick pushes a fresh CO₂ state: the live tile has
+        // something new to show on each push (the light starts off,
+        // so a dark tent accumulates CO₂).
+        let mut after_tick = room;
+        after_tick.tick();
+        let changes = after_tick.tick_changes(false);
+        assert_eq!(changes["sensor.grow_co2"]["s"], "852");
+    }
+
+    /// RH and soil moisture cycle instead of clamping (grow-page
+    /// rework ticket 02): a floor-frozen reading would freeze the
+    /// live tiles on one value forever, so the humidifier restarts
+    /// the RH sawtooth and a watering restarts the soil's wet–dry
+    /// cycle — every tick still moves.
+    #[test]
+    fn humidity_and_soil_cycle_instead_of_freezing() {
+        let mut room = FakeRoom::new();
+        // Deterministic dry-down from just above the floor: dip,
+        // clamp, refill — the cycle that keeps the tile moving.
+        room.soil_moisture = 16.5;
+        room.tick();
+        assert!(
+            room.soil_moisture > 15.0 && room.soil_moisture <= 15.7,
+            "dries down toward the floor"
+        );
+        room.tick();
+        assert_eq!(room.soil_moisture, 15.0, "the floor clamps the dip");
+        room.tick();
+        assert_eq!(room.soil_moisture, 27.0, "a watering restarts the cycle");
+
+        // The RH sawtooth: dry to the floor, humidifier back to 44.9 %.
+        let mut tent = FakeRoom::new();
+        tent.humidity = 35.3;
+        tent.tick();
+        assert_eq!(tent.humidity, 35.0, "dries to the floor");
+        tent.tick();
+        assert_eq!(tent.humidity, 44.9, "the humidifier restarts the sawtooth");
+        tent.tick();
+        assert_eq!(tent.humidity, 44.6);
+    }
 }

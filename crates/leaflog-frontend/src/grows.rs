@@ -29,7 +29,6 @@ use crate::chart::{
 use crate::dashboard::EnvDashboard;
 use crate::feed::FeedPanel;
 use crate::gantt::GanttTimeline;
-use crate::live::LivePanel;
 use crate::route_href;
 
 /// The grows overview page.
@@ -623,7 +622,6 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                 </div>
 
                 <div>
-                    <LivePanel grow_id=grow_id.get() />
                     <h3>"Plants"</h3>
                     <ul class="grid gap-4 lg:grid-cols-2">
                         {move || {
