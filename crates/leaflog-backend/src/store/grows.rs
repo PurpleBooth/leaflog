@@ -9,6 +9,20 @@ use rusqlite::{Connection, OptionalExtension, params};
 use super::{NotFound, StoreOrNotFound};
 use crate::db::{StoreError, new_id, now_rfc3339};
 
+/// Moves the grow's start date — the Germination pick's anchor write
+/// (ticket 04); the caller re-dates entries in the same transaction.
+///
+/// # Errors
+///
+/// Returns a [`StoreError`] on SQLite failures.
+pub fn set_started_on(conn: &Connection, id: &str, started_on: &str) -> Result<(), StoreError> {
+    conn.execute(
+        "UPDATE grow SET started_on = ?2, updated_at = ?3 WHERE id = ?1",
+        params![id, started_on, now_rfc3339()],
+    )?;
+    Ok(())
+}
+
 /// Inserts a grow and returns the stored row.
 ///
 /// # Errors

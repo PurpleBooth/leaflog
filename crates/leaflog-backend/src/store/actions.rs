@@ -9,6 +9,45 @@ use rusqlite::{Connection, OptionalExtension, params};
 use super::{NotFound, StoreOrNotFound};
 use crate::db::{StoreError, new_id, now_rfc3339};
 
+/// Re-dates every entry of `grow_id` under `day_of`.
+///
+/// `day_of` maps a stored `occurred_at` to its grow day under a new
+/// anchor — the Germination pick's recompute (ticket 04). Callers
+/// run this inside the pick's transaction; an unmappable timestamp
+/// aborts it before any row moves.
+///
+/// # Errors
+///
+/// Returns [`StoreError::Unparsable`] when a stored `occurred_at`
+/// does not parse, and SQLite failures as-is.
+pub fn redate(
+    conn: &Connection,
+    grow_id: &str,
+    day_of: &dyn Fn(&str) -> Option<u16>,
+) -> Result<usize, StoreError> {
+    let rows: Vec<(String, String)> = conn
+        .prepare("SELECT id, occurred_at FROM action_log WHERE grow_id = ?1")?
+        .query_map(params![grow_id], |row| {
+            Ok((
+                row.get::<_, String>("id")?,
+                row.get::<_, String>("occurred_at")?,
+            ))
+        })?
+        .collect::<Result<_, _>>()?;
+    let stamp = now_rfc3339();
+    let mut moved = 0;
+    for (row_id, occurred_at) in rows {
+        let day =
+            day_of(&occurred_at).ok_or_else(|| StoreError::Unparsable(occurred_at.clone()))?;
+        conn.execute(
+            "UPDATE action_log SET grow_day = ?2, updated_at = ?3 WHERE id = ?1",
+            params![row_id, i64::from(day), stamp],
+        )?;
+        moved += 1;
+    }
+    Ok(moved)
+}
+
 /// Builds a stored entry from a payload; the caller supplies the
 /// derived phase and grow day.
 #[must_use]
