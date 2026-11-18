@@ -194,6 +194,9 @@ pub struct GrowHistory {
     pub compare: Option<ChartSeriesData>,
     /// Phase corridor segments clipped to the window.
     pub bands: Vec<BandSegmentData>,
+    /// The role's log-event markers inside the window, ascending by
+    /// time (each renders as one tick glyph).
+    pub markers: Vec<EventMarkerData>,
     /// Home Assistant's history was unavailable, so the chart is
     /// snapshot-only (the Dead binding rule).
     pub degraded: bool,
@@ -212,6 +215,17 @@ pub struct ChartSeriesData {
     pub to: String,
     /// Points ascending by time.
     pub points: Vec<ChartPointData>,
+}
+
+/// One log-event marker: an action-log event the chart annotates
+/// with a tick glyph.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct EventMarkerData {
+    /// When the event happened, RFC 3339 UTC.
+    pub at: String,
+    /// What happened: the action's stable `snake_case` wire label
+    /// (`water`, `lights`, ...).
+    pub kind: String,
 }
 
 /// One merged chart point.

@@ -183,10 +183,15 @@ pub fn HistoryChart(
     #[prop(default = "Temperature")] title: &'static str,
     format_value: fn(f64) -> String,
     #[prop(optional, into)] shared_window: Option<RwSignal<String>>,
+    #[prop(optional, into)] shared_markers: Option<RwSignal<bool>>,
     #[prop(optional)] children: Option<ChildrenFn>,
 ) -> impl IntoView {
     let window =
         RwSignal::new(shared_window.map_or_else(|| "day".to_owned(), |shared| shared.get()));
+    // The marker toggle rides the Environment section's shared signal;
+    // a standalone card keeps its own, on by default (the log events
+    // are context for the readings, not noise).
+    let show_markers = RwSignal::new(shared_markers.is_none_or(|shared| shared.get()));
     if let Some(shared) = shared_window {
         Effect::new(move |_| {
             let label = shared.get();
@@ -292,7 +297,7 @@ pub fn HistoryChart(
                                     }
                                 })
                         }}
-                        <EChartsHistory data=data format_value=format_value />
+                        <EChartsHistory data=data format_value=format_value markers=show_markers />
                         {footer}
                     </div>
                 }
@@ -350,12 +355,19 @@ pub(crate) fn WindowToggles(
 fn EChartsHistory(
     data: RwSignal<Option<GrowHistory>>,
     format_value: fn(f64) -> String,
+    markers: RwSignal<bool>,
 ) -> impl IntoView {
     let container = NodeRef::<leptos::html::Div>::new();
     let instance = StoredValue::new_local(None::<JsValue>);
 
     Effect::new(move |_| {
-        let Some(chart) = data.get() else { return };
+        let Some(mut chart) = data.get() else { return };
+        // The toggle hides the ticks by stripping the marker set
+        // before the builder sees it (a hidden set renders no series).
+        // Reading the signal here re-runs the effect on every flip.
+        if !markers.get() {
+            chart.markers.clear();
+        }
         let Some(el) = container.get() else { return };
         let style = chart_option::role_style(&chart.role);
         let option = chart_option::history_option(&chart, &theme_look(), &style);
@@ -375,26 +387,34 @@ fn EChartsHistory(
         let tooltip_html = tooltip_closure(format_value).into_js_value();
         attach_formatters(&option_js, &axis_labels, &tooltip_html);
         if let Some(existing) = instance.get_value() {
-            call_chart_method(&existing, "setOption", Some(&option_js));
+            call_chart_method(
+                &existing,
+                "setOption",
+                &[&option_js, &JsValue::from_bool(true)],
+            );
         } else {
             let Some(echarts) = echarts_global() else {
                 return;
             };
             let mounted = init_svg_chart(&echarts, el.as_ref());
             instance.set_value(Some(mounted.clone()));
-            call_chart_method(&mounted, "setOption", Some(&option_js));
+            call_chart_method(
+                &mounted,
+                "setOption",
+                &[&option_js, &JsValue::from_bool(true)],
+            );
             label_svg_root(el.as_ref(), &format!("{} history", chart.role));
         }
     });
 
     let resize = window_event_listener(leptos::ev::resize, move |_| {
         if let Some(existing) = instance.get_value() {
-            call_chart_method(&existing, "resize", None);
+            call_chart_method(&existing, "resize", &[]);
         }
     });
     on_cleanup(move || {
         if let Some(existing) = instance.get_value() {
-            call_chart_method(&existing, "dispose", None);
+            call_chart_method(&existing, "dispose", &[]);
         }
         instance.set_value(None);
         resize.remove();
@@ -430,19 +450,22 @@ fn init_svg_chart(echarts: &js_sys::Object, el: &JsValue) -> JsValue {
         .unwrap_or(JsValue::UNDEFINED)
 }
 
-/// Calls a no/one-argument method on the chart instance, ignoring
-/// failures (a disposed instance must not panic the app).
-fn call_chart_method(instance: &JsValue, name: &str, argument: Option<&JsValue>) {
+/// Calls a method on the chart instance with the given arguments,
+/// ignoring failures (a disposed instance must not panic the app).
+/// `setOption` passes `notMerge: true`: the marker toggle changes the
+/// series list, and a merged update would keep the stale series — a
+/// full replace is always correct because every rebuild carries the
+/// complete option (nothing stateful like dataZoom lives on these
+/// charts).
+fn call_chart_method(instance: &JsValue, name: &str, arguments: &[&JsValue]) {
     let Ok(method) = Reflect::get(instance, &JsValue::from_str(name)) else {
         return;
     };
     let Some(function) = method.dyn_ref::<Function>() else {
         return;
     };
-    let _ = argument.map_or_else(
-        || function.call0(instance),
-        |value| function.call1(instance, value),
-    );
+    let args = js_sys::Array::from_iter(arguments.iter().map(|value| (*value).clone()));
+    let _ = function.apply(instance, &args);
 }
 
 /// Attaches the wasm formatter closures: the value-axis label renderer
@@ -514,19 +537,29 @@ fn tooltip_closure(
 }
 
 /// One tooltip line for one series entry: `name: value — time` when
-/// the series carries a name, `value — time` otherwise. Entries
-/// without a usable `[epoch ms, value]` pair drop out.
+/// the series carries a name, `value — time` otherwise. A log-event
+/// tick (the marker series) names its event instead — its y position
+/// is placement geometry, not a reading. Entries without a usable
+/// `[epoch ms, value]` pair drop out.
 fn tooltip_line(entry: &JsValue, format_value: fn(f64) -> String) -> Option<String> {
     let value = Reflect::get(entry, &JsValue::from_str("value")).ok()?;
     let pair = value.dyn_into::<js_sys::Array>().ok()?;
     let at = pair.get(0).as_f64().unwrap_or(0.0);
     let reading = pair.get(1).as_f64().unwrap_or(0.0);
-    let body = format!("{} — {}", format_value(reading), utc_minutes(at));
-    let name = Reflect::get(entry, &JsValue::from_str("seriesName"))
+    let series_name = Reflect::get(entry, &JsValue::from_str("seriesName"))
         .ok()
         .and_then(|name| name.as_string())
         .filter(|name| !name.is_empty());
-    Some(match name {
+    if series_name.as_deref() == Some(chart_option::MARKER_SERIES_NAME) {
+        let event = Reflect::get(entry, &JsValue::from_str("name"))
+            .ok()
+            .and_then(|name| name.as_string())
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| "Event".to_owned());
+        return Some(format!("{event} — {}", utc_minutes(at)));
+    }
+    let body = format!("{} — {}", format_value(reading), utc_minutes(at));
+    Some(match series_name {
         Some(name) => format!("{name}: {body}"),
         None => body,
     })

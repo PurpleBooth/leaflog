@@ -101,6 +101,12 @@ pub fn history_option(
         SeriesKind::StepLine => vec![line_series(chart, look, true)],
         SeriesKind::Line => vec![line_series(chart, look, false)],
     };
+    // The tick series appends last, so the series indices ahead of it
+    // stay stable (the pair charts keep Input/Runoff at 0/1).
+    let mut series = series;
+    if !chart.markers.is_empty() {
+        series.push(marker_series(chart, look, y_min, y_max));
+    }
     serde_json::json!({
         "animation": false,
         "grid": { "left": 8, "right": 16, "top": 28, "bottom": 8, "containLabel": true },
@@ -274,6 +280,56 @@ fn window_ms(at: &str) -> Option<i64> {
     leaflog_core::chart::parse_epoch(at).map(|seconds| seconds * 1000)
 }
 
+/// The series name every chart's log-event markers travel under: the
+/// component's tooltip recognises it and names the event instead of
+/// formatting the tick's placement y as a reading.
+pub const MARKER_SERIES_NAME: &str = "Events";
+
+/// The UI caption for one marker kind: the action log's own chip
+/// caption for the wire label (one spelling per concept). An unknown
+/// label echoes through so the tooltip never blanks.
+#[must_use]
+pub fn marker_label(kind: &str) -> &str {
+    leaflog_core::actions::ActionType::all()
+        .iter()
+        .find(|action| action.label() == kind)
+        .map_or(kind, |action| action.display())
+}
+
+/// The log-event markers as one scatter series of narrow vertical
+/// ticks: `rect` symbols 2×12 in the muted gridline colour — geometry
+/// carries the event, not a new hue (the Phase Accent Rule). Ticks
+/// anchor just above the axis floor so they never cross the line.
+/// Markers with unparseable timestamps drop out (the merge rule).
+fn marker_series(
+    chart: &GrowHistory,
+    look: &ChartLook,
+    y_min: f64,
+    y_max: f64,
+) -> serde_json::Value {
+    let floor = 0.05_f64.mul_add(y_max - y_min, y_min);
+    let data: Vec<serde_json::Value> = chart
+        .markers
+        .iter()
+        .filter_map(|marker| {
+            window_ms(&marker.at).map(|at| {
+                serde_json::json!({
+                    "value": [at, floor],
+                    "name": marker_label(&marker.kind),
+                })
+            })
+        })
+        .collect();
+    serde_json::json!({
+        "name": MARKER_SERIES_NAME,
+        "type": "scatter",
+        "symbol": "rect",
+        "symbolSize": [2, 12],
+        "itemStyle": { "color": look.muted },
+        "data": data,
+    })
+}
+
 /// The x-axis bounds: the Chart window in epoch ms, so the axis always
 /// spans the full window. `null` bounds let `ECharts` auto-scale when
 /// the backend contract breaks (unparseable window edges).
@@ -285,8 +341,13 @@ fn window_bounds(chart: &GrowHistory) -> (serde_json::Value, serde_json::Value) 
 
 #[cfg(test)]
 mod tests {
-    use super::{ChartLook, ChartStyle, SeriesKind, history_option, role_style, window_is_empty};
-    use crate::api::{BandSegmentData, ChartPointData, ChartSeriesData, GrowHistory};
+    use super::{
+        ChartLook, ChartStyle, SeriesKind, history_option, marker_label, role_style,
+        window_is_empty,
+    };
+    use crate::api::{
+        BandSegmentData, ChartPointData, ChartSeriesData, EventMarkerData, GrowHistory,
+    };
 
     /// Fixed test colours (the fallbacks the component probes for).
     fn look() -> ChartLook {
@@ -331,6 +392,7 @@ mod tests {
             },
             compare: None,
             bands: Vec::new(),
+            markers: Vec::new(),
             degraded: false,
             bound: true,
         }
@@ -917,5 +979,119 @@ mod tests {
             let regions = area["data"].as_array().expect("mark area data");
             assert_eq!(regions.len(), 1, "one region for the flat band");
         }
+    }
+
+    // ── Log-event markers (ticket 04) ───────────────────────────
+
+    /// A chart carrying two log-event markers inside its window.
+    fn history_with_markers(role: &str) -> GrowHistory {
+        let mut chart = sample_for_role(role);
+        chart.markers = vec![
+            EventMarkerData {
+                at: "2026-11-16T00:20:00+00:00".to_owned(),
+                kind: "lights".to_owned(),
+            },
+            EventMarkerData {
+                at: "2026-11-16T00:40:00+00:00".to_owned(),
+                kind: "phase_change".to_owned(),
+            },
+        ];
+        chart
+    }
+
+    #[test]
+    fn markers_render_as_one_muted_tick_series_at_the_axis_floor() {
+        let option = history_option(
+            &history_with_markers("temperature"),
+            &look(),
+            &style("temperature"),
+        );
+        let series = option["series"].as_array().expect("series array");
+        assert_eq!(series.len(), 2, "the tick series appends after the line");
+        let ticks = &series[1];
+        assert_eq!(ticks["name"], "Events");
+        assert_eq!(ticks["type"], "scatter");
+        assert_eq!(ticks["symbol"], "rect");
+        assert_eq!(ticks["symbolSize"], serde_json::json!([2, 12]));
+        assert_eq!(
+            ticks["itemStyle"]["color"], "#1d2b1f80",
+            "ticks wear the muted gridline colour, not a new hue"
+        );
+        let data = ticks["data"].as_array().expect("tick data");
+        assert_eq!(data.len(), 2, "both in-window markers draw");
+        let y_min = option["yAxis"]["min"].as_f64().expect("axis min");
+        let y_max = option["yAxis"]["max"].as_f64().expect("axis max");
+        let floor = 0.05_f64.mul_add(y_max - y_min, y_min);
+        assert_eq!(
+            data[0]["value"][0],
+            serde_json::json!(1_794_788_400_000_i64)
+        );
+        assert_eq!(data[0]["value"][1].as_f64(), Some(floor));
+        assert_eq!(data[0]["name"], "Lights");
+        assert_eq!(data[1]["name"], "Phase change");
+    }
+
+    #[test]
+    fn charts_without_markers_stay_marker_free() {
+        let plain = history_option(&sample_history(), &look(), &style("temperature"));
+        assert_eq!(plain["series"].as_array().expect("series").len(), 1);
+        // A hidden marker set is stripped before the builder sees it.
+        let mut hidden = history_with_markers("temperature");
+        hidden.markers.clear();
+        let stripped = history_option(&hidden, &look(), &style("temperature"));
+        assert_eq!(stripped["series"].as_array().expect("series").len(), 1);
+    }
+
+    #[test]
+    fn marker_ticks_follow_the_theme_muted_colour_in_both_themes() {
+        let dark = ChartLook {
+            accent: "#9ccc65".to_owned(),
+            compare: "#8a9a5b".to_owned(),
+            text: "#e1e1e1".to_owned(),
+            muted: "#e1e1e180".to_owned(),
+        };
+        for theme_look in [look(), dark] {
+            let option = history_option(
+                &history_with_markers("temperature"),
+                &theme_look,
+                &style("temperature"),
+            );
+            assert_eq!(
+                option["series"][1]["itemStyle"]["color"].as_str(),
+                Some(theme_look.muted.as_str()),
+                "the tick colour follows the resolved muted tone"
+            );
+        }
+    }
+
+    #[test]
+    fn pair_charts_append_the_ticks_after_their_two_series() {
+        let option = history_option(&history_with_markers("ph"), &look(), &style("ph"));
+        let series = option["series"].as_array().expect("series array");
+        assert_eq!(series.len(), 3, "input, runoff, ticks");
+        assert_eq!(series[0]["name"], "Input");
+        assert_eq!(series[1]["name"], "Runoff");
+        assert_eq!(series[2]["name"], "Events");
+    }
+
+    #[test]
+    fn marker_ticks_drop_unparseable_timestamps() {
+        let mut broken = history_with_markers("soil_moisture");
+        broken.markers[0].at = "not-a-timestamp".to_owned();
+        let option = history_option(&broken, &look(), &style("soil_moisture"));
+        let data = option["series"][1]["data"].as_array().expect("tick data");
+        assert_eq!(data.len(), 1, "only the parseable marker draws");
+    }
+
+    #[test]
+    fn marker_label_names_events_and_echoes_unknown_kinds() {
+        assert_eq!(marker_label("water"), "Water");
+        assert_eq!(marker_label("feed"), "Feed");
+        assert_eq!(marker_label("transplant"), "Transplant");
+        assert_eq!(marker_label("lights"), "Lights");
+        assert_eq!(marker_label("light_change"), "Light change");
+        assert_eq!(marker_label("flip"), "Flip 12/12");
+        assert_eq!(marker_label("phase_change"), "Phase change");
+        assert_eq!(marker_label("mystery"), "mystery");
     }
 }
