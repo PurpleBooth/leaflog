@@ -731,7 +731,6 @@ Choices worth remembering:
 - **Out of scope, deliberately:** zoom/pan/brush components are not
   in the bundle; the forecast Gantt and feed-fit bar chart stay
   hand-rolled for now.
-||||||| 0fec11d
 
 ---
 
