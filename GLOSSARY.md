@@ -23,7 +23,7 @@ The rolling time span an environment chart covers, always ending at now; the tog
 _Avoid_: Day, Week, Month (as toggle captions), period
 
 **Light Cycle**:
-A grow's recurring pattern of grow-light state: one daily lights-on local time plus hours-on per lit phase — a Lights-On Period followed by a Lights-Off Period. Unset parts fall back to sourced preset defaults (photoperiod 18/6 veg and 12/12 flower; autoflowers long days throughout), and reset-to-default restores those defaults. It is not the grow's Photoperiod, and not a chart window. Charts and the phase coach use the cycle for the day/night split when no light entity is bound.
+A grow's recurring pattern of grow-light state: one daily lights-on local time plus hours-on per lit phase — a Lights-On Period followed by a Lights-Off Period. Unset parts fall back to sourced preset defaults (photoperiod 18/6 veg and 12/12 flower; autoflowers long days throughout), and reset-to-default restores those defaults. It is not the grow's Photoperiod, and not a chart window. Where a light entity is bound, the entity's observed on/off behaviour overrides the cycle wherever it has data; the cycle remains the editable fallback for gaps and the future. Charts and the phase coach follow the same precedence.
 _Avoid_: Light schedule setting, lights config, day/night schedule, lights timer
 
 **Lights-On Period**:
@@ -48,6 +48,10 @@ _Avoid_: Substrate in UI text, soil as the field name (soil is one value)
 Elapsed days since the grow started, shown against the expected total (e.g. 2 / 150).
 _Avoid_: Grow age, progress
 
+**Phase day**:
+Days elapsed in the current phase, counted from its transition event: day 0 is the transition day. Before any phase event it equals the Day count.
+_Avoid_: Stage day, day in flower, grow day (that is the Day count)
+
 **Today marker**:
 The line on the harvest forecast chart at the grow's current day count. It must sit over the current phase's window and advance daily.
 _Avoid_: Progress line, cursor
@@ -57,7 +61,7 @@ The page showing one grow's current state: environment tiles, day count, forecas
 _Avoid_: Dashboard, grow progress, home page
 
 **Phase pick**:
-Setting the grow's current phase from the interface. A pick records the same transition event a logged action would — picks and actions are one event stream, and the pick re-anchors the forecast windows.
+Setting the grow's current phase from the interface. A pick records the same transition event a logged action would — picks and actions are one event stream, and the pick re-anchors the forecast windows. A Germination pick moves the grow's start date; other picks never touch it.
 _Avoid_: Stage, phase override
 
 **Photoperiod**:
@@ -85,3 +89,9 @@ _Avoid_: Translation file, strings file
 **Key parity**:
 The requirement that every locale catalog exposes the same keys as the default (English) catalog, enforced at compile time.
 _Avoid_: Translation completeness
+
+### Appearance
+
+**Theme source**:
+Where the app learns its colours: the parent Home Assistant theme's variables when readable, the built-in theme otherwise. Dark and light follow the same source; there is no separate toggle.
+_Avoid_: Colour settings, theme picker, dark-mode toggle
