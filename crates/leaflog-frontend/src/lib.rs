@@ -29,9 +29,11 @@
 #![allow(clippy::empty_enums)]
 
 pub mod api;
+mod bindings;
 mod chart;
 mod chart_option;
 mod dashboard;
+mod edit;
 mod feed;
 mod gantt;
 mod grows;
@@ -41,6 +43,7 @@ mod live;
 mod onboarding;
 mod phase_pick;
 
+use edit::GrowEditRoute;
 use grows::{GrowsPage, GrowsRoute, Landing};
 use history::{HistoryPage, PlantViewPage};
 use js_sys::{Reflect, global};
@@ -136,6 +139,7 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("/plants/:id") view=PlantViewPage />
                         <Route path=path!("/grows") view=GrowsPage />
                         <Route path=path!("/grows/:id") view=GrowsRoute />
+                        <Route path=path!("/grows/:id/edit") view=GrowEditRoute />
                     </Routes>
                 </main>
             </div>
