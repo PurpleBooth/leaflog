@@ -10,7 +10,8 @@ use leptos_i18n_build::{Config, TranslationsInfos};
 use serde_json::Value;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cfg = Config::new("en")?.add_locale("de")?;
+    let options = leptos_i18n_build::ParseOptions::new().interpolate_display(true);
+    let cfg = Config::new("en")?.add_locale("de")?.parse_options(options);
     let translations_infos = TranslationsInfos::parse(cfg)?;
     translations_infos.emit_diagnostics();
     translations_infos.rerun_if_locales_changed();

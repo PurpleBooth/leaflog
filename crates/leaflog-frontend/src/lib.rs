@@ -39,6 +39,7 @@ mod feed;
 mod gantt;
 mod grows;
 mod history;
+mod labels;
 mod light_cycle;
 mod live;
 mod onboarding;

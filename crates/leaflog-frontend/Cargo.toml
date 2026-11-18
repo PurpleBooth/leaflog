@@ -24,6 +24,7 @@ leptos_router = "0.8"
 # is applied explicitly in the app (docs/ARCHITECTURE.md).
 leptos_i18n = { workspace = true, default-features = false, features = [
     "csr",
+    "plurals",
 ] }
 
 wasm-bindgen = "0.2"

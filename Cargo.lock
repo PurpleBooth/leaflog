@@ -1931,6 +1931,8 @@ dependencies = [
  "codee",
  "default-struct-builder",
  "icu_locale",
+ "icu_plurals",
+ "icu_provider",
  "leptos",
  "leptos-use",
  "leptos_i18n_macro",

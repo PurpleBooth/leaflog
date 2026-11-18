@@ -27,7 +27,8 @@ use crate::api::{self, ApiFailure};
 use crate::env_section::EnvironmentSection;
 use crate::feed::FeedPanel;
 use crate::gantt::GanttTimeline;
-use crate::i18n::{t, use_i18n};
+use crate::i18n::{Locale, t, t_string, td_string, use_i18n};
+use crate::labels;
 use crate::route_href;
 
 /// The grows overview page.
@@ -46,7 +47,13 @@ pub fn GrowsPage() -> impl IntoView {
     let refresh = move || {
         loading.set(true);
         spawn_local(async move {
-            match fetch_list::<Vec<Grow>>("api/grows").await {
+            let path = "api/grows";
+            let timeout_message = td_string!(
+                i18n.get_locale_untracked(),
+                errors.request_timeout,
+                path = path
+            );
+            match fetch_list::<Vec<Grow>>(path, timeout_message).await {
                 Ok(list) => {
                     grows.set(list);
                     error.set(None);
@@ -126,7 +133,10 @@ pub fn GrowsPage() -> impl IntoView {
                                         <A href=route_href(&format!("/grows/{}", grow.id))>
                                             <strong>{grow.name.clone()}</strong>
                                         </A>
-                                        <span class="badge badge-ghost">{grow.status.label()}</span>
+                                        <span class="badge badge-ghost">{labels::status_label(
+                                            i18n.get_locale(),
+                                            grow.status,
+                                        )}</span>
                                         <span class="text-base-content/70">{grow.substrate.clone()}</span>
                                     </div>
                                     <p class="text-base-content/70 text-sm">{t!(i18n, grows.started, date = grow.started_on)}</p>
@@ -217,6 +227,7 @@ fn pick_landing_grow(grows: &[Grow]) -> String {
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
 pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
+    let i18n = use_i18n();
     let grow = RwSignal::<Option<Grow>>::new(None);
     let plants = RwSignal::<Vec<Plant>>::new(Vec::new());
     let actions = RwSignal::<Vec<ActionEntry>>::new(Vec::new());
@@ -420,18 +431,24 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                             forecast.get().and_then(|data| {
                                                 phase_from_label(&data.phase).map(|phase| view! {
                                                     <span id="phase-day" class="badge badge-ghost">
-                                                        {phase_display(phase)}
-                                                        {" · day "}
-                                                        {data.phase_day}
+                                                        {labels::phase_label(i18n.get_locale(), phase)}
+                                                        {" · "}
+                                                        {t_string!(i18n.get_locale(), grow.day, day = data.phase_day.to_string())}
                                                     </span>
                                                 })
                                             })
                                         }}
                                         {archived
-                                            .then(|| view! {
-                                                <span class="badge badge-ghost">
-                                                    {current.status.label()}
-                                                </span>
+                                            .then(|| {
+                                                let status = labels::status_label(
+                                                    i18n.get_locale(),
+                                                    current.status,
+                                                );
+                                                view! {
+                                                    <span class="badge badge-ghost">
+                                                        {status}
+                                                    </span>
+                                                }
                                             })}
                                     </div>
                                     // The logging menu lives in the header
@@ -442,12 +459,12 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                         <A href=route_href(&format!("/grows/{}/edit", current.id))
                                             attr:class="btn btn-sm"
                                         >
-                                            "Edit grow"
+                                            {t!(i18n, grow.edit)}
                                         </A>
                                     </div>
                                 </div>
                                 <p class="m-0 text-sm text-base-content/60">
-                                    "Started " {current.started_on}
+                                    {t!(i18n, grows.started, date = current.started_on)}
                                 </p>
                                 {current.notes.map(|notes| view! {
                                     <p class="text-base-content/70">{notes}</p>
@@ -474,8 +491,8 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                 >
                     <ActionForm draft kind=chip />
                     <div class="flex flex-wrap gap-2 mt-4">
-                        <button class="btn btn-primary btn-sm" type="submit">"Log it"</button>
-                        <button class="btn btn-sm" type="button" on:click=move |_| chip.set(None)>"Cancel"</button>
+                        <button class="btn btn-primary btn-sm" type="submit">{t!(i18n, grow.quick_add_log)}</button>
+                        <button class="btn btn-sm" type="button" on:click=move |_| chip.set(None)>{t!(i18n, grows.cancel)}</button>
                     </div>
                 </form>
             </Show>
@@ -483,7 +500,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                 just_logged.get().then(|| {
                     view! {
                         <p class="mt-2 mb-0 text-sm text-base-content/60" role="status">
-                            "Logged to the timeline below."
+                            {t!(i18n, grow.logged_note)}
                         </p>
                     }
                 })
@@ -491,10 +508,10 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
 
             <EnvironmentSection grow_id=grow_id.get() />
 
-            <h3>"Forecast"</h3>
+            <h3>{t!(i18n, grow.forecast)}</h3>
             <form id="phase-picker" class="flex flex-wrap gap-2 items-end my-2" on:submit=save_pick>
                 <label class="fieldset">
-                    <span class="fieldset-label">"Set phase"</span>
+                    <span class="fieldset-label">{t!(i18n, grow.set_phase)}</span>
                     <select class="select" required
                         prop:value=move || pick_phase
                             .get()
@@ -504,17 +521,18 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                             pick_phase.set(phase_from_label(&value));
                         }
                     >
-                        <option value="">"— set phase —"</option>
+                        <option value="">{t!(i18n, grow.set_phase_placeholder)}</option>
                         {picker_phases()
                             .into_iter()
-                            .map(|(phase, name)| {
+                            .map(|(phase, _)| {
+                                let name = labels::phase_label(i18n.get_locale(), phase);
                                 view! { <option value=phase.label()>{name}</option> }
                             })
                             .collect::<Vec<_>>()}
                     </select>
                 </label>
                 <label class="fieldset">
-                    <span class="fieldset-label">"When"</span>
+                    <span class="fieldset-label">{t!(i18n, grow.when)}</span>
                     <input class="input" type="date"
                         prop:value=move || pick_date.get()
                         on:input=move |ev| pick_date.set(event_target_value(&ev))
@@ -523,19 +541,20 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                 <button class="btn btn-sm btn-primary self-end" type="submit"
                     disabled=move || pick_phase.get().is_none()
                 >
-                    "Record phase"
+                    {t!(i18n, grow.record_phase)}
                 </button>
             </form>
             <GanttTimeline grow_id=grow_id.get() />
 
-            <h3>"Feed schedule"</h3>
+            <h3>{t!(i18n, grow.feed_schedule)}</h3>
             <FeedPanel grow_id=grow_id.get() />
 
             <div class="grid gap-6 items-start lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
                 <div>
-                    <h3>"Timeline"</h3>
+                    <h3>{t!(i18n, grow.timeline)}</h3>
                     <ul class="list-none m-0 p-0 grid gap-2">
                         {move || {
+                            let locale = i18n.get_locale();
                             actions
                                 .get()
                                 .into_iter()
@@ -543,47 +562,47 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                     view! {
                                         <li class="card bg-base-100 shadow-sm px-4 py-3">
                                             <div class="flex flex-wrap items-baseline gap-2">
-                                                <strong>{entry.action_type.display()}</strong>
-                                                <span class="badge badge-ghost">{"day "}{entry.grow_day}</span>
+                                                <strong>{labels::action_label(locale, entry.action_type)}</strong>
+                                                <span class="badge badge-ghost">{t_string!(locale, grow.day, day = entry.grow_day.to_string())}</span>
                                                 {entry.phase.map(|phase| view! {
-                                                    <span class="badge badge-ghost">{phase_display(phase)}</span>
+                                                    <span class="badge badge-ghost">{labels::phase_label(locale, phase)}</span>
                                                 })}
                                             </div>
                                             <dl class="facts">
                         {entry.details.volume_ml.map(|volume| view! {
-                            <div><dt>"Volume"</dt><dd>{leaflog_core::units::small_volume_both(volume)}</dd></div>
+                            <div><dt>{t!(i18n, grow.volume)}</dt><dd>{leaflog_core::units::small_volume_both(volume)}</dd></div>
                         })}
                         {entry.details.input_ph.map(|ph| view! {
-                            <div><dt>"pH in"</dt><dd>{format!("{ph:.1}")}</dd></div>
+                            <div><dt>{t!(i18n, grow.ph_in)}</dt><dd>{format!("{ph:.1}")}</dd></div>
                         })}
                         {entry.details.runoff_ph.map(|ph| view! {
-                            <div><dt>"pH out"</dt><dd>{format!("{ph:.1}")}</dd></div>
+                            <div><dt>{t!(i18n, grow.ph_out)}</dt><dd>{format!("{ph:.1}")}</dd></div>
                         })}
                         {entry.details.input_ec_us.map(|ec| view! {
-                            <div><dt>"EC in"</dt><dd>{format!("{ec} µS/cm")}</dd></div>
+                            <div><dt>{t!(i18n, grow.ec_in)}</dt><dd>{format!("{ec} µS/cm")}</dd></div>
                         })}
                         {entry.details.runoff_ec_us.map(|ec| view! {
-                            <div><dt>"EC out"</dt><dd>{format!("{ec} µS/cm")}</dd></div>
+                            <div><dt>{t!(i18n, grow.ec_out)}</dt><dd>{format!("{ec} µS/cm")}</dd></div>
                         })}
                         {entry.details.plant_height_cm.map(|height| view! {
-                            <div><dt>"Height"</dt><dd>{leaflog_core::units::length_both(height)}</dd></div>
+                            <div><dt>{t!(i18n, grow.height)}</dt><dd>{leaflog_core::units::length_both(height)}</dd></div>
                         })}
                                             </dl>
                                             {entry.notes.clone().map(|notes| view! {
                                                 <p class="mt-2 text-base-content/70">{notes}</p>
                                             })}
-                                            {(!entry.appearance_tags.is_empty()).then(|| {
+                                            let tags = entry.appearance_tags.clone();
+                                            {(!tags.is_empty()).then(move || {
                                                 view! {
-                                                    <p class="flex flex-wrap gap-1.5 mt-2">
-                                                        {entry
-                                                            .appearance_tags
-                                                            .iter()
-                                                            .map(|tag| {
-                                                                let label = leaflog_core::appearance::display_label(tag).into_owned();
-                                                                view! { <span class="badge badge-sm badge-ghost">{label}</span> }
-                                                            })
-                                                            .collect::<Vec<_>>()}
-                                                    </p>
+                                                        <p class="flex flex-wrap gap-1.5 mt-2">
+                                                            {tags
+                                                                .iter()
+                                                                .map(|tag| {
+                                                                    let label = labels::appearance_label(locale, tag);
+                                                                    view! { <span class="badge badge-sm badge-ghost">{label}</span> }
+                                                                })
+                                                                .collect::<Vec<_>>()}
+                                                        </p>
                                                 }
                                             })}
                                             <p class="text-base-content/70 text-sm">
@@ -596,12 +615,12 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                         }}
                     </ul>
                     <Show when=move || actions.get().is_empty()>
-                        <p class="py-6 text-center text-base-content/60">"Nothing logged yet."</p>
+                        <p class="py-6 text-center text-base-content/60">{t!(i18n, grow.nothing_logged)}</p>
                     </Show>
                 </div>
 
                 <div>
-                    <h3>"Plants"</h3>
+                    <h3>{t!(i18n, grow.plants)}</h3>
                     <ul class="grid gap-4 lg:grid-cols-2">
                         {move || {
                             plants
@@ -619,11 +638,11 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                 .collect::<Vec<_>>()
                         }}
                     </ul>
-                    <button class="btn btn-sm" on:click=add_plant>"Add plant"</button>
+                    <button class="btn btn-sm" on:click=add_plant>{t!(i18n, grow.add_plant)}</button>
 
-                    <h3>"Photos"</h3>
+                    <h3>{t!(i18n, grow.photos)}</h3>
                     <label class="fieldset">
-                        <span class="fieldset-label">"Upload photos (JPEG/PNG/WebP; EXIF/GPS stripped on store)"</span>
+                        <span class="fieldset-label">{t!(i18n, grow.upload_label)}</span>
                         <input type="file" class="file-input file-input-sm" accept="image/jpeg,image/png,image/webp" multiple
                             on:change=upload
                         />
@@ -631,19 +650,21 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                     {move || upload_note.get().map(|note| view! { <p class="text-base-content/70 text-sm">{note}</p> })}
                     <div class="grid gap-2 mt-3 grid-cols-[repeat(auto-fill,minmax(7rem,1fr))]">
                         {move || {
+                            let locale = i18n.get_locale();
                             photos
                                 .get()
                                 .into_iter()
                                 .map(|photo| {
                                     let url = format!("api/photos/{}/thumbnail", photo.id);
                                     let full = format!("api/photos/{}/original", photo.id);
+                                    let alt = t_string!(locale, grow.day, day = photo.grow_day.to_string());
                                     view! {
                                         <a href=full target="_blank" rel="noreferrer"
                                             class="grid gap-1 text-center no-underline"
                                         >
                                             <img class="w-full h-auto rounded-lg border border-base-300"
-                                                src=url alt=format!("day {}", photo.grow_day) />
-                                            <span class="text-base-content/70 text-sm">{"day "}{photo.grow_day}</span>
+                                                src=url alt=alt />
+                                            <span class="text-base-content/70 text-sm">{t_string!(locale, grow.day, day = photo.grow_day.to_string())}</span>
                                         </a>
                                     }
                                 })
@@ -653,7 +674,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                 </div>
             </div>
 
-            <p><A href=route_href("/grows")>"All grows"</A></p>
+            <p><A href=route_href("/grows")>{t!(i18n, grow.all_grows)}</A></p>
         </section>
     }
 }
@@ -1011,13 +1032,13 @@ const REQUEST_TIMEOUT_MS: u32 = 10_000;
 // WASM is single-threaded; the gloo timer/request types are not `Send`
 // and `spawn_local` does not require it (same allowance as api.rs).
 #[allow(clippy::future_not_send)]
-async fn fetch_list<T: DeserializeOwned>(path: &str) -> Result<T, ApiFailure> {
+async fn fetch_list<T: DeserializeOwned>(path: &str, timeout_message: String) -> Result<T, ApiFailure> {
     retry_once_after_timeout(
         || api::get::<T>(path),
         || TimeoutFuture::new(REQUEST_TIMEOUT_MS),
         || ApiFailure {
             status: 0,
-            message: format!("The request to {path} kept timing out."),
+            message: timeout_message.clone(),
         },
     )
     .await
