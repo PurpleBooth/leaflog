@@ -6,6 +6,43 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-18 — night shading behind the Air charts (env-section ticket 05, git-bug 114a85c)
+
+### D110: the night tint is history payload + a silent markArea back layer; the Light card retires
+
+The backend resolves the light timeline for the whole Air group
+(temperature, humidity, VPD, CO₂) — observed light-entity states win,
+with gaps backfilled from the Light Cycle schedule, the existing
+resolve precedence — and emits the window's dark stretches as a
+`nights` array on the history response; every other role gets an
+empty array, so the Root-zone and log-detail payloads never pay the
+light fetch. The frontend draws that array as its own series appended
+after the marker ticks: no data, `z` 0, and a `markArea` of
+xAxis-only region pairs, so `ECharts` spans each region over the
+full plot height whatever the value range. The tint uses the look's
+muted ink (already 50 % alpha) at opacity 0.16 — roughly 8 %
+effective, tonal depth rather than a new hue, and the same numbers
+hold in both themes. Regions clip to the window, drop unparseable
+bounds, and merge butt-joined stretches so one continuous night
+shows no seam. Nights are context, not data: `window_is_empty`
+ignores them and the value range never widens for them.
+
+The standalone Light card leaves the section — the shading tells
+the same story in place — and the Air group label carries the legend
+hint "Shaded areas mark night periods." (inline English; the German
+string rides the future i18n work, the D089 gap). Light also leaves
+the not-measured chip list: the edit page still takes the binding,
+but the section no longer has a card to chip. The now-unused on/off
+axis formatter retires. Light Cycle edits change the shading on the
+next load/refetch because the timeline resolves per request. No new
+`#[allow]` exceptions. Hygiene while here: the ticket-06 entry below
+was mis-numbered `D106` (a collision with the ticket-02 entry, which
+the decision-id gate rejects) and is renumbered `D109`; a stray
+merge-marker fragment left in this file by the base merge is
+deleted.
+
+---
+
 ## 2026-11-18 — Air and Root zone chart groups with crosshair sync (env-section ticket 02)
 
 ### D106: one connect group, one shared plot rectangle
@@ -106,7 +143,7 @@ not chip. The in-card hiding and pH/EC fallback rules are untouched
 
 ## 2026-11-18 — temperature and VPD Target Bands (env-section ticket 06, git-bug 74cba42)
 
-### D106: temperature's Target Band is the flat tolerance band; VPD keeps the light-stepped band; CO₂ goes bare
+### D109: temperature's Target Band is the flat tolerance band; VPD keeps the light-stepped band; CO₂ goes bare
 
 The temperature chart's shaded band is the grow's shifted
 `TempThresholds` pair (`temperature_target_band(heat, cold)` in
@@ -127,7 +164,6 @@ chart consumer; their docs no longer claim the chart draws them.
 Deleting public presets mid-integration-branch would churn siblings
 for nothing — removal can ride a later cleanup if nothing reclaims
 them.
-||||||| 323f33f
 
 ---
 
