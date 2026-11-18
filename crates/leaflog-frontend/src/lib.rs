@@ -40,6 +40,7 @@ mod light_cycle;
 mod live;
 mod onboarding;
 mod phase_pick;
+mod theme;
 
 use grows::{GrowsPage, GrowsRoute, Landing};
 use history::{HistoryPage, PlantViewPage};
@@ -87,6 +88,7 @@ pub fn route_href(path: &str) -> String {
 /// Module entry: mounts the app (called by `wasm-bindgen` on load).
 #[wasm_bindgen(start)]
 pub fn start_app() {
+    theme::init_parent_theme_match();
     mount_to_body(App);
 }
 
