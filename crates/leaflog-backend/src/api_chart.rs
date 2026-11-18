@@ -65,6 +65,10 @@ pub struct GrowHistory {
     /// The role's log-event markers inside the window, ascending by
     /// time (each renders as one tick glyph; ticket 04).
     pub markers: Vec<EventMarker>,
+    /// The window's dark stretches — the light timeline's `on: false`
+    /// intervals, observed or schedule-derived (empty for roles
+    /// outside the Air group; env-section ticket 05).
+    pub nights: Vec<chart::LightInterval>,
     /// Home Assistant's history was unavailable, so the chart is
     /// snapshot-only (the Dead binding rule).
     pub degraded: bool,
@@ -84,7 +88,8 @@ struct LoadedGrow {
     /// Per-role binding + snapshot points (VPD carries two).
     roles: Vec<(String, RolePoints)>,
     /// The light role's binding + snapshot points, for the bound-light
-    /// staircase (only loaded for the stepped-band roles).
+    /// staircase (loaded for the Air-group roles: the stepped bands
+    /// and the night shading both read it).
     light: Option<RolePoints>,
     /// The grow's photoperiod type, for the Light Cycle
     /// defaults (an unset grow matches the forecast's).
@@ -366,7 +371,10 @@ async fn grow_history(
     if !is_vpd && !is_pair && !store::sensors::ROLES.contains(&role.as_str()) {
         return Err(ApiError::BadRequest(format!("unknown role {role}")));
     }
-    let is_stepped = matches!(role.as_str(), "humidity" | "vpd");
+    // The Air-group charts share the light timeline: the stepped
+    // bands read it directly, and every Air chart shades its nights
+    // from it (env-section ticket 05).
+    let is_air_group = matches!(role.as_str(), "temperature" | "humidity" | "vpd" | "co2");
     let window_label = query
         .window
         .ok_or_else(|| ApiError::BadRequest("window query parameter is required".to_owned()))?;
@@ -393,7 +401,7 @@ async fn grow_history(
     let id_for_db = id.clone();
     let loaded = state
         .db
-        .with(move |conn| load_grow_db(conn, &id_for_db, &wanted, is_stepped))
+        .with(move |conn| load_grow_db(conn, &id_for_db, &wanted, is_air_group))
         .await?;
 
     // HA history per bound entity (never the token itself). A failure
@@ -427,8 +435,9 @@ async fn grow_history(
 
     // The light-state timeline: the bound light entity's real history
     // wins wherever it has readings; the Light Cycle schedule fills
-    // the gaps (and the whole window when unbound).
-    let light_periods = if is_stepped {
+    // the gaps (and the whole window when unbound). Every Air chart
+    // needs it — the stepped bands and the night shading alike.
+    let light_periods = if is_air_group {
         let staircase = fetch_light_staircase(&state, &loaded, hours, window, &now).await;
         resolve_light_timeline(&staircase, &loaded, &tz, &spans, &series.from, &series.to)
     } else {
@@ -468,6 +477,18 @@ async fn grow_history(
         })
         .await?;
 
+    // The night shading rides the same timeline: its dark stretches,
+    // already clipped to the window (empty when no timeline exists or
+    // the role is outside the Air group).
+    let nights: Vec<chart::LightInterval> =
+        light_periods.as_deref().map_or_else(Vec::new, |timeline| {
+            timeline
+                .iter()
+                .filter(|interval| !interval.on)
+                .cloned()
+                .collect()
+        });
+
     Ok(Json(GrowHistory {
         role,
         window: window.label().to_owned(),
@@ -475,6 +496,7 @@ async fn grow_history(
         compare,
         bands,
         markers,
+        nights,
         degraded,
         bound: all_bound,
     }))

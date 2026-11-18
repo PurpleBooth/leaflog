@@ -1819,3 +1819,229 @@ async fn grow_history_carries_role_relevant_windowed_markers() {
     let light = fetch_history(&client, &base, &grow_id, "light", "day").await;
     assert_eq!(light["markers"], json!([]));
 }
+
+// --- Night shading behind the Air charts (env-section ticket 05) ---
+
+/// Parses one response night interval's `[start, end)` epoch pair.
+fn night_bounds(entry: &Value) -> (i64, i64) {
+    (
+        leaflog_core::chart::parse_epoch(entry["start"].as_str().unwrap()).unwrap(),
+        leaflog_core::chart::parse_epoch(entry["end"].as_str().unwrap()).unwrap(),
+    )
+}
+
+/// A grow's night shading follows the Light Cycle when no light
+/// entity is bound: the schedule's off stretches, inside the chart
+/// window, and every edge a real cycle boundary. Editing the cycle
+/// moves the shading on the next fetch.
+#[tokio::test]
+async fn grow_history_shades_nights_from_the_light_cycle_when_unbound() {
+    let dead_url = "http://127.0.0.1:1".to_owned();
+    let (base, _db, _bridge) = spawn_api(&dead_url).await;
+    let client = reqwest::Client::new();
+    let grow_id = create_germinating_grow(&base, "Nights unbound").await;
+
+    client
+        .put(format!("{base}/api/grows/{grow_id}/bindings"))
+        .json(&json!({ "bindings": { "temperature": "sensor.grow_temperature" } }))
+        .send()
+        .await
+        .unwrap();
+    let put = client
+        .put(format!("{base}/api/grows/{grow_id}/light-cycle"))
+        .json(&json!({ "lights_on": "08:00", "hours_on": { "germination": 12 } }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(put.status(), 200);
+
+    let fetch_day = |role: &'static str| {
+        let base = base.clone();
+        let grow_id = grow_id.clone();
+        let client = client.clone();
+        async move {
+            client
+                .get(format!(
+                    "{base}/api/grows/{grow_id}/history?role={role}&window=day"
+                ))
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap()
+        }
+    };
+
+    let body = fetch_day("temperature").await;
+    let from = leaflog_core::chart::parse_epoch(body["series"]["from"].as_str().unwrap()).unwrap();
+    let to = leaflog_core::chart::parse_epoch(body["series"]["to"].as_str().unwrap()).unwrap();
+
+    let nights = body["nights"].as_array().expect("nights present");
+    assert!(
+        !nights.is_empty(),
+        "a 12 h cycle leaves nights in a day window"
+    );
+    let mut total_dark = 0_i64;
+    for entry in nights {
+        assert_eq!(entry["on"], false, "only dark intervals are nights");
+        let (start, end) = night_bounds(entry);
+        assert!(
+            from <= start && start < end && end <= to,
+            "night stays inside the window: [{start}, {end}) vs [{from}, {to})"
+        );
+        total_dark += end - start;
+        // Interior edges are cycle boundaries: nights start at
+        // lights-off (20:00) and end at lights-on (08:00). The
+        // canonical timezone is UTC when HA is unreachable.
+        if start > from {
+            let wall = time::OffsetDateTime::from_unix_timestamp(start).unwrap();
+            assert_eq!(
+                (wall.hour(), wall.minute()),
+                (20, 0),
+                "an interior night starts at lights-off"
+            );
+        }
+        if end < to {
+            let wall = time::OffsetDateTime::from_unix_timestamp(end).unwrap();
+            assert_eq!(
+                (wall.hour(), wall.minute()),
+                (8, 0),
+                "an interior night ends at lights-on"
+            );
+        }
+    }
+    assert_eq!(total_dark, 12 * 3600, "half the day window is dark");
+
+    // Editing the Light Cycle moves the shading on the next fetch:
+    // nights now run 08:00–20:00 instead.
+    let put = client
+        .put(format!("{base}/api/grows/{grow_id}/light-cycle"))
+        .json(&json!({ "lights_on": "20:00", "hours_on": { "germination": 12 } }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(put.status(), 200);
+    let shifted = fetch_day("temperature").await;
+    let to_shift =
+        leaflog_core::chart::parse_epoch(shifted["series"]["to"].as_str().unwrap()).unwrap();
+    let from_shift =
+        leaflog_core::chart::parse_epoch(shifted["series"]["from"].as_str().unwrap()).unwrap();
+    let nights = shifted["nights"].as_array().unwrap();
+    assert!(!nights.is_empty());
+    for entry in nights {
+        let (start, end) = night_bounds(entry);
+        if start > from_shift {
+            let wall = time::OffsetDateTime::from_unix_timestamp(start).unwrap();
+            assert_eq!(
+                (wall.hour(), wall.minute()),
+                (8, 0),
+                "after the edit nights start at lights-on 08:00"
+            );
+        }
+        if end < to_shift {
+            let wall = time::OffsetDateTime::from_unix_timestamp(end).unwrap();
+            assert_eq!(
+                (wall.hour(), wall.minute()),
+                (20, 0),
+                "after the edit nights end at lights-off 20:00"
+            );
+        }
+    }
+
+    // Only the Air roles carry nights: the root-zone and light roles
+    // stay bare.
+    let soil = fetch_day("soil_moisture").await;
+    assert_eq!(soil["nights"], json!([]), "root-zone roles shade nothing");
+    let light = fetch_day("light").await;
+    assert_eq!(
+        light["nights"],
+        json!([]),
+        "the light role itself shades nothing"
+    );
+}
+
+/// A bound light entity's observed history drives the night shading:
+/// the mock's staircase (off at now−23 h, on at now−20 h, off at
+/// now−18 h) is the timeline, with the 24 h-on schedule covering only
+/// the pre-sensor stretch lit. Every Air role carries the same
+/// nights.
+#[tokio::test]
+async fn grow_history_shades_nights_from_the_bound_light_history() {
+    let (mock_url, _mock) = spawn_mock().await;
+    let (base, _db, bridge) = spawn_api(&mock_url).await;
+    wait_connected(&bridge).await;
+    let client = reqwest::Client::new();
+    let grow_id = create_germinating_grow(&base, "Nights by fixture").await;
+
+    client
+        .put(format!("{base}/api/grows/{grow_id}/bindings"))
+        .json(&json!({
+            "bindings": {
+                "temperature": "sensor.grow_temperature",
+                "co2": "sensor.grow_co2",
+                "light": "light.grow_led",
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+    let put = client
+        .put(format!("{base}/api/grows/{grow_id}/light-cycle"))
+        .json(&json!({ "lights_on": "06:00", "hours_on": { "germination": 24 } }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(put.status(), 200);
+
+    let body: Value = client
+        .get(format!(
+            "{base}/api/grows/{grow_id}/history?role=temperature&window=day"
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(body["degraded"], false, "the mock Supervisor is reachable");
+
+    let to = leaflog_core::chart::parse_epoch(body["series"]["to"].as_str().unwrap()).unwrap();
+    let nights = body["nights"].as_array().expect("nights present");
+    assert_eq!(
+        nights.len(),
+        2,
+        "the staircase's two dark stretches, schedule-lit prefix"
+    );
+    for entry in nights {
+        assert_eq!(entry["on"], false);
+    }
+    // The mock stamps and the response `now` run off slightly
+    // different clocks; a two-minute slack absorbs the drift.
+    let slack = 120;
+    let (first_start, first_end) = night_bounds(&nights[0]);
+    let (second_start, second_end) = night_bounds(&nights[1]);
+    assert!(
+        (first_start - (to - 23 * 3600)).abs() <= slack
+            && (first_end - (to - 20 * 3600)).abs() <= slack,
+        "first dark stretch [now−23 h, now−20 h): got [{first_start}, {first_end}) with to {to}"
+    );
+    assert!(
+        (second_start - (to - 18 * 3600)).abs() <= slack && second_end == to,
+        "second dark stretch [now−18 h, now]: got [{second_start}, {second_end}) with to {to}"
+    );
+
+    // Every Air role shades the same timeline — CO₂ here; the
+    // root-zone roles stay bare (asserted by the unbound test).
+    let co2: Value = client
+        .get(format!(
+            "{base}/api/grows/{grow_id}/history?role=co2&window=day"
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(co2["nights"], body["nights"], "Air roles share the shading");
+}

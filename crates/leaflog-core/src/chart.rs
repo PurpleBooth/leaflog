@@ -327,7 +327,7 @@ pub fn build_bands(
 
 /// One lights-on/off interval: the state holds from `start` (inclusive)
 /// to `end` (exclusive), RFC 3339 UTC.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LightInterval {
     /// Interval start, RFC 3339 UTC (inclusive).
     pub start: String,
