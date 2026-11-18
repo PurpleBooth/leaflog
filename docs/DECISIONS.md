@@ -6,6 +6,32 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-18 — temperature and VPD Target Bands (env-section ticket 06, git-bug 74cba42)
+
+### D105: temperature's Target Band is the flat tolerance band; VPD keeps the light-stepped band; CO₂ goes bare
+
+The temperature chart's shaded band is the grow's shifted
+`TempThresholds` pair (`temperature_target_band(heat, cold)` in
+leaflog-core — the same edges the tiles' `temp_ok` colouring uses),
+drawn through the phase-span `build_bands` path with no light
+stepping. The ticket's "the same values the section's sensor tiles
+display as highs/lows" names those thresholds, and they carry no
+phase or light dependency. VPD keeps the existing day/night stepping
+(`vpd_band` / `night_vpd_band`), so the stepped-band contract now
+rides the VPD and humidity charts alone, and `is_stepped` no longer
+matches temperature or CO₂ (their histories skip the light-timeline
+fetch). CO₂ renders bare: the old CO₂ day/night band assertions are
+gone from the Rust and e2e suites, replaced by bare counter-cases.
+
+`temperature_corridor`, `night_temperature_corridor` and the two
+`CO2_*_PPM` presets stay in leaflog-core as sourced seed data with no
+chart consumer; their docs no longer claim the chart draws them.
+Deleting public presets mid-integration-branch would churn siblings
+for nothing — removal can ride a later cleanup if nothing reclaims
+them.
+
+---
+
 ## 2026-11-18 — the Environment section owns its window (env-section ticket 01)
 
 ### D103: shared history window — wire labels `day`/`week`/`month`, default `week`, localStorage key `leaflog.history-window`

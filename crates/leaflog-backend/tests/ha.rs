@@ -958,8 +958,8 @@ async fn grow_history_degrades_to_snapshots_when_supervisor_unreachable() {
 async fn grow_history_serves_live_series_with_phase_bands() {
     // Against the mock Supervisor the endpoint answers 200 with a
     // bound flag, snapshot points from the log-time capture, and the
-    // temperature corridor — while a role without a corridor (humidity)
-    // gets empty bands.
+    // temperature Target Band — the tolerance-shifted alert
+    // thresholds (env-section ticket 06).
     let (mock_url, _mock) = spawn_mock().await;
     let (base, _db, bridge) = spawn_api(&mock_url).await;
     wait_connected(&bridge).await;
@@ -1052,34 +1052,33 @@ async fn grow_history_serves_live_series_with_phase_bands() {
         points.iter().any(|point| point["source"] == "snapshot"),
         "the auto-captured snapshot must back the series"
     );
-    // The band corridor: the grow started today, so the window's
-    // current phase is germination (§5.2 seedling/clone range). The
-    // default Light Cycle schedule fills the window from 06:00 local
-    // (D093: the schedule fills the gaps; D094: bands carry the light
-    // state), so how many segments appear depends on the run clock —
-    // assert every band carries its light state's corridor instead of
-    // a fixed count.
+    // The temperature Target Band (env-section ticket 06): the
+    // tolerance-shifted alert thresholds, a flat corridor with no
+    // light state. The grow started today (germination) with default
+    // Average tolerances, so every segment carries the default
+    // 60–80 °F thresholds; how many segments appear depends only on
+    // the phase spans in the window.
     let bands = body["bands"].as_array().unwrap();
     assert!(!bands.is_empty());
     for pair in bands.windows(2) {
         assert_eq!(pair[0]["end"], pair[1]["start"], "segments butt-join");
     }
+    let expected_band = leaflog_core::env::temperature_target_band(
+        leaflog_core::grows::Tolerance::Average,
+        leaflog_core::grows::Tolerance::Average,
+    );
     for band in bands {
         assert_eq!(band["phase"], "germination");
-        let (min, max) = (band["min"].as_f64().unwrap(), band["max"].as_f64().unwrap());
-        if band["light_on"].as_bool() == Some(false) {
-            assert_eq!(
-                (min, max),
-                NIGHT_BAND,
-                "a dark stretch carries the lights-off corridor"
-            );
-        } else {
-            assert_eq!(
-                (min, max),
-                DAY_BAND,
-                "a lit (or unknown) stretch carries the day corridor"
-            );
-        }
+        assert_eq!(
+            band["light_on"],
+            Value::Null,
+            "the flat tolerance band carries no light state"
+        );
+        assert_eq!(
+            (band["min"].as_f64().unwrap(), band["max"].as_f64().unwrap()),
+            expected_band,
+            "every segment carries the tolerance Target Band"
+        );
     }
 
     // Humidity's corridor is the phase's VPD band converted at the
@@ -1134,10 +1133,10 @@ async fn create_germinating_grow(base: &str, name: &str) -> String {
         .to_owned()
 }
 
-/// The germ-phase day corridor a lights-on band must carry.
-const DAY_BAND: (f64, f64) = (21.1, 26.7);
-/// The germ-phase night corridor a lights-off band must carry.
-const NIGHT_BAND: (f64, f64) = (20.0, 23.3);
+/// The germ-phase lights-on VPD band a lit segment must carry.
+const VPD_DAY_BAND: (f64, f64) = (0.4, 0.8);
+/// The germ-phase lights-off VPD band a dark segment must carry.
+const VPD_NIGHT_BAND: (f64, f64) = (0.5, 0.9);
 
 /// Asserts a band list steps cleanly: alternating light states,
 /// butt-joined segments, both states present in a day window.
@@ -1166,17 +1165,6 @@ fn assert_germination_stepping(bands: &[Value]) -> Vec<bool> {
         "a day window must contain both a lights-on and a lights-off stretch"
     );
     states
-}
-
-/// Asserts every temperature band carries its light state's corridor.
-fn assert_temperature_corridors(bands: &[Value], states: &[bool]) {
-    for (band, &on) in bands.iter().zip(states) {
-        assert_eq!(
-            (band["min"].as_f64().unwrap(), band["max"].as_f64().unwrap()),
-            if on { DAY_BAND } else { NIGHT_BAND },
-            "corridor must match the light state (on: {on})"
-        );
-    }
 }
 
 #[tokio::test]
@@ -1265,18 +1253,24 @@ async fn grow_history_steps_day_and_night_by_the_light_cycle() {
         }
     };
 
-    // Temperature: the reference stepping — and each band must carry
-    // its light state's corridor.
-    let temperature = history("temperature").await;
-    assert_eq!(temperature["degraded"], true, "dead supervisor");
-    let temp_bands = temperature["bands"].as_array().unwrap().to_vec();
-    let steps = assert_germination_stepping(&temp_bands);
-    assert_temperature_corridors(&temp_bands, &steps);
+    // VPD is the reference stepping (env-section ticket 06): the
+    // Target Band steps between the phase's day range and the
+    // sourced lights-off range with the light state, and every
+    // segment carries its state's range.
+    let vpd = history("vpd").await;
+    let vpd_bands = vpd["bands"].as_array().unwrap().to_vec();
+    let steps = assert_germination_stepping(&vpd_bands);
+    for (band, &on) in vpd_bands.iter().zip(&steps) {
+        assert_eq!(
+            (band["min"].as_f64().unwrap(), band["max"].as_f64().unwrap()),
+            if on { VPD_DAY_BAND } else { VPD_NIGHT_BAND },
+            "VPD range must match the light state (on: {on})"
+        );
+    }
     // The band covering the window end (the snapshot lands there too:
     // its captured_at is the server's wall-clock now).
-    let to_epoch =
-        leaflog_core::chart::parse_epoch(temperature["series"]["to"].as_str().unwrap()).unwrap();
-    let covering = temp_bands
+    let to_epoch = leaflog_core::chart::parse_epoch(vpd["series"]["to"].as_str().unwrap()).unwrap();
+    let covering = vpd_bands
         .iter()
         .find(|band| {
             let start = leaflog_core::chart::parse_epoch(band["start"].as_str().unwrap()).unwrap();
@@ -1286,32 +1280,37 @@ async fn grow_history_steps_day_and_night_by_the_light_cycle() {
         .expect("bands cover the window end")
         .clone();
 
-    // VPD: night bands use the sourced lights-off band, not the day
-    // band with a different label, and they step with the light state.
-    let vpd = history("vpd").await;
-    let vpd_bands = vpd["bands"].as_array().unwrap().to_vec();
-    let vpd_steps = assert_germination_stepping(&vpd_bands);
-    assert_eq!(vpd_steps, steps, "vpd steps exactly with the light state");
-    let day_vpd = (0.4, 0.8);
-    let night_vpd = (0.5, 0.9);
-    for (band, &on) in vpd_bands.iter().zip(&steps) {
-        assert_eq!(
-            (band["min"].as_f64().unwrap(), band["max"].as_f64().unwrap()),
-            if on { day_vpd } else { night_vpd }
-        );
-    }
+    // Temperature: a flat tolerance Target Band (env-section ticket
+    // 06) — the same thresholds the env snapshot's temp_ok checks,
+    // with no light state, across the whole day window.
+    let temperature = history("temperature").await;
+    assert_eq!(temperature["degraded"], true, "dead supervisor");
+    let temp_bands = temperature["bands"].as_array().unwrap();
+    assert_eq!(
+        temp_bands.len(),
+        1,
+        "one flat band across the germination day window"
+    );
+    assert_eq!(temp_bands[0]["light_on"], Value::Null);
+    assert_eq!(
+        (
+            temp_bands[0]["min"].as_f64().unwrap(),
+            temp_bands[0]["max"].as_f64().unwrap()
+        ),
+        leaflog_core::env::temperature_target_band(
+            leaflog_core::grows::Tolerance::Average,
+            leaflog_core::grows::Tolerance::Average,
+        ),
+        "the tolerance thresholds are the band edges"
+    );
 
-    // CO2: enrichment range while lit, ambient range in the dark.
+    // CO₂: bare (env-section ticket 06) — no Target Band at all.
     let co2 = history("co2").await;
-    let co2_bands = co2["bands"].as_array().unwrap().to_vec();
-    let co2_steps = assert_germination_stepping(&co2_bands);
-    assert_eq!(co2_steps, steps, "co2 steps exactly with the light state");
-    for (band, &on) in co2_bands.iter().zip(&steps) {
-        assert_eq!(
-            (band["min"].as_f64().unwrap(), band["max"].as_f64().unwrap()),
-            if on { (800.0, 1500.0) } else { (400.0, 450.0) }
-        );
-    }
+    assert_eq!(
+        co2["bands"].as_array().unwrap().len(),
+        0,
+        "CO₂ renders without a Target Band"
+    );
 
     // Humidity: the RH window solved at the segment's actual mean
     // temperature with the day/night leaf offset. The one injected
@@ -1374,6 +1373,7 @@ async fn grow_history_steps_follow_the_bound_light_history() {
         .json(&json!({
             "bindings": {
                 "temperature": "sensor.grow_temperature",
+                "humidity": "sensor.grow_humidity",
                 "light": "light.grow_led",
             }
         }))
@@ -1389,9 +1389,11 @@ async fn grow_history_steps_follow_the_bound_light_history() {
         .unwrap();
     assert_eq!(put.status(), 200);
 
+    // VPD is the stepped role (env-section ticket 06): its day/night
+    // Target Band follows the light timeline.
     let body: Value = client
         .get(format!(
-            "{base}/api/grows/{grow_id}/history?role=temperature&window=day"
+            "{base}/api/grows/{grow_id}/history?role=vpd&window=day"
         ))
         .send()
         .await
@@ -1411,11 +1413,15 @@ async fn grow_history_steps_follow_the_bound_light_history() {
         .collect();
     assert_eq!(states, [true, false, true, false]);
     for (index, band) in bands.iter().enumerate() {
-        let expected = if states[index] { DAY_BAND } else { NIGHT_BAND };
+        let expected = if states[index] {
+            VPD_DAY_BAND
+        } else {
+            VPD_NIGHT_BAND
+        };
         assert_eq!(
             (band["min"].as_f64().unwrap(), band["max"].as_f64().unwrap()),
             expected,
-            "band {index} must carry the corridor of its light state"
+            "band {index} must carry the VPD range of its light state"
         );
         assert_eq!(band["phase"], "germination");
     }
@@ -1466,6 +1472,7 @@ async fn grow_history_steps_follow_any_on_off_entity_bound_to_light() {
         .json(&json!({
             "bindings": {
                 "temperature": "sensor.grow_temperature",
+                "humidity": "sensor.grow_humidity",
                 "light": "switch.grow_panel",
             }
         }))
@@ -1481,9 +1488,11 @@ async fn grow_history_steps_follow_any_on_off_entity_bound_to_light() {
         .await
         .unwrap();
 
+    // VPD steps with the switch-driven light timeline exactly like
+    // the light.* fixture above.
     let body: Value = client
         .get(format!(
-            "{base}/api/grows/{grow_id}/history?role=temperature&window=day"
+            "{base}/api/grows/{grow_id}/history?role=vpd&window=day"
         ))
         .send()
         .await
@@ -1496,13 +1505,70 @@ async fn grow_history_steps_follow_any_on_off_entity_bound_to_light() {
     let bands = body["bands"].as_array().unwrap();
     let states = assert_germination_stepping(bands);
     for (band, &on) in bands.iter().zip(&states) {
-        let expected = if on { DAY_BAND } else { NIGHT_BAND };
+        let expected = if on { VPD_DAY_BAND } else { VPD_NIGHT_BAND };
         assert_eq!(
             (band["min"].as_f64().unwrap(), band["max"].as_f64().unwrap()),
             expected,
-            "band must carry the corridor of the switch's light state (on: {on})"
+            "band must carry the VPD range of the switch's light state (on: {on})"
         );
     }
+}
+
+#[tokio::test]
+async fn grow_history_temperature_band_follows_the_grow_tolerances() {
+    // The temperature Target Band personalizes with the grow's heat
+    // and cold tolerances (env-section ticket 06): a doubly sensitive
+    // grow draws a tighter corridor than the defaults. The supervisor
+    // stays dead — the band needs no HA history, only the grow row.
+    let dead_url = "http://127.0.0.1:1".to_owned();
+    let (base, _db, _bridge) = spawn_api(&dead_url).await;
+    let client = reqwest::Client::new();
+    let started = (time::OffsetDateTime::now_utc() - time::Duration::days(3)).date();
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&json!({
+            "name": "Sensitive grow", "strain_id": null, "substrate": "soil",
+            "started_on": started.to_string(), "status": "active", "notes": null,
+            "heat_tolerance": "sensitive", "cold_tolerance": "sensitive",
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let grow_id = grow["id"].as_str().unwrap().to_owned();
+
+    let body: Value = client
+        .get(format!(
+            "{base}/api/grows/{grow_id}/history?role=temperature&window=day"
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let bands = body["bands"].as_array().unwrap();
+    assert!(!bands.is_empty());
+    let expected = leaflog_core::env::temperature_target_band(
+        leaflog_core::grows::Tolerance::Sensitive,
+        leaflog_core::grows::Tolerance::Sensitive,
+    );
+    for band in bands {
+        assert_eq!(band["light_on"], Value::Null, "flat band, no light state");
+        assert_eq!(
+            (band["min"].as_f64().unwrap(), band["max"].as_f64().unwrap()),
+            expected,
+            "the sensitive grow's thresholds are the band edges"
+        );
+    }
+    // Tighter than the default Average tolerances on both edges.
+    let (default_min, default_max) = leaflog_core::env::temperature_target_band(
+        leaflog_core::grows::Tolerance::Average,
+        leaflog_core::grows::Tolerance::Average,
+    );
+    assert!(expected.0 > default_min && expected.1 < default_max);
 }
 
 // --- Coach light state (ticket 08) ---

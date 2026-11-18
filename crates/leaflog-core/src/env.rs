@@ -126,8 +126,11 @@ pub const fn night_vpd_band(phase: Phase) -> Option<NightVpdBand> {
     }
 }
 
-/// One phase's temperature corridor: the lights-on range the chart
-/// draws as a shaded band behind the temperature line (spec §5.2).
+/// One phase's temperature corridor: the lights-on range (spec §5.2).
+///
+/// Not drawn by any chart today — the temperature Target Band is the
+/// grow-tolerance band (see [`temperature_target_band`]); these
+/// sourced rows are kept as seed data.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct TemperatureCorridor {
     /// Lower edge of the lights-on range, °C.
@@ -344,6 +347,18 @@ impl TempThresholds {
         }
         result
     }
+}
+
+/// The temperature chart's Target Band, `(floor °C, ceiling °C)`.
+///
+/// The tolerance-shifted alert thresholds — spec §4.4 shifts on the
+/// §5.2 default 60–80 °F thresholds. The same floor and ceiling the
+/// environment snapshot's `temp_ok` checks, so the shaded band always
+/// agrees with the sensor tile's verdict (env-section ticket 06).
+#[must_use]
+pub fn temperature_target_band(heat_tolerance: Tolerance, cold_tolerance: Tolerance) -> (f64, f64) {
+    let thresholds = TempThresholds::default().shifted(heat_tolerance, cold_tolerance);
+    (thresholds.floor_c, thresholds.ceiling_c)
 }
 
 // ---------------------------------------------------------------------------
@@ -734,7 +749,8 @@ mod tests {
         CO2_LIGHTS_OFF_PPM, CO2_LIGHTS_ON_PPM, DEFAULT_LEAF_OFFSET_C, LampInput,
         NIGHT_LEAF_OFFSET_C, NightVpdBand, Phase, TempThresholds, Tolerance, advise_lamp,
         advisor_watts, coach_tips, night_temperature_corridor, night_vpd_band, rh_window,
-        saturation_vp_kpa, temperature_corridor, vpd_band, vpd_kpa, wattage_classes,
+        saturation_vp_kpa, temperature_corridor, temperature_target_band, vpd_band, vpd_kpa,
+        wattage_classes,
     };
 
     // --- VPD golden values (spec §13) ---
@@ -872,6 +888,59 @@ mod tests {
         let cold_sensitive = base.shifted(Tolerance::Average, Tolerance::Sensitive);
         assert!(cold_tolerant.floor_c < base.floor_c);
         assert!(cold_sensitive.floor_c > base.floor_c);
+    }
+
+    // --- Temperature Target Band (env-section ticket 06) ---
+
+    #[test]
+    fn temperature_target_band_matches_the_alert_thresholds() {
+        // Average tolerances must reproduce the plain thresholds: the
+        // chart's band and the tile's temp_ok verdict use one source.
+        let (min, max) = temperature_target_band(Tolerance::Average, Tolerance::Average);
+        let base = TempThresholds::default();
+        assert_eq!(min, base.floor_c);
+        assert_eq!(max, base.ceiling_c);
+    }
+
+    #[test]
+    fn temperature_target_band_shifts_with_both_tolerances() {
+        let (base_min, base_max) = temperature_target_band(Tolerance::Average, Tolerance::Average);
+
+        // Heat tolerance moves the ceiling (±): +2 °F ≈ +1.11 °C,
+        // −3 °F ≈ −1.67 °C.
+        let (_, heat_tolerant_max) =
+            temperature_target_band(Tolerance::Tolerant, Tolerance::Average);
+        let (_, heat_sensitive_max) =
+            temperature_target_band(Tolerance::Sensitive, Tolerance::Average);
+        assert!((heat_tolerant_max - base_max - 1.11).abs() < 0.01);
+        assert!((heat_sensitive_max - base_max + 1.67).abs() < 0.01);
+
+        // Cold tolerance mirrors on the floor.
+        let (cold_tolerant_min, _) =
+            temperature_target_band(Tolerance::Average, Tolerance::Tolerant);
+        let (cold_sensitive_min, _) =
+            temperature_target_band(Tolerance::Average, Tolerance::Sensitive);
+        assert!((cold_tolerant_min - base_min + 1.11).abs() < 0.01);
+        assert!((cold_sensitive_min - base_min - 1.67).abs() < 0.01);
+
+        // Both shifts at once: doubly sensitive tightens both edges.
+        let (min, max) = temperature_target_band(Tolerance::Sensitive, Tolerance::Sensitive);
+        assert!(min > base_min && max < base_max);
+    }
+
+    #[test]
+    fn temperature_target_band_stays_ordered_for_every_tolerance_pair() {
+        let all = [
+            Tolerance::Tolerant,
+            Tolerance::Average,
+            Tolerance::Sensitive,
+        ];
+        for heat in all {
+            for cold in all {
+                let (min, max) = temperature_target_band(heat, cold);
+                assert!(min < max, "band edges inverted for {heat:?}/{cold:?}");
+            }
+        }
     }
 
     // --- Lamp advisor (spec §13) ---
@@ -1072,7 +1141,7 @@ mod tests {
         assert_eq!(band_part(vpd_day), band_part(vpd_night));
     }
 
-    // --- Temperature corridor (spec §5.2, chart band) ---
+    // --- Temperature corridor (spec §5.2, seed data) ---
 
     #[test]
     fn temperature_corridor_covers_every_phase_with_sourced_ranges() {

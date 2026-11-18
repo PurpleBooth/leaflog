@@ -2,7 +2,9 @@
 //!
 //! One windowed series per sensor role, merging Home Assistant's
 //! history API with Leaflog's own log-time sensor snapshots, plus the
-//! phase-keyed corridor for the chart's shaded band.
+//! Target Band segments for the chart's shaded range. The bands are
+//! tolerance-derived and flat for temperature, light-stepped
+//! day/night ranges for VPD and humidity (env-section ticket 06).
 //!
 //! Degradation follows the Dead binding rule: when Home Assistant is
 //! unreachable the chart serves snapshot-only points with
@@ -354,7 +356,7 @@ async fn grow_history(
     if !is_vpd && !is_pair && !store::sensors::ROLES.contains(&role.as_str()) {
         return Err(ApiError::BadRequest(format!("unknown role {role}")));
     }
-    let is_stepped = matches!(role.as_str(), "temperature" | "humidity" | "vpd" | "co2");
+    let is_stepped = matches!(role.as_str(), "humidity" | "vpd");
     let window_label = query
         .window
         .ok_or_else(|| ApiError::BadRequest("window query parameter is required".to_owned()))?;
@@ -423,41 +425,24 @@ async fn grow_history(
         None
     };
 
-    // The humidity band solves at the temperature series' points; the
-    // other stepped roles use their own series (only the VPD band's
-    // input matters, and its corridor ignores the mean).
+    // The humidity band solves at the temperature series' points;
+    // every other role's band input is its own series (the VPD
+    // corridor ignores the mean, and the temperature closure below
+    // ignores it too — the points still anchor the segments).
     let band_points = if role == "humidity" {
         humidity_band_points
     } else {
         series_points(&series)
     };
 
-    let bands = match role.as_str() {
-        "temperature" | "humidity" | "vpd" | "co2" => chart::build_light_bands(
-            &series.from,
-            &series.to,
-            &band_points,
-            &spans,
-            light_periods.as_deref(),
-            |phase, light_on, mean| stepped_corridor(role.as_str(), phase, light_on, mean),
-        ),
-        // The soil band stays a single user-tunable corridor.
-        "soil_moisture" => {
-            let series_points = series_points(&series);
-            chart::build_bands(
-                &series.from,
-                &series.to,
-                &series_points,
-                &spans,
-                |_phase, _mean| {
-                    let default = leaflog_core::env::SOIL_MOISTURE_BAND;
-                    Some(loaded.soil_band.unwrap_or((default.min, default.max)))
-                },
-            )
-        }
-        // The remaining roles have no corridor.
-        _ => Vec::new(),
-    };
+    let bands = build_role_bands(
+        role.as_str(),
+        &series,
+        &band_points,
+        &spans,
+        light_periods.as_deref(),
+        &loaded,
+    );
 
     Ok(Json(GrowHistory {
         role,
@@ -468,6 +453,59 @@ async fn grow_history(
         degraded,
         bound: all_bound,
     }))
+}
+
+/// Builds the history response's Target Band segments for one role:
+/// humidity and VPD step with the light state, temperature draws the
+/// grow's flat tolerance band, soil keeps its single user-tunable
+/// corridor, and the remaining roles (CO₂, pH, EC, light) stay bare
+/// (env-section ticket 06).
+fn build_role_bands(
+    role: &str,
+    series: &ChartSeries,
+    band_points: &[(i64, f64)],
+    spans: &[PhaseSpan],
+    light_periods: Option<&[chart::LightInterval]>,
+    loaded: &LoadedGrow,
+) -> Vec<BandSegment> {
+    match role {
+        "humidity" | "vpd" => chart::build_light_bands(
+            &series.from,
+            &series.to,
+            band_points,
+            spans,
+            light_periods,
+            |phase, light_on, mean| stepped_corridor(role, phase, light_on, mean),
+        ),
+        // The tolerance-derived flat Target Band — the same
+        // thresholds the env snapshot's temp_ok checks; one segment
+        // per phase span, no light state.
+        "temperature" => {
+            let band = leaflog_core::env::temperature_target_band(
+                loaded.grow.heat_tolerance,
+                loaded.grow.cold_tolerance,
+            );
+            chart::build_bands(
+                &series.from,
+                &series.to,
+                band_points,
+                spans,
+                |_phase, _mean| Some(band),
+            )
+        }
+        // The soil band stays a single user-tunable corridor.
+        "soil_moisture" => chart::build_bands(
+            &series.from,
+            &series.to,
+            band_points,
+            spans,
+            |_phase, _mean| {
+                let default = leaflog_core::env::SOIL_MOISTURE_BAND;
+                Some(loaded.soil_band.unwrap_or((default.min, default.max)))
+            },
+        ),
+        _ => Vec::new(),
+    }
 }
 
 /// Combines the fetched per-role series into the response series plus
@@ -546,11 +584,11 @@ fn resolve_light_timeline(
     chart::resolve_light_periods(from, &schedule, &sensor)
 }
 
-/// The stepped corridor for one role and light state: the day presets
-/// while lit (and when the state is unknown — today's behaviour), the
-/// sourced night presets in the dark. The humidity arm solves the RH
-/// window at the segment's actual mean temperature with the matching
-/// leaf offset; no points, no honest window.
+/// The stepped corridor for one light-stepped role and light state:
+/// the day presets while lit (and when the state is unknown — today's
+/// behaviour), the sourced night presets in the dark. The humidity
+/// arm solves the RH window at the segment's actual mean temperature
+/// with the matching leaf offset; no points, no honest window.
 fn stepped_corridor(
     role: &str,
     phase: leaflog_core::Phase,
@@ -559,13 +597,6 @@ fn stepped_corridor(
 ) -> Option<(f64, f64)> {
     let dark = light_on == Some(false);
     match role {
-        "temperature" => {
-            let day = leaflog_core::env::temperature_corridor(phase);
-            let night = dark
-                .then(|| leaflog_core::env::night_temperature_corridor(phase))
-                .flatten();
-            Some(night.map_or((day.min_c, day.max_c), |band| (band.min_c, band.max_c)))
-        }
         "humidity" => {
             let band = if dark {
                 leaflog_core::env::night_vpd_band(phase).map_or_else(
@@ -588,17 +619,6 @@ fn stepped_corridor(
                 .then(|| leaflog_core::env::night_vpd_band(phase))
                 .flatten();
             Some(night.map_or(day, |band| (band.min_kpa, band.max_kpa)))
-        }
-        // Enrichment while lit; ambient air in the dark.
-        "co2" => {
-            let (min, max) = if dark {
-                let night = leaflog_core::env::CO2_LIGHTS_OFF_PPM;
-                (night.min_ppm, night.max_ppm)
-            } else {
-                let day = leaflog_core::env::CO2_LIGHTS_ON_PPM;
-                (day.min_ppm, day.max_ppm)
-            };
-            Some((min, max))
         }
         _ => None,
     }

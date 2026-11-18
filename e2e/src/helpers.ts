@@ -6,7 +6,7 @@
 // origin — ingress-relative URLs are a non-negotiable, and the whole
 // suite exercises them on every navigation and API call.
 
-import { expect, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 
 /** The simulated ingress prefix the e2e stack serves under. */
 export const INGRESS_PREFIX =
@@ -105,4 +105,39 @@ export async function dismissOnboarding(
   request: APIRequestContext,
 ): Promise<void> {
   await api(request, 'PUT', 'api/settings', { onboarding_dismissed: true });
+}
+
+/** One Target Band segment of a chart history payload. */
+export interface BandSegment {
+  start: string;
+  end: string;
+  min: number;
+  max: number;
+  phase: string;
+  light_on: boolean | null;
+}
+
+/** The filled (non-line) paths of one chart's ECharts SVG: the
+ *  rendered Target Band regions, as top/height boxes (viewport
+ *  coordinates — comparisons only). zrender's clip shapes carry a
+ *  fill but live inside `<clipPath>` and never paint, so they are
+ *  excluded: what remains is real shading. */
+export async function bandRegions(
+  svg: Locator,
+): Promise<{ top: number; height: number }[]> {
+  return svg.evaluate((root) => {
+    const regions: { top: number; height: number }[] = [];
+    for (const path of root.querySelectorAll<SVGPathElement>(
+      'path[fill]:not([fill="none"])',
+    )) {
+      if (path.closest('clipPath')) {
+        continue;
+      }
+      const box = path.getBoundingClientRect();
+      if (box.height > 1) {
+        regions.push({ top: box.top, height: box.height });
+      }
+    }
+    return regions;
+  });
 }

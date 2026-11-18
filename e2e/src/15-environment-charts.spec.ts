@@ -4,10 +4,18 @@
 // hover tooltip with value, unit, and UTC time. CO₂ has no mock
 // sensor, so it asserts the ticket 04 card-visibility rule: an
 // unbound role renders no card at all. The pH/EC pair scatters are
-// ticket 04's own flow (12-ph-ec.spec.ts).
+// ticket 04's own flow (12-ph-ec.spec.ts). Ticket 06 adds the bare
+// counter-case: a bound CO₂ chart draws no Target Band at all.
 
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { api, createGrow, dismissOnboarding, url } from './helpers';
+import {
+  api,
+  bandRegions,
+  createGrow,
+  dismissOnboarding,
+  url,
+  type BandSegment,
+} from './helpers';
 
 test.beforeAll(async ({ request }) => {
   await dismissOnboarding(request);
@@ -125,4 +133,39 @@ test('humidity, vpd, light and soil charts draw axes and tooltips', async ({
   await expect(
     page.getByText('No sensor bound for this role.'),
   ).toHaveCount(0);
+});
+
+test('the CO₂ chart stays bare (no Target Band)', async ({
+  page,
+  request,
+}) => {
+  // Ticket 06: CO₂ reads stay bare — a line and its axis, no shaded
+  // band. The mock serves a CO₂ sensor (ticket 02), so binding it
+  // renders the card; the history payload and the SVG both carry no
+  // band regions.
+  const growId = await createGrow(request, 'E2E CO₂ Bare');
+  await api(request, 'PUT', `api/grows/${growId}/bindings`, {
+    bindings: { co2: 'sensor.grow_co2' },
+  });
+  await api(request, 'POST', `api/grows/${growId}/actions`, {
+    plant_ids: [],
+    occurred_at: new Date().toISOString(),
+    action_type: 'note',
+    details: {},
+    notes: 'reading',
+    appearance_tags: [],
+  });
+  await page.waitForTimeout(1_200);
+
+  const history = await api<{ bands: BandSegment[] }>(
+    request,
+    'GET',
+    `api/grows/${growId}/history?role=co2&window=day`,
+  );
+  expect(history!.bands, 'the API emits no band for CO₂').toEqual([]);
+
+  await page.goto(url(`/grows/${growId}`));
+  const co2Svg = page.locator('svg[aria-label="co2 history"]');
+  await expect(co2Svg, 'the bound CO₂ card renders').toBeVisible();
+  expect(await bandRegions(co2Svg), 'no shading behind the CO₂ line').toEqual([]);
 });
