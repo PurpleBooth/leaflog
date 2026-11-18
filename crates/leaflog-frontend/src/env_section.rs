@@ -1,13 +1,13 @@
 //! The Environment section on the grow page (env-section rework
-//! ticket 01): the live tiles as the top row, the history charts
-//! beneath them in two groups — **Air** and **Root zone**, each under
-//! an uppercase micro-label header — and one shared chart-window
-//! control in the section header that every chart follows. The window
-//! choice persists per browser in localStorage. Ticket 02 groups the
-//! charts and joins them in one crosshair-synced connect group;
-//! ticket 03 closes the section with one quiet "not measured" card
-//! that chips every sensor role the grow has not bound yet, each
-//! chip linking into the existing binding flow.
+//! ticket 01): the live tiles as the top row, then the history charts
+//! in two groups — **Air** and **Root zone** — each under an
+//! uppercase micro-label header. One shared chart-window control in
+//! the section header drives every chart. The window choice persists
+//! per browser in localStorage. Ticket 02 groups the charts and joins
+//! them in one crosshair-synced connect group; ticket 03 closes the
+//! section with one quiet "not measured" card that chips every
+//! sensor role the grow has not bound yet, each chip linking into the
+//! existing binding flow.
 
 use std::collections::BTreeMap;
 
@@ -163,7 +163,7 @@ pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
             // night-shading ticket folds it into the Air charts.
             <div class="mt-4">
                 <HistoryChart grow_id=grow_id.clone() role="light" title="Light"
-                    shared_window=window format_value=format_on_off
+                    shared_window=window format_value=format_on_off joined_crosshair=false
                 />
             </div>
             // The Root zone group: below-ground concerns.

@@ -6,6 +6,39 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-18 — Air and Root zone chart groups with crosshair sync (env-section ticket 02)
+
+### D106: one connect group, one shared plot rectangle
+
+The Environment section's charts join a single `ECharts` connect
+group (`leaflog-env-history`): each mounted instance sets its `group`
+property and one `echarts.connect` call registers the group — both
+idempotent, so per-mount repetition is safe. A connected hover
+broadcasts `updateAxisPointer` actions in *pixels*, so every chart
+must draw the same plot rectangle for the same pixels to land on the
+same timestamp. The option builder therefore pins the grid insets
+explicitly (left 110 px, top 36, bottom 24, right 16) and keeps
+`containLabel` off: `containLabel` measures each role's *own* label
+text, and `yAxis.axisLabel.width` does not change what it measures —
+the live cards' grid lefts drifted 61 px apart (temperature 106,
+humidity 45, VPD 65) before the fix. Labels sit inside the fixed
+gutter in a 96 px box with truncation overflow; 96 px fits the widest
+label the cards render — the temperature card's dual-unit "18.0 °C /
+64.4 °F" measures ~89 px at the 12 px label font, negatives ~93 px
+(canvas-measured in headless Chromium). The Light card sits in the
+full-width slot between the groups, so its pixel scale differs and it
+opts out of the connect group (`joined_crosshair=false`) — the later
+night-shading ticket retires the card.
+
+Chart heights land at ~144 px mobile / ~176 px desktop
+(`h-36 lg:h-44`) — the ticket's compact instrument-panel heights,
+with the two-up grid per group on wide screens. The group headers
+are `h4` micro-labels (uppercase in CSS, source text "Air" /
+"Root zone") and the card titles step down to `h5` so the outline
+follows the grouping. The per-card
+window toggles are gone: the section's shared control is the only
+one (spec 19's per-card assertions updated to match).
+
 ## 2026-11-18 — one quiet card for unbound roles (env-section ticket 03)
 
 ### D105: the not-measured card chips only the five charted sensor roles

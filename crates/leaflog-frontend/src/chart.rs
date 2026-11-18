@@ -178,6 +178,13 @@ pub fn format_ec_us(value: f64) -> String {
 /// `shared_window` is the Environment section's window signal — the
 /// section control owns the window for every card (the per-card
 /// toggles are gone; one instrument panel, one window).
+///
+/// `joined_crosshair` opts a card out of the section's `ECharts`
+/// connect group. The connected hover is broadcast in pixels, so a
+/// chart at a different pixel scale would translate the same pixels
+/// to a different timestamp. The light card sits in the full-width
+/// slot between the Air and Root zone grids (the later shading
+/// ticket retires it), so it stays out of the group.
 #[component]
 pub fn HistoryChart(
     grow_id: String,
@@ -185,6 +192,7 @@ pub fn HistoryChart(
     #[prop(default = "Temperature")] title: &'static str,
     format_value: fn(f64) -> String,
     shared_window: RwSignal<String>,
+    #[prop(default = true)] joined_crosshair: bool,
     #[prop(optional)] children: Option<ChildrenFn>,
 ) -> impl IntoView {
     let data = RwSignal::<Option<GrowHistory>>::new(None);
@@ -283,7 +291,11 @@ pub fn HistoryChart(
                                     }
                                 })
                         }}
-                        <EChartsHistory data=data format_value=format_value />
+                        <EChartsHistory
+                            data=data
+                            format_value=format_value
+                            joined_crosshair=joined_crosshair
+                        />
                         {footer}
                     </div>
                 }
@@ -341,6 +353,7 @@ pub(crate) fn WindowToggles(
 fn EChartsHistory(
     data: RwSignal<Option<GrowHistory>>,
     format_value: fn(f64) -> String,
+    joined_crosshair: bool,
 ) -> impl IntoView {
     let container = NodeRef::<leptos::html::Div>::new();
     let instance = StoredValue::new_local(None::<JsValue>);
@@ -376,8 +389,12 @@ fn EChartsHistory(
             call_chart_method(&mounted, "setOption", Some(&option_js));
             label_svg_root(el.as_ref(), &format!("{} history", chart.role));
             // The mounted chart joins the section's connect group so
-            // a hover anywhere moves the crosshair on every chart.
-            join_connect_group(&echarts, &mounted);
+            // a hover anywhere moves the crosshair on every chart at
+            // the same timestamp. Full-width cards opt out: their
+            // pixel scale differs, so the broadcast would misalign.
+            if joined_crosshair {
+                join_connect_group(&echarts, &mounted);
+            }
         }
     });
 

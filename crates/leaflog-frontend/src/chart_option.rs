@@ -75,12 +75,14 @@ pub fn role_style(role: &str) -> ChartStyle {
 
 /// The fixed value-axis label width every role's chart shares. The
 /// section's charts join one `ECharts` connect group, and a connected
-/// hover is broadcast in *pixels* — so every chart must reserve the
-/// same y-label gutter for `containLabel` to place the plot origin at
-/// the same x, or the same pixels would land on different timestamps
-/// chart-to-chart. Wide enough for the widest role label (the
-/// temperature card's dual-unit "18.0 °C / 64.4 °F" measures ~89 px
-/// at the 12 px label font; negatives run ~93 px).
+/// hover is broadcast in *pixels* — so every chart must draw the
+/// same plot rectangle for the same pixels to land on the same
+/// timestamp chart-to-chart. The grid therefore reserves a fixed
+/// left gutter of this width plus the axis margin, instead of
+/// `containLabel`, which measures each role's own label text and
+/// drifts the plot origins apart. The width fits the widest role
+/// label: the temperature card's dual-unit "18.0 °C / 64.4 °F"
+/// measures ~89 px at the 12 px label font (negatives run ~93 px).
 const CONNECT_LABEL_WIDTH: f64 = 96.0;
 
 /// The option for one history chart: a time axis spanning the whole
@@ -113,7 +115,17 @@ pub fn history_option(
     };
     serde_json::json!({
         "animation": false,
-        "grid": { "left": 8, "right": 16, "top": 28, "bottom": 8, "containLabel": true },
+        "grid": {
+            // Pixel-broadcast geometry: a fixed left gutter (label
+            // width plus the axis margin) puts every role's plot
+            // origin at the same x. `containLabel` would measure each
+            // role's own label text and drift the origins apart, so
+            // it stays off and the insets are explicit and uniform.
+            "left": CONNECT_LABEL_WIDTH + 14.0,
+            "right": 16.0,
+            "top": 36.0,
+            "bottom": 24.0,
+        },
         "tooltip": {
             "trigger": "axis",
             "confine": true,
@@ -140,12 +152,9 @@ pub fn history_option(
                 "show": !bare_axis,
                 "hideOverlap": true,
                 "color": look.text,
-                // The shared connect-group gutter: a fixed label box
-                // (with truncation overflow) makes `containLabel`
-                // reserve the same plot origin on every chart. A bare
-                // axis (empty window) hides its labels and drifts its
-                // own origin, but an empty chart shows nothing for a
-                // crosshair to misread.
+                // Labels sit inside the fixed grid gutter; the box
+                // width (with truncation overflow) keeps a wider
+                // role label from spilling over the plot area.
                 "width": CONNECT_LABEL_WIDTH,
                 "overflow": "truncate",
             },
@@ -369,16 +378,29 @@ mod tests {
     }
 
     #[test]
-    fn connected_charts_share_one_label_gutter_and_a_line_crosshair() {
+    fn connected_charts_share_one_plot_geometry_and_a_line_crosshair() {
         // The section's charts join one `ECharts` connect group, and a
-        // connected hover is broadcast in pixels: every role's chart
-        // must reserve the same value-axis label gutter (`containLabel`
-        // would otherwise pad each plot origin by its own role's label
-        // width, so the same pixels would land on different timestamps
-        // chart-to-chart). The axis pointer is pinned to the line
-        // crosshair the group contract names.
+        // connected hover is broadcast in pixels. Every role's chart
+        // must therefore draw the same plot rectangle: a fixed left
+        // gutter for the value-axis labels pins the plot origin at
+        // the same x on every card. `containLabel` would instead
+        // measure each role's own label text and drift the origins
+        // apart (measured: 61 px between the temperature and humidity
+        // cards), so the same pixels would land on different
+        // timestamps chart-to-chart. The axis pointer is pinned to
+        // the line crosshair the group contract names.
         for role in ["temperature", "humidity", "ph"] {
             let option = history_option(&sample_for_role(role), &look(), &style(role));
+            assert_eq!(
+                option["grid"]["left"],
+                serde_json::json!(CONNECT_LABEL_WIDTH + 14.0),
+                "{role}: the shared left gutter pins the plot origin"
+            );
+            assert_eq!(
+                option["grid"]["containLabel"],
+                serde_json::json!(null),
+                "{role}: containLabel would pad each plot origin by its own label width"
+            );
             assert_eq!(
                 option["yAxis"]["axisLabel"]["width"],
                 serde_json::json!(CONNECT_LABEL_WIDTH),
