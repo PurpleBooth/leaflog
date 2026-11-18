@@ -1,0 +1,24 @@
+{
+  "nav": {
+    "home": "Startseite",
+    "history": "Verlauf",
+    "grows": "Anbauten"
+  },
+  "page": {
+    "home_heading": "Grow-Tagebuch, zu Hause in Home Assistant",
+    "history_heading": "Verlauf",
+    "grows_heading": "Anbauten",
+    "edit_heading": "Anbau bearbeiten"
+  },
+  "grows": {
+    "start_grow": "Anbau starten",
+    "new_grow": "Neuer Anbau",
+    "retry": "Erneut versuchen",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "started": "Gestartet am {{ date }}",
+    "loading": "Anbauten werden geladen …",
+    "empty": "Noch keine Anbauten — starte deinen ersten.",
+    "back_home": "Zurück zur Startseite"
+  }
+}

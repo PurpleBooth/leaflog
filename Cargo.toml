@@ -19,6 +19,9 @@ categories = ["web-programming", "science"]
 
 [workspace.dependencies]
 leaflog-core = { path = "crates/leaflog-core" }
+# Compile-time i18n catalogs (D112): en + de JSON locale files in the
+# frontend crate; the macro fails the build on EN↔DE key drift.
+leptos_i18n = "0.6.3"
 axum = "0.8"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 serde = { version = "1", features = ["derive"] }

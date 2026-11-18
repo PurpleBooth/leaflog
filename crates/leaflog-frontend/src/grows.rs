@@ -27,12 +27,14 @@ use crate::api::{self, ApiFailure};
 use crate::env_section::EnvironmentSection;
 use crate::feed::FeedPanel;
 use crate::gantt::GanttTimeline;
+use crate::i18n::{t, use_i18n};
 use crate::route_href;
 
 /// The grows overview page.
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
 pub fn GrowsPage() -> impl IntoView {
+    let i18n = use_i18n();
     let grows = RwSignal::<Vec<Grow>>::new(Vec::new());
     let error = RwSignal::<Option<String>>::new(None);
     let loading = RwSignal::<bool>::new(true);
@@ -76,11 +78,11 @@ pub fn GrowsPage() -> impl IntoView {
     view! {
         <section class="pb-12">
             <div class="flex flex-wrap items-center justify-between gap-4">
-                <h2>"Grows"</h2>
+                <h2>{t!(i18n, page.grows_heading)}</h2>
                 <button class="btn btn-primary btn-sm" on:click=move |_| {
                     draft.set(empty_grow());
                     form_open.set(true);
-                }>"Start a grow"</button>
+                }>{t!(i18n, grows.start_grow)}</button>
             </div>
 
             <ErrorIf error />
@@ -97,17 +99,17 @@ pub fn GrowsPage() -> impl IntoView {
                         refresh();
                     }
                 }>
-                    "Retry"
+                    {t!(i18n, grows.retry)}
                 </button>
             </Show>
 
             <Show when=move || form_open.get()>
                 <form class="card bg-base-100 shadow-sm px-5 py-4 my-4" on:submit=save>
-                    <h3>"New grow"</h3>
+                    <h3>{t!(i18n, grows.new_grow)}</h3>
                     <GrowForm draft />
                     <div class="flex flex-wrap gap-2 mt-4">
-                        <button class="btn btn-primary btn-sm" type="submit">"Save"</button>
-                        <button class="btn btn-sm" type="button" on:click=move |_| form_open.set(false)>"Cancel"</button>
+                        <button class="btn btn-primary btn-sm" type="submit">{t!(i18n, grows.save)}</button>
+                        <button class="btn btn-sm" type="button" on:click=move |_| form_open.set(false)>{t!(i18n, grows.cancel)}</button>
                     </div>
                 </form>
             </Show>
@@ -127,7 +129,7 @@ pub fn GrowsPage() -> impl IntoView {
                                         <span class="badge badge-ghost">{grow.status.label()}</span>
                                         <span class="text-base-content/70">{grow.substrate.clone()}</span>
                                     </div>
-                                    <p class="text-base-content/70 text-sm">"Started "{grow.started_on}</p>
+                                    <p class="text-base-content/70 text-sm">{t!(i18n, grows.started, date = grow.started_on)}</p>
                                 </li>
                             }
                         })
@@ -135,7 +137,7 @@ pub fn GrowsPage() -> impl IntoView {
                 }}
             </ul>
             <Show when=move || loading.get()>
-                <p class="py-6 text-center text-base-content/70">"Loading grows…"</p>
+                <p class="py-6 text-center text-base-content/70">{t!(i18n, grows.loading)}</p>
             </Show>
             <Show
                 when=move || {
@@ -144,9 +146,9 @@ pub fn GrowsPage() -> impl IntoView {
                         && error.get().is_none()
                 }
             >
-                <p class="py-6 text-center text-base-content/60">"No grows yet — start your first one."</p>
+                <p class="py-6 text-center text-base-content/60">{t!(i18n, grows.empty)}</p>
             </Show>
-            <p><A href=route_href("/")>"Back to home"</A></p>
+            <p><A href=route_href("/")>{t!(i18n, grows.back_home)}</A></p>
         </section>
     }
 }

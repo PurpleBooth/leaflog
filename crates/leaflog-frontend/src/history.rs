@@ -9,6 +9,7 @@ use serde::Deserialize;
 
 use crate::ErrorIf;
 use crate::api;
+use crate::i18n::{t, use_i18n};
 use crate::route_href;
 use leaflog_core::grows::{Plant, PlantInput};
 
@@ -71,6 +72,7 @@ pub struct HistoryReport {
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
 pub fn HistoryPage() -> impl IntoView {
+    let i18n = use_i18n();
     let report = RwSignal::<HistoryReport>::new(HistoryReport::default());
     let error = RwSignal::<Option<String>>::new(None);
 
@@ -102,7 +104,7 @@ pub fn HistoryPage() -> impl IntoView {
     view! {
         <section class="pb-12">
             <div class="flex flex-wrap items-center justify-between gap-4">
-                <h2>"History"</h2>
+                <h2>{t!(i18n, page.history_heading)}</h2>
             </div>
             <ErrorIf error />
 

@@ -15,6 +15,7 @@ use crate::ErrorIf;
 use crate::api;
 use crate::bindings::EntityBindings;
 use crate::grows::{GrowForm, empty_grow};
+use crate::i18n::{t, use_i18n};
 use crate::light_cycle::LightCycleEditor;
 
 /// The `/grows/:id/edit` route: reads the path id and renders the
@@ -32,6 +33,7 @@ pub fn GrowEditRoute() -> impl IntoView {
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
 pub fn GrowEditPage(grow_id: Signal<String>) -> impl IntoView {
+    let i18n = use_i18n();
     let grow = RwSignal::<Option<Grow>>::new(None);
     let draft = RwSignal::<GrowInput>::new(empty_grow());
     let error = RwSignal::<Option<String>>::new(None);
@@ -129,7 +131,7 @@ pub fn GrowEditPage(grow_id: Signal<String>) -> impl IntoView {
 
     view! {
         <section class="pb-12">
-            <h2>"Edit grow"</h2>
+            <h2>{t!(i18n, page.edit_heading)}</h2>
             <Show when=move || deleted.get()>
                 // The plain route path: unlike an <A href>, Redirect
                 // routes through navigate(), which resolves the path

@@ -1,0 +1,24 @@
+{
+  "nav": {
+    "home": "Home",
+    "history": "History",
+    "grows": "Grows"
+  },
+  "page": {
+    "home_heading": "Grow diary, at home in Home Assistant",
+    "history_heading": "History",
+    "grows_heading": "Grows",
+    "edit_heading": "Edit grow"
+  },
+  "grows": {
+    "start_grow": "Start a grow",
+    "retry": "Retry",
+    "new_grow": "New grow",
+    "save": "Save",
+    "cancel": "Cancel",
+    "started": "Started {{ date }}",
+    "loading": "Loading grows…",
+    "empty": "No grows yet — start your first one.",
+    "back_home": "Back to home"
+  }
+}

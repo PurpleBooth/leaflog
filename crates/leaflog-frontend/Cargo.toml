@@ -18,6 +18,14 @@ crate-type = ["cdylib"]
 leaflog-core.workspace = true
 leptos = { version = "0.8", features = ["csr"] }
 leptos_router = "0.8"
+# Compile-time i18n (D112): JSON catalogs under locales/, en is the
+# default locale and the key source of truth. CSR, no cookie and no
+# system-locale auto-detection — the locale chain (HA → browser → en)
+# is applied explicitly in the app (docs/ARCHITECTURE.md).
+leptos_i18n = { workspace = true, default-features = false, features = [
+    "csr",
+] }
+
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
@@ -37,6 +45,16 @@ serde-wasm-bindgen = "0.6"
 leptos_icons = "0.7"
 icondata_lu = "0.1"
 icondata_core = "0.1"
+
+[build-dependencies]
+# Catalog codegen for leptos_i18n (D112): parses locales/ at build time
+# and enforces EN↔DE key parity via the generated keys struct.
+leptos_i18n_build = { version = "0.6", default-features = false, features = [
+    "csr",
+] }
+# Key-parity check in build.rs (D112): compares the flattened key sets
+# of locales/en.json and locales/de.json.
+serde_json.workspace = true
 
 [package.metadata.leptos]
 # CSR only; kept for tooling that reads Leptos metadata.

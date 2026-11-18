@@ -296,3 +296,14 @@ pub struct PhaseWindowData {
     /// True when pinned by a logged event.
     pub actual_start: bool,
 }
+
+/// The locale report (`GET api/locale`, D112): the Home Assistant user
+/// language observed on the backend's latest config fetch.
+///
+/// `None` when Home Assistant is unreachable or reports none; the
+/// locale chain (HA → browser → English) reads it once at app start.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct LocaleReport {
+    /// BCP-47 tag of the HA user language (e.g. `en`, `de`).
+    pub language: Option<String>,
+}
