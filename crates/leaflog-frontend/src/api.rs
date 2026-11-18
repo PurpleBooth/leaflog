@@ -197,6 +197,11 @@ pub struct GrowHistory {
     /// The role's log-event markers inside the window, ascending by
     /// time (each renders as one tick glyph).
     pub markers: Vec<EventMarkerData>,
+    /// The window's dark stretches — the light timeline's off
+    /// intervals, observed or schedule-derived. The Air-group charts
+    /// shade them (env-section ticket 05); every other role's list is
+    /// empty.
+    pub nights: Vec<LightIntervalData>,
     /// Home Assistant's history was unavailable, so the chart is
     /// snapshot-only (the Dead binding rule).
     pub degraded: bool,
@@ -226,6 +231,19 @@ pub struct EventMarkerData {
     /// What happened: the action's stable `snake_case` wire label
     /// (`water`, `lights`, ...).
     pub kind: String,
+}
+
+/// One light-timeline interval: the lights' state holds from `start`
+/// (inclusive) to `end` (exclusive). The night shading reads the
+/// dark ones.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct LightIntervalData {
+    /// Interval start, RFC 3339 UTC, inclusive.
+    pub start: String,
+    /// Interval end, RFC 3339 UTC (exclusive).
+    pub end: String,
+    /// Whether the lights are on during the interval.
+    pub on: bool,
 }
 
 /// One merged chart point.

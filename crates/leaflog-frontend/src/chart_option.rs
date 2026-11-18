@@ -114,10 +114,15 @@ pub fn history_option(
         SeriesKind::Line => vec![line_series(chart, look, false)],
     };
     // The tick series appends last, so the series indices ahead of it
-    // stay stable (the pair charts keep Input/Runoff at 0/1).
+    // stay stable (the pair charts keep Input/Runoff at 0/1). The
+    // night shade appends after the ticks — array order is contract
+    // only, the z level below is what puts it behind everything.
     let mut series = series;
     if !chart.markers.is_empty() {
         series.push(marker_series(chart, look, y_min, y_max));
+    }
+    if !chart.nights.is_empty() {
+        series.push(night_series(chart, look));
     }
     serde_json::json!({
         "animation": false,
@@ -172,7 +177,10 @@ pub fn history_option(
 /// Whether the loaded window carries nothing drawable: no points, no
 /// pair series, no band segments. `history_option` quiets the value
 /// axis for such a window, and the chart card shows a hint line so
-/// the empty frame reads as data, not breakage.
+/// the empty frame reads as data, not breakage. The night shading is
+/// context, not data — it deliberately does not count here (the hint
+/// "no readings" stays true, and a degenerate value range never
+/// widens for a tint that spans the full height anyway).
 #[must_use]
 pub fn window_is_empty(chart: &GrowHistory) -> bool {
     chart.series.points.is_empty()
@@ -368,6 +376,74 @@ fn marker_series(
     })
 }
 
+/// The series name the night shading travels under. An empty-data
+/// series never reaches the tooltip; the name exists for debugging
+/// and for the e2e selectors.
+pub const NIGHT_SERIES_NAME: &str = "Night";
+
+/// The night shading as its own silent back series: a `markArea` of
+/// full-height regions — each pair names only its x edges, so
+/// `ECharts` spans the whole plot height whatever the value range.
+/// The series carries no data and sits at `z` 0, under the readings
+/// line and the Target Band wash (both at the series default `z` 2),
+/// so the tint reads as a layer of the background, not a series of
+/// its own. The muted ink already carries 50 % alpha; the 0.16
+/// opacity tops it to ~8 % effective — flat tonal depth, no new hue,
+/// both themes (the Phase Accent Rule).
+fn night_series(chart: &GrowHistory, look: &ChartLook) -> serde_json::Value {
+    let regions: Vec<[serde_json::Value; 2]> = night_regions(chart)
+        .into_iter()
+        .map(|(start, end)| {
+            [
+                serde_json::json!({ "xAxis": start }),
+                serde_json::json!({ "xAxis": end }),
+            ]
+        })
+        .collect();
+    serde_json::json!({
+        "name": NIGHT_SERIES_NAME,
+        "type": "line",
+        "data": [],
+        "z": 0,
+        "silent": true,
+        "markArea": {
+            "silent": true,
+            "itemStyle": { "opacity": 0.16, "color": look.muted },
+            "data": regions,
+        },
+    })
+}
+
+/// The window's dark stretches as merged, window-clipped
+/// `[start, end)` epoch-ms pairs. Segments fully outside drop;
+/// unparseable bounds drop (the merge rule); butt-joined segments
+/// merge so no antialiasing seam cuts a continuous night. An
+/// unparseable window edge clips to nothing rather than drawing an
+/// unbounded region (the band rule).
+fn night_regions(chart: &GrowHistory) -> Vec<(i64, i64)> {
+    let Some((from, to)) = (window_ms(&chart.series.from)).zip(window_ms(&chart.series.to)) else {
+        return Vec::new();
+    };
+    let mut spans: Vec<(i64, i64)> = chart
+        .nights
+        .iter()
+        .filter_map(|night| {
+            let start = window_ms(&night.start)?.clamp(from, to);
+            let end = window_ms(&night.end)?.clamp(from, to);
+            (start < end).then_some((start, end))
+        })
+        .collect();
+    spans.sort_unstable();
+    let mut merged: Vec<(i64, i64)> = Vec::with_capacity(spans.len());
+    for (start, end) in spans {
+        match merged.last_mut() {
+            Some((_, last_end)) if start <= *last_end => *last_end = (*last_end).max(end),
+            _ => merged.push((start, end)),
+        }
+    }
+    merged
+}
+
 /// The x-axis bounds: the Chart window in epoch ms, so the axis always
 /// spans the full window. `null` bounds let `ECharts` auto-scale when
 /// the backend contract breaks (unparseable window edges).
@@ -385,6 +461,7 @@ mod tests {
     };
     use crate::api::{
         BandSegmentData, ChartPointData, ChartSeriesData, EventMarkerData, GrowHistory,
+        LightIntervalData,
     };
 
     /// Fixed test colours (the fallbacks the component probes for).
@@ -431,6 +508,7 @@ mod tests {
             compare: None,
             bands: Vec::new(),
             markers: Vec::new(),
+            nights: Vec::new(),
             degraded: false,
             bound: true,
         }
@@ -1165,5 +1243,170 @@ mod tests {
         assert_eq!(marker_label("flip"), "Flip 12/12");
         assert_eq!(marker_label("phase_change"), "Phase change");
         assert_eq!(marker_label("mystery"), "mystery");
+    }
+
+    // ── Night shading (ticket 05) ─────────────────────────────
+
+    /// A dark interval across `[start, end)`.
+    fn dark(start: &str, end: &str) -> LightIntervalData {
+        LightIntervalData {
+            start: start.to_owned(),
+            end: end.to_owned(),
+            on: false,
+        }
+    }
+
+    /// An Air-group sample with two dark stretches: the window's
+    /// first 20 minutes and its last 20 minutes, an on stretch
+    /// between (the mock staircase's shape, in miniature).
+    fn history_with_nights() -> GrowHistory {
+        let mut chart = sample_for_role("temperature");
+        chart.nights = vec![
+            dark("2026-11-16T00:00:00+00:00", "2026-11-16T00:20:00+00:00"),
+            dark("2026-11-16T00:40:00+00:00", "2026-11-16T01:00:00+00:00"),
+        ];
+        chart
+    }
+
+    #[test]
+    fn nights_render_as_a_silent_back_series_of_full_height_regions() {
+        let option = history_option(&history_with_nights(), &look(), &style("temperature"));
+        let series = option["series"].as_array().expect("series array");
+        assert_eq!(series.len(), 2, "the night series appends after the line");
+        let shade = &series[1];
+        assert_eq!(shade["name"], "Night");
+        assert_eq!(shade["type"], "line");
+        assert_eq!(shade["data"], serde_json::json!([]), "no points of its own");
+        assert_eq!(shade["silent"], true);
+        assert_eq!(
+            shade["z"], 0,
+            "the back layer: under the data and band wash"
+        );
+        let area = &shade["markArea"];
+        assert_eq!(area["silent"], true);
+        assert_eq!(area["itemStyle"]["color"], look().muted);
+        assert_eq!(area["itemStyle"]["opacity"], 0.16);
+        let regions = area["data"].as_array().expect("night regions");
+        assert_eq!(regions.len(), 2);
+        // Full-height regions name only the x edges — ECharts then
+        // spans the plot's whole height, whatever the value range.
+        for region in regions {
+            for edge in region.as_array().expect("region edge pair") {
+                let object = edge.as_object().expect("region edge object");
+                assert_eq!(object.len(), 1, "only the xAxis key: {edge}");
+                assert!(object.contains_key("xAxis"));
+            }
+        }
+        assert_eq!(
+            regions[0],
+            serde_json::json!([
+                { "xAxis": 1_794_787_200_000_i64 },
+                { "xAxis": 1_794_788_400_000_i64 }
+            ]),
+            "first dark stretch: [window start, 00:20)"
+        );
+        assert_eq!(
+            regions[1],
+            serde_json::json!([
+                { "xAxis": 1_794_789_600_000_i64 },
+                { "xAxis": 1_794_790_800_000_i64 }
+            ]),
+            "second dark stretch: [00:40, window end)"
+        );
+    }
+
+    #[test]
+    fn nights_clip_to_the_window_and_drop_what_fell_out() {
+        let mut chart = sample_for_role("temperature");
+        chart.nights = vec![
+            // A whole day before the window: nothing to draw.
+            dark("2026-11-15T12:00:00+00:00", "2026-11-15T13:00:00+00:00"),
+            // Overhangs both window edges: clamps to the edges.
+            dark("2026-11-15T23:30:00+00:00", "2026-11-16T00:10:00+00:00"),
+            // Unparseable bound: drops out, never panics.
+            LightIntervalData {
+                start: "not-a-timestamp".to_owned(),
+                end: "2026-11-16T00:50:00+00:00".to_owned(),
+                on: false,
+            },
+        ];
+        let option = history_option(&chart, &look(), &style("temperature"));
+        let regions = option["series"][1]["markArea"]["data"]
+            .as_array()
+            .expect("night regions");
+        assert_eq!(regions.len(), 1, "only the clamped stretch survives");
+        assert_eq!(
+            regions[0],
+            serde_json::json!([
+                { "xAxis": 1_794_787_200_000_i64 },
+                { "xAxis": 1_794_787_800_000_i64 }
+            ]),
+            "clamped to [window start, 00:10)"
+        );
+    }
+
+    #[test]
+    fn butt_joined_nights_merge_into_one_region() {
+        let mut chart = sample_for_role("temperature");
+        chart.nights = vec![
+            dark("2026-11-16T00:00:00+00:00", "2026-11-16T00:20:00+00:00"),
+            dark("2026-11-16T00:20:00+00:00", "2026-11-16T00:40:00+00:00"),
+        ];
+        let option = history_option(&chart, &look(), &style("temperature"));
+        let regions = option["series"][1]["markArea"]["data"]
+            .as_array()
+            .expect("night regions");
+        assert_eq!(regions.len(), 1, "one seam-free region, not two");
+        assert_eq!(
+            regions[0],
+            serde_json::json!([
+                { "xAxis": 1_794_787_200_000_i64 },
+                { "xAxis": 1_794_789_600_000_i64 }
+            ])
+        );
+    }
+
+    #[test]
+    fn night_shading_leaves_the_series_untouched_without_nights() {
+        let option = history_option(
+            &sample_for_role("temperature"),
+            &look(),
+            &style("temperature"),
+        );
+        let series = option["series"].as_array().expect("series array");
+        assert_eq!(series.len(), 1, "no nights, no extra series");
+    }
+
+    #[test]
+    fn night_shading_appends_after_the_marker_ticks() {
+        let mut chart = history_with_markers("temperature");
+        chart.nights = history_with_nights().nights;
+        let option = history_option(&chart, &look(), &style("temperature"));
+        let series = option["series"].as_array().expect("series array");
+        assert_eq!(series.len(), 3, "line, ticks, night");
+        assert_eq!(series[1]["name"], "Events");
+        assert_eq!(series[2]["name"], "Night");
+    }
+
+    #[test]
+    fn night_shading_alone_keeps_the_empty_window_honest() {
+        // Only nights, no readings and no bands: the value axis stays
+        // quiet (nights are context, not data — the hint line keeps
+        // telling the truth), the tint still draws, and the y range
+        // keeps its degenerate-window fallback.
+        let mut chart = sample_for_role("temperature");
+        chart.series.points = Vec::new();
+        chart.nights = history_with_nights().nights;
+        assert!(window_is_empty(&chart));
+        let option = history_option(&chart, &look(), &style("temperature"));
+        assert_eq!(option["yAxis"]["axisLabel"]["show"], false);
+        // The y range is exactly what the same window without nights
+        // gets: a tint spanning the full height never widens it.
+        let mut bare = sample_for_role("temperature");
+        bare.series.points = Vec::new();
+        let bare_option = history_option(&bare, &look(), &style("temperature"));
+        assert_eq!(option["yAxis"]["min"], bare_option["yAxis"]["min"]);
+        assert_eq!(option["yAxis"]["max"], bare_option["yAxis"]["max"]);
+        assert_eq!(option["series"][1]["name"], "Night");
     }
 }
