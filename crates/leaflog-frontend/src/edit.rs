@@ -15,7 +15,7 @@ use crate::ErrorIf;
 use crate::api;
 use crate::bindings::EntityBindings;
 use crate::grows::{GrowForm, empty_grow};
-use crate::i18n::{t, use_i18n};
+use crate::i18n::{t, t_string, use_i18n};
 use crate::light_cycle::LightCycleEditor;
 
 /// The `/grows/:id/edit` route: reads the path id and renders the
@@ -111,10 +111,7 @@ pub fn GrowEditPage(grow_id: Signal<String>) -> impl IntoView {
         let confirmed = leptos::web_sys::window()
             .and_then(|window| {
                 window
-                    .confirm_with_message(&format!(
-                        "Delete '{name}' with all its plants, log entries and photos? \
-                         This cannot be undone."
-                    ))
+                    .confirm_with_message(&t_string!(i18n, grow_edit.delete_confirm, name = name))
                     .ok()
             })
             .unwrap_or(false);
@@ -143,17 +140,18 @@ pub fn GrowEditPage(grow_id: Signal<String>) -> impl IntoView {
             <ErrorIf error />
             {move || {
                 grow.get().map_or_else(
-                    || view! { <p class="text-base-content/70">"Loading…"</p> }.into_any(),
+                    || view! { <p class="text-base-content/70">{t_string!(i18n, grow_edit.loading)}</p> }
+                        .into_any(),
                     |_| {
                         view! {
                             <form class="card bg-base-100 shadow-sm px-5 py-4 my-4" on:submit=save>
                                 <GrowForm draft />
                                 <div class="flex flex-wrap gap-2 mt-4">
                                     <button class="btn btn-primary btn-sm" type="submit">
-                                        "Save"
+                                        {t!(i18n, grows.save)}
                                     </button>
                                     <button class="btn btn-sm" type="button" on:click=cancel>
-                                        "Cancel"
+                                        {t!(i18n, grows.cancel)}
                                     </button>
                                 </div>
                             </form>
@@ -163,15 +161,14 @@ pub fn GrowEditPage(grow_id: Signal<String>) -> impl IntoView {
                                 photoperiod=grow_photoperiod
                                 bindings_epoch=Signal::from(bindings_epoch)
                             />
-                            <h3>"Danger zone"</h3>
+                            <h3>{t!(i18n, grow_edit.danger_heading)}</h3>
                             <div class="card bg-base-100 border border-error/30 px-5 py-4 my-2">
                                 <p class="text-base-content/70 text-sm">
-                                    "Deleting a grow takes its plants, log entries and photos \
-                                     with it. This cannot be undone."
+                                    {t!(i18n, grow_edit.danger_text)}
                                 </p>
                                 <button class="btn btn-error btn-outline btn-sm mt-3"
                                     on:click=delete_grow>
-                                    "Delete grow"
+                                    {t!(i18n, grow_edit.delete_grow)}
                                 </button>
                             </div>
                         }

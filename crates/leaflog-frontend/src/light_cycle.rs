@@ -2,8 +2,9 @@
 //! lights-on local time plus hours-on per lit phase. Empty fields
 //! keep the cited preset defaults (shown as placeholders, photoperiod
 //! aware); saving stores the override, reset clears it back to the
-//! defaults. The strings are plain English like every other form —
-//! no locale catalog exists yet (see docs/DECISIONS.md).
+//! defaults. Saving stores the override, reset clears it back to the
+//! defaults. All user-visible strings come from the locale catalogs
+//! (localisation ticket 03; D112).
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -16,7 +17,9 @@ use leaflog_core::light_cycle::{
 };
 
 use crate::api;
-use crate::phase_pick::phase_display;
+use crate::i18n::{Locale, t, t_string, use_i18n};
+use crate::labels::phase_label;
+use leptos_i18n::td_string;
 
 /// The four phase hour fields as raw input text, keyed like
 /// [`PhaseHoursInput`].
@@ -56,7 +59,11 @@ impl HoursText {
 /// blank field stays unset (`None`); text that is not a whole number
 /// is an error naming the fix (range checks stay with the API, whose
 /// messages name the phase and the accepted range).
-fn build_input(lights_on_text: &str, hours: &HoursText) -> Result<LightCycleInput, String> {
+fn build_input(
+    locale: Locale,
+    lights_on_text: &str,
+    hours: &HoursText,
+) -> Result<LightCycleInput, String> {
     let hour_field = |text: &str| -> Result<Option<i64>, String> {
         let trimmed = text.trim();
         if trimmed.is_empty() {
@@ -65,7 +72,7 @@ fn build_input(lights_on_text: &str, hours: &HoursText) -> Result<LightCycleInpu
         trimmed
             .parse::<i64>()
             .map(Some)
-            .map_err(|_| "Hours on must be whole numbers.".to_owned())
+            .map_err(|_| td_string!(locale, light_cycle.hours_whole).into_owned())
     };
     Ok(LightCycleInput {
         lights_on: (!lights_on_text.trim().is_empty()).then(|| lights_on_text.trim().to_owned()),
@@ -104,11 +111,15 @@ fn optional_field(hours: Option<u8>) -> String {
 /// rework, ticket 03): names the entity and the pattern learned from
 /// it, so the defaults' override status is visible. Display only —
 /// the learned values never reach the editable fields (ADR 0002).
-fn reality_caption(observed: &ObservedReality) -> String {
-    format!(
-        "Reality from: {} · learned {} · {} h",
-        observed.entity_id, observed.cycle.lights_on, observed.cycle.hours_on
+fn reality_caption(locale: Locale, observed: &ObservedReality) -> String {
+    td_string!(
+        locale,
+        light_cycle.reality,
+        entity = &observed.entity_id,
+        lights_on = &observed.cycle.lights_on,
+        hours = observed.cycle.hours_on
     )
+    .into_owned()
 }
 
 /// The Light Cycle editor form: one lights-on time input plus
@@ -124,6 +135,8 @@ pub fn LightCycleEditor(
     photoperiod: Signal<PhotoperiodType>,
     bindings_epoch: Signal<u64>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
+    let locale = i18n.get_locale();
     let lights_on = RwSignal::<String>::new(String::new());
     let hours = RwSignal::<HoursText>::new(HoursText::default());
     let stored = RwSignal::<bool>::new(false);
@@ -157,7 +170,7 @@ pub fn LightCycleEditor(
     // prevent_default first — see docs/DECISIONS.md D061.
     let save = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
-        let built = build_input(&lights_on.get(), &hours.get());
+        let built = build_input(locale, &lights_on.get(), &hours.get());
         match built {
             Ok(input) => {
                 let id = grow_id.get();
@@ -173,7 +186,7 @@ pub fn LightCycleEditor(
                             stored.set(true);
                             lights_on.set(time);
                             hours.set(fields);
-                            status.set(Some("Saved.".to_owned()));
+                            status.set(Some(t_string!(i18n, light_cycle.saved).into_owned()));
                         }
                         Err(failure) => status.set(Some(failure.message)),
                     }
@@ -191,7 +204,7 @@ pub fn LightCycleEditor(
                     stored.set(false);
                     lights_on.set(String::new());
                     hours.set(HoursText::default());
-                    status.set(Some("Reset to default.".to_owned()));
+                    status.set(Some(t_string!(i18n, light_cycle.reset_done).into_owned()));
                 }
                 Err(failure) => status.set(Some(failure.message)),
             }
@@ -199,22 +212,22 @@ pub fn LightCycleEditor(
     };
 
     view! {
-        <h3>"Light cycle"</h3>
+        <h3>{t!(i18n, light_cycle.heading)}</h3>
         <p class="text-base-content/70 text-sm">
-            "Empty fields use the cited preset defaults; hover a field for its source."
+            {t!(i18n, light_cycle.intro)}
         </p>
         {move || {
             observed.get().map(|reality| {
                 view! {
                     <p class="text-base-content/70 text-sm" data-testid="light-reality">
-                        {reality_caption(&reality)}
+                        {reality_caption(locale, &reality)}
                     </p>
                 }
             })
         }}
         <form class="flex flex-wrap gap-2 items-end my-2" on:submit=save>
             <label class="fieldset">
-                <span class="fieldset-label">"Lights on time (local)"</span>
+                <span class="fieldset-label">{t!(i18n, light_cycle.lights_on)}</span>
                 <input class="input input-sm" type="time" placeholder="06:00"
                     prop:value=move || lights_on.get()
                     on:input=move |ev| lights_on.set(event_target_value(&ev))
@@ -233,7 +246,7 @@ pub fn LightCycleEditor(
                             }
                         >
                             <span class="fieldset-label">
-                                {phase_display(phase)}" hours on"
+                                {td_string!(locale, light_cycle.hours_on, phase = phase_label(locale, phase))}
                             </span>
                             <input class="input input-sm w-24" type="number"
                                 prop:placeholder=move || {
@@ -252,10 +265,10 @@ pub fn LightCycleEditor(
                     }
                 })
                 .collect::<Vec<_>>()}
-            <button class="btn btn-sm btn-primary self-end" type="submit">"Apply cycle"</button>
+            <button class="btn btn-sm btn-primary self-end" type="submit">{t!(i18n, light_cycle.apply)}</button>
             <Show when=move || stored.get() fallback=|| ()>
                 <button class="btn btn-sm btn-ghost self-end" type="button" on:click=reset>
-                    "Reset to default"
+                    {t!(i18n, light_cycle.reset)}
                 </button>
             </Show>
             {move || {
@@ -270,6 +283,7 @@ pub fn LightCycleEditor(
 #[cfg(test)]
 mod tests {
     use super::{HoursText, build_input, fields_of};
+    use crate::i18n::Locale;
     use leaflog_core::light_cycle::{ClockTime, LightCycle, PhaseHours};
 
     #[test]
@@ -280,7 +294,7 @@ mod tests {
             vegetative: "20".to_owned(),
             flower: "24".to_owned(),
         };
-        let input = build_input("07:30", &hours).unwrap();
+        let input = build_input(Locale::en, "07:30", &hours).unwrap();
         assert_eq!(input.lights_on.as_deref(), Some("07:30"));
         assert_eq!(input.hours_on.germination, None);
         assert_eq!(input.hours_on.seedling, None);
@@ -294,19 +308,19 @@ mod tests {
             flower: "12.5".to_owned(),
             ..HoursText::default()
         };
-        let error = build_input("06:00", &hours).unwrap_err();
+        let error = build_input(Locale::en, "06:00", &hours).unwrap_err();
         assert_eq!(error, "Hours on must be whole numbers.");
 
         let letters = HoursText {
             vegetative: "many".to_owned(),
             ..HoursText::default()
         };
-        assert!(build_input("", &letters).is_err());
+        assert!(build_input(Locale::en, "", &letters).is_err());
     }
 
     #[test]
     fn an_all_blank_form_sends_the_empty_cycle() {
-        let input = build_input("", &HoursText::default()).unwrap();
+        let input = build_input(Locale::en, "", &HoursText::default()).unwrap();
         assert_eq!(input.lights_on, None);
         let cycle = input.validate().unwrap();
         assert_eq!(cycle, LightCycle::default());
@@ -340,7 +354,7 @@ mod tests {
             },
         };
         assert_eq!(
-            super::reality_caption(&reality),
+            super::reality_caption(Locale::en, &reality),
             "Reality from: switch.grow_led · learned 06:00 · 18 h"
         );
     }
