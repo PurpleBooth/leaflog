@@ -58,7 +58,9 @@ pub fn init_parent_theme_match() {
     };
     let init = web_sys::MutationObserverInit::new();
     init.set_attributes(true);
-    init.set_attribute_filter(&JsValue::from_str("style"));
+    // The filter wants a sequence; one name in a `js_sys::Array` fits.
+    let attribute_filter = js_sys::Array::of1(&JsValue::from_str("style"));
+    init.set_attribute_filter(attribute_filter.as_ref());
     if observer.observe_with_options(&root, &init).is_err() {
         return;
     }
@@ -81,10 +83,16 @@ fn parent_window() -> Option<web_sys::Window> {
 /// cross-origin (sandbox tightening or a foreign host page): the
 /// `document` access throws there, which `Reflect::get` reports as
 /// `Err` instead of a trap.
+///
+/// The property chain is walked reflectively because the parent
+/// document belongs to another realm: `instanceof` (and therefore
+/// `dyn_into`) would reject it even same-origin. The unchecked cast is
+/// safe for both call sites — `getComputedStyle` and the mutation
+/// observer dispatch on the target's internal slots, not on realm.
 fn parent_root_element(parent: &web_sys::Window) -> Option<web_sys::Element> {
     let document = Reflect::get(parent.as_ref(), &JsValue::from_str("document")).ok()?;
-    let document = document.dyn_into::<web_sys::Document>().ok()?;
-    document.document_element()
+    let root = Reflect::get(&document, &JsValue::from_str("documentElement")).ok()?;
+    (!root.is_null() && !root.is_undefined()).then(|| web_sys::Element::from(root))
 }
 
 /// Reads the HA theme variables off the parent root's computed style.
@@ -112,9 +120,15 @@ fn read_parent_theme() -> Option<HaTheme> {
 /// document's root element: `body` sits outside the app mount div, so
 /// the root is the only inline override point that covers everything.
 fn apply_adopted_theme(adopted: Option<&theme::AdoptedTheme>) {
-    let Some(window) = web_sys::window() else { return };
-    let Some(document) = window.document() else { return };
-    let Some(root) = document.document_element() else { return };
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let Some(document) = window.document() else {
+        return;
+    };
+    let Some(root) = document.document_element() else {
+        return;
+    };
     let Ok(root) = root.dyn_into::<web_sys::HtmlHtmlElement>() else {
         return;
     };
