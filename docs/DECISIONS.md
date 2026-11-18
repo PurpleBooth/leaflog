@@ -74,6 +74,87 @@ draft semantics the chip row had (D069) and moves focus onto the card.
 
 ---
 
+## 2026-11-18 — HA theme matching (ticket 07, grow-page rework)
+
+### D100: the grow app wears the parent HA theme — computed-style read, daisyUI oklch overrides, silent fallback
+
+Leaflog adopts the grower's Home Assistant frontend theme inside the
+ingress iframe. Mechanism: HA's own `applyThemesOnElement` writes the
+live theme as inline custom properties on the parent
+`document.documentElement`, so the app reads the parent root's
+**computed** style (that resolves HA's `var()` indirections like
+`--primary-color: var(--ha-color-primary-40)`) and maps:
+
+- `--primary-color`/`--accent-color` → `--color-primary`/`--color-accent`,
+- `--card-background-color` → `--color-base-100`,
+- `--primary-background-color` → `--color-base-200`,
+- `--divider-color` (alpha flattened over the page background) →
+  `--color-base-300`,
+- `--primary-text-color` → `--color-base-content`,
+- `--success/-warning/-error/-info-color` → the same-named daisyUI slots,
+  each individually optional — a missing one keeps the built-in value.
+
+Content (foreground) colours for primary use HA's `--text-primary-color`
+when present, otherwise HA's own contrast rule (white vs `#212121` at a
+6:1 threshold against the fill); state and accent contents always use the
+contrast rule. HA's `--secondary-background-color` has no clean daisyUI
+counterpart (the secondary/neutral slots are barely used in the app, one
+chart legend probe) and stays unmapped — leftover built-ins are accepted.
+
+The overrides are written as inline `oklch(...)` custom properties on the
+app's own root element (`body` sits outside the mount div, so the root is
+the only override point that covers it) plus a `color-scheme` derived
+from the page background's lightness; dark/light follows the parent
+implicitly, and there is no theme picker or toggle anywhere. A
+`MutationObserver` on the parent root's `style` attribute re-runs the
+read+map, so a theme or dark-mode flip in HA re-dresses the app live
+without a reload. Colour math (hex/rgb/rgba parsing, alpha flattening,
+WCAG contrast, Ottosson rgb→oklch) lives in `leaflog-core::theme` as pure
+unit-tested functions; the frontend only bridges DOM and applies.
+
+The fallback to the built-in theme is mandatory and silent: no parent
+(standalone), a cross-origin or sandboxed parent, or any missing or
+unparsable member of the six core variables (primary, accent, primary
+background, card background, divider, primary text) leaves the built-in
+palette untouched — including clearing previously applied overrides when
+a re-read degrades. Fixing that fallback surfaced a latent wiring gap
+from D064: the built-in light theme had never actually applied, because
+the `--default` flag sat on the daisyUI `themes:` line where custom
+themes ignore it — the light palette only existed under
+`[data-theme="leaflog"]`, which nothing sets, so light-preference
+browsers rendered with no theme variables at all (dark worked via its
+`prefersdark` media block). The fix is `default: true;` on the light
+custom-theme block in `tailwind.css`, emitting it on `:where(:root)`;
+the `prefersdark` dark block still wins for dark-preference browsers
+(higher specificity, later in the file).
+
+### D101: the parent-theme read rides an undocumented HA surface — sandbox or realm changes break adoption silently
+
+Everything D100 reads is undocumented surface. The HA frontend docs
+describe theming (variables, `applyThemesOnElement`) but nothing
+promises that the ingress iframe's parent stays same-origin-readable:
+the current `ha-panel-app.ts` (re-checked 2026-11-18 at
+https://contributors.home-assistant.io/frontend/architecture/theming/ and
+the panel source) mounts ingress apps in a plain same-origin iframe with
+no sandbox attribute — the ticket's "sandboxed allow-same-origin" claim
+is already outdated — while an in-source comment notes "CSS variables
+don't cross the iframe boundary", which is why a JS computed-style read
+is needed at all. Any future HA release could add `sandbox` without
+`allow-same-origin`, split origins, or reshuffle the `--*-color` names,
+and every one of those degrades to exactly the documented fallback:
+built-in palette, no user-visible state, no console noise. The same
+fragility guard covers the DOM detail the implementation leans on: the
+parent document lives in another realm, so `instanceof`-based casting
+(wasm-bindgen's `dyn_into`) rejects it even same-origin — the read walks
+`document`→`documentElement` reflectively and unchecked-casts, which
+stays correct because `getComputedStyle` and `MutationObserver.observe`
+dispatch on internal slots, not realm. The dev-only `/theme-harness`
+page (never in `dist`, gated to `Mode::Dev`) is the regression seam for
+all three paths — adoption, live re-adoption, fallback — and any HA-side
+breakage shows up there as a red e2e, not as a silently unthemed app.
+
+---
+
 ## 2026-11-18 — the Germination pick owns the start date (ticket 04)
 
 ### D098: recompute, not migrate — the pick re-dates stored grow days in one transaction

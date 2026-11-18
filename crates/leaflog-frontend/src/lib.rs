@@ -43,6 +43,7 @@ mod live;
 mod onboarding;
 mod phase_pick;
 mod quick_add;
+mod theme;
 
 use edit::GrowEditRoute;
 use grows::{GrowsPage, GrowsRoute, Landing};
@@ -91,6 +92,7 @@ pub fn route_href(path: &str) -> String {
 /// Module entry: mounts the app (called by `wasm-bindgen` on load).
 #[wasm_bindgen(start)]
 pub fn start_app() {
+    theme::init_parent_theme_match();
     mount_to_body(App);
 }
 

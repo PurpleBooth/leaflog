@@ -22,6 +22,7 @@
 /* Light: paper-white surface on a soft green-tinged page. */
 @plugin "./tailwind/daisyui-theme.mjs" {
   name: "leaflog";
+  default: true;
   color-scheme: light;
   --color-base-100: #ffffff;
   --color-base-200: #f4f7f2;
