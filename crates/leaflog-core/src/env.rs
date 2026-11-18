@@ -535,6 +535,10 @@ pub struct LampAdvice {
     pub confidence: &'static str,
     /// Plain-English explanation.
     pub why: String,
+    /// Stable codes for each sentence in `why`, in order. The frontend
+    /// localises advice from these codes (`env.lamp_*` catalog keys);
+    /// `why` stays as the English fallback for unknown codes.
+    pub why_codes: Vec<&'static str>,
 }
 
 /// The minimum safe height floor (spec §4.7: default 10–12 in for
@@ -562,12 +566,14 @@ pub fn advise_lamp(input: &LampInput) -> LampAdvice {
     let mut height = range;
     let mut dim_pct: Option<u8> = None;
     let mut why = String::new();
+    let mut why_codes: Vec<&'static str> = Vec::new();
 
     // Dimming rule: ~50% dim lets the lamp hang ~30% closer.
     if input.dimmable && input.dim_pct <= 50 {
         height.min_in *= 0.7;
         height.max_in *= 0.7;
         why.push_str("Dimmed to 50%: the lamp can hang about 30% closer. ");
+        why_codes.push("dimmed_closer");
     }
 
     // Temperature rule: canopy above ~29.4 °C (85 °F) → raise ~2 in or dim to ~80%.
@@ -577,10 +583,12 @@ pub fn advise_lamp(input: &LampInput) -> LampAdvice {
             if input.dimmable {
                 dim_pct = Some(80);
                 why.push_str("Canopy is hot: dim to ~80% or raise ~2 in. ");
+                why_codes.push("canopy_hot_dim");
             } else {
                 height.min_in += 2.0;
                 height.max_in += 2.0;
                 why.push_str("Canopy is hot: raise the lamp ~2 in. ");
+                why_codes.push("canopy_hot_raise");
             }
         }
     }
@@ -590,6 +598,7 @@ pub fn advise_lamp(input: &LampInput) -> LampAdvice {
         height.min_in += 2.0;
         height.max_in += 4.0;
         why.push_str("Stretch logged: raise 2–4 in as plants grow. ");
+        why_codes.push("stretch_raise");
     }
 
     // Light-stress tags (bleaching/canoeing): +2–4 in or dim to 70–80%.
@@ -597,10 +606,12 @@ pub fn advise_lamp(input: &LampInput) -> LampAdvice {
         if input.dimmable {
             dim_pct = Some(70);
             why.push_str("Bleaching or canoeing: dim to ~70–80% and re-check after a week. ");
+            why_codes.push("stress_dim");
         } else {
             height.min_in += 2.0;
             height.max_in += 4.0;
             why.push_str("Bleaching or canoeing: raise 2–4 in and re-check after a week. ");
+            why_codes.push("stress_raise");
         }
     }
 
@@ -611,8 +622,10 @@ pub fn advise_lamp(input: &LampInput) -> LampAdvice {
     // Light-tolerance caution.
     if input.light_tolerance == Tolerance::Sensitive {
         why.push_str("This plant is light-sensitive: err toward the higher end. ");
+        why_codes.push("light_sensitive");
     } else if input.light_tolerance == Tolerance::Tolerant {
         why.push_str("This plant is light-tolerant: the lower end may work. ");
+        why_codes.push("light_tolerant");
     }
 
     // Target PPFD and DLI (approximate from the class).
@@ -634,10 +647,12 @@ pub fn advise_lamp(input: &LampInput) -> LampAdvice {
 
     if why.is_empty() {
         why = "Set the distance by stage, then fine-tune with the dimmer. These are starting points — a PAR meter calibrates them.".into();
+        why_codes.push("default_starting_points");
     } else {
         why.push_str(
             "These are starting points — a PAR meter or a PPFD-meter log entry calibrates them.",
         );
+        why_codes.push("starting_points");
     }
 
     LampAdvice {
@@ -647,6 +662,7 @@ pub fn advise_lamp(input: &LampInput) -> LampAdvice {
         dli,
         confidence: "low",
         why,
+        why_codes,
     }
 }
 
@@ -659,8 +675,12 @@ pub fn advise_lamp(input: &LampInput) -> LampAdvice {
 pub struct CoachTip {
     /// What to check or do.
     pub title: String,
-    /// Why it matters (with a source note).
+    /// Why it matters.
     pub why: String,
+    /// Stable code naming the tip (frontend localisation key suffix,
+    /// e.g. `vpd_band`, `coco_fertigate`, `curing_jars`). Unknown codes
+    /// fall back to the English `title`/`why`.
+    pub code: &'static str,
 }
 
 /// Generates phase-coach tips for the current state (spec §4.10).
@@ -673,33 +693,46 @@ pub fn coach_tips(phase: Phase, substrate_label: &str, light_on: bool) -> Vec<Co
     // VPD falls on its own as the room cools, so the fix is not "run
     // higher" — hold near the day band and watch the RH spike.
     tips.push(CoachTip {
-        title: format!("Keep VPD {vpd_min:.1}–{vpd_max:.1} kPa{}", if light_on { " (lights on)" } else { " (lights off: keep close to daytime; watch the RH spike)" }),
-        why: "VPD drives transpiration and nutrient uptake; the band shifts by phase and lights state (spec §5.2).".to_owned(),
+        title: format!(
+            "Keep VPD {vpd_min:.1}–{vpd_max:.1} kPa{}",
+            if light_on {
+                " (lights on)"
+            } else {
+                " (lights off: keep close to daytime; watch the RH spike)"
+            }
+        ),
+        why: "VPD drives transpiration and nutrient uptake; the band shifts by phase and lights state."
+            .to_owned(),
+        code: "vpd_band",
     });
 
     match substrate_label {
         "coco" => {
             tips.push(CoachTip {
                 title: "Fertigate at least once daily with 10–20% runoff".to_owned(),
-                why: "In coco, keep the media wet and run 10–20% runoff to stop salt build-up (spec §4.8).".to_owned(),
+                why: "In coco, keep the media wet and run 10–20% runoff to stop salt build-up."
+                    .to_owned(),
+                code: "coco_fertigate",
             });
             tips.push(CoachTip {
                 title: "Check runoff EC every feed".to_owned(),
-                why: "Compare input vs runoff EC: far above input (≥1000 ppm) suggests a flush (spec §5.3).".to_owned(),
+                why: "Compare input vs runoff EC: far above input (≥1000 ppm) suggests a flush."
+                    .to_owned(),
+                code: "coco_runoff_ec",
             });
         }
         "hydro" => {
             tips.push(CoachTip {
                 title: "Log reservoir pH and EC trends".to_owned(),
-                why: "In hydro, reservoir management replaces soil wet–dry cycles (spec §5.3)."
-                    .to_owned(),
+                why: "In hydro, reservoir management replaces soil wet–dry cycles.".to_owned(),
+                code: "hydro_reservoir",
             });
         }
         _ => {
             tips.push(CoachTip {
                 title: "Water when the top 1–2 in of soil is dry".to_owned(),
-                why: "Soil prefers a wet–dry cycle; overwatering suffocates roots (spec §5.3)."
-                    .to_owned(),
+                why: "Soil prefers a wet–dry cycle; overwatering suffocates roots.".to_owned(),
+                code: "soil_wet_dry",
             });
         }
     }
@@ -708,33 +741,35 @@ pub fn coach_tips(phase: Phase, substrate_label: &str, light_on: bool) -> Vec<Co
         Phase::Flower => {
             tips.push(CoachTip {
                 title: "Lower RH in late flower to protect from mould".to_owned(),
-                why: "Late flower RH above ~62% at week 7+ is a mould risk (spec §4.9).".to_owned(),
+                why: "Late flower RH above ~62% at week 7+ is a mould risk.".to_owned(),
+                code: "flower_late_rh",
             });
             tips.push(CoachTip {
                 title: "Raise the lamp 2–4 in during stretch".to_owned(),
-                why:
-                    "Plants can double in height during the first 1–3 weeks of flower (spec §4.7)."
-                        .to_owned(),
+                why: "Plants can double in height during the first 1–3 weeks of flower."
+                    .to_owned(),
+                code: "flower_stretch",
             });
         }
         Phase::Seedling => {
             tips.push(CoachTip {
                 title: "Keep RH 60–80% for seedlings".to_owned(),
-                why: "Young roots can't drink enough; high RH keeps them hydrated (spec §5.2)."
-                    .to_owned(),
+                why: "Young roots can't drink enough; high RH keeps them hydrated.".to_owned(),
+                code: "seedling_rh",
             });
         }
         Phase::Drying => {
             tips.push(CoachTip {
                 title: "Dry at 60–68 °F, RH 50% then ~55% until stems snap".to_owned(),
-                why: "Slow, dark drying preserves terpenes (spec §5.2).".to_owned(),
+                why: "Slow, dark drying preserves terpenes.".to_owned(),
+                code: "drying_conditions",
             });
         }
         Phase::Curing => {
             tips.push(CoachTip {
                 title: "Jar at 58–62% RH; burp daily week 1, every 2–3 days week 2".to_owned(),
-                why: "Curing at the right RH smooths the smoke and develops aroma (spec §5.2)."
-                    .to_owned(),
+                why: "Curing at the right RH smooths the smoke and develops aroma.".to_owned(),
+                code: "curing_jars",
             });
         }
         _ => {}
@@ -1088,6 +1123,51 @@ mod tests {
         assert!(advice.why.contains("Bleaching") || advice.why.contains("dim"));
     }
 
+    /// Localisation contract (loc ticket 02): every advice sentence
+    /// carries a stable code, the codes line up one-to-one with the
+    /// sentences, and no UI string embeds a spec citation (removed by
+    /// the owner during keying).
+    #[test]
+    fn lamp_advice_codes_track_the_sentences() {
+        let input = LampInput {
+            real_watts: 330,
+            dimmable: true,
+            dim_pct: 40,
+            canopy_temperature_c: Some(31.0),
+            phase: Phase::Flower,
+            light_tolerance: Tolerance::Sensitive,
+            stretch_logged: true,
+            stress_tags_logged: true,
+        };
+        let advice = advise_lamp(&input);
+        assert_eq!(advice.why_codes.len(), 6);
+        assert_eq!(
+            advice.why_codes,
+            vec![
+                "dimmed_closer",
+                "canopy_hot_dim",
+                "stretch_raise",
+                "stress_dim",
+                "light_sensitive",
+                "starting_points",
+            ]
+        );
+
+        let bare = advise_lamp(&LampInput {
+            real_watts: 330,
+            dimmable: true,
+            dim_pct: 100,
+            canopy_temperature_c: None,
+            phase: Phase::Vegetative,
+            light_tolerance: Tolerance::Average,
+            stretch_logged: false,
+            stress_tags_logged: false,
+        });
+        assert_eq!(bare.why_codes, vec!["default_starting_points"]);
+
+        assert!(!advice.why.contains("spec §"), "no citations in UI strings");
+    }
+
     // --- Phase coach (spec §4.10) ---
 
     #[test]
@@ -1104,6 +1184,42 @@ mod tests {
         let tips = coach_tips(Phase::Flower, "soil", true);
         assert!(tips.iter().any(|t| t.title.contains("mould")));
         assert!(tips.iter().any(|t| t.title.contains("stretch")));
+    }
+
+    /// Localisation contract (loc ticket 02): every tip names its
+    /// catalog key via a stable code, the VPD tip's code is stable
+    /// across light states, and no why carries a spec citation.
+    #[test]
+    fn coach_tips_carry_codes_without_citations() {
+        for (phase, substrate, light_on) in [
+            (Phase::Germination, "soil", true),
+            (Phase::Seedling, "coco", false),
+            (Phase::Vegetative, "hydro", true),
+            (Phase::Flower, "soil", true),
+            (Phase::Drying, "soil", false),
+            (Phase::Curing, "coco", true),
+        ] {
+            let tips = coach_tips(phase, substrate, light_on);
+            assert!(
+                !tips.is_empty(),
+                "every phase/substrate combination yields tips"
+            );
+            for tip in &tips {
+                assert!(!tip.code.is_empty(), "every tip carries a code");
+                assert!(!tip.why.contains("spec §"), "no citations in UI strings");
+            }
+        }
+        let day = coach_tips(Phase::Vegetative, "soil", true)
+            .into_iter()
+            .find(|tip| tip.code == "vpd_band")
+            .expect("VPD tip always present");
+        let night = coach_tips(Phase::Vegetative, "soil", false)
+            .into_iter()
+            .find(|tip| tip.code == "vpd_band")
+            .expect("VPD tip always present");
+        assert_eq!(day.code, night.code);
+        assert!(day.title.contains("(lights on)"));
+        assert!(night.title.contains("(lights off:"));
     }
 
     /// The tip selection by light state (ticket 08): lights-on keeps

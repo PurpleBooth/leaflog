@@ -235,6 +235,9 @@ pub struct CoachResponse {
     pub tips: Vec<CoachTip>,
     /// Recommended equipment categories.
     pub equipment_suggestions: Vec<String>,
+    /// The light state the tips were computed for, so the frontend can
+    /// localise the VPD tip's lights-on/lights-off wording.
+    pub light_on: bool,
 }
 
 /// Reads one raw light state the way the chart staircase does:
@@ -354,6 +357,7 @@ async fn grow_coach(
                 phase: phase.label().to_owned(),
                 tips,
                 equipment_suggestions: equipment,
+                light_on,
             })
         })
         .await?;
