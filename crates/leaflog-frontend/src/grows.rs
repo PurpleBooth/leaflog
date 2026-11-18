@@ -29,7 +29,6 @@ use crate::chart::{
 use crate::dashboard::EnvDashboard;
 use crate::feed::FeedPanel;
 use crate::gantt::GanttTimeline;
-use crate::light_cycle::LightCycleEditor;
 use crate::live::LivePanel;
 use crate::route_href;
 
@@ -212,7 +211,9 @@ fn pick_landing_grow(grows: &[Grow]) -> String {
 }
 
 /// The grow overview page: environment, forecast, phase picker, feed
-/// schedule, chips, timeline, plants and photos.
+/// schedule, chips, timeline, plants and photos. Configuration lives
+/// on the edit page (grow-page rework ticket 01), reached through the
+/// header's Edit control.
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
 pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
@@ -225,9 +226,6 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
     let chip = RwSignal::<Option<ActionType>>::new(None);
     let draft = RwSignal::<ActionInput>::new(empty_action());
     let upload_note = RwSignal::<Option<String>>::new(None);
-    let edit_open = RwSignal::<bool>::new(false);
-    let grow_draft = RwSignal::<GrowInput>::new(empty_grow());
-    let deleted = RwSignal::<bool>::new(false);
 
     // The phase picker (D073): the grow's photoperiod toggle decides
     // the Flowering mapping — a photoperiod grow records the flip, an
@@ -288,30 +286,6 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
         });
     };
 
-    // Opens the edit form pre-filled from the payload the header
-    // cloned out of the current grow.
-    let start_edit = move |payload: &GrowInput| {
-        grow_draft.set(payload.clone());
-        edit_open.set(true);
-    };
-
-    // prevent_default first — see docs/DECISIONS.md D061.
-    let save_edit = move |ev: leptos::ev::SubmitEvent| {
-        ev.prevent_default();
-        let id = grow_id.get();
-        spawn_local(async move {
-            let input = grow_draft.get();
-            match api::put::<GrowInput, Grow>(&format!("api/grows/{id}"), &input).await {
-                Ok(_) => {
-                    edit_open.set(false);
-                    error.set(None);
-                    refresh();
-                }
-                Err(failure) => error.set(Some(failure.message)),
-            }
-        });
-    };
-
     // Recording a phase pick writes the transition event (D073); the
     // forecast, bands, coach, lamp advice and day-count target follow
     // on the next refresh.
@@ -340,32 +314,6 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                     error.set(None);
                     refresh();
                 }
-                Err(failure) => error.set(Some(failure.message)),
-            }
-        });
-    };
-
-    // Deleting a grow takes its plants, log entries and photos with it,
-    // so it asks for confirmation first.
-    let delete_grow = move |_ev: leptos::ev::MouseEvent| {
-        let id = grow_id.get();
-        let name = grow.get().map(|current| current.name).unwrap_or_default();
-        let confirmed = leptos::web_sys::window()
-            .and_then(|window| {
-                window
-                    .confirm_with_message(&format!(
-                        "Delete '{name}' with all its plants, log entries and photos? \
-                         This cannot be undone."
-                    ))
-                    .ok()
-            })
-            .unwrap_or(false);
-        if !confirmed {
-            return;
-        }
-        spawn_local(async move {
-            match api::delete(&format!("api/grows/{id}")).await {
-                Ok(()) => deleted.set(true),
                 Err(failure) => error.set(Some(failure.message)),
             }
         });
@@ -420,13 +368,6 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
 
     view! {
         <section class="pb-12">
-            <Show when=move || deleted.get()>
-                // The plain route path: unlike an <A href>, Redirect
-                // routes through navigate(), which resolves the path
-                // against the router base itself — a base-prefixed
-                // path would double the ingress prefix.
-                <leptos_router::components::Redirect path="/grows" />
-            </Show>
             {move || {
                 grow.get().map_or_else(
                     || ().into_any(),
@@ -468,18 +409,16 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                                 </span>
                                             })}
                                     </div>
-                                    {let for_edit = GrowInput::from_grow(&current);
-                                    view! {
-                                        <div class="flex flex-wrap gap-2">
-                                            <button class="btn btn-sm" on:click=move |_| {
-                                                start_edit(&for_edit);
-                                            }>"Edit grow"</button>
-                                            <button class="btn btn-error btn-outline btn-sm"
-                                                on:click=delete_grow>
-                                                "Delete grow"
-                                            </button>
-                                        </div>
-                                    }}
+                                    // Configuration lives on the edit page
+                                    // (grow-page rework ticket 01): the
+                                    // header control is a link there.
+                                    <div class="flex flex-wrap gap-2">
+                                        <A href=route_href(&format!("/grows/{}/edit", current.id))
+                                            attr:class="btn btn-sm"
+                                        >
+                                            "Edit grow"
+                                        </A>
+                                    </div>
                                 </div>
                                 <p class="text-base-content/70">"Started "{current.started_on}</p>
                                 {current.notes.map(|notes| view! {
@@ -493,19 +432,6 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             }}
 
             <ErrorIf error />
-
-            <Show when=move || edit_open.get()>
-                <form class="card bg-base-100 shadow-sm px-5 py-4 my-4" on:submit=save_edit>
-                    <h3>"Edit grow"</h3>
-                    <GrowForm draft=grow_draft />
-                    <div class="flex flex-wrap gap-2 mt-4">
-                        <button class="btn btn-primary btn-sm" type="submit">"Save"</button>
-                        <button class="btn btn-sm" type="button" on:click=move |_| edit_open.set(false)>
-                            "Cancel"
-                        </button>
-                    </div>
-                </form>
-            </Show>
 
             <h3>"Forecast"</h3>
             <form id="phase-picker" class="flex flex-wrap gap-2 items-end my-2" on:submit=save_pick>
@@ -543,8 +469,6 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                 </button>
             </form>
             <GanttTimeline grow_id=grow_id.get() />
-
-            <LightCycleEditor grow_id=grow_id photoperiod=grow_photoperiod />
 
             <EnvDashboard grow_id=grow_id.get() />
             // Every chart card renders through the ECharts option-builder
@@ -741,11 +665,11 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
 
 /// The create/edit form fields for one grow (spec §4.2): identity,
 /// strain label, photoperiod, substrate, start date, status and
-/// notes. Used by both the grows page (create) and the grow detail
-/// page (edit).
+/// notes. Used by the grows page (create) and the grow edit page
+/// (edit, grow-page rework ticket 01).
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
-fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
+pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
     view! {
         <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
             <label class="fieldset">
@@ -1156,7 +1080,7 @@ where
 }
 
 /// A blank grow draft.
-fn empty_grow() -> GrowInput {
+pub fn empty_grow() -> GrowInput {
     GrowInput {
         name: String::new(),
         feed_template_id: None,
