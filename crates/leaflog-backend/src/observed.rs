@@ -58,6 +58,45 @@ impl ObservedCache {
             .expect("observed-reality cache poisoned")
             .remove(grow_id);
     }
+
+    /// The cached derivation for a grow, when the entry is fresh and
+    /// still bound to `entity_id`. The inner `Option` is the cached
+    /// answer itself (`None` answers are cached too).
+    fn fresh(&self, grow_id: &str, entity_id: &str) -> Fresh {
+        let hit = self.entries.lock().ok().and_then(|entries| {
+            let entry = entries.get(grow_id)?;
+            (entry.entity_id == entity_id && entry.computed_at.elapsed() < CACHE_TTL)
+                .then_some(entry.cycle)
+        });
+        hit.map_or(Fresh::Miss, Fresh::Hit)
+    }
+
+    /// Stores a derivation for a grow (possibly `None`). A poisoned
+    /// map skips the store: the next GET derives again.
+    fn store(&self, grow_id: &str, entity_id: &str, cycle: Option<ObservedCycle>) {
+        if let Ok(mut entries) = self.entries.lock() {
+            entries.insert(
+                grow_id.to_owned(),
+                Entry {
+                    entity_id: entity_id.to_owned(),
+                    cycle,
+                    computed_at: Instant::now(),
+                },
+            );
+        }
+    }
+}
+
+/// A cache lookup: a miss, or the cached answer — which may itself
+/// be a learned `None` ("no usable history"), cached like any other
+/// answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Fresh {
+    /// Derive again: no entry, an expired one, a changed binding,
+    /// or a poisoned map.
+    Miss,
+    /// The cached answer for the current binding.
+    Hit(Option<ObservedCycle>),
 }
 
 impl Default for ObservedCache {
@@ -95,14 +134,8 @@ pub async fn observed_for(
         return None;
     };
 
-    if let Ok(entries) = state.observed.entries.lock()
-        && let Some(entry) = entries.get(grow_id)
-        && entry.entity_id == entity_id
-        && entry.computed_at.elapsed() < CACHE_TTL
-    {
-        return entry
-            .cycle
-            .map(|cycle| ObservedReality { entity_id, cycle });
+    if let Fresh::Hit(cycle) = state.observed.fresh(grow_id, &entity_id) {
+        return cycle.map(|cycle| ObservedReality { entity_id, cycle });
     }
 
     let derived = match state.ha.history(&entity_id, OBSERVED_WINDOW_HOURS).await {
@@ -123,15 +156,66 @@ pub async fn observed_for(
         // block until HA answers again.
         Err(_) => None,
     };
-    if let Ok(mut entries) = state.observed.entries.lock() {
-        entries.insert(
-            grow_id.to_owned(),
-            Entry {
-                entity_id: entity_id.clone(),
-                cycle: derived,
-                computed_at: Instant::now(),
-            },
+    state.observed.store(grow_id, &entity_id, derived);
+    derived.map(|cycle| ObservedReality { entity_id, cycle })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CACHE_TTL, Fresh, ObservedCache};
+    use leaflog_core::light_cycle::{ClockTime, ObservedCycle};
+    use std::time::{Duration, Instant};
+
+    /// An 18 h cycle switching on at `hour`:00, for cache round-trips.
+    fn cycle(hour: u8) -> ObservedCycle {
+        ObservedCycle {
+            lights_on: ClockTime { hour, minute: 0 },
+            hours_on: 18,
+        }
+    }
+
+    #[test]
+    fn fresh_serves_a_matching_fresh_entry() {
+        let cache = ObservedCache::new();
+        cache.store("g1", "switch.grow_led", Some(cycle(6)));
+        assert_eq!(
+            cache.fresh("g1", "switch.grow_led"),
+            Fresh::Hit(Some(cycle(6)))
+        );
+        assert_eq!(
+            cache.fresh("g1", "switch.other"),
+            Fresh::Miss,
+            "a different entity is a miss"
+        );
+        assert_eq!(
+            cache.fresh("g2", "switch.grow_led"),
+            Fresh::Miss,
+            "an unknown grow is a miss"
         );
     }
-    derived.map(|cycle| ObservedReality { entity_id, cycle })
+
+    #[test]
+    fn fresh_serves_a_cached_none_answer() {
+        let cache = ObservedCache::new();
+        cache.store("g1", "switch.grow_led", None);
+        assert_eq!(
+            cache.fresh("g1", "switch.grow_led"),
+            Fresh::Hit(None),
+            "None answers are cached too"
+        );
+    }
+
+    #[test]
+    fn an_expired_entry_is_a_miss() {
+        let cache = ObservedCache::new();
+        cache.store("g1", "switch.grow_led", Some(cycle(6)));
+        if let Ok(mut entries) = cache.entries.lock() {
+            let now = Instant::now();
+            let stale = now
+                .checked_sub(CACHE_TTL)
+                .and_then(|fresh_until| fresh_until.checked_sub(Duration::from_secs(1)));
+            entries.get_mut("g1").unwrap().computed_at = stale.unwrap_or(now);
+        }
+        assert_eq!(cache.fresh("g1", "switch.grow_led"), Fresh::Miss);
+    }
 }

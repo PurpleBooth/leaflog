@@ -346,9 +346,10 @@ pub struct ObservedCycle {
     pub hours_on: u8,
 }
 
-/// The observed reality served with the editable Light Cycle: the
-/// bound light entity plus the pattern learned from its history.
-/// The cycle is flattened so the JSON wire shape stays
+/// The observed reality served with the editable Light Cycle.
+///
+/// The bound light entity plus the pattern learned from its
+/// history; the cycle is flattened so the JSON wire shape stays
 /// `{entity_id, lights_on, hours_on}` (D102, ADR 0002).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ObservedReality {
