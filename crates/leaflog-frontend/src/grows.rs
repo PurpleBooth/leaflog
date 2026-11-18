@@ -1085,9 +1085,9 @@ pub fn empty_grow() -> GrowInput {
     }
 }
 
-/// A blank action draft, timestamped now (UTC) in the shape a
-/// `datetime-local` input accepts.
-/// A fresh action draft: now, `note`, no structured fields.
+/// A blank action draft: a `note` with no structured fields,
+/// timestamped now (UTC) in the shape a `datetime-local` input
+/// accepts.
 pub fn empty_action() -> ActionInput {
     ActionInput {
         plant_ids: Vec::new(),
