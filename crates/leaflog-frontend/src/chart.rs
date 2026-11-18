@@ -171,15 +171,30 @@ pub fn format_ec_us(value: f64) -> String {
 /// fall back on, so a failed first fetch for them keeps the
 /// in-flight hiding. `children` render inside the card under the
 /// chart (the soil card carries its band editor).
+///
+/// `shared_window` is the Environment section's window signal: when
+/// the section control moves, every card follows. The card's own
+/// toggle stays until the grouping ticket and retargets only this
+/// card; the next shared change wins again.
 #[component]
 pub fn HistoryChart(
     grow_id: String,
     #[prop(default = "temperature")] role: &'static str,
     #[prop(default = "Temperature")] title: &'static str,
     format_value: fn(f64) -> String,
+    #[prop(optional, into)] shared_window: Option<RwSignal<String>>,
     #[prop(optional)] children: Option<ChildrenFn>,
 ) -> impl IntoView {
-    let window = RwSignal::new("day".to_owned());
+    let window =
+        RwSignal::new(shared_window.map_or_else(|| "day".to_owned(), |shared| shared.get()));
+    if let Some(shared) = shared_window {
+        Effect::new(move |_| {
+            let label = shared.get();
+            if window.get() != label {
+                window.set(label);
+            }
+        });
+    }
     let data = RwSignal::<Option<GrowHistory>>::new(None);
     // The last fetch failure, if any: the degraded banner's text. A
     // successful response clears it (the chart recovered).
@@ -288,11 +303,16 @@ pub fn HistoryChart(
 
 /// The Chart window toggle group: three rolling windows ending now,
 /// labelled 24h / 7d / 30d (the old "Day" collided with the Light
-/// Cycle's day). The API labels stay `day` / `week` / `month`.
+/// Cycle's day). The API labels stay `day` / `week` / `month`. Each
+/// card carries one (`Chart window`); the Environment section's
+/// header control reuses it labelled as the history window.
 #[component]
-fn WindowToggles(window: RwSignal<String>) -> impl IntoView {
+pub(crate) fn WindowToggles(
+    window: RwSignal<String>,
+    #[prop(default = "Chart window")] aria_label: &'static str,
+) -> impl IntoView {
     view! {
-        <div class="flex gap-1" role="group" aria-label="Chart window">
+        <div class="flex gap-1" role="group" aria-label=aria_label>
             {["day", "week", "month"]
                 .into_iter()
                 .map(|label| {

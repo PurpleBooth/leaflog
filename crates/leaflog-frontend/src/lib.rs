@@ -34,6 +34,7 @@ mod chart;
 mod chart_option;
 mod dashboard;
 mod edit;
+mod env_section;
 mod feed;
 mod gantt;
 mod grows;

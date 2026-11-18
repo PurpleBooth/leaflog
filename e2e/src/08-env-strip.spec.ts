@@ -107,7 +107,10 @@ test('env strip spans the container and wraps without overflow', async ({
   // Chart window toggles read 24h / 7d / 30d (ticket 02): rolling
   // windows ending now, never a calendar day. Only the bound roles
   // carry cards (temperature, humidity, and VPD derived from both —
-  // ticket 04's visibility rule), so three toggle groups.
+  // ticket 04's visibility rule), so three toggle groups. The
+  // Environment section's shared control (env-section ticket 01)
+  // adds a fourth 24h/7d/30d trio at page level, so the per-window
+  // counts scope into the cards.
   const chartCards = page.locator('.card', {
     has: page.getByRole('group', { name: 'Chart window' }),
   });
@@ -116,13 +119,13 @@ test('env strip spans the container and wraps without overflow', async ({
     page.getByRole('button', { name: /^(Day|Week|Month)$/ }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole('button', { name: '24h', exact: true }),
+    chartCards.getByRole('button', { name: '24h', exact: true }),
   ).toHaveCount(3);
   await expect(
-    page.getByRole('button', { name: '7d', exact: true }),
+    chartCards.getByRole('button', { name: '7d', exact: true }),
   ).toHaveCount(3);
   await expect(
-    page.getByRole('button', { name: '30d', exact: true }),
+    chartCards.getByRole('button', { name: '30d', exact: true }),
   ).toHaveCount(3);
 
   // Switching a Chart window refetches and re-renders (the

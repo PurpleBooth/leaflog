@@ -24,11 +24,7 @@ use wasm_bindgen::JsCast;
 use crate::ErrorIf;
 use crate::Home;
 use crate::api::{self, ApiFailure};
-use crate::chart::{
-    BandEditor, HistoryChart, format_ec_us, format_kpa, format_on_off, format_pct, format_ph,
-    format_ppm,
-};
-use crate::dashboard::EnvDashboard;
+use crate::env_section::EnvironmentSection;
 use crate::feed::FeedPanel;
 use crate::gantt::GanttTimeline;
 use crate::route_href;
@@ -211,10 +207,11 @@ fn pick_landing_grow(grows: &[Grow]) -> String {
         .map_or_else(String::new, |grow| grow.id.clone())
 }
 
-/// The grow overview page: environment, forecast, phase picker, feed
-/// schedule, chips, timeline, plants and photos. Configuration lives
-/// on the edit page (grow-page rework ticket 01), reached through the
-/// header's Edit control.
+/// The grow overview page: logging loop, environment (live tiles and
+/// history charts under one shared window control, env-section
+/// ticket 01), forecast, feed schedule, timeline, plants and photos.
+/// Configuration lives on the edit page (grow-page rework ticket 01),
+/// reached through the header's Edit control.
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
 pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
@@ -490,6 +487,8 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                 })
             }}
 
+            <EnvironmentSection grow_id=grow_id.get() />
+
             <h3>"Forecast"</h3>
             <form id="phase-picker" class="flex flex-wrap gap-2 items-end my-2" on:submit=save_pick>
                 <label class="fieldset">
@@ -526,30 +525,6 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                 </button>
             </form>
             <GanttTimeline grow_id=grow_id.get() />
-
-            <h3>"Environment"</h3>
-            <EnvDashboard grow_id=grow_id.get() />
-
-            // Two-up on wide screens: the paired roles read side by
-            // side and the scroll shortens by half. Explicit
-            // `grid-cols-1` at the base keeps every track
-            // `minmax(0, 1fr)`: an implicit auto track would let a
-            // not-yet-resized chart SVG stretch the column, and
-            // `resize()` — which re-reads the container — would then
-            // confirm the stale width instead of shrinking into it.
-            <h3>"History"</h3>
-            <div class="grid grid-cols-1 gap-4 items-start lg:grid-cols-2">
-                <HistoryChart grow_id=grow_id.get() format_value=leaflog_core::units::temp_both />
-                <HistoryChart grow_id=grow_id.get() role="humidity" title="Humidity" format_value=format_pct />
-                <HistoryChart grow_id=grow_id.get() role="vpd" title="VPD" format_value=format_kpa />
-                <HistoryChart grow_id=grow_id.get() role="co2" title="CO₂" format_value=format_ppm />
-                <HistoryChart grow_id=grow_id.get() role="light" title="Light" format_value=format_on_off />
-                <HistoryChart grow_id=grow_id.get() role="soil_moisture" title="Soil moisture" format_value=format_pct>
-                    <BandEditor />
-                </HistoryChart>
-                <HistoryChart grow_id=grow_id.get() role="ph" title="pH" format_value=format_ph />
-                <HistoryChart grow_id=grow_id.get() role="ec" title="EC" format_value=format_ec_us />
-            </div>
 
             <h3>"Feed schedule"</h3>
             <FeedPanel grow_id=grow_id.get() />

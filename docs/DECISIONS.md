@@ -6,6 +6,40 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-18 — the Environment section owns its window (env-section ticket 01)
+
+### D103: shared history window — wire labels `day`/`week`/`month`, default `week`, localStorage key `leaflog.history-window`
+
+The Environment section renders the live tiles as its top row, then
+the history charts, under one heading with no separate History
+heading, and moves above the Forecast on the grow page. One segmented
+24h/7d/30d control in the section header drives every chart card:
+`HistoryChart` takes an optional `shared_window: RwSignal<String>`
+and an effect syncs the card's local window on shared changes (the
+equality guard keeps the mount-time agreement from refetching).
+
+The choice persists per browser in localStorage under the
+Leaflog-namespaced key `leaflog.history-window`, stored as the API's
+wire label. Missing/locked-down/stale or foreign values all fall
+back to the 7-day default (`week`) — the day/night rhythm stays
+visible without touching anything; nothing breaks on a bad value.
+The first visit's default is persisted too, so storage never
+disagrees with what the page shows.
+
+The control reserves the fourth position's width with an
+`aria-hidden` empty span — a whole-grow window joins later without
+shifting the row, and no disabled teaser is drawn. Per-card toggles
+stay in this ticket (the grouping ticket retires them); while both
+exist, a card's own toggle retargets that card alone and the next
+shared change wins on every card again. `RwSignal::set` notifies even
+on equal values, so re-clicking an already-active window still
+refetches — the abort-path test relies on that.
+
+New web-sys feature: `Storage` (the `Window::local_storage` getter
+needs it). No new `#[allow]` exceptions.
+
+---
+
 ## 2026-11-18 — the Light Cycle editor shows reality (ticket 03)
 
 ### D102: observed light pattern — span-quotient hours, per-day circular-mean on-time, optional block on the existing GET
