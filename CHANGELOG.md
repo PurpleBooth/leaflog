@@ -2,6 +2,16 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.10.0 - 2026-11-18
+#### Features
+- **(frontend)** the logging loop opens in the grow header - (841c0fc) - billie.codes
+#### Miscellaneous
+- **(design)** track the impeccable detector config - (a5fa39c) - billie.codes
+- **(release)** bump version to 0.9.0 - (8cc9e92) - github-actions[bot]
+- **(version)** 0.10.0 - (267f7e9) - billie.codes
+
+- - -
+
 ## v0.9.0 - 2026-11-18
 #### Bug Fixes
 - **(frontend)** tile_class is const - (a474b03) - billie.codes

@@ -2,6 +2,19 @@
 All notable changes to the Leaflog Home Assistant app. Version headings are exactly `## <version>` — Home Assistant slices release notes on them. Generated file; never edit by hand.
 
 - - -
+## 0.10.0
+
+_Released 2026-11-18._
+
+#### Features
+- **(frontend)** the logging loop opens in the grow header - (841c0fc) - billie.codes
+#### Miscellaneous
+- **(design)** track the impeccable detector config - (a5fa39c) - billie.codes
+- **(release)** bump version to 0.9.0 - (8cc9e92) - github-actions[bot]
+- **(version)** 0.10.0 - (267f7e9) - billie.codes
+
+- - -
+
 ## 0.9.0
 
 _Released 2026-11-18._
