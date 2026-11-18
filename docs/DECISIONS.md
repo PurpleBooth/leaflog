@@ -11,21 +11,22 @@ here. Date format: YYYY-MM-DD.
 ### D110: the night tint is history payload + a silent markArea back layer; the Light card retires
 
 The backend resolves the light timeline for the whole Air group
-(temperature, humidity, VPD, CO₂) — observed light-entity states win,
-with gaps backfilled from the Light Cycle schedule, the existing
-resolve precedence — and emits the window's dark stretches as a
-`nights` array on the history response; every other role gets an
-empty array, so the Root-zone and log-detail payloads never pay the
-light fetch. The frontend draws that array as its own series appended
-after the marker ticks: no data, `z` 0, and a `markArea` of
-xAxis-only region pairs, so `ECharts` spans each region over the
-full plot height whatever the value range. The tint uses the look's
-muted ink (already 50 % alpha) at opacity 0.16 — roughly 8 %
-effective, tonal depth rather than a new hue, and the same numbers
-hold in both themes. Regions clip to the window, drop unparseable
-bounds, and merge butt-joined stretches so one continuous night
-shows no seam. Nights are context, not data: `window_is_empty`
-ignores them and the value range never widens for them.
+(temperature, humidity, VPD, CO₂): observed light-entity states
+win, with gaps backfilled from the Light Cycle schedule — the
+existing resolve precedence. It emits the window's dark stretches
+as a `nights` array on the history response; every other role gets
+an empty array, so the Root-zone and log-detail payloads never pay
+the light fetch. The frontend draws that array as its own series
+appended after the marker ticks: no data, `z` 0, and a `markArea`
+of xAxis-only region pairs, so `ECharts` spans each region over
+the full plot height whatever the value range. The tint uses the
+look's muted ink (already 50 % alpha) at opacity 0.16 — roughly
+8 % effective, tonal depth rather than a new hue, and the same
+numbers hold in both themes. Regions clip to the window, drop
+unparseable bounds, and merge butt-joined stretches so one
+continuous night shows no seam. Nights are context, not data:
+`window_is_empty` ignores them and the value range never widens
+for them.
 
 The standalone Light card leaves the section — the shading tells
 the same story in place — and the Air group label carries the legend
