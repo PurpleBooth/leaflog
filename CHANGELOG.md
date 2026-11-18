@@ -2,7 +2,61 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
-## v0.8.0 - 2026-11-17
+## v0.9.0 - 2026-11-18
+#### Bug Fixes
+- **(frontend)** tile_class is const - (a474b03) - billie.codes
+- **(frontend)** env tile colours track the merged live readings - (bd5e463) - billie.codes
+- **(frontend)** apply the built-in light theme on :root at last (07) - (06475d9) - billie.codes
+- **(frontend)** read the cross-realm parent root and observe with an attribute array (07) - (a82a791) - billie.codes
+#### CI
+- the release gate runs the shared cog-check recipe - (ab73f7f) - billie.codes
+- cog check ignores merge commits - (619e33b) - billie.codes
+#### Documentation
+- **(frontend)** one accurate doc line for empty_action - (3874c15) - billie.codes
+- **(threat-model)** TM4.1 credits the delete confirmation it has - (8834469) - billie.codes
+- capture product truth and design system for impeccable - (60f31bf) - billie.codes
+- drop a stray diff3 base marker in DECISIONS.md - (31d5b38) - billie.codes
+- ADR 0002 drops a 'There are' opening for the prose gate - (4112ff2) - billie.codes
+- D099 quick-add icons via leptos_icons + Lucide - (b47544e) - billie.codes
+- reword ADR 0002 sentence that tripped the prose lint - (8a8c040) - billie.codes
+- fix the ADR 0002 sentence the prose lint rejects - (d434486) - billie.codes
+- reword ADR 0002's 'There are' opener for the prose gate - (eda34d3) - billie.codes
+- D104 logs the raw-event anchor for Phase day - (a50e38c) - billie.codes
+- D098 — recompute, not migrate, for the Germination pick - (55441f4) - billie.codes
+- ADR 0002 (light cycle observes, never actuates) and grow-rework glossary terms - (969290e) - billie.codes
+- multi-session habits, the wasm boundary rule, and the devbox flag quirk - (b4d986b) - billie.codes
+#### Features
+- **(backend)** dev-only theme harness page framing the app (07) - (93b7a8c) - billie.codes
+- **(backend)** the Germination pick sets the start date - (93b69c6) - billie.codes
+- **(core)** HA theme adoption colour math and daisyUI mapping (07) - (8152201) - billie.codes
+- **(core)** local_date — the local calendar date of an instant - (bc6a2ec) - billie.codes
+- **(frontend)** env strip renders live values over one SSE connection - (63657f3) - billie.codes
+- **(frontend)** quick add collapses into one dropdown menu - (6323721) - billie.codes
+- **(frontend)** adopt the parent HA theme at startup and live (07) - (7775b1a) - billie.codes
+- **(frontend)** grow edit page hosts all grow configuration - (b932f43) - billie.codes
+- **(frontend)** the grow overview shows a Phase day badge - (e47dca2) - billie.codes
+- **(light-cycle)** the editor captions the light entity's learned pattern - (f47ef0b) - billie.codes
+- the forecast anchors Phase day at the transition event - (785e1e6) - billie.codes
+#### Miscellaneous
+- **(release)** bump version to 0.8.0 - (b3157b8) - github-actions[bot]
+- **(test)** drop a weasel word the prose lint flags - (f8dfcae) - billie.codes
+- **(version)** 0.9.0 - (d317848) - billie.codes
+- merge in new main commits - (71353fe) - billie.codes
+#### Refactoring
+- **(backend)** one RFC 3339 parse step for the UTC date fallbacks - (7e16c49) - billie.codes
+- **(backend)** the observed-reality cache owns its lookups - (ef4df71) - billie.codes
+- **(core)** ObservedReality embeds ObservedCycle - (2138dda) - billie.codes
+- **(core)** one sRGB transfer helper for luminance and Oklab - (dac2964) - billie.codes
+- **(frontend)** the live merge reads the canonical role constants - (8ff8be3) - billie.codes
+#### Tests
+- **(e2e)** theme harness adoption, live re-adoption and built-in fallback (07) - (2ae2abe) - billie.codes
+- **(e2e)** quick-add logging goes through the menu - (42908e4) - billie.codes
+- **(e2e)** the header cluster counts the phase-day badge - (cf9244b) - billie.codes
+- **(e2e)** the Phase day badge equals the Day count until a pick lands - (1474d0e) - billie.codes
+
+- - -
+
+## v0.8.0 - 2026-11-18
 #### Bug Fixes
 - **(frontend)** a bound chart card survives a failed history fetch - (e0f9f15) - billie.codes
 - **(mock-ha)** push a flipped light state on the next tick (bug c62200c) - (7b99597) - billie.codes
@@ -14,6 +68,7 @@ All notable changes to this project will be documented in this file. See [conven
 - **(backend)** the coach resolves the real light state at call time (bug c62200c) - (10cc334) - billie.codes
 - **(core)** the night VPD tip follows the research and the schedule answers now (bug c62200c) - (4727047) - billie.codes
 #### Miscellaneous
+- **(release)** bump version to 0.7.0 - (71ea905) - github-actions[bot]
 - **(version)** 0.8.0 - (506a76f) - billie.codes
 #### Refactoring
 - **(core)** drop the unused window end and name the point-query window - (2ea29e6) - billie.codes
@@ -24,7 +79,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.7.0 - 2026-11-17
+## v0.7.0 - 2026-11-18
 #### Bug Fixes
 - **(frontend)** give ECharts the option as plain objects (bug 1b2b540) - (c27c7af) - billie.codes
 - **(frontend)** editor buttons submit the right thing - (1cede2d) - billie.codes
@@ -88,7 +143,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.6.0 - 2026-11-17
+## v0.6.0 - 2026-11-18
 #### Bug Fixes
 - **(frontend)** space and seed-batch selects keep their pick on refetch - (16b7b3e) - billie.codes
 #### CI
@@ -125,7 +180,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.5.1 - 2026-11-17
+## v0.5.1 - 2026-11-18
 #### Bug Fixes
 - **(dashboard)** show the No-data banner only for real dead bindings - (d788fe3) - billie.codes
 - **(e2e)** point the stack at its mock; honest env poll, strain locators - (f9ce5aa) - billie.codes
@@ -148,7 +203,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.5.0 - 2026-11-17
+## v0.5.0 - 2026-11-18
 #### Bug Fixes
 - **(ci)** UI prose extraction drops Tailwind class lists (D065) - (063b515) - billie.codes
 - **(image)** fetch the daisyUI bundles inside the container build - (ca3df1f) - billie.codes
@@ -170,7 +225,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.4.1 - 2026-11-17
+## v0.4.1 - 2026-11-18
 #### Bug Fixes
 - **(frontend)** submit handlers must prevent_default themselves (D061) - (f949965) - billie.codes
 #### Miscellaneous
@@ -179,7 +234,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.4.0 - 2026-11-17
+## v0.4.0 - 2026-11-18
 #### CI
 - **(changelog)** generate CHANGELOG.md with cocogitto in CI - (fed0dea) - billie.codes
 - **(deny)** cargo-deny gate for advisories and licences (D047) - (780f227) - billie.codes
@@ -208,7 +263,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.3.0 - 2026-11-17
+## v0.3.0 - 2026-11-18
 #### Bug Fixes
 - **(backend)** add nosniff and a hash-pinned CSP to served responses - (bae8103) - billie.codes
 - **(backend)** reject traversal and interior separators in photo path builders - (e139c7e) - billie.codes
@@ -227,7 +282,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.2.0 - 2026-11-17
+## v0.2.0 - 2026-11-18
 #### Bug Fixes
 - **(backend)** normalize photos to rgb8 so non-rgb inputs cannot panic - (ebcf88e) - billie.codes
 - **(ci)** cocogitto tarball extracts to x86_64-unknown-linux-musl/cog - (726b341) - billie.codes
@@ -253,7 +308,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.1.0 - 2026-11-17
+## v0.1.0 - 2026-11-18
 #### Bug Fixes
 - **(ci)** reference arch-tagged images when merging the multi-arch manifest - (23a7e5a) - billie.codes
 - **(ha)** pin wasm-bindgen-cli in the image builder (trunk auto-fetch failed on aarch64 CI) - (d458f19) - billie.codes
