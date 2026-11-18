@@ -58,12 +58,15 @@ pub struct AppState {
     pub photos: crate::photos::PhotoStore,
     /// Home Assistant bridge (live data, Supervisor REST).
     pub ha: std::sync::Arc<crate::ha::HaBridge>,
+    /// Derived light-cycle reality cache (D102); binding changes
+    /// invalidate it.
+    pub observed: crate::observed::ObservedCache,
 }
 
 impl AppState {
     /// Creates the shared state.
     #[must_use]
-    pub const fn new(
+    pub fn new(
         assets: Assets,
         mode: Mode,
         dev_prefix: Option<String>,
@@ -78,6 +81,7 @@ impl AppState {
             db,
             photos,
             ha,
+            observed: crate::observed::ObservedCache::new(),
         }
     }
 }

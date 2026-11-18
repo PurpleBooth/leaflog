@@ -6,6 +6,45 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-18 — the Light Cycle editor shows reality (ticket 03)
+
+### D102: observed light pattern — span-quotient hours, per-day circular-mean on-time, optional block on the existing GET
+
+The learned pattern comes from one pure core function,
+`leaflog_core::light_cycle::observed_cycle`, over the same staircase
+the charts already fetch. Hours-on is a span quotient: total lit
+seconds over the observed span times 24, rounded to a whole hour,
+clamped 1–24. Absolute durations make it DST-honest — a fall-back
+Sunday simply contributes its real 25 hours.
+
+Lights-on is the circular mean over each local day's first
+on-transition minute (atan2 of summed sines and cosines), so a
+crossing pattern like 18:00→12:00 averages near midnight without
+wrapping, and per-day-first-on ignores mid-day interruptions. An
+unresolvable zone name falls back to UTC, mirroring the chart code.
+
+The wire change is additive: the existing light-cycle GET now may
+carry an `observed` block (bound entity id, learned on-time, learned
+hours-on), flattened beside the stored fields and omitted when the
+grow is unbound, the history is dataless, or HA is unreachable —
+fail closed, the editor shows only the editable defaults.
+
+Derivation is lazy: computed on page loads and binding changes, never
+a background job. A 60 s per-grow cache absorbs repeated loads; a
+bindings PUT or grow delete invalidates it, so a rebind shows its
+new entity immediately. The editor renders the block as a display-only
+caption — the per-phase fields stay editable defaults with
+reset-to-default, and nothing is ever written back from reality
+(ADR 0002).
+
+Lint-policy exceptions (`#[allow]` register) — ticket 03 addition:
+
+| Crate | Items | Lint | Reason |
+|---|---|---|---|
+| leaflog-core | fn `observed_cycle` | `clippy::cast_possible_truncation`, `clippy::cast_precision_loss`, `clippy::cast_sign_loss` | Epoch seconds sit far below f64's exact-integer range; results are rounded and clamped before narrowing |
+
+---
+
 ## 2026-11-18 — the Germination pick owns the start date (ticket 04)
 
 ### D098: recompute, not migrate — the pick re-dates stored grow days in one transaction

@@ -36,6 +36,9 @@ pub fn GrowEditPage(grow_id: Signal<String>) -> impl IntoView {
     let draft = RwSignal::<GrowInput>::new(empty_grow());
     let error = RwSignal::<Option<String>>::new(None);
     let deleted = RwSignal::<bool>::new(false);
+    // Bumped by the entity bindings on save: the Light Cycle editor
+    // tracks it to re-derive its observed-reality caption (D102).
+    let bindings_epoch = RwSignal::<u64>::new(0);
     let navigate = StoredValue::new_local(leptos_router::hooks::use_navigate());
 
     let refresh = move || {
@@ -152,8 +155,12 @@ pub fn GrowEditPage(grow_id: Signal<String>) -> impl IntoView {
                                     </button>
                                 </div>
                             </form>
-                            <EntityBindings grow_id=grow_id.get() />
-                            <LightCycleEditor grow_id=grow_id photoperiod=grow_photoperiod />
+                            <EntityBindings grow_id=grow_id.get() bindings_epoch />
+                            <LightCycleEditor
+                                grow_id=grow_id
+                                photoperiod=grow_photoperiod
+                                bindings_epoch=Signal::from(bindings_epoch)
+                            />
                             <h3>"Danger zone"</h3>
                             <div class="card bg-base-100 border border-error/30 px-5 py-4 my-2">
                                 <p class="text-base-content/70 text-sm">

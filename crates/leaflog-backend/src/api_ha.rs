@@ -162,6 +162,7 @@ async fn put_bindings(
         ));
     }
     let bridge = state.ha.clone();
+    let observed_id = id.clone();
     let bindings = state
         .db
         .with(move |conn| -> Result<_, ApiError> {
@@ -174,6 +175,9 @@ async fn put_bindings(
             Ok(bindings)
         })
         .await?;
+    // Rebinding a grow's light changes what its observed reality
+    // must say: drop any cached derivation now (D102).
+    state.observed.invalidate(&observed_id);
     Ok(Json(bindings))
 }
 

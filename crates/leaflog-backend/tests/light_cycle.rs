@@ -118,6 +118,170 @@ async fn fresh_grow_answers_the_empty_cycle() {
     assert_eq!(cycle, empty_cycle());
 }
 
+// --- Observed reality (grow-page rework, ticket 03) ---------------------
+
+/// Spawns the mock Supervisor and the API against it (the staircase
+/// fixture entities light.grow_led / switch.grow_panel), ready for
+/// the bridge to connect.
+async fn spawn_mock_api() -> (String, std::sync::Arc<leaflog_backend::ha::HaBridge>) {
+    let mock_state = mock_ha::MockState {
+        room: std::sync::Arc::new(tokio::sync::Mutex::new(mock_ha::FakeRoom::new())),
+        notifications: std::sync::Arc::new(tokio::sync::Mutex::new(Vec::new())),
+    };
+    let mock_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mock_addr = mock_listener.local_addr().unwrap();
+    let mock_router = mock_ha::app(mock_state);
+    tokio::spawn(async move {
+        axum::serve(mock_listener, mock_router).await.unwrap();
+    });
+
+    let db = Db::open_in_memory().unwrap();
+    let bridge = std::sync::Arc::new(leaflog_backend::ha::HaBridge::spawn(
+        format!("http://{mock_addr}"),
+        leaflog_backend::ha::SupervisorToken::new("light-cycle-secret"),
+        db.clone(),
+    ));
+    let state = AppState::new(
+        Assets::Disk(fixture()),
+        Mode::Dev,
+        None,
+        db,
+        PhotoStore::new(std::env::temp_dir()),
+        bridge.clone(),
+    );
+    let service = app::service(state);
+    let make = service.into_make_service_with_connect_info::<SocketAddr>();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, make).await.unwrap();
+    });
+    (format!("http://{addr}"), bridge)
+}
+
+async fn wait_connected(bridge: &leaflog_backend::ha::HaBridge) {
+    for _ in 0..40 {
+        if bridge.live_now().connected {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+    panic!("bridge never connected to the mock");
+}
+
+async fn bind_light(client: &reqwest::Client, base: &str, id: &str, entity: &str) {
+    let _: Value = client
+        .put(format!("{base}/api/grows/{id}/bindings"))
+        .json(&json!({ "bindings": { "light": entity } }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+}
+
+async fn get_cycle(client: &reqwest::Client, base: &str, id: &str) -> Value {
+    client
+        .get(format!("{base}/api/grows/{id}/light-cycle"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap()
+}
+
+/// Minutes since midnight, wrapping (for near-midnight skew).
+fn minute_of(text: &str) -> i64 {
+    let (hour, minute) = text.split_once(':').unwrap();
+    hour.parse::<i64>().unwrap() * 60 + minute.parse::<i64>().unwrap()
+}
+
+#[tokio::test]
+async fn bound_light_serves_the_observed_block_from_the_staircase() {
+    let (base, bridge) = spawn_mock_api().await;
+    wait_connected(&bridge).await;
+    let client = reqwest::Client::new();
+    let id = create_grow(&base).await;
+    bind_light(&client, &base, &id, "light.grow_led").await;
+
+    let cycle = get_cycle(&client, &base, &id).await;
+    let observed = &cycle["observed"];
+    assert_eq!(observed["entity_id"], "light.grow_led", "cycle: {cycle}");
+    // The staircase is off -> on (now - 20 h) -> off (now - 18 h):
+    // two lit hours across the roughly 23 h span.
+    assert_eq!(observed["hours_on"], 2);
+    // The learned on-time is that on-transition's local wall time in
+    // the mock's Europe/Berlin zone. Mock and test each take their
+    // own "now", so allow a minute of skew across a roll-over.
+    let learned = observed["lights_on"].as_str().unwrap().to_owned();
+    let local = (jiff::Timestamp::now() - jiff::Span::new().hours(20))
+        .to_zoned(jiff::tz::TimeZone::get("Europe/Berlin").unwrap());
+    let expected = format!("{:02}:{:02}", local.hour(), local.minute());
+    let skew = (minute_of(&learned) - minute_of(&expected)).abs();
+    let skew = skew.min(1440 - skew);
+    assert!(skew <= 1, "learned {learned}, expected {expected}");
+}
+
+#[tokio::test]
+async fn unbinding_drops_the_observed_block() {
+    let (base, bridge) = spawn_mock_api().await;
+    wait_connected(&bridge).await;
+    let client = reqwest::Client::new();
+    let id = create_grow(&base).await;
+    bind_light(&client, &base, &id, "light.grow_led").await;
+
+    let bound = get_cycle(&client, &base, &id).await;
+    assert!(bound.get("observed").is_some_and(Value::is_object));
+
+    // An empty bindings map unbinds every role.
+    let _: Value = client
+        .put(format!("{base}/api/grows/{id}/bindings"))
+        .json(&json!({ "bindings": {} }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let unbound = get_cycle(&client, &base, &id).await;
+    assert_eq!(unbound, empty_cycle());
+}
+
+#[tokio::test]
+async fn rebinding_serves_the_new_entity_immediately() {
+    let (base, bridge) = spawn_mock_api().await;
+    wait_connected(&bridge).await;
+    let client = reqwest::Client::new();
+    let id = create_grow(&base).await;
+    bind_light(&client, &base, &id, "light.grow_led").await;
+
+    // First GET fills the cache for the first entity.
+    let first = get_cycle(&client, &base, &id).await;
+    assert_eq!(first["observed"]["entity_id"], "light.grow_led");
+
+    // The very next GET after rebinding must answer for the new
+    // entity: a binding change invalidates any cached derivation.
+    bind_light(&client, &base, &id, "switch.grow_panel").await;
+    let second = get_cycle(&client, &base, &id).await;
+    assert_eq!(second["observed"]["entity_id"], "switch.grow_panel");
+    assert_eq!(second["observed"]["hours_on"], 2);
+}
+
+#[tokio::test]
+async fn observed_block_fails_closed_when_ha_is_unreachable() {
+    // spawn_memory points the bridge at a dead port: bound but no
+    // answer, so the GET keeps serving the plain editable cycle.
+    let base = spawn_memory().await;
+    let client = reqwest::Client::new();
+    let id = create_grow(&base).await;
+    bind_light(&client, &base, &id, "light.grow_led").await;
+
+    let cycle = get_cycle(&client, &base, &id).await;
+    assert_eq!(cycle, empty_cycle());
+}
+
 #[tokio::test]
 async fn put_stores_the_cycle_and_grow_payload_carries_it() {
     let base = spawn_memory().await;

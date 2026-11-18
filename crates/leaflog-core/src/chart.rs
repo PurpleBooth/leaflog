@@ -185,7 +185,24 @@ pub fn merge_series(
     ha: &[RawPoint],
     snapshots: &[RawPoint],
 ) -> ChartSeries {
-    let from = window_from(now, window).unwrap_or_default();
+    merge_series_span(now, window.hours(), ha, snapshots)
+}
+
+/// [`merge_series`] for an arbitrary span in hours, not one of the
+/// chart toggles: the observed-reality window is three days
+/// (D102).
+#[must_use]
+pub fn merge_series_span(
+    now: &str,
+    hours: i64,
+    ha: &[RawPoint],
+    snapshots: &[RawPoint],
+) -> ChartSeries {
+    let from = now
+        .parse::<jiff::Timestamp>()
+        .ok()
+        .map(|moment| (moment - jiff::Span::new().hours(hours)).to_string())
+        .unwrap_or_default();
     let Some(from_epoch) = parse_epoch(&from) else {
         return ChartSeries {
             from,
@@ -1811,7 +1828,7 @@ mod light_timeline_tests {
 mod vpd_derive_tests {
     use super::{
         ChartWindow, PointSource, RawPoint, SeriesPoint, VPD_PAIRING_TOLERANCE_SECS,
-        derive_vpd_series, merge_series, parse_epoch,
+        derive_vpd_series, merge_series, merge_series_span, parse_epoch,
     };
 
     const NOW: &str = "2026-11-16T12:00:00Z";
@@ -1913,6 +1930,17 @@ mod vpd_derive_tests {
     #[test]
     fn pairing_tolerance_is_five_minutes() {
         assert_eq!(VPD_PAIRING_TOLERANCE_SECS, 300);
+    }
+
+    #[test]
+    fn merge_series_span_windows_arbitrary_hour_spans() {
+        // The 72 h observed-reality window (D102): a point 71 h old
+        // stays, one 73 h old drops, windowed on the span, not a
+        // ChartWindow variant.
+        let kept = merge_series_span(NOW, 72, &[point("2026-11-13T13:00:00Z", 1.0)], &[]);
+        assert_eq!(kept.points.len(), 1);
+        let dropped = merge_series_span(NOW, 72, &[point("2026-11-13T11:00:00Z", 1.0)], &[]);
+        assert_eq!(dropped.points, Vec::new());
     }
 
     // Silence the unused-import lint when SeriesPoint is only

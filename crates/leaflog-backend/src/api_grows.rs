@@ -159,6 +159,7 @@ async fn delete_grow(
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let photos = state.photos.clone();
+    let observed_id = id.clone();
     state
         .db
         .with(move |conn| -> Result<(), ApiError> {
@@ -167,6 +168,8 @@ async fn delete_grow(
             Ok(())
         })
         .await?;
+    // The observed-reality cache entry dies with the grow.
+    state.observed.invalidate(&observed_id);
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -503,14 +506,21 @@ async fn list_photos(
 async fn get_light_cycle(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<leaflog_core::light_cycle::LightCycle>, ApiError> {
+) -> Result<Json<leaflog_core::light_cycle::LightCycleResponse>, ApiError> {
     let grow = state
         .db
         .with(move |conn| store::grows::get(conn, &id))
         .await?;
     // No stored override reads as the empty cycle: every part on its
-    // cited preset default.
-    Ok(Json(grow.light_cycle.unwrap_or_default()))
+    // cited preset default. The observed block adds what the bound
+    // light entity actually does (D102), when there is one.
+    let tz = crate::app::canonical_timezone(&state).await;
+    let now = crate::db::now_rfc3339();
+    let observed = crate::observed::observed_for(&state, &grow.id, &tz, &now).await;
+    Ok(Json(leaflog_core::light_cycle::LightCycleResponse {
+        cycle: grow.light_cycle.unwrap_or_default(),
+        observed,
+    }))
 }
 
 // Extractors are taken by value because Axum requires it.
