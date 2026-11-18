@@ -1,0 +1,411 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-18T14:31:00Z",
+  "title": "Design System: Leaflog",
+  "extensions": {
+    "colorMeta": {
+      "cultivar-green": {
+        "role": "primary",
+        "displayName": "Cultivar Green",
+        "canonical": "#2e7d4f",
+        "tonalRamp": [
+          "oklch(15% 0.03 155)",
+          "oklch(25% 0.05 155)",
+          "oklch(35% 0.07 155)",
+          "oklch(45% 0.09 155)",
+          "oklch(55% 0.10 155)",
+          "oklch(68% 0.09 155)",
+          "oklch(80% 0.06 155)",
+          "oklch(92% 0.03 155)"
+        ]
+      },
+      "sage-grey": {
+        "role": "secondary",
+        "displayName": "Sage Grey",
+        "canonical": "#4c5f4e",
+        "tonalRamp": [
+          "oklch(16% 0.015 140)",
+          "oklch(26% 0.02 140)",
+          "oklch(36% 0.025 140)",
+          "oklch(46% 0.03 140)",
+          "oklch(56% 0.03 140)",
+          "oklch(68% 0.025 140)",
+          "oklch(80% 0.02 140)",
+          "oklch(92% 0.012 140)"
+        ]
+      },
+      "fresh-mint": {
+        "role": "tertiary",
+        "displayName": "Fresh Mint",
+        "canonical": "#6fcf97",
+        "tonalRamp": [
+          "oklch(20% 0.05 155)",
+          "oklch(30% 0.07 155)",
+          "oklch(40% 0.09 155)",
+          "oklch(50% 0.11 155)",
+          "oklch(62% 0.12 155)",
+          "oklch(74% 0.10 155)",
+          "oklch(85% 0.07 155)",
+          "oklch(94% 0.03 155)"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper White",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "oklch(22% 0.01 140)",
+          "oklch(34% 0.012 140)",
+          "oklch(46% 0.012 140)",
+          "oklch(58% 0.012 140)",
+          "oklch(70% 0.012 140)",
+          "oklch(80% 0.012 140)",
+          "oklch(90% 0.01 140)",
+          "oklch(100% 0 0)"
+        ]
+      },
+      "greenhouse-paper": {
+        "role": "neutral",
+        "displayName": "Greenhouse Paper",
+        "canonical": "#f4f7f2",
+        "tonalRamp": [
+          "oklch(22% 0.012 140)",
+          "oklch(34% 0.014 140)",
+          "oklch(46% 0.014 140)",
+          "oklch(58% 0.014 140)",
+          "oklch(70% 0.014 140)",
+          "oklch(80% 0.012 140)",
+          "oklch(90% 0.01 140)",
+          "oklch(97% 0.006 140)"
+        ]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#dbe5da",
+        "tonalRamp": [
+          "oklch(24% 0.015 140)",
+          "oklch(36% 0.016 140)",
+          "oklch(48% 0.016 140)",
+          "oklch(60% 0.016 140)",
+          "oklch(72% 0.015 140)",
+          "oklch(82% 0.012 140)",
+          "oklch(89% 0.012 140)",
+          "oklch(94% 0.01 140)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#1d2b1f",
+        "tonalRamp": [
+          "oklch(18% 0.02 150)",
+          "oklch(28% 0.025 150)",
+          "oklch(38% 0.028 150)",
+          "oklch(50% 0.028 150)",
+          "oklch(62% 0.025 150)",
+          "oklch(74% 0.02 150)",
+          "oklch(86% 0.015 150)",
+          "oklch(95% 0.008 150)"
+        ]
+      },
+      "loam-surface": {
+        "role": "neutral",
+        "displayName": "Loam Surface",
+        "canonical": "#182a17",
+        "tonalRamp": [
+          "oklch(16% 0.02 150)",
+          "oklch(26% 0.025 150)",
+          "oklch(36% 0.03 150)",
+          "oklch(48% 0.03 150)",
+          "oklch(60% 0.028 150)",
+          "oklch(72% 0.022 150)",
+          "oklch(84% 0.016 150)",
+          "oklch(93% 0.01 150)"
+        ]
+      },
+      "deep-loam": {
+        "role": "neutral",
+        "displayName": "Deep Loam",
+        "canonical": "#10200f",
+        "tonalRamp": [
+          "oklch(14% 0.02 150)",
+          "oklch(24% 0.025 150)",
+          "oklch(34% 0.03 150)",
+          "oklch(46% 0.03 150)",
+          "oklch(58% 0.028 150)",
+          "oklch(70% 0.022 150)",
+          "oklch(82% 0.016 150)",
+          "oklch(92% 0.01 150)"
+        ]
+      },
+      "canopy-line": {
+        "role": "neutral",
+        "displayName": "Canopy Line",
+        "canonical": "#2c422a",
+        "tonalRamp": [
+          "oklch(18% 0.025 150)",
+          "oklch(28% 0.03 150)",
+          "oklch(38% 0.035 150)",
+          "oklch(50% 0.035 150)",
+          "oklch(62% 0.03 150)",
+          "oklch(74% 0.025 150)",
+          "oklch(85% 0.018 150)",
+          "oklch(94% 0.01 150)"
+        ]
+      },
+      "morning-mist": {
+        "role": "neutral",
+        "displayName": "Morning Mist",
+        "canonical": "#e7f0e4",
+        "tonalRamp": [
+          "oklch(20% 0.012 145)",
+          "oklch(32% 0.014 145)",
+          "oklch(44% 0.014 145)",
+          "oklch(56% 0.014 145)",
+          "oklch(68% 0.014 145)",
+          "oklch(80% 0.012 145)",
+          "oklch(90% 0.01 145)",
+          "oklch(96% 0.008 145)"
+        ]
+      },
+      "night-canopy": {
+        "role": "primary",
+        "displayName": "Night Canopy",
+        "canonical": "#6fcf97",
+        "tonalRamp": [
+          "oklch(20% 0.05 155)",
+          "oklch(30% 0.07 155)",
+          "oklch(40% 0.09 155)",
+          "oklch(50% 0.11 155)",
+          "oklch(62% 0.12 155)",
+          "oklch(74% 0.10 155)",
+          "oklch(85% 0.07 155)",
+          "oklch(94% 0.03 155)"
+        ]
+      },
+      "sage-mist": {
+        "role": "secondary",
+        "displayName": "Sage Mist",
+        "canonical": "#a9bda6",
+        "tonalRamp": [
+          "oklch(20% 0.015 140)",
+          "oklch(30% 0.02 140)",
+          "oklch(40% 0.022 140)",
+          "oklch(52% 0.024 140)",
+          "oklch(64% 0.022 140)",
+          "oklch(76% 0.018 140)",
+          "oklch(86% 0.014 140)",
+          "oklch(95% 0.008 140)"
+        ]
+      },
+      "sky-loop": {
+        "role": "info",
+        "displayName": "Sky Loop",
+        "canonical": "#5b8def",
+        "tonalRamp": [
+          "oklch(20% 0.05 260)",
+          "oklch(30% 0.08 260)",
+          "oklch(42% 0.11 260)",
+          "oklch(54% 0.13 260)",
+          "oklch(66% 0.12 260)",
+          "oklch(78% 0.08 260)",
+          "oklch(88% 0.05 260)",
+          "oklch(95% 0.02 260)"
+        ]
+      },
+      "vigor-green": {
+        "role": "success",
+        "displayName": "Vigor Green",
+        "canonical": "#4caf50",
+        "tonalRamp": [
+          "oklch(20% 0.05 145)",
+          "oklch(30% 0.08 145)",
+          "oklch(42% 0.11 145)",
+          "oklch(54% 0.13 145)",
+          "oklch(66% 0.12 145)",
+          "oklch(78% 0.09 145)",
+          "oklch(88% 0.06 145)",
+          "oklch(95% 0.03 145)"
+        ]
+      },
+      "amber-caution": {
+        "role": "warning",
+        "displayName": "Amber Caution",
+        "canonical": "#ff9800",
+        "tonalRamp": [
+          "oklch(22% 0.06 60)",
+          "oklch(34% 0.09 60)",
+          "oklch(46% 0.12 60)",
+          "oklch(58% 0.14 60)",
+          "oklch(70% 0.14 60)",
+          "oklch(81% 0.11 60)",
+          "oklch(90% 0.07 60)",
+          "oklch(96% 0.03 60)"
+        ]
+      },
+      "rust-alert": {
+        "role": "error",
+        "displayName": "Rust Alert",
+        "canonical": "#b3392f",
+        "tonalRamp": [
+          "oklch(18% 0.05 25)",
+          "oklch(28% 0.08 25)",
+          "oklch(40% 0.11 25)",
+          "oklch(52% 0.13 25)",
+          "oklch(64% 0.13 25)",
+          "oklch(76% 0.10 25)",
+          "oklch(87% 0.06 25)",
+          "oklch(95% 0.02 25)"
+        ]
+      },
+      "marker-red": {
+        "role": "signal",
+        "displayName": "Marker Red",
+        "canonical": "#e53935",
+        "tonalRamp": [
+          "oklch(20% 0.06 27)",
+          "oklch(30% 0.09 27)",
+          "oklch(42% 0.12 27)",
+          "oklch(54% 0.14 27)",
+          "oklch(66% 0.14 27)",
+          "oklch(78% 0.10 27)",
+          "oklch(88% 0.06 27)",
+          "oklch(96% 0.02 27)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Brand word and page h1 — the largest type in the app, deliberately modest (1.35rem/700)." },
+      "headline": { "displayName": "Headline", "purpose": "Page h2 section titles (1.25rem/600)." },
+      "title": { "displayName": "Title", "purpose": "Card and group h3 titles (1.05rem/600); h4 nested subdivisions (0.95rem/600)." },
+      "body": { "displayName": "Body", "purpose": "Default text at 1rem/1.55; text-sm (0.875rem) is the standard density for data rows." },
+      "label": { "displayName": "Label", "purpose": "Uppercase letter-spaced micro-labels (0.75rem, 0.06em) at 65% opacity for fact captions and phase labels." }
+    },
+    "shadows": [
+      {
+        "name": "card-rest",
+        "value": "0 1px 2px rgba(0,0,0,0.05)",
+        "purpose": "The one permitted shadow — part of the daisyUI shadow-sm card recipe, both themes, no hover variant."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state-fade",
+        "value": "150ms ease",
+        "purpose": "Functional state feedback (hover tints, daisyUI transitions) at or under 200ms; motion is never decorative."
+      }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Compact primary action; the app's default button size (btn-sm) at field radius.",
+      "html": "<button class=\"ds-btn-primary\">Save entry</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; height: 2rem; padding: 4px 12px; border: none; border-radius: 0.5rem; background: var(--color-primary, #2e7d4f); color: var(--color-primary-content, #ffffff); font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: filter 150ms ease; } .ds-btn-primary:hover { filter: brightness(1.1); } .ds-btn-primary:focus-visible { outline: 3px solid var(--color-primary, #2e7d4f); outline-offset: 2px; }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Secondary action: primary-coloured text and border on the card ground.",
+      "html": "<button class=\"ds-btn-outline\">Add photo</button>",
+      "css": ".ds-btn-outline { display: inline-flex; align-items: center; height: 2rem; padding: 4px 12px; border: 1px solid var(--color-primary, #2e7d4f); border-radius: 0.5rem; background: var(--color-base-100, #ffffff); color: var(--color-primary, #2e7d4f); font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: filter 150ms ease; } .ds-btn-outline:hover { filter: brightness(1.1); } .ds-btn-outline:focus-visible { outline: 3px solid var(--color-primary, #2e7d4f); outline-offset: 2px; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "The resting surface: base-100 on the base-200 page, hairline-toned depth and one whisper of shadow.",
+      "html": "<div class=\"ds-card\"><h3 class=\"ds-card-title\">Grow facts</h3><p>Card body sits at px-5 py-4 rhythm on base-100.</p></div>",
+      "css": ".ds-card { background: var(--color-base-100, #ffffff); color: var(--color-base-content, #1d2b1f); border-radius: 0.875rem; padding: 16px 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); font-size: 0.875rem; line-height: 1.55; } .ds-card-title { margin: 0 0 0.5rem; font-size: 1.05rem; font-weight: 600; }"
+    },
+    {
+      "name": "Fact Grid",
+      "kind": "custom",
+      "refersTo": "tile",
+      "description": "Signature data pattern: uppercase micro-labelled values in an auto-fill grid (.facts).",
+      "html": "<dl class=\"ds-facts\"><div><dt>Strain</dt><dd>Northern Light</dd></div><div><dt>Grow day</dt><dd>34</dd></div><div><dt>Phase</dt><dd>Vegetative</dd></div><div><dt>Photoperiod</dt><dd>Yes</dd></div></dl>",
+      "css": ".ds-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: 0.5rem 1rem; margin: 0.75rem 0; } .ds-facts dt { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: color-mix(in srgb, var(--color-base-content, #1d2b1f) 65%, transparent); } .ds-facts dd { margin: 0; font-size: 0.875rem; }"
+    },
+    {
+      "name": "Ghost Badge",
+      "kind": "chip",
+      "refersTo": "badge-ghost",
+      "description": "Transparent hairline chip for tags, traits and sensor roles.",
+      "html": "<span class=\"ds-badge-ghost\">Temperature</span> <span class=\"ds-badge-ghost\">Defoliation</span>",
+      "css": ".ds-badge-ghost { display: inline-flex; align-items: center; height: 1.5rem; padding: 0 0.6rem; border: 1px solid var(--color-base-300, #dbe5da); border-radius: 0.5rem; background: transparent; color: color-mix(in srgb, var(--color-base-content, #1d2b1f) 70%, transparent); font-size: 0.75rem; font-weight: 500; white-space: nowrap; }"
+    },
+    {
+      "name": "Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Compact field: card-ground fill, 1px hairline border, field radius.",
+      "html": "<input class=\"ds-input\" placeholder=\"pH 6.0\" />",
+      "css": ".ds-input { height: 2rem; padding: 0 0.75rem; border: 1px solid var(--color-base-300, #dbe5da); border-radius: 0.5rem; background: var(--color-base-100, #ffffff); color: var(--color-base-content, #1d2b1f); font-size: 0.875rem; } .ds-input::placeholder { color: color-mix(in srgb, var(--color-base-content, #1d2b1f) 55%, transparent); } .ds-input:focus-visible { outline: 3px solid var(--color-primary, #2e7d4f); outline-offset: 2px; }"
+    },
+    {
+      "name": "Warning Alert",
+      "kind": "custom",
+      "refersTo": "tile",
+      "description": "Coaching/caution surface in the semantic warning role (Amber Caution on light).",
+      "html": "<div class=\"ds-alert-warning\">Humidity above range for 3 days — consider airflow.</div>",
+      "css": ".ds-alert-warning { display: block; border-radius: 0.875rem; padding: 12px 16px; background: color-mix(in srgb, var(--color-warning, #ff9800) 15%, var(--color-base-100, #ffffff)); border: 1px solid color-mix(in srgb, var(--color-warning, #ff9800) 40%, transparent); color: var(--color-base-content, #1d2b1f); font-size: 0.875rem; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Cultivation Bench",
+    "overview": "Leaflog looks like a tidy workbench in a professional growing operation: a flat, matte surface where evidence is laid out — dates, ranges, sensor readings, phase windows — and every tool sits within reach. Nothing glows, nothing floats, nothing performs. The system is quietly utilitarian: compact controls, plain labels, small unadorned cards that stack like index cards on the bench. Precision is the aesthetic; the personality lives in exact values, uppercase micro-labels and the phase-colour vocabulary of the charts.\n\nThe register is professional horticulture, never stoner cliché, neon-leaf branding or a dark \"grow-op\" mood. It is also not an ops dashboard: density stays low, cards breathe, and one concern occupies one card. Two complete themes — leaflog (light, default) and leaflogdark (dark, via prefers-color-scheme) — carry the same layout and the same component recipes; both must always work.",
+    "keyCharacteristics": [
+      "Flat tonal depth: card surface (base-100) on page ground (base-200), separated by base-300 hairlines; shadow-sm is the only shadow.",
+      "Compact daisyUI component vocabulary (btn-sm, input-sm, badge-sm, text-sm) — sized for one-handed phone use.",
+      "Two hand-tuned daisyUI themes carrying an incumbent botanical palette.",
+      "Uppercase letter-spaced micro-labels for data facts (the .facts dt pattern).",
+      "Phase accents reserved for charts: germination #8bc34a → seedling #66bb6a → vegetative #4caf50 → flower #ab47bc → drying #ff9800 → curing #a1887f, fallback #90a4ae.",
+      "System font stack; no downloaded or CDN fonts (local-first)."
+    ],
+    "rules": [
+      {
+        "name": "The Two-Theme Rule",
+        "body": "Every colour decision lands in both leaflog and leaflogdark at the same moment. A choice that only works in one theme is a bug, not a style.",
+        "section": "colors"
+      },
+      {
+        "name": "The Phase Accent Rule",
+        "body": "Strong hue is chart data, never chrome. The six phase colours and the today-marker Marker Red (#e53935) appear in Gantt/feed/chart contexts only; UI chrome stays green-and-neutral.",
+        "section": "colors"
+      },
+      {
+        "name": "The System Stack Rule",
+        "body": "No downloaded fonts, ever. If a future design wants a distinct face, that is a redesign decision with a local, self-hosted file — never a CDN.",
+        "section": "typography"
+      },
+      {
+        "name": "The Hairline Rule",
+        "body": "Separation is base-300 borders and tonal steps. If a layout needs more shadow to read, the tonal structure is wrong — fix the steps, don't add depth.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do style everything through daisyUI semantic roles and theme variables (bg-base-100, text-base-content/60) — both themes come free; raw hex belongs only in chart geometry (phase colours, marker red).",
+      "Do check every visual choice in both themes before calling it done (The Two-Theme Rule).",
+      "Do use the .facts grid for state display and btn-sm / text-sm density for data-heavy surfaces.",
+      "Do keep phase colours for phase data; reuse the exact phase_color values when a new chart needs phase meaning.",
+      "Do mark the active nav state with the aria-current underline pattern and keep focus outlines at 3px/offset 2px."
+    ],
+    "donts": [
+      "Don't add shadows beyond the card-rest shadow-sm; if depth doesn't read, fix the tonal steps (The Hairline Rule).",
+      "Don't load webfonts or any CDN asset at runtime — local-first is a product constraint, not a preference.",
+      "Don't let chrome borrow chart hues: no phase purple outside charts, no Marker Red outside the today-marker and destructive feedback.",
+      "Don't treat the incumbent palette as endorsed — it is documented fact the owner has not fallen in love with; propose a deliberate redesign instead of drifting hue-by-hue.",
+      "Don't build dark-only or light-only styling; a prefers-color-scheme media query is a smell — the daisyUI --prefersdark theme switch is the mechanism."
+    ]
+  }
+}
