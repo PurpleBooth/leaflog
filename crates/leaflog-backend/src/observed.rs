@@ -100,11 +100,9 @@ pub async fn observed_for(
         && entry.entity_id == entity_id
         && entry.computed_at.elapsed() < CACHE_TTL
     {
-        return entry.cycle.map(|cycle| ObservedReality {
-            entity_id,
-            lights_on: cycle.lights_on,
-            hours_on: cycle.hours_on,
-        });
+        return entry
+            .cycle
+            .map(|cycle| ObservedReality { entity_id, cycle });
     }
 
     let derived = match state.ha.history(&entity_id, OBSERVED_WINDOW_HOURS).await {
@@ -135,9 +133,5 @@ pub async fn observed_for(
             },
         );
     }
-    derived.map(|cycle| ObservedReality {
-        entity_id,
-        lights_on: cycle.lights_on,
-        hours_on: cycle.hours_on,
-    })
+    derived.map(|cycle| ObservedReality { entity_id, cycle })
 }

@@ -348,14 +348,15 @@ pub struct ObservedCycle {
 
 /// The observed reality served with the editable Light Cycle: the
 /// bound light entity plus the pattern learned from its history.
+/// The cycle is flattened so the JSON wire shape stays
+/// `{entity_id, lights_on, hours_on}` (D102, ADR 0002).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ObservedReality {
     /// The entity id the pattern was learned from.
     pub entity_id: String,
-    /// The learned daily lights-on time.
-    pub lights_on: ClockTime,
-    /// The learned daily lit hours.
-    pub hours_on: u8,
+    /// The pattern learned from the entity's history.
+    #[serde(flatten)]
+    pub cycle: ObservedCycle,
 }
 
 /// GET payload of the light-cycle endpoint.
@@ -996,13 +997,18 @@ mod tests {
             },
             observed: Some(super::ObservedReality {
                 entity_id: "switch.grow_led".to_owned(),
-                lights_on: super::ClockTime { hour: 6, minute: 0 },
-                hours_on: 18,
+                cycle: super::ObservedCycle {
+                    lights_on: super::ClockTime { hour: 6, minute: 0 },
+                    hours_on: 18,
+                },
             }),
         };
         let json = serde_json::to_string(&response).unwrap();
-        assert!(json.contains("\"observed\":{"));
-        assert!(json.contains("\"entity_id\":\"switch.grow_led\""));
+        // The wire shape is pinned: flattened fields sit beside
+        // `entity_id`, exactly as before the embedding (D102).
+        assert!(json.contains(
+            "\"observed\":{\"entity_id\":\"switch.grow_led\",\"lights_on\":\"06:00\",\"hours_on\":18}",
+        ));
         let back: super::LightCycleResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(back.observed, response.observed);
     }

@@ -107,7 +107,7 @@ fn optional_field(hours: Option<u8>) -> String {
 fn reality_caption(observed: &ObservedReality) -> String {
     format!(
         "Reality from: {} · learned {} · {} h",
-        observed.entity_id, observed.lights_on, observed.hours_on
+        observed.entity_id, observed.cycle.lights_on, observed.cycle.hours_on
     )
 }
 
@@ -334,8 +334,10 @@ mod tests {
     fn the_caption_names_the_entity_and_its_learned_pattern() {
         let reality = leaflog_core::light_cycle::ObservedReality {
             entity_id: "switch.grow_led".to_owned(),
-            lights_on: ClockTime { hour: 6, minute: 0 },
-            hours_on: 18,
+            cycle: leaflog_core::light_cycle::ObservedCycle {
+                lights_on: ClockTime { hour: 6, minute: 0 },
+                hours_on: 18,
+            },
         };
         assert_eq!(
             super::reality_caption(&reality),
