@@ -40,6 +40,7 @@ mod light_cycle;
 mod live;
 mod onboarding;
 mod phase_pick;
+mod quick_add;
 
 use grows::{GrowsPage, GrowsRoute, Landing};
 use history::{HistoryPage, PlantViewPage};
