@@ -6,6 +6,29 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-18 — Phase day badge (grow page rework, ticket 05)
+
+### D104: Phase day anchors on the raw transition event, not the clamped window start
+
+_(Numbered D104 per the ticket's instructions; D097 was the last
+number in use on this branch.)_
+
+The spec pins the Phase day to "each phase's transition event" but
+leaves open which number the badge reads when a pick is backdated
+hard: the raw event day, or the forecast window start. The two
+differ. The engine clamps projected windows so they stay contiguous
+for the Gantt: a flip on day 3 under a projected seedling window of
+6–23 pushes the flower window start to day 6, while the timeline
+still records the flip on day 3.
+
+The badge reads the raw event day — `leaflog_core::forecast::phase_day`
+over `Actuals`, with day 0 being the transition day — so late diary
+entries stay truthful about how long the phase has run. The Gantt
+and the charts stay on the Day count; re-anchoring them to Phase day
+is explicitly out of scope for the rework.
+
+---
+
 ## 2026-11-17 — review fixes and retro hardening
 
 ### D083: decision ids are unique — the `decision-ids` gate
