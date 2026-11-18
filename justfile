@@ -143,7 +143,11 @@ e2e: tailwind-daisyui build-echarts
     echo "────────────────────────────────────────────────────────────"
     (cd {{frontend_dir}} && trunk build --release --dist "$work/dist")
     (cd {{frontend_dir}} && node charts/verify.mjs "$work/dist")
-    MOCK_HA_PORT={{e2e_mock_port}} ./target/debug/mock-ha &
+    # The e2e mock reports no language (MOCK_HA_LANGUAGE="" means
+    # "none" in the mock's config response), so the locale chain (D112)
+    # falls through to the browser locale — the step the German spec
+    # forces and the default-English spec pins.
+    MOCK_HA_PORT={{e2e_mock_port}} MOCK_HA_LANGUAGE="" ./target/debug/mock-ha &
     mock_pid=$!
     # The dev default supervisor URL is just dev's mock port (8098);
     # the e2e mock listens on its own port, so point the backend at it
