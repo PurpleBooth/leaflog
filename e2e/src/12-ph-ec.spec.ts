@@ -16,11 +16,15 @@ test.beforeAll(async ({ request }) => {
 /** The dot fills on one chart, de-duplicated (input vs runoff). The
  * SVG renderer draws scatter symbols as filled paths; the chart's
  * other paths (grid, axes) carry fill="none", so the non-none fills
- * are exactly the dots. */
+ * are the dots. The log-event tick glyphs (ticket 04) are narrow 2px
+ * rect paths in the muted colour — this spec's feed entry is a
+ * root-zone event, so its ticks draw too; shapes at most 4px wide
+ * are ticks, not dots, and drop out. */
 async function dotFills(svg: Locator): Promise<string[]> {
   return svg.locator('circle, path').evaluateAll((shapes) => [
     ...new Set(
       shapes
+        .filter((shape) => shape.getBoundingClientRect().width > 4)
         .map((shape) => shape.getAttribute('fill') ?? getComputedStyle(shape).fill)
         .filter((fill) => fill && fill !== 'none'),
     ),

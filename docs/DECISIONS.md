@@ -39,6 +39,44 @@ follows the grouping. The per-card
 window toggles are gone: the section's shared control is the only
 one (spec 19's per-card assertions updated to match).
 
+## 2026-11-18 — log-event markers on the environment charts (env-section ticket 04, git-bug 5a8eb6a)
+
+### D107: markers split by zone — root roles get water/feed/transplant, air roles get light and phase events, as one muted tick series
+
+The history response carries a `markers` array beside its series:
+the action-log events inside the window that matter to the role.
+`marker_kinds` decides: root-zone roles (`soil_moisture`, `ph`,
+`ec`) get water/feed/transplant; air roles (`temperature`,
+`humidity`, `vpd`, `co2`) get lights/light-change/flip/phase-change;
+every other role (light, the reservoir roles) gets none — a light
+log entry marking the light chart says nothing the chart does not.
+Backend selection is one small read of the newest 1000 action-log
+rows beside the sensor pass (`MARKER_SCAN_LIMIT`); a log page
+fetches 200, so no window in practice truncates.
+
+Each marker draws as one quiet vertical tick: a 2×12 rect in the
+muted gridline colour, anchored just above the axis floor. The
+ticks are geometry, not colour — no new hue enters either theme
+(the Phase Accent Rule), and the option builder appends the
+`Events` scatter series last so the reading series keep their
+indices. The tooltip names the event (`Lights — 2026-11-18 16:41
+UTC`); the tick's y position is placement, never a reading.
+
+### D108: hiding markers strips the set and re-renders with a full option replace; the switch is per visit
+
+One `Markers` checkbox beside the section's window toggles hides
+and shows every chart's ticks at once: the shared signal rides the
+section header beside the shared window, and `EChartsHistory`
+strips the marker set before the builder sees it (a hidden set
+renders no series). Because the toggle changes the series list,
+`setOption` now passes `notMerge: true` — a merged update would
+keep the stale `Events` series, and a full replace is always
+correct since these charts carry nothing stateful (no dataZoom).
+The choice is not persisted: only the window is a stored
+preference, the tick glance is not. No new `#[allow]` exceptions.
+
+---
+
 ## 2026-11-18 — one quiet card for unbound roles (env-section ticket 03)
 
 ### D105: the not-measured card chips only the five charted sensor roles

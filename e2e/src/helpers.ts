@@ -117,6 +117,33 @@ export interface BandSegment {
   light_on: boolean | null;
 }
 
+/** The log-event tick glyphs on one chart's ECharts SVG (ticket
+ *  04): narrow filled rect paths, 2px wide and 12px tall, in the
+ *  muted gridline colour — geometry, not a new hue. Width at most
+ *  4px separates them from scatter dots (8px) and Target Band shading
+ *  (viewport-wide); the 8–16px height window keeps grid strokes
+ *  (1–2px) out. zrender's clip shapes are excluded as with the
+ *  bands. Returns viewport boxes so specs can count and locate them. */
+export async function markerTicks(
+  svg: Locator,
+): Promise<{ x: number; y: number; height: number }[]> {
+  return svg.evaluate((root) => {
+    const ticks: { x: number; y: number; height: number }[] = [];
+    for (const path of root.querySelectorAll<SVGPathElement>(
+      'path[fill]:not([fill="none"])',
+    )) {
+      if (path.closest('clipPath')) {
+        continue;
+      }
+      const box = path.getBoundingClientRect();
+      if (box.width <= 4 && box.height >= 8 && box.height <= 16) {
+        ticks.push({ x: box.x, y: box.y, height: box.height });
+      }
+    }
+    return ticks;
+  });
+}
+
 /** The filled (non-line) paths of one chart's ECharts SVG: the
  *  rendered Target Band regions, as top/height boxes (viewport
  *  coordinates — comparisons only). zrender's clip shapes carry a

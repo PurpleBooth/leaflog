@@ -14,7 +14,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::Phase;
+use crate::actions::ActionType;
 use crate::forecast::PhaseWindow;
+use crate::grows::ActionEntry;
 
 /// The rolling window length behind a chart (day/week/month toggles
 /// map to rolling 24 h / 7 d / 30 d).
@@ -813,6 +815,75 @@ pub fn phase_spans(started_on: &str, tz_name: &str, windows: &[PhaseWindow]) -> 
     spans
 }
 
+/// One log-event marker: an action-log event a chart annotates with
+/// a tick glyph (spec 2fe2dcc ticket 04).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EventMarker {
+    /// When the event happened, RFC 3339 UTC.
+    pub at: String,
+    /// What happened: the action's stable `snake_case` wire label
+    /// (`water`, `lights`, ...). The chart tooltip names the event via
+    /// the UI caption for that label.
+    pub kind: String,
+}
+
+/// Marker kinds for one role: root-zone charts correlate with
+/// substrate interventions (water, feed, repot), air charts with
+/// light transitions and phase picks; every other role takes none.
+#[must_use]
+pub fn marker_kinds(role: &str) -> &'static [ActionType] {
+    const ROOT_ZONE: &[ActionType] = &[ActionType::Water, ActionType::Feed, ActionType::Transplant];
+    const AIR: &[ActionType] = &[
+        ActionType::Lights,
+        ActionType::LightChange,
+        ActionType::Flip,
+        ActionType::PhaseChange,
+    ];
+    match role {
+        "soil_moisture" | "ph" | "ec" => ROOT_ZONE,
+        "temperature" | "humidity" | "vpd" | "co2" => AIR,
+        _ => &[],
+    }
+}
+
+/// The role-relevant action-log events inside `[from, to]`
+/// (inclusive on both ends), ascending by time: the markers a chart
+/// draws as ticks behind its series.
+///
+/// Events outside the window, with unparseable timestamps or of kinds
+/// the role does not take are dropped; unparseable window bounds yield
+/// no markers (fail closed, like [`merge_series`]).
+#[must_use]
+pub fn event_markers(
+    role: &str,
+    from: &str,
+    to: &str,
+    entries: &[ActionEntry],
+) -> Vec<EventMarker> {
+    let (Some(from_epoch), Some(to_epoch)) = (parse_epoch(from), parse_epoch(to)) else {
+        return Vec::new();
+    };
+    let kinds = marker_kinds(role);
+    let mut markers: Vec<(i64, EventMarker)> = entries
+        .iter()
+        .filter(|entry| kinds.contains(&entry.action_type))
+        .filter_map(|entry| {
+            let epoch = parse_epoch(&entry.occurred_at)?;
+            (from_epoch <= epoch && epoch <= to_epoch).then(|| {
+                (
+                    epoch,
+                    EventMarker {
+                        at: entry.occurred_at.clone(),
+                        kind: entry.action_type.label().to_owned(),
+                    },
+                )
+            })
+        })
+        .collect();
+    markers.sort_by_key(|(epoch, _)| *epoch);
+    markers.into_iter().map(|(_, marker)| marker).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1085,6 +1156,122 @@ mod tests {
             Vec::new()
         );
         assert_eq!(phase_spans("soon", "Europe/Berlin", &windows), Vec::new());
+    }
+
+    // ── Log-event markers (ticket 5a8eb6a) ──────────────────────────
+
+    fn entry(
+        action_type: crate::actions::ActionType,
+        occurred_at: &str,
+    ) -> crate::grows::ActionEntry {
+        crate::grows::ActionEntry {
+            id: format!("id-{occurred_at}"),
+            grow_id: "grow".to_owned(),
+            plant_ids: Vec::new(),
+            occurred_at: occurred_at.to_owned(),
+            action_type,
+            phase: None,
+            grow_day: 0,
+            details: crate::actions::ActionDetails::default(),
+            notes: None,
+            appearance_tags: Vec::new(),
+            created_at: occurred_at.to_owned(),
+            updated_at: occurred_at.to_owned(),
+        }
+    }
+
+    #[test]
+    fn marker_kinds_split_root_zone_from_air() {
+        // Root-zone roles correlate with substrate interventions.
+        for role in ["soil_moisture", "ph", "ec"] {
+            assert_eq!(
+                marker_kinds(role),
+                &[ActionType::Water, ActionType::Feed, ActionType::Transplant],
+                "role {role}"
+            );
+        }
+        // Air roles correlate with light transitions and phase picks.
+        for role in ["temperature", "humidity", "vpd", "co2"] {
+            assert_eq!(
+                marker_kinds(role),
+                &[
+                    ActionType::Lights,
+                    ActionType::LightChange,
+                    ActionType::Flip,
+                    ActionType::PhaseChange
+                ],
+                "role {role}"
+            );
+        }
+        // Roles outside the environment section take none.
+        assert_eq!(marker_kinds("light"), &[] as &[ActionType]);
+        assert_eq!(marker_kinds("reservoir_ph"), &[] as &[ActionType]);
+        assert_eq!(marker_kinds("mystery"), &[] as &[ActionType]);
+    }
+
+    #[test]
+    fn event_markers_pick_role_kinds_inside_the_window_ascending() {
+        let entries = [
+            entry(ActionType::Water, "2026-11-16T08:30:00Z"),
+            entry(ActionType::Note, "2026-11-16T09:00:00Z"),
+            entry(ActionType::Feed, "2026-11-16T09:15:00Z"),
+            entry(ActionType::Water, "2026-11-14T06:00:00Z"),
+            entry(ActionType::Transplant, "2026-11-15T12:00:00Z"),
+            entry(ActionType::Water, "2026-11-16T12:00:00Z"),
+            entry(ActionType::Transplant, "not-a-time"),
+        ];
+        let markers = event_markers("soil_moisture", "2026-11-15T12:00:00Z", NOW, &entries);
+        // Ascending, window ends inclusive, notes and unparseable
+        // timestamps dropped.
+        assert_eq!(
+            markers,
+            vec![
+                EventMarker {
+                    at: "2026-11-15T12:00:00Z".to_owned(),
+                    kind: "transplant".to_owned()
+                },
+                EventMarker {
+                    at: "2026-11-16T08:30:00Z".to_owned(),
+                    kind: "water".to_owned()
+                },
+                EventMarker {
+                    at: "2026-11-16T09:15:00Z".to_owned(),
+                    kind: "feed".to_owned()
+                },
+                EventMarker {
+                    at: "2026-11-16T12:00:00Z".to_owned(),
+                    kind: "water".to_owned()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn air_roles_mark_light_and_phase_events_only() {
+        let entries = [
+            entry(ActionType::Lights, "2026-11-16T06:00:00Z"),
+            entry(ActionType::Water, "2026-11-16T07:00:00Z"),
+            entry(ActionType::Flip, "2026-11-16T05:00:00Z"),
+            entry(ActionType::PhaseChange, "2026-11-16T04:00:00Z"),
+            entry(ActionType::LightChange, "2026-11-16T03:00:00Z"),
+            entry(ActionType::Harvest, "2026-11-16T02:00:00Z"),
+        ];
+        let markers = event_markers("temperature", "2026-11-15T12:00:00Z", NOW, &entries);
+        let kinds: Vec<&str> = markers.iter().map(|marker| marker.kind.as_str()).collect();
+        assert_eq!(kinds, ["light_change", "phase_change", "flip", "lights"]);
+    }
+
+    #[test]
+    fn event_markers_fail_closed_on_unparseable_window_bounds() {
+        let entries = [entry(ActionType::Water, "2026-11-16T08:30:00Z")];
+        assert_eq!(
+            event_markers("soil_moisture", "not-a-time", NOW, &entries),
+            Vec::new()
+        );
+        assert_eq!(
+            event_markers("soil_moisture", "2026-11-15T12:00:00Z", "soon", &entries),
+            Vec::new()
+        );
     }
 }
 

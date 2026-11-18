@@ -86,16 +86,28 @@ fn save_history_window(label: &str) {
     }
 }
 
-/// The section-header control: the shared 24h / 7d / 30d toggles plus
-/// a reserved empty slot for the future whole-grow window. The slot
-/// holds the fourth button's width without drawing a disabled teaser,
-/// so that window's arrival never shifts the row.
+/// The section-header control: the shared 24h / 7d / 30d toggles,
+/// a reserved empty slot for the future whole-grow window (it holds
+/// the fourth button's width without drawing a disabled teaser, so
+/// that window's arrival never shifts the row), and the shared
+/// log-event marker toggle (ticket 04) — one switch hides or shows
+/// the event ticks on every chart at once. The marker choice stays
+/// per visit; only the window persists.
 #[component]
-fn HistoryWindowControl(window: RwSignal<String>) -> impl IntoView {
+fn HistoryWindowControl(window: RwSignal<String>, markers: RwSignal<bool>) -> impl IntoView {
     view! {
-        <div class="flex items-center">
+        <div class="flex items-center gap-3">
             <WindowToggles window aria_label="History window" />
             <span class="w-9 h-6" aria-hidden="true"></span>
+            <label class="flex items-center gap-1 cursor-pointer text-sm text-base-content/70">
+                <input class="checkbox checkbox-xs" type="checkbox"
+                    prop:checked=move || markers.get()
+                    on:change=move |ev| {
+                        markers.set(event_target_checked(&ev));
+                    }
+                />
+                "Markers"
+            </label>
         </div>
     }
 }
@@ -115,11 +127,16 @@ fn GroupLabel(text: &'static str) -> impl IntoView {
 /// history charts in two groups — Air and Root zone, each under its
 /// micro-label header — with the Light card between them, and one
 /// shared window control in the header that every chart follows.
-/// Every mounted chart joins the connect group, so a hover anywhere
-/// shows the crosshair on every chart at the same timestamp.
+/// Every group chart joins the connect group, so a hover anywhere
+/// shows the crosshair on every chart at the same timestamp; the
+/// full-width Light card stays out (its pixel scale differs).
 #[component]
 pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
     let window = RwSignal::new(load_history_window());
+    // The shared marker toggle: on until the visitor turns it off,
+    // per visit (only the window persists — the tick choice is a
+    // glance, not a preference worth storage).
+    let markers = RwSignal::new(true);
     // Persist every settled value, including the first visit's
     // default: the stored choice then never disagrees with what the
     // page shows.
@@ -132,7 +149,7 @@ pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
         <div>
             <div class="flex flex-wrap items-center justify-between gap-2">
                 <h3>"Environment"</h3>
-                <HistoryWindowControl window=window />
+                <HistoryWindowControl window=window markers=markers />
             </div>
             <EnvDashboard grow_id=grow_id.clone() />
             // The Air group: above-ground concerns under their
@@ -146,16 +163,17 @@ pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
             <GroupLabel text="Air" />
             <div class="grid grid-cols-1 gap-4 items-start lg:grid-cols-2">
                 <HistoryChart grow_id=grow_id.clone() shared_window=window
+                    shared_markers=markers
                     format_value=leaflog_core::units::temp_both
                 />
                 <HistoryChart grow_id=grow_id.clone() role="humidity" title="Humidity"
-                    shared_window=window format_value=format_pct
+                    shared_window=window shared_markers=markers format_value=format_pct
                 />
                 <HistoryChart grow_id=grow_id.clone() role="vpd" title="VPD"
-                    shared_window=window format_value=format_kpa
+                    shared_window=window shared_markers=markers format_value=format_kpa
                 />
                 <HistoryChart grow_id=grow_id.clone() role="co2" title="CO₂"
-                    shared_window=window format_value=format_ppm
+                    shared_window=window shared_markers=markers format_value=format_ppm
                 />
             </div>
             // The Light card keeps its own slot between the groups —
@@ -163,22 +181,23 @@ pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
             // night-shading ticket folds it into the Air charts.
             <div class="mt-4">
                 <HistoryChart grow_id=grow_id.clone() role="light" title="Light"
-                    shared_window=window format_value=format_on_off joined_crosshair=false
+                    shared_window=window shared_markers=markers format_value=format_on_off
+                    joined_crosshair=false
                 />
             </div>
             // The Root zone group: below-ground concerns.
             <GroupLabel text="Root zone" />
             <div class="grid grid-cols-1 gap-4 items-start lg:grid-cols-2">
                 <HistoryChart grow_id=grow_id.clone() role="soil_moisture" title="Soil moisture"
-                    shared_window=window format_value=format_pct
+                    shared_window=window shared_markers=markers format_value=format_pct
                 >
                     <BandEditor />
                 </HistoryChart>
                 <HistoryChart grow_id=grow_id.clone() role="ph" title="pH"
-                    shared_window=window format_value=format_ph
+                    shared_window=window shared_markers=markers format_value=format_ph
                 />
                 <HistoryChart grow_id=grow_id.clone() role="ec" title="EC"
-                    shared_window=window format_value=format_ec_us
+                    shared_window=window shared_markers=markers format_value=format_ec_us
                 />
             </div>
             <NotMeasuredCard grow_id />
