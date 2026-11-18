@@ -7,7 +7,7 @@
 // the legend hint naming the tint.
 
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { api, createGrow, dismissOnboarding, nightShades, url } from './helpers';
+import { api, createGrow, dismissOnboarding, nightShades, revealRootZone, url } from './helpers';
 
 test.beforeAll(async ({ request }) => {
   await dismissOnboarding(request);
@@ -52,6 +52,7 @@ test('a bound light shades the observed nights behind the Air charts only', asyn
     },
   });
   await page.goto(url(`/grows/${growId}`));
+  await revealRootZone(page);
 
   // The mock's light staircase runs off → on → off anchored at
   // now−23 h / −20 h / −18 h, so the rolling week window holds at

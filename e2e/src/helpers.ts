@@ -203,3 +203,13 @@ export async function bandRegions(
     return regions;
   });
 }
+
+/** Scroll the Root zone group into view so its lazily mounted chart
+ *  grid renders (ticket 07): the group waits below the fold for its
+ *  first intersection before fetching or drawing anything. The label
+ *  is the group's structural scroll target — it always renders. */
+export async function revealRootZone(page: Page): Promise<void> {
+  await page
+    .getByRole('heading', { name: 'Root zone', exact: true })
+    .scrollIntoViewIfNeeded();
+}

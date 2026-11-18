@@ -16,6 +16,7 @@ import {
   bandRegions,
   createGrow,
   dismissOnboarding,
+  revealRootZone,
   url,
   type BandSegment,
 } from './helpers';
@@ -104,6 +105,7 @@ test('humidity, vpd and soil charts draw axes and tooltips', async ({
   // Soil moisture: the % axis and tooltip, with the band editor in
   // the same card (its flow is 11-soil-band.spec.ts).
   const soilSvg = page.locator('svg[aria-label="soil_moisture history"]');
+  await revealRootZone(page);
   await expect(soilSvg).toBeVisible();
   await expect(
     soilSvg.locator('text').filter({ hasText: '%' }).first(),

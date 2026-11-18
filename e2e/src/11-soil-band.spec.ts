@@ -8,7 +8,7 @@
 // under the parallel suite).
 
 import { test, expect } from '@playwright/test';
-import { api, createGrow, dismissOnboarding, url } from './helpers';
+import { api, createGrow, dismissOnboarding, revealRootZone, url } from './helpers';
 
 test.beforeAll(async ({ request }) => {
   await dismissOnboarding(request);
@@ -23,6 +23,7 @@ test('soil band saves, persists and resets to the default', async ({
     bindings: { soil_moisture: 'sensor.grow_soil_moisture' },
   });
   await page.goto(url(`/grows/${growId}`));
+  await revealRootZone(page);
 
   // The editor renders inside the soil moisture card (ticket 03).
   const soilCard = page.locator('.card', {

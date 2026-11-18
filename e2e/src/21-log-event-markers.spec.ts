@@ -8,7 +8,7 @@
 // assert the API selection and the rendered DOM.
 
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { api, createGrow, dismissOnboarding, markerTicks, url } from './helpers';
+import { api, createGrow, dismissOnboarding, markerTicks, revealRootZone, url } from './helpers';
 
 test.beforeAll(async ({ request }) => {
   await dismissOnboarding(request);
@@ -117,6 +117,7 @@ test('marker ticks draw, hide behind the toggle, and name the event', async ({
   await logAction(request, growId, 'water', 2);
 
   await page.goto(url(`/grows/${growId}`));
+  await revealRootZone(page);
   const tempCard = page.locator('.card', {
     has: page.locator('svg[aria-label="temperature history"]'),
   });

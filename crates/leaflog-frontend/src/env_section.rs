@@ -158,19 +158,49 @@ const fn initial_visible(observer_available: bool) -> bool {
     !observer_available
 }
 
+/// How much vertical space the lazy block reserves before its
+/// charts mount (ticket 07), so the section keeps its height while
+/// the fetches are still pending and the mount does not jump the
+/// page under the visitor. The values cover the stacked cards
+/// (mobile) and the two-row grid (`lg`); anything taller simply
+/// grows past the reservation when it mounts.
+const fn reserved_block_height_class() -> &'static str {
+    "min-h-[620px] lg:min-h-[480px]"
+}
+
+/// How long the lazy watch waits before it starts observing
+/// (ticket 07). The Air cards above the block render only once
+/// their first history fetch resolves, so the section grows by
+/// hundreds of pixels after first paint — a watch armed at mount
+/// sees the block "in view" on that short page and fires before any
+/// scroll happened. Arming after this delay lets that growth pass;
+/// a visitor who is already there when the watch arms still gets an
+/// immediate intersection, and on a network so slow that the growth
+/// outlasts the delay the block simply mounts a little early —
+/// once, as always.
+const LAZY_WATCH_ARM_DELAY_MS: i32 = 500;
+
 /// A lazily mounted block of the section (ticket 07): the Root zone
-/// chart grid renders only once its anchor scrolls into view, so the
-/// first paint skips the three history fetches a visitor may never
-/// scroll to. The block mounts once — the observer disconnects on
-/// the first intersection and never re-runs the work, whatever the
-/// scroll does afterwards. The group's label is deliberately not
-/// part of the block: the section's outline stays structural, so a
-/// visitor always sees what is coming, and the label is the natural
-/// scroll target for it.
+/// chart grid renders only once its wrapper scrolls into view, so
+/// the first paint skips the three history fetches a visitor may
+/// never scroll to. The watch arms after
+/// [`LAZY_WATCH_ARM_DELAY_MS`] and the wrapper reserves its height
+/// meanwhile (see both constants for why). The block mounts once —
+/// the observer disconnects on the first intersection and never
+/// re-runs the work, whatever the scroll does afterwards. The
+/// group's label is deliberately not part of the block: the
+/// section's outline stays structural, so a visitor always sees
+/// what is coming, and the label is the natural scroll target.
 #[component]
 fn LazyCharts(children: ChildrenFn) -> impl IntoView {
-    let visible = RwSignal::new(initial_visible(intersection_observer_available()));
-    // The observer slot: filled once the anchor mounts, taken (and
+    let available = intersection_observer_available();
+    let visible = RwSignal::new(initial_visible(available));
+    // The watch arms after the section's own layout has settled;
+    // until then there is nothing to observe honestly.
+    let armed = RwSignal::new(false);
+    // The one-shot arming timer; dropping it cancels it.
+    let arming_slot = StoredValue::new_local(Option::<gloo_timers::callback::Timeout>::None);
+    // The observer slot: filled once the watch arms, taken (and
     // disconnected) at the first intersection or at cleanup,
     // whichever comes first. The callback rides in the same slot so
     // its lifetime matches the observer's exactly.
@@ -180,11 +210,20 @@ fn LazyCharts(children: ChildrenFn) -> impl IntoView {
             Closure<dyn FnMut(js_sys::Array)>,
         )>::None,
     );
-    let anchor = NodeRef::<leptos::html::Div>::new();
+    // The observed wrapper: its reserved height holds the block's
+    // place in the layout while the charts are still unmounted, so
+    // an intersection of the wrapper means the visitor scrolled to
+    // where the charts belong — not to a transiently short page.
+    let wrapper = NodeRef::<leptos::html::Div>::new();
 
-    // Disconnect the observer (if any) and drop the slot's pair —
-    // closure and observer live and die together.
-    let drop_observer = move || {
+    // Take down the whole watch: the arming timer first (it may
+    // still be pending), then the observer pair.
+    let drop_watch = move || {
+        arming_slot.update_value(|slot| {
+            if let Some(timer) = slot.take() {
+                timer.cancel();
+            }
+        });
         observer_slot.update_value(|slot| {
             if let Some((observer, _callback)) = slot.take() {
                 observer.disconnect();
@@ -192,13 +231,28 @@ fn LazyCharts(children: ChildrenFn) -> impl IntoView {
         });
     };
 
+    // Arm the watch once, after the delay. A timer that cannot be
+    // armed is not a reason to hide the group: arm now.
+    if available {
+        let timer = gloo_timers::callback::Timeout::new(
+            u32::try_from(LAZY_WATCH_ARM_DELAY_MS).unwrap_or(0),
+            move || armed.set(true),
+        );
+        arming_slot.set_value(Some(timer));
+    } else {
+        armed.set(true);
+    }
+
     Effect::new(move |_| {
         if visible.get() {
-            drop_observer();
+            drop_watch();
             return;
         }
-        // Wait for the anchor element to exist before observing it.
-        let Some(anchor) = anchor.get() else { return };
+        if !armed.get() {
+            return;
+        }
+        // Wait for the wrapper element to exist before observing it.
+        let Some(wrapper) = wrapper.get() else { return };
         let entered = visible;
         let callback = Closure::<dyn FnMut(js_sys::Array)>::new(move |entries: js_sys::Array| {
             let intersected = entries.to_vec().iter().any(|entry| {
@@ -216,24 +270,22 @@ fn LazyCharts(children: ChildrenFn) -> impl IntoView {
         let Ok(observer) = web_sys::IntersectionObserver::new(&handler) else {
             // The availability probe lied (the constructor threw):
             // take the immediate path rather than hiding the group
-            // behind a sentinel no callback will ever fire for.
+            // behind a watch no callback will ever fire for.
             visible.set(true);
             return;
         };
-        observer.observe(&anchor);
+        observer.observe(&wrapper);
         observer_slot.set_value(Some((observer, callback)));
     });
-    on_cleanup(drop_observer);
+    on_cleanup(drop_watch);
 
     view! {
-        // The one-pixel anchor the observer watches: tall enough to
-        // register as a real rect, too small to shift layout, and
-        // out of the accessibility tree.
-        <div node_ref=anchor class="h-px w-full" aria-hidden="true"></div>
-        {move || {
-            let children = children.clone();
-            visible.get().then(move || children())
-        }}
+        <div node_ref=wrapper class=reserved_block_height_class()>
+            {move || {
+                let children = children.clone();
+                visible.get().then(move || children())
+            }}
+        </div>
     }
 }
 

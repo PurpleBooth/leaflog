@@ -11,7 +11,7 @@
 // folded it into the Air charts' night shading).
 
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { api, createGrow, dismissOnboarding, url } from './helpers';
+import { api, createGrow, dismissOnboarding, revealRootZone, url } from './helpers';
 
 test.beforeAll(async ({ request }) => {
   await dismissOnboarding(request);
@@ -87,6 +87,10 @@ test('Air and Root zone group their charts under micro-label headers', async ({
   await bindAndAwaitLive(request, growId);
   await page.goto(url(`/grows/${growId}`));
   await expect(chartSvg(page, 'temperature')).toBeVisible();
+  // The Root zone grid mounts lazily (ticket 07): reveal it before
+  // asserting anything about its charts.
+  await revealRootZone(page);
+  await expect(chartSvg(page, 'soil_moisture')).toBeVisible();
 
   // Exactly one Air and one Root zone heading, each uppercase in
   // styling only (the source text stays the plain group name).
@@ -145,6 +149,7 @@ test('one hover moves every chart at the same shared timestamp', async ({
     await page.waitForTimeout(1_200);
   }
   await page.goto(url(`/grows/${growId}`));
+  await revealRootZone(page);
   for (const role of ['temperature', 'humidity', 'soil_moisture']) {
     await expect(chartSvg(page, role)).toBeVisible();
   }

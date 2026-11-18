@@ -7,7 +7,7 @@
 // rule): hidden cards are the unbound state, never a dead binding.
 
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { api, createGrow, dismissOnboarding, url } from './helpers';
+import { api, createGrow, dismissOnboarding, revealRootZone, url } from './helpers';
 
 test.beforeAll(async ({ request }) => {
   await dismissOnboarding(request);
@@ -61,6 +61,7 @@ test('feed ph and ec measurements plot as scatter points', async ({
   });
 
   await page.goto(url(`/grows/${growId}`));
+  await revealRootZone(page);
 
   // Both charts render through ECharts under the old aria labels.
   const phChart = page.locator('svg[aria-label="ph history"]');
