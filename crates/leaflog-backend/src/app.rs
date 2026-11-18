@@ -58,12 +58,15 @@ pub struct AppState {
     pub photos: crate::photos::PhotoStore,
     /// Home Assistant bridge (live data, Supervisor REST).
     pub ha: std::sync::Arc<crate::ha::HaBridge>,
+    /// Derived light-cycle reality cache (D102); binding changes
+    /// invalidate it.
+    pub observed: crate::observed::ObservedCache,
 }
 
 impl AppState {
     /// Creates the shared state.
     #[must_use]
-    pub const fn new(
+    pub fn new(
         assets: Assets,
         mode: Mode,
         dev_prefix: Option<String>,
@@ -78,6 +81,7 @@ impl AppState {
             db,
             photos,
             ha,
+            observed: crate::observed::ObservedCache::new(),
         }
     }
 }
@@ -110,6 +114,31 @@ pub fn day_number_in(started_on: &str, occurred_at: &str, tz: &str) -> Option<u1
         .or_else(|| day_number_utc(started_on, occurred_at))
 }
 
+/// The local calendar date (`YYYY-MM-DD`) of a UTC instant in `tz`,
+/// the Germination pick's new start-date anchor (ticket 04); same
+/// UTC fallback as [`day_number_in`]. Invalid timestamps return
+/// `None`.
+#[must_use]
+pub fn local_date_in(occurred_at: &str, tz: &str) -> Option<String> {
+    leaflog_core::tz::local_date(occurred_at, tz).or_else(|| local_date_utc(occurred_at))
+}
+
+/// Parses an RFC 3339 timestamp — the shared first step of the UTC
+/// fallbacks (log `occurred_at` payloads are RFC 3339 strings).
+fn utc_instant_of(occurred_at: &str) -> Option<time::OffsetDateTime> {
+    time::OffsetDateTime::parse(occurred_at, &time::format_description::well_known::Rfc3339).ok()
+}
+
+/// The UTC calendar date of a UTC instant — the fallback anchor for
+/// unknown zones (`occurred_at` payloads are UTC RFC 3339 stamps).
+fn local_date_utc(occurred_at: &str) -> Option<String> {
+    let stamp = utc_instant_of(occurred_at)?;
+    stamp
+        .date()
+        .format(&time::macros::format_description!("[year]-[month]-[day]"))
+        .ok()
+}
+
 /// Plain UTC date math — the pre-canonical behaviour and the fallback
 /// for unknown zones.
 fn day_number_utc(started_on: &str, occurred_at: &str) -> Option<u16> {
@@ -118,9 +147,7 @@ fn day_number_utc(started_on: &str, occurred_at: &str) -> Option<u16> {
         &time::macros::format_description!("[year]-[month]-[day]"),
     )
     .ok()?;
-    let occurred =
-        time::OffsetDateTime::parse(occurred_at, &time::format_description::well_known::Rfc3339)
-            .ok()?;
+    let occurred = utc_instant_of(occurred_at)?;
     u16::try_from((occurred.date() - start).whole_days().max(0)).ok()
 }
 
@@ -131,10 +158,18 @@ fn day_number_utc(started_on: &str, occurred_at: &str) -> Option<u16> {
 /// prefix and sets `X-Ingress-Path`; the injected `<base href>` is what
 /// makes the browser build prefixed URLs.
 pub fn build_router(state: AppState) -> Router {
-    Router::new()
+    let router = Router::new()
         .route("/api/health", get(health))
         .route("/", get(index))
-        .merge(crate::api::router())
+        .merge(crate::api::router());
+    // The theme harness is a dev/test host for the e2e suite (ticket
+    // 07); it must never exist in the production image.
+    let router = if state.mode == Mode::Dev {
+        router.route("/theme-harness", get(crate::theme_harness::harness_page))
+    } else {
+        router
+    };
+    router
         .fallback(fallback)
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -388,7 +423,9 @@ mod tests {
     use axum::body::Body;
     use axum::http::Request;
 
-    use super::{Mode, SUPERVISOR_INGRESS_IP, peer_allowed, strip_dev_prefix};
+    use super::{
+        Mode, SUPERVISOR_INGRESS_IP, day_number_utc, local_date_utc, peer_allowed, strip_dev_prefix,
+    };
 
     #[test]
     fn production_allows_exactly_the_ingress_proxy() {
@@ -439,6 +476,31 @@ mod tests {
         assert_eq!(
             rewritten(&format!("{prefix}9/pkg/app.css"), prefix),
             "/api/hassio_ingress/dev-429/pkg/app.css"
+        );
+    }
+
+    #[test]
+    fn the_utc_fallbacks_reject_invalid_input() {
+        assert_eq!(local_date_utc("not-a-timestamp"), None);
+        assert_eq!(day_number_utc("2026-03-01", "also-bad"), None);
+        assert_eq!(day_number_utc("not-a-date", "2026-03-05T00:00:00Z"), None);
+    }
+
+    #[test]
+    fn the_utc_fallbacks_compute_in_utc() {
+        assert_eq!(
+            local_date_utc("2026-03-05T23:30:00+00:00").as_deref(),
+            Some("2026-03-05")
+        );
+        assert_eq!(
+            day_number_utc("2026-03-01", "2026-03-05T23:30:00+00:00"),
+            Some(4)
+        );
+        // Day numbers never go negative: an occurred_at before the
+        // start date floors at day 0.
+        assert_eq!(
+            day_number_utc("2026-03-10", "2026-03-05T23:30:00+00:00"),
+            Some(0)
         );
     }
 }

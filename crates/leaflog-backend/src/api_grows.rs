@@ -16,8 +16,8 @@ use time::macros::format_description;
 
 use crate::api::ApiError;
 use crate::app::AppState;
-use crate::app::canonical_timezone;
-use crate::app::day_number_in;
+use crate::app::local_date_in;
+use crate::app::{canonical_timezone, day_number_in};
 use crate::db::StoreError;
 use crate::db::now_rfc3339;
 use crate::store::{self, StoreOrNotFound};
@@ -159,6 +159,7 @@ async fn delete_grow(
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let photos = state.photos.clone();
+    let observed_id = id.clone();
     state
         .db
         .with(move |conn| -> Result<(), ApiError> {
@@ -167,6 +168,8 @@ async fn delete_grow(
             Ok(())
         })
         .await?;
+    // The observed-reality cache entry dies with the grow.
+    state.observed.invalidate(&observed_id);
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -292,6 +295,39 @@ async fn create_action(
         .db
         .with(move |conn| -> Result<_, ApiError> {
             let grow = store::grows::get(conn, &id)?;
+            // A Germination pick re-anchors the grow (ticket 04): the
+            // pick's local date becomes the start date and every
+            // stored grow day is recomputed from its own timestamp.
+            // One transaction — anchor, re-dating and the pick row
+            // itself land together or not at all (D098).
+            if input.action_type == ActionType::PhaseChange
+                && input.details.target_phase == Some(leaflog_core::Phase::Germination)
+            {
+                let started_on = local_date_in(&input.occurred_at, &tz).ok_or_else(|| {
+                    ApiError::BadRequest("invalid occurred_at for the anchor".to_owned())
+                })?;
+                let day = day_number_in(&started_on, &input.occurred_at, &tz).ok_or_else(|| {
+                    ApiError::BadRequest("invalid occurred_at for the anchor".to_owned())
+                })?;
+                let entry =
+                    store::actions::from_input(&id, &input, leaflog_core::Phase::Germination, day);
+                let tx = conn
+                    .unchecked_transaction()
+                    .map_err(StoreError::from)
+                    .map_err(ApiError::from)?;
+                store::grows::set_started_on(&tx, &id, &started_on)?;
+                store::actions::redate(&tx, &id, &|occurred| {
+                    day_number_in(&started_on, occurred, &tz)
+                })?;
+                store::photos::redate(&tx, &id, &|captured| {
+                    day_number_in(&started_on, captured, &tz)
+                })?;
+                store::actions::create(&tx, &entry)?;
+                tx.commit()
+                    .map_err(StoreError::from)
+                    .map_err(ApiError::from)?;
+                return Ok(entry);
+            }
             let day =
                 day_number_in(&grow.started_on, &input.occurred_at, &tz).ok_or_else(|| {
                     ApiError::BadRequest("invalid occurred_at or started_on date".to_owned())
@@ -406,6 +442,11 @@ async fn delete_action(
 pub struct ForecastResponse {
     /// Days since the grow start (today marker for the UI).
     pub today_day: u16,
+    /// Current phase label (the phase whose window holds today).
+    pub phase: String,
+    /// Days elapsed in the current phase, anchored at its
+    /// transition event (GLOSSARY.md).
+    pub phase_day: i64,
     /// Phase windows in chronological order.
     pub windows: Vec<leaflog_core::forecast::PhaseWindow>,
 }
@@ -430,7 +471,15 @@ async fn get_forecast(
             let windows = leaflog_core::forecast::forecast(&input);
             let today_day = day_number_in(&grow.started_on, &crate::db::now_rfc3339(), &tz)
                 .ok_or_else(|| ApiError::BadRequest("invalid started_on date".to_owned()))?;
-            Ok(ForecastResponse { today_day, windows })
+            let phase = crate::api_phase::phase_at(&windows, i64::from(today_day));
+            let phase_day =
+                leaflog_core::forecast::phase_day(&actuals, phase, i64::from(today_day));
+            Ok(ForecastResponse {
+                today_day,
+                phase: phase.label().to_owned(),
+                phase_day,
+                windows,
+            })
         })
         .await?;
     Ok(Json(response))
@@ -457,14 +506,21 @@ async fn list_photos(
 async fn get_light_cycle(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<leaflog_core::light_cycle::LightCycle>, ApiError> {
+) -> Result<Json<leaflog_core::light_cycle::LightCycleResponse>, ApiError> {
     let grow = state
         .db
         .with(move |conn| store::grows::get(conn, &id))
         .await?;
     // No stored override reads as the empty cycle: every part on its
-    // cited preset default.
-    Ok(Json(grow.light_cycle.unwrap_or_default()))
+    // cited preset default. The observed block adds what the bound
+    // light entity actually does (D102), when there is one.
+    let tz = crate::app::canonical_timezone(&state).await;
+    let now = crate::db::now_rfc3339();
+    let observed = crate::observed::observed_for(&state, &grow.id, &tz, &now).await;
+    Ok(Json(leaflog_core::light_cycle::LightCycleResponse {
+        cycle: grow.light_cycle.unwrap_or_default(),
+        observed,
+    }))
 }
 
 // Extractors are taken by value because Axum requires it.

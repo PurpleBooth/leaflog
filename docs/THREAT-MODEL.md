@@ -168,7 +168,7 @@ places, `/data` and HA backups.
 
 | # | Path | Status | Detail |
 |---|---|---|---|
-| 4.1 | Accidental or hostile deletion via the API | Open | `DELETE /api/grows/{id}` cascades to plants, actions, photos and the photo directory tree (`photos.rs:198` uses `remove_dir_all`). No soft delete, no undo window, and no confirmation dialog in the frontend (verified: no `confirm()` anywhere). One misclick or one hostile tab can erase a grow. Recommendation R8 |
+| 4.1 | Accidental or hostile deletion via the API | Open | `DELETE /api/grows/{id}` cascades to plants, actions, photos and the photo directory tree (`photos.rs:198` uses `remove_dir_all`). No soft delete and no undo window. Deletion does confirm first — the grow edit page's danger zone raises a browser `confirm()` dialog (`edit.rs:112`) — but one accepted dialog erases the grow outright, and hostile script on the page can call the endpoint itself. Recommendation R8 |
 | 4.2 | App uninstall or data wipe | Mitigated by HA flow | Removing the app deletes `/data`; HA prompts for a backup first. Restore is integration-tested end to end, including lazy thumbnail regeneration (D032, `tests/backup.rs`) |
 | 4.3 | Ransomware or host compromise encrypting `/data` and the backups | Open (user side) | Nothing app-level resists root. The mitigations are encrypted, geographically separate backups (TM6, R5) |
 | 4.4 | Disk exhaustion | Open | Each upload is capped at 25 MiB (body limit 32 MiB, `api_grows.rs:22`) but total photo growth is unbounded; the 2 GiB `photo_warn_bytes` threshold is advisory only. A full disk risks failed writes and WAL corruption. Recommendation R6 |

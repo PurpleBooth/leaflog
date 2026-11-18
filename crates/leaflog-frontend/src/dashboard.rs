@@ -32,10 +32,10 @@ pub struct EnvSnapshot {
     pub vpd_band: (f64, f64),
     /// RH window.
     pub rh_window: (f64, f64),
-    /// Temperature thresholds (deserialized; shown in tooltips).
-    #[allow(dead_code)] // will display as tooltip when the UI adds them
+    /// Temperature thresholds; the live strip rechecks the streamed
+    /// temperature against them.
     pub thresholds: Thresholds,
-    /// Phase label (shown in the section heading).
+    /// Phase label (shown via coach; kept for future use)
     #[allow(dead_code)] // shown via coach; kept for future use
     pub phase: String,
     /// Whether temp is OK.
@@ -48,10 +48,8 @@ pub struct EnvSnapshot {
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub struct Thresholds {
     /// Floor, °C (see `thresholds` above).
-    #[allow(dead_code)]
     pub floor_c: f64,
     /// Ceiling, °C.
-    #[allow(dead_code)]
     pub ceiling_c: f64,
 }
 
@@ -107,6 +105,12 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
     let lamp = RwSignal::<Option<LampAdvice>>::new(None);
     let coach = RwSignal::<Option<CoachResponse>>::new(None);
     let error = RwSignal::<Option<String>>::new(None);
+    // One EventSource per page: the env strip renders the streamed
+    // values on top of the fetched snapshot (live values, ticket 02).
+    let live = crate::live::subscribe_live();
+    // The Effect below owns `grow_id`; the banner link targets the
+    // edit page (route_href: path-absolute hrefs break under ingress).
+    let edit_href = crate::route_href(&format!("/grows/{grow_id}/edit"));
 
     Effect::new(move |_| {
         let grow_id = grow_id.clone();
@@ -131,11 +135,11 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
             <ErrorIf error />
 
             // Entity drift (spec §4.1): a dead binding shows a chip
-            // and points at the entity-bindings editor below — never a
-            // silent "in range". The banner tells the truth: it renders
-            // only once the snapshot is loaded AND a binding is actually
-            // dead — no flash while the fetch is in flight, and a
-            // healthy grow stays quiet.
+            // and points at the grow edit page — never a silent "in
+            // range". The banner tells the truth: it renders only once
+            // the snapshot is loaded AND a binding is actually dead —
+            // no flash while the fetch is in flight, and a healthy
+            // grow stays quiet.
             {move || {
                 // `?` on the Option signal: no snapshot, no banner —
                 // nothing flashes while the fetch is in flight.
@@ -145,6 +149,9 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                     .into_iter()
                     .filter(|binding| !binding.available)
                     .collect::<Vec<_>>();
+                // The link href is cloned into the render closure so
+                // this outer closure stays `FnMut` (Leptos may rerun it).
+                let edit_href = edit_href.clone();
                 (!dead.is_empty()).then(move || {
                     view! {
                         <p class="alert alert-warning py-2 px-4 text-sm" role="status">
@@ -167,30 +174,32 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                                     }
                                 })
                                 .collect::<Vec<_>>()}
-                            " — rebind it in Entity bindings below."
+                            " — rebind it on the "
+                            <a class="link" href=edit_href>"grow edit page"</a>
+                            "."
                         </p>
                     }
                 })
             }}
 
-            <div id="env-strip" class="grid gap-2 grid-cols-1 min-[360px]:grid-cols-2 md:grid-cols-4">
+            <div id="env-strip" class="grid gap-2 grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-6">
                 {move || {
                     let Some(e) = env.get() else { return Vec::<_>::new() };
-                    let temp_display = e.temperature_c.map_or_else(|| "—".to_owned(), leaflog_core::units::temp_both);
-                    let rh_display = e.humidity_pct.map_or_else(|| "—".to_owned(), |h| format!("{h:.0} %"));
-                    let vpd_display = e.vpd_kpa.map_or_else(|| "—".to_owned(), |v| format!("{v:.2} kPa"));
-                    // Full class strings (Tailwind only compiles literals it
-                    // can scan out of the sources; no format! fragments).
-                    let temp_class = match e.temp_ok {
-                        Some(true) => "rounded-box border border-success/50 bg-success/10 px-3 py-2 grid gap-0.5",
-                        Some(false) => "rounded-box border border-warning/60 bg-warning/10 px-3 py-2 grid gap-0.5",
-                        None => "rounded-box border border-base-300 bg-base-100 px-3 py-2 grid gap-0.5",
-                    };
-                    let vpd_class = match e.vpd_ok {
-                        Some(true) => "rounded-box border border-success/50 bg-success/10 px-3 py-2 grid gap-0.5",
-                        Some(false) => "rounded-box border border-warning/60 bg-warning/10 px-3 py-2 grid gap-0.5",
-                        None => "rounded-box border border-base-300 bg-base-100 px-3 py-2 grid gap-0.5",
-                    };
+                    // Streamed values override the snapshot's; without a
+                    // live reading the backend values stand (live.rs).
+                    // The tile colours read the same merged values, so
+                    // they track the live stream too.
+                    let v = crate::live::strip_values(&e, live.get().as_ref());
+                    let temp_display = v.temperature_c.map_or_else(|| "—".to_owned(), leaflog_core::units::temp_both);
+                    let rh_display = v.humidity_pct.map_or_else(|| "—".to_owned(), crate::chart::format_pct);
+                    let vpd_display = v.vpd_kpa.map_or_else(|| "—".to_owned(), crate::chart::format_kpa);
+                    let co2_display = v.co2_ppm.map_or_else(|| "—".to_owned(), crate::chart::format_ppm);
+                    let soil_display = v.soil_moisture_pct.map_or_else(|| "—".to_owned(), crate::chart::format_pct);
+                    // The colours come from the merged StripValues, not
+                    // the page-load snapshot: a live push that crosses
+                    // the threshold recolours the tile on the spot.
+                    let temp_class = crate::live::tile_class(v.temp_ok);
+                    let vpd_class = crate::live::tile_class(v.vpd_ok);
                     vec![
                         view! { <div class=temp_class>
                             <span class="text-xs uppercase tracking-wide text-base-content/60">"Temp"</span>
@@ -207,7 +216,15 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                         </div> }.into_any(),
                         view! { <div class="rounded-box border border-base-300 bg-base-100 px-3 py-2 grid gap-0.5">
                             <span class="text-xs uppercase tracking-wide text-base-content/60">"RH window"</span>
-                            <span class="text-lg font-semibold">{format!("{:.0}–{:.0} %", e.rh_window.0, e.rh_window.1)}</span>
+                            <span class="text-lg font-semibold">{format!("{:.0}–{:.0} %", v.rh_window.0, v.rh_window.1)}</span>
+                        </div> }.into_any(),
+                        view! { <div class="rounded-box border border-base-300 bg-base-100 px-3 py-2 grid gap-0.5">
+                            <span class="text-xs uppercase tracking-wide text-base-content/60">"CO₂"</span>
+                            <span class="text-lg font-semibold">{co2_display}</span>
+                        </div> }.into_any(),
+                        view! { <div class="rounded-box border border-base-300 bg-base-100 px-3 py-2 grid gap-0.5">
+                            <span class="text-xs uppercase tracking-wide text-base-content/60">"Soil moisture"</span>
+                            <span class="text-lg font-semibold">{soil_display}</span>
                         </div> }.into_any(),
                     ]
                 }}

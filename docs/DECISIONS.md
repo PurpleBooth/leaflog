@@ -6,6 +6,206 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-18 — the Light Cycle editor shows reality (ticket 03)
+
+### D102: observed light pattern — span-quotient hours, per-day circular-mean on-time, optional block on the existing GET
+
+The learned pattern comes from one pure core function,
+`leaflog_core::light_cycle::observed_cycle`, over the same staircase
+the charts already fetch. Hours-on is a span quotient: total lit
+seconds over the observed span times 24, rounded to a whole hour,
+clamped 1–24. Absolute durations make it DST-honest — a fall-back
+Sunday simply contributes its real 25 hours.
+
+Lights-on is the circular mean over each local day's first
+on-transition minute (atan2 of summed sines and cosines), so a
+crossing pattern like 18:00→12:00 averages near midnight without
+wrapping, and per-day-first-on ignores mid-day interruptions. An
+unresolvable zone name falls back to UTC, mirroring the chart code.
+
+The wire change is additive: the existing light-cycle GET now may
+carry an `observed` block (bound entity id, learned on-time, learned
+hours-on), flattened beside the stored fields and omitted when the
+grow is unbound, the history is dataless, or HA is unreachable —
+fail closed, the editor shows only the editable defaults.
+
+Derivation is lazy: computed on page loads and binding changes, never
+a background job. A 60 s per-grow cache absorbs repeated loads; a
+bindings PUT or grow delete invalidates it, so a rebind shows its
+new entity immediately. The editor renders the block as a display-only
+caption — the per-phase fields stay editable defaults with
+reset-to-default, and nothing is ever written back from reality
+(ADR 0002).
+
+Lint-policy exceptions (`#[allow]` register) — ticket 03 addition:
+
+| Crate | Items | Lint | Reason |
+|---|---|---|---|
+| leaflog-core | fn `observed_cycle` | `clippy::cast_possible_truncation`, `clippy::cast_precision_loss`, `clippy::cast_sign_loss` | Epoch seconds sit far below f64's exact-integer range; results are rounded and clamped before narrowing |
+
+---
+
+## 2026-11-18 — quick add collapses into a dropdown menu (ticket 06)
+
+### D099: quick-add icons via leptos_icons + Lucide (icondata_lu)
+
+The sixteen-button quick-add row became one daisyUI dropdown at the
+same spot (spec 95b2e66, "Quick add" implementation decision) — the
+app's first dropdown. Icons come from a single family — Lucide via
+`icondata_lu` — rendered by `leptos_icons::Icon` (all MIT, real
+crates.io dependencies, nothing vendored). Every quick-add action maps
+to one glyph; actions without a fitting glyph render none rather than
+a wrong one (`PhaseChange` is not offered by the menu at all, D073's
+phase picker owns it). The trigger carries a plus and a chevron icon.
+No emoji anywhere in the menu.
+
+Opening is controlled by the `dropdown-open` class only: daisyUI's
+`:focus-within` auto-open is suppressed for `.dropdown.quick-add` in
+`tailwind.css`, because Escape hands focus back to the trigger and the
+auto-open would visually reopen a menu whose `aria-expanded` says
+`false`. Keyboard semantics follow the ARIA APG menu-button pattern
+(arrows, Home/End, Escape, Tab-out and outside-mousedown close);
+picking an action opens the inline logging form card with the same
+draft semantics the chip row had (D069) and moves focus onto the card.
+
+| Crate | Item | Allow | Reason |
+|---|---|---|---|
+| leaflog-frontend | component `quick_add::QuickAddMenu` | `clippy::too_many_lines` | Declarative view code (menu markup plus its keydown handlers), not logic; same exception as the other large `view!` components |
+
+---
+
+## 2026-11-18 — HA theme matching (ticket 07, grow-page rework)
+
+### D100: the grow app wears the parent HA theme — computed-style read, daisyUI oklch overrides, silent fallback
+
+Leaflog adopts the grower's Home Assistant frontend theme inside the
+ingress iframe. Mechanism: HA's own `applyThemesOnElement` writes the
+live theme as inline custom properties on the parent
+`document.documentElement`, so the app reads the parent root's
+**computed** style (that resolves HA's `var()` indirections like
+`--primary-color: var(--ha-color-primary-40)`) and maps:
+
+- `--primary-color`/`--accent-color` → `--color-primary`/`--color-accent`,
+- `--card-background-color` → `--color-base-100`,
+- `--primary-background-color` → `--color-base-200`,
+- `--divider-color` (alpha flattened over the page background) →
+  `--color-base-300`,
+- `--primary-text-color` → `--color-base-content`,
+- `--success/-warning/-error/-info-color` → the same-named daisyUI slots,
+  each individually optional — a missing one keeps the built-in value.
+
+Content (foreground) colours for primary use HA's `--text-primary-color`
+when present, otherwise HA's own contrast rule (white vs `#212121` at a
+6:1 threshold against the fill); state and accent contents always use the
+contrast rule. HA's `--secondary-background-color` has no clean daisyUI
+counterpart (the secondary/neutral slots are barely used in the app, one
+chart legend probe) and stays unmapped — leftover built-ins are accepted.
+
+The overrides are written as inline `oklch(...)` custom properties on the
+app's own root element (`body` sits outside the mount div, so the root is
+the only override point that covers it) plus a `color-scheme` derived
+from the page background's lightness; dark/light follows the parent
+implicitly, and there is no theme picker or toggle anywhere. A
+`MutationObserver` on the parent root's `style` attribute re-runs the
+read+map, so a theme or dark-mode flip in HA re-dresses the app live
+without a reload. Colour math (hex/rgb/rgba parsing, alpha flattening,
+WCAG contrast, Ottosson rgb→oklch) lives in `leaflog-core::theme` as pure
+unit-tested functions; the frontend only bridges DOM and applies.
+
+The fallback to the built-in theme is mandatory and silent: no parent
+(standalone), a cross-origin or sandboxed parent, or any missing or
+unparsable member of the six core variables (primary, accent, primary
+background, card background, divider, primary text) leaves the built-in
+palette untouched — including clearing previously applied overrides when
+a re-read degrades. Fixing that fallback surfaced a latent wiring gap
+from D064: the built-in light theme had never actually applied, because
+the `--default` flag sat on the daisyUI `themes:` line where custom
+themes ignore it — the light palette only existed under
+`[data-theme="leaflog"]`, which nothing sets, so light-preference
+browsers rendered with no theme variables at all (dark worked via its
+`prefersdark` media block). The fix is `default: true;` on the light
+custom-theme block in `tailwind.css`, emitting it on `:where(:root)`;
+the `prefersdark` dark block still wins for dark-preference browsers
+(higher specificity, later in the file).
+
+### D101: the parent-theme read rides an undocumented HA surface — sandbox or realm changes break adoption silently
+
+Everything D100 reads is undocumented surface. The HA frontend docs
+describe theming (variables, `applyThemesOnElement`) but nothing
+promises that the ingress iframe's parent stays same-origin-readable:
+the current `ha-panel-app.ts` (re-checked 2026-11-18 at
+https://contributors.home-assistant.io/frontend/architecture/theming/ and
+the panel source) mounts ingress apps in a plain same-origin iframe with
+no sandbox attribute — the ticket's "sandboxed allow-same-origin" claim
+is already outdated — while an in-source comment notes "CSS variables
+don't cross the iframe boundary", which is why a JS computed-style read
+is needed at all. Any future HA release could add `sandbox` without
+`allow-same-origin`, split origins, or reshuffle the `--*-color` names,
+and every one of those degrades to exactly the documented fallback:
+built-in palette, no user-visible state, no console noise. The same
+fragility guard covers the DOM detail the implementation leans on: the
+parent document lives in another realm, so `instanceof`-based casting
+(wasm-bindgen's `dyn_into`) rejects it even same-origin — the read walks
+`document`→`documentElement` reflectively and unchecked-casts, which
+stays correct because `getComputedStyle` and `MutationObserver.observe`
+dispatch on internal slots, not realm. The dev-only `/theme-harness`
+page (never in `dist`, gated to `Mode::Dev`) is the regression seam for
+all three paths — adoption, live re-adoption, fallback — and any HA-side
+breakage shows up there as a red e2e, not as a silently unthemed app.
+
+---
+
+## 2026-11-18 — the Germination pick owns the start date (ticket 04)
+
+### D098: recompute, not migrate — the pick re-dates stored grow days in one transaction
+
+A Germination pick now writes the grow's `started_on`: the anchor is
+the pick's local calendar date in the canonical timezone (a new
+`leaflog_core::tz::local_date`, mirroring `day_number_local`), so the
+pick row itself lands on day 0 whatever the wall clock. Every stored
+grow-day value is then recomputed from its own timestamp —
+`action_log.occurred_at` and `photo.captured_at` — under the new
+anchor, inside the same SQLite transaction that moves the anchor and
+inserts the pick (the `unchecked_transaction` pattern, D012). A
+re-dating step that fails aborts the whole pick; nothing half-lands.
+
+No migration: recomputation beat a schema change because the stored
+columns already carry the timestamps they need, and `feed_plan_day` is
+index-based with no timestamp, so its day numbers keep their
+day-index meaning untouched. A stored timestamp that does not parse
+fails the transaction as `StoreError::Unparsable` rather than
+silently keeping the old day. Scope notes: photos keep their phase
+labels (only day values move); editing a germination row through
+`PUT /api/actions/{id}` does not re-anchor — a pick is a create; and
+the forecast pin mechanism (D073) is unchanged, it just reads the
+re-dated rows. Other picks and plain actions never touch
+`started_on`.
+
+---
+
+## 2026-11-18 — Phase day badge (grow page rework, ticket 05)
+
+### D104: Phase day anchors on the raw transition event, not the clamped window start
+
+_(Numbered D104 per the ticket's instructions; D097 was the last
+number in use on this branch.)_
+
+The spec pins the Phase day to "each phase's transition event" but
+leaves open which number the badge reads when a pick is backdated
+hard: the raw event day, or the forecast window start. The two
+differ. The engine clamps projected windows so they stay contiguous
+for the Gantt: a flip on day 3 under a projected seedling window of
+6–23 pushes the flower window start to day 6, while the timeline
+still records the flip on day 3.
+
+The badge reads the raw event day — `leaflog_core::forecast::phase_day`
+over `Actuals`, with day 0 being the transition day — so late diary
+entries stay truthful about how long the phase has run. The Gantt
+and the charts stay on the Day count; re-anchoring them to Phase day
+is explicitly out of scope for the rework.
+
+---
+
 ## 2026-11-17 — review fixes and retro hardening
 
 ### D083: decision ids are unique — the `decision-ids` gate
@@ -703,7 +903,6 @@ Choices worth remembering:
 - **Out of scope, deliberately:** zoom/pan/brush components are not
   in the bundle; the forecast Gantt and feed-fit bar chart stay
   hand-rolled for now.
-||||||| 0fec11d
 
 ---
 

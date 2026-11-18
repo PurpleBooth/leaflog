@@ -29,9 +29,11 @@
 #![allow(clippy::empty_enums)]
 
 pub mod api;
+mod bindings;
 mod chart;
 mod chart_option;
 mod dashboard;
+mod edit;
 mod feed;
 mod gantt;
 mod grows;
@@ -40,7 +42,10 @@ mod light_cycle;
 mod live;
 mod onboarding;
 mod phase_pick;
+mod quick_add;
+mod theme;
 
+use edit::GrowEditRoute;
 use grows::{GrowsPage, GrowsRoute, Landing};
 use history::{HistoryPage, PlantViewPage};
 use js_sys::{Reflect, global};
@@ -87,6 +92,7 @@ pub fn route_href(path: &str) -> String {
 /// Module entry: mounts the app (called by `wasm-bindgen` on load).
 #[wasm_bindgen(start)]
 pub fn start_app() {
+    theme::init_parent_theme_match();
     mount_to_body(App);
 }
 
@@ -136,6 +142,7 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("/plants/:id") view=PlantViewPage />
                         <Route path=path!("/grows") view=GrowsPage />
                         <Route path=path!("/grows/:id") view=GrowsRoute />
+                        <Route path=path!("/grows/:id/edit") view=GrowEditRoute />
                     </Routes>
                 </main>
             </div>

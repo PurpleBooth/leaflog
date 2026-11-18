@@ -113,9 +113,10 @@ test('humidity, vpd, light and soil charts draw axes and tooltips', async ({
     cardOf('soil_moisture history').getByLabel('Band min %'),
   ).toBeVisible();
 
-  // CO₂ has no mock sensor: the card-visibility rule (ticket 04)
-  // renders no card at all for the unbound role — no heading, no
-  // svg, no placeholder text anywhere on the page.
+  // This grow leaves CO₂ unbound (the mock serves a CO₂ sensor
+  // since ticket 02, but nothing here binds it): the card-visibility
+  // rule (ticket 04) renders no card at all for the unbound role —
+  // no heading, no svg, no placeholder text anywhere on the page.
   await expect(
     page.locator('.card', {
       has: page.getByRole('heading', { name: 'CO₂' }),
