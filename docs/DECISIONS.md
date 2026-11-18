@@ -6,6 +6,33 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-18 — one quiet card for unbound roles (env-section ticket 03)
+
+### D105: the not-measured card chips only the five charted sensor roles
+
+The Environment section closes with one quiet "not measured" card:
+for every sensor role whose chart card the section renders but whose
+binding row is missing, a chip names the role and is itself the bind
+affordance — an in-app `<A>` to the grow edit page's Entity bindings
+flow (the existing flow; nothing new is invented). The card appears
+only once the bindings response names at least one unbound role:
+while the fetch is in flight, or after it failed, it renders nothing,
+so it never flashes and never claims a gap it cannot see.
+
+Which roles chip: `temperature`, `humidity`, `co2`, `light`,
+`soil_moisture` — exactly the roles a missing binding can hide here,
+with the chart cards' own titles for labels. VPD needs no chip (it
+derives from temperature + humidity, so one of those chips explains
+its absence); pH and EC are log-detail roles whose bound state comes
+from log entries, not the bindings map; the reservoir roles are
+bindable but carry no chart card in this section. Unbound means key
+absence in the bindings map and nothing else — a dead binding is not
+unbound: its chart card stays with the degraded banner, so it must
+not chip. The in-card hiding and pH/EC fallback rules are untouched
+(ticket 03 preserves them). No new `#[allow]` exceptions.
+
+---
+
 ## 2026-11-18 — the Environment section owns its window (env-section ticket 01)
 
 ### D103: shared history window — wire labels `day`/`week`/`month`, default `week`, localStorage key `leaflog.history-window`
