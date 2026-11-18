@@ -18,8 +18,8 @@ use serde_json::json;
 
 use crate::ErrorIf;
 use crate::api;
+use crate::bindings::BINDING_ROLES;
 use crate::grows::photoperiod_options;
-use crate::live::BINDING_ROLES;
 use crate::non_empty;
 
 /// The `GET /api/onboarding` state.

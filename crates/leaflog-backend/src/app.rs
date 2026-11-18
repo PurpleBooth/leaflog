@@ -110,6 +110,27 @@ pub fn day_number_in(started_on: &str, occurred_at: &str, tz: &str) -> Option<u1
         .or_else(|| day_number_utc(started_on, occurred_at))
 }
 
+/// The local calendar date (`YYYY-MM-DD`) of a UTC instant in `tz`,
+/// the Germination pick's new start-date anchor (ticket 04); same
+/// UTC fallback as [`day_number_in`]. Invalid timestamps return
+/// `None`.
+#[must_use]
+pub fn local_date_in(occurred_at: &str, tz: &str) -> Option<String> {
+    leaflog_core::tz::local_date(occurred_at, tz).or_else(|| local_date_utc(occurred_at))
+}
+
+/// The UTC calendar date of a timestamp — the fallback anchor for
+/// unknown zones.
+fn local_date_utc(occurred_at: &str) -> Option<String> {
+    let stamp =
+        time::OffsetDateTime::parse(occurred_at, &time::format_description::well_known::Rfc3339)
+            .ok()?;
+    stamp
+        .date()
+        .format(&time::macros::format_description!("[year]-[month]-[day]"))
+        .ok()
+}
+
 /// Plain UTC date math — the pre-canonical behaviour and the fallback
 /// for unknown zones.
 fn day_number_utc(started_on: &str, occurred_at: &str) -> Option<u16> {

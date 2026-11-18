@@ -98,6 +98,28 @@ pub struct Actuals {
     pub curing_start: Option<Day>,
 }
 
+/// Days elapsed in the current phase, counted from its transition event.
+///
+/// Day 0 is the transition day (GLOSSARY.md). Before any phase event
+/// the anchor is the grow's start, so Phase day equals the Day count.
+///
+/// The anchor is the raw recorded event day, not the forecast
+/// window start. Backdated pins clamp the *projected* windows
+/// forward so the Gantt stays contiguous, while the diary truth of
+/// when the transition happened stays put.
+#[must_use]
+pub fn phase_day(actuals: &Actuals, phase: Phase, today: Day) -> Day {
+    let anchor = match phase {
+        Phase::Germination => actuals.germination_start.unwrap_or(0),
+        Phase::Seedling => actuals.seedling_start.unwrap_or(0),
+        Phase::Vegetative => actuals.vegetative_start.unwrap_or(0),
+        Phase::Flower => actuals.flower_start.or(actuals.flip_day).unwrap_or(0),
+        Phase::Drying => actuals.harvest_day.unwrap_or(0),
+        Phase::Curing => actuals.curing_start.unwrap_or(0),
+    };
+    (today - anchor).max(0)
+}
+
 /// The inputs to [`forecast`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ForecastInput {
@@ -516,7 +538,9 @@ fn add(
 
 #[cfg(test)]
 mod tests {
-    use super::{Actuals, Day, ForecastInput, Phase, PhaseDefaults, forecast, input_for};
+    use super::{
+        Actuals, Day, ForecastInput, Phase, PhaseDefaults, forecast, input_for, phase_day,
+    };
     use crate::forecast::PhaseWindow;
 
     fn phases_ordered_and_contiguous(windows: &[PhaseWindow]) -> Result<(), String> {
@@ -1073,6 +1097,76 @@ mod tests {
             (63..=77).contains(&harvest),
             "autoflower harvest day {harvest} should be within 63–77"
         );
+    }
+
+    // --- Phase day anchoring (grow page rework, ticket 05) ---
+
+    #[test]
+    fn phase_day_counts_from_the_transition_event() {
+        // Day 0 is the transition day itself (GLOSSARY.md).
+        let actuals = Actuals {
+            flower_start: Some(30),
+            ..Actuals::default()
+        };
+        assert_eq!(phase_day(&actuals, Phase::Flower, 30), 0);
+        assert_eq!(phase_day(&actuals, Phase::Flower, 33), 3);
+    }
+
+    #[test]
+    fn phase_day_before_any_phase_event_equals_the_day_count() {
+        let actuals = Actuals::default();
+        for phase in Phase::all() {
+            assert_eq!(phase_day(&actuals, phase, 25), 25, "phase {phase:?}");
+        }
+    }
+
+    #[test]
+    fn phase_day_anchors_backdated_transitions() {
+        // A pick logged today but dated day 17 keeps its anchor there.
+        // The forecast windows clamp forward to stay contiguous; the
+        // diary truth of when the transition happened stays put.
+        let actuals = Actuals {
+            flower_start: Some(17),
+            ..Actuals::default()
+        };
+        assert_eq!(phase_day(&actuals, Phase::Flower, 20), 3);
+    }
+
+    #[test]
+    fn phase_day_reads_the_flip_when_no_pick_pinned_flower() {
+        // Photoperiod grows log a flip event, not a flower pin.
+        let actuals = Actuals {
+            flip_day: Some(10),
+            ..Actuals::default()
+        };
+        assert_eq!(phase_day(&actuals, Phase::Flower, 13), 3);
+    }
+
+    #[test]
+    fn phase_day_reads_each_phase_own_boundary() {
+        let actuals = Actuals {
+            germination_start: Some(2),
+            seedling_start: Some(9),
+            vegetative_start: Some(22),
+            harvest_day: Some(60),
+            curing_start: Some(80),
+            ..Actuals::default()
+        };
+        assert_eq!(phase_day(&actuals, Phase::Germination, 5), 3);
+        assert_eq!(phase_day(&actuals, Phase::Seedling, 20), 11);
+        assert_eq!(phase_day(&actuals, Phase::Vegetative, 40), 18);
+        assert_eq!(phase_day(&actuals, Phase::Drying, 70), 10);
+        assert_eq!(phase_day(&actuals, Phase::Curing, 95), 15);
+    }
+
+    #[test]
+    fn phase_day_never_runs_below_zero() {
+        // Defensive: an anchor after today still reports day 0.
+        let actuals = Actuals {
+            flower_start: Some(40),
+            ..Actuals::default()
+        };
+        assert_eq!(phase_day(&actuals, Phase::Flower, 35), 0);
     }
 
     #[test]
