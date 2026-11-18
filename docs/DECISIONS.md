@@ -45,6 +45,35 @@ Lint-policy exceptions (`#[allow]` register) — ticket 03 addition:
 
 ---
 
+## 2026-11-18 — quick add collapses into a dropdown menu (ticket 06)
+
+### D099: quick-add icons via leptos_icons + Lucide (icondata_lu)
+
+The sixteen-button quick-add row became one daisyUI dropdown at the
+same spot (spec 95b2e66, "Quick add" implementation decision) — the
+app's first dropdown. Icons come from a single family — Lucide via
+`icondata_lu` — rendered by `leptos_icons::Icon` (all MIT, real
+crates.io dependencies, nothing vendored). Every quick-add action maps
+to one glyph; actions without a fitting glyph render none rather than
+a wrong one (`PhaseChange` is not offered by the menu at all, D073's
+phase picker owns it). The trigger carries a plus and a chevron icon.
+No emoji anywhere in the menu.
+
+Opening is controlled by the `dropdown-open` class only: daisyUI's
+`:focus-within` auto-open is suppressed for `.dropdown.quick-add` in
+`tailwind.css`, because Escape hands focus back to the trigger and the
+auto-open would visually reopen a menu whose `aria-expanded` says
+`false`. Keyboard semantics follow the ARIA APG menu-button pattern
+(arrows, Home/End, Escape, Tab-out and outside-mousedown close);
+picking an action opens the inline logging form card with the same
+draft semantics the chip row had (D069) and moves focus onto the card.
+
+| Crate | Item | Allow | Reason |
+|---|---|---|---|
+| leaflog-frontend | component `quick_add::QuickAddMenu` | `clippy::too_many_lines` | Declarative view code (menu markup plus its keydown handlers), not logic; same exception as the other large `view!` components |
+
+---
+
 ## 2026-11-18 — the Germination pick owns the start date (ticket 04)
 
 ### D098: recompute, not migrate — the pick re-dates stored grow days in one transaction

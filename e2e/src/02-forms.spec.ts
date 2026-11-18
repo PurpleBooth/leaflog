@@ -193,12 +193,83 @@ test('grow header cluster: an unlabelled grow shows no placeholder', async ({
   await expect(badges).toHaveCount(2);
 });
 
+test('quick add menu: trigger, sixteen iconified actions, keyboard access', async ({
+  page,
+  request,
+}) => {
+  const name = uniqueName('E2E Menu Grow');
+  const id = await createGrow(request, name);
+  await page.goto(url(`/grows/${id}`));
+
+  const trigger = page.getByRole('button', { name: 'Quick add', exact: true });
+  const menu = page.getByRole('menu', { name: 'Quick add action' });
+
+  // The trigger carries a plus and a chevron SVG and starts closed.
+  await expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(trigger.locator('svg')).toHaveCount(2);
+  await expect(menu).toBeHidden();
+
+  // Click opens: sixteen menuitems in the order the chip row had,
+  // each with exactly one SVG icon — no emoji regression (ticket 06).
+  await trigger.click();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(menu).toBeVisible();
+  const items = menu.getByRole('menuitem');
+  await expect(items).toHaveCount(16);
+  await expect(items).toHaveText([
+    'Lights',
+    'Water',
+    'Feed',
+    'Trim',
+    'Train',
+    'Transplant',
+    'Flip 12/12',
+    'Pest/IPM',
+    'Env change',
+    'Light change',
+    'Measure',
+    'Photo',
+    'Note',
+    'Trichomes',
+    'Harvest',
+    'Dry/cure',
+  ]);
+  for (let i = 0; i < 16; i += 1) {
+    await expect(items.nth(i).locator('svg')).toHaveCount(1);
+  }
+
+  // Escape closes and hands focus back to the trigger (APG
+  // menu-button pattern).
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(trigger).toBeFocused();
+
+  // Keyboard path: ArrowDown from the trigger opens the menu and
+  // focuses the first item; End jumps to the last.
+  await trigger.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(menu).toBeVisible();
+  await expect(items.first()).toBeFocused();
+  await page.keyboard.press('End');
+  await expect(items.last()).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  await expect(trigger).toBeFocused();
+});
+
 test('quick add: log a watering from the grow page', async ({ page, request }) => {
   const name = uniqueName('E2E Log Grow');
   const id = await createGrow(request, name);
   await page.goto(url(`/grows/${id}`));
 
-  await page.getByRole('button', { name: 'Water', exact: true }).click();
+  // The sixteen-button row is one dropdown menu now (ticket 06);
+  // picking Water opens the same inline form card the chip did.
+  await page.getByRole('button', { name: 'Quick add', exact: true }).click();
+  const menu = page.getByRole('menu', { name: 'Quick add action' });
+  await menu.getByRole('menuitem', { name: 'Water' }).click();
+  await expect(menu).toBeHidden();
   await page.getByLabel('Volume (ml)').fill('250');
   await armNoReloadGuard(page);
   await page.getByRole('button', { name: 'Log it' }).click();

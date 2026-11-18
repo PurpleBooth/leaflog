@@ -42,6 +42,7 @@ mod light_cycle;
 mod live;
 mod onboarding;
 mod phase_pick;
+mod quick_add;
 
 use edit::GrowEditRoute;
 use grows::{GrowsPage, GrowsRoute, Landing};

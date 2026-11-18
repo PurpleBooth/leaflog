@@ -3,6 +3,7 @@
 //! the photo gallery with uploads.
 
 use crate::phase_pick::{self, phase_display, phase_from_label, picker_phases};
+use crate::quick_add::QuickAddMenu;
 use futures::future::Either;
 use gloo_timers::future::TimeoutFuture;
 use leaflog_core::Phase;
@@ -507,46 +508,15 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             <FeedPanel grow_id=grow_id.get() />
 
             <h3>"Quick add"</h3>
-            <nav class="flex flex-wrap gap-2 my-2" aria-label="Quick add action">
-                {ActionType::all()
-                    .into_iter()
-                    // The Phase-change event is written by the phase
-                    // picker (D073), not from a quick-add chip.
-                    .filter(|kind| *kind != ActionType::PhaseChange)
-                    .map(|kind| {
-                        let current = chip;
-                        view! {
-                            <button
-                                class=move || if current.get() == Some(kind) {
-                                    "btn btn-sm rounded-full btn-primary"
-                                } else {
-                                    "btn btn-sm rounded-full"
-                                }
-                                on:click=move |_| {
-                                    let selected = current.get() == Some(kind);
-                                    let next = (!selected).then_some(kind);
-                                    // The chip picks the entry's type; the
-                                    // form below shows its fields. A plain
-                                    // reset left the draft as `note`, so
-                                    // every quick add was logged as one
-                                    // (found by the e2e suite, D069).
-                                    let mut reset = empty_action();
-                                    if let Some(next) = next {
-                                        reset.action_type = next;
-                                    }
-                                    current.set(next);
-                                    draft.set(reset);
-                                }
-                            >
-                                {kind.display()}
-                            </button>
-                        }
-                    })
-                    .collect::<Vec<_>>()}
-            </nav>
+            <QuickAddMenu chip draft />
 
             <Show when=move || chip.get().is_some()>
-                <form class="card bg-base-100 shadow-sm px-5 py-4 my-4" on:submit=save_action>
+                <form
+                    id="quick-add-form"
+                    tabindex="-1"
+                    class="card bg-base-100 shadow-sm px-5 py-4 my-4"
+                    on:submit=save_action
+                >
                     <ActionForm draft kind=chip />
                     <div class="flex flex-wrap gap-2 mt-4">
                         <button class="btn btn-primary btn-sm" type="submit">"Log it"</button>
@@ -1119,7 +1089,8 @@ pub fn empty_grow() -> GrowInput {
 
 /// A blank action draft, timestamped now (UTC) in the shape a
 /// `datetime-local` input accepts.
-fn empty_action() -> ActionInput {
+/// A fresh action draft: now, `note`, no structured fields.
+pub fn empty_action() -> ActionInput {
     ActionInput {
         plant_ids: Vec::new(),
         occurred_at: datetime_local_now(),
