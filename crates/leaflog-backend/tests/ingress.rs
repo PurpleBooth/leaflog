@@ -424,7 +424,7 @@ async fn theme_harness_serves_in_dev_mode_under_the_prefix() {
         html.contains("setHaTheme"),
         "harness must expose the switcher"
     );
-    // The app is framed relatively so the page stays prefix-safe.
+    // The frame target is relative, so the page stays prefix-safe.
     assert!(html.contains(r#"src="./""#));
     assert_relative_assets_only(&html);
 }
