@@ -31,10 +31,41 @@ pub fn router() -> Router<AppState> {
     Router::new().route("/api/grows/{id}/history", get(grow_history))
 }
 
-/// Newest action-log entries the marker scan reads. The log page
-/// fetches 200; 1000 bounds the read with room for a heavy log's
-/// window.
-const MARKER_SCAN_LIMIT: u32 = 1000;
+/// Loads one history response's log-event markers from the store.
+///
+/// # Errors
+///
+/// Returns an [`ApiError`] on store failures.
+async fn history_markers(
+    db: &crate::db::Db,
+    grow_id: &str,
+    role: &str,
+    from: &str,
+    now: &str,
+) -> Result<Vec<EventMarker>, ApiError> {
+    let grow_id = grow_id.to_owned();
+    let role = role.to_owned();
+    let from = from.to_owned();
+    let now = now.to_owned();
+    db.with(move |conn| -> Result<Vec<EventMarker>, ApiError> {
+        // SPEC review a2: the window filter runs before the scan
+        // limit, so the newest rows the cap admits are the window's
+        // newest — out-of-window entries cannot crowd a marker out.
+        let entries =
+            store::actions::list_in_window(conn, &grow_id, &from, &now, MARKER_SCAN_LIMIT)?;
+        Ok(chart::event_markers(&role, &from, &now, &entries))
+    })
+    .await
+}
+
+/// Newest in-window action-log rows the marker scan reads.
+///
+/// The window filter runs first, so the cap bounds each chart's
+/// marker budget, never its reach: rows outside the requested window
+/// cannot crowd an in-window marker out. The log page fetches 200;
+/// 1000 leaves room for a heavy log's window. An in-window log
+/// longer than this still truncates, newest first.
+pub const MARKER_SCAN_LIMIT: u32 = 1000;
 
 /// Query of `GET /api/grows/{id}/history`.
 #[derive(Debug, Default, Deserialize)]
@@ -467,15 +498,7 @@ async fn grow_history(
     // stores, so they load in their own small pass after the chart
     // pass — same window, same `now`.
     let from = chart::window_from(&now, window).unwrap_or_default();
-    let marker_grow_id = id.clone();
-    let marker_role = role.clone();
-    let markers = state
-        .db
-        .with(move |conn| -> Result<Vec<EventMarker>, ApiError> {
-            let entries = store::actions::list(conn, &marker_grow_id, None, MARKER_SCAN_LIMIT)?;
-            Ok(chart::event_markers(&marker_role, &from, &now, &entries))
-        })
-        .await?;
+    let markers = history_markers(&state.db, &id, &role, &from, &now).await?;
 
     // The night shading rides the same timeline: its dark stretches,
     // already clipped to the window (empty when no timeline exists or

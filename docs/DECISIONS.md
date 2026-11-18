@@ -138,7 +138,10 @@ every other role (light, the reservoir roles) gets none — a light
 log entry marking the light chart says nothing the chart does not.
 Backend selection is one small read of the newest 1000 action-log
 rows beside the sensor pass (`MARKER_SCAN_LIMIT`); a log page
-fetches 200, so no window in practice truncates.
+fetches 200, so no window in practice truncates. Correction
+(review a2): the scan is window-bound — it reads the newest 1000
+rows inside the requested window, so out-of-window entries can
+never crowd an in-window marker out.
 
 Each marker draws as one quiet vertical tick: a 2×12 rect in the
 muted gridline colour, anchored just above the axis floor. The

@@ -144,6 +144,38 @@ pub fn list(
         .map_err(StoreError::from)
 }
 
+/// Lists a grow's entries inside a window (both ends inclusive),
+/// newest first, capped at `limit` rows.
+///
+/// The window bounds compare as instants (`julianday`), so entries
+/// stored with a non-UTC offset or fractional seconds still match;
+/// the text sort only orders the read. A stamp SQLite cannot parse
+/// can never be a marker (the epoch filter drops it), so the scan
+/// may skip it.
+///
+/// # Errors
+///
+/// Returns a [`StoreError`] on SQLite failures.
+pub fn list_in_window(
+    conn: &Connection,
+    grow_id: &str,
+    from: &str,
+    to: &str,
+    limit: u32,
+) -> Result<Vec<ActionEntry>, StoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT * FROM action_log
+         WHERE grow_id = ?1
+           AND julianday(occurred_at) >= julianday(?2)
+           AND julianday(occurred_at) <= julianday(?3)
+         ORDER BY occurred_at DESC, created_at DESC
+         LIMIT ?4",
+    )?;
+    let rows = stmt.query_map(params![grow_id, from, to, i64::from(limit)], map_row)?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(StoreError::from)
+}
+
 /// Fetches one entry by id.
 ///
 /// # Errors

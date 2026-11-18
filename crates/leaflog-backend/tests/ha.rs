@@ -1820,6 +1820,86 @@ async fn grow_history_carries_role_relevant_windowed_markers() {
     assert_eq!(light["markers"], json!([]));
 }
 
+/// SPEC review a2: `MARKER_SCAN_LIMIT` bounds the newest rows the
+/// marker read considers INSIDE the requested window, not across it.
+/// A log dense with out-of-window rows — here future-dated
+/// waterings, the log's newest rows — must not crowd an in-window
+/// marker out of the scan.
+#[tokio::test]
+async fn grow_history_marker_scan_filters_the_window_before_its_limit() {
+    let dead_url = "http://127.0.0.1:1".to_owned();
+    let (base, db, _bridge) = spawn_api(&dead_url).await;
+    let grow_id = create_grow(&base).await;
+
+    let now = time::OffsetDateTime::now_utc();
+    let at = move |offset: time::Duration| {
+        (now + offset)
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap()
+    };
+
+    // Seeded straight through the store: 1000+ API round-trips buy
+    // nothing. `MARKER_SCAN_LIMIT` + 5 future-dated waterings are the
+    // log's newest rows; the transplant is 20 days old, well inside
+    // the month window. Under the pre-fix scan (newest 1000 rows
+    // first, window filter second) the waterings fill the read and
+    // the marker is lost.
+    let marker_grow_id = grow_id.clone();
+    db.with(move |conn| {
+        use leaflog_backend::store::actions;
+        use leaflog_core::actions::{ActionDetails, ActionType};
+        let seed = |occurred_at: String,
+                    action_type: ActionType|
+         -> Result<(), leaflog_backend::db::StoreError> {
+            let input = leaflog_core::grows::ActionInput {
+                plant_ids: Vec::new(),
+                occurred_at,
+                action_type,
+                details: ActionDetails::default(),
+                notes: None,
+                appearance_tags: Vec::new(),
+            };
+            actions::create(
+                conn,
+                &actions::from_input(&marker_grow_id, &input, leaflog_core::Phase::Vegetative, 20),
+            )
+        };
+        let extra = i64::from(leaflog_backend::api_chart::MARKER_SCAN_LIMIT) + 5;
+        for hour in 0..extra {
+            seed(
+                at(time::Duration::hours(hour) + time::Duration::minutes(1)),
+                ActionType::Water,
+            )?;
+        }
+        seed(at(-time::Duration::days(20)), ActionType::Transplant)
+    })
+    .await
+    .unwrap();
+
+    let client = reqwest::Client::new();
+    let history: Value = client
+        .get(format!(
+            "{base}/api/grows/{grow_id}/history?role=soil_moisture&window=month"
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let kinds: Vec<&str> = history["markers"]
+        .as_array()
+        .expect("markers array")
+        .iter()
+        .map(|marker| marker["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        kinds,
+        ["transplant"],
+        "the in-window marker must survive a log of newer out-of-window rows: {history:?}"
+    );
+}
+
 // --- Night shading behind the Air charts (env-section ticket 05) ---
 
 /// Parses one response night interval's `[start, end)` epoch pair.
