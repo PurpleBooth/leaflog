@@ -8,7 +8,7 @@ Related: D093/D096 (entity-history precedence for charts and coach), THREAT-MODE
 ## Context
 
 The Light Cycle needs to know when the grow lights are actually on. Two
-ways exist to get that knowledge. The app can **observe** — read the bound
+ways lead to that knowledge. The app can **observe** — read the bound
 light entity's live state and history and override its editable per-phase
 defaults wherever the entity has data. Or it can **actuate** — drive a
 switch or light on schedule via `call_service`, which AGENTS.md gates behind
