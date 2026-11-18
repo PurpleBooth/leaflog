@@ -131,6 +131,31 @@ pub fn feed_phase_label(locale: Locale, label: &str) -> String {
     }
 }
 
+/// The display label for a binding role in the given locale; the
+/// seven canonical roles map to catalog strings, unknown ones echo
+/// through (matching the entity map's tolerant rendering).
+#[must_use]
+pub fn binding_role_label(locale: Locale, role: &str) -> String {
+    match role {
+        crate::bindings::ROLE_TEMPERATURE => {
+            td_string!(locale, binding.role_temperature).to_owned()
+        }
+        crate::bindings::ROLE_HUMIDITY => td_string!(locale, binding.role_humidity).to_owned(),
+        crate::bindings::ROLE_CO2 => td_string!(locale, binding.role_co2).to_owned(),
+        crate::bindings::ROLE_SOIL_MOISTURE => {
+            td_string!(locale, binding.role_soil_moisture).to_owned()
+        }
+        crate::bindings::ROLE_LIGHT => td_string!(locale, binding.role_light).to_owned(),
+        crate::bindings::ROLE_RESERVOIR_PH => {
+            td_string!(locale, binding.role_reservoir_ph).to_owned()
+        }
+        crate::bindings::ROLE_RESERVOIR_EC => {
+            td_string!(locale, binding.role_reservoir_ec).to_owned()
+        }
+        other => other.to_owned(),
+    }
+}
+
 /// The chart card title for a history role in the given locale; the
 /// titles double as the not-measured card's chip labels, so both go
 /// through this one mapping. Unknown roles echo through.
@@ -152,7 +177,7 @@ pub fn chart_title(locale: Locale, role: &str) -> String {
 mod tests {
     use super::{
         Locale, action_label, action_label_for_kind, appearance_category_label, appearance_label,
-        chart_title, feed_phase_label, phase_label, status_label,
+        binding_role_label, chart_title, feed_phase_label, phase_label, status_label,
     };
     use leaflog_core::Phase;
     use leaflog_core::actions::ActionType;
@@ -245,5 +270,24 @@ mod tests {
             appearance_category_label(Locale::de, Category::NutrientAndWater),
             "Düngung & Wasser"
         );
+    }
+
+    /// Binding role labels: English matches the canonical role
+    /// spellings used before keying; German renders the du-form terms
+    /// shared with the wizard and the edit page; unknown roles echo
+    /// through.
+    #[test]
+    fn binding_role_labels_map_and_echo() {
+        assert_eq!(binding_role_label(Locale::en, "temperature"), "Temperature");
+        assert_eq!(
+            binding_role_label(Locale::en, "reservoir_ph"),
+            "Reservoir pH"
+        );
+        assert_eq!(
+            binding_role_label(Locale::de, "soil_moisture"),
+            "Substratfeuchte"
+        );
+        assert_eq!(binding_role_label(Locale::de, "reservoir_ec"), "Tank-EC");
+        assert_eq!(binding_role_label(Locale::en, "mystery"), "mystery");
     }
 }
