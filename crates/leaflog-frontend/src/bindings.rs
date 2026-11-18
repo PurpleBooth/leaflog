@@ -9,6 +9,8 @@ use std::collections::BTreeMap;
 
 use crate::ErrorIf;
 use crate::api;
+use crate::i18n::{t, use_i18n};
+use crate::labels::binding_role_label;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
@@ -36,15 +38,17 @@ pub const ROLE_RESERVOIR_PH: &str = "reservoir_ph";
 pub const ROLE_RESERVOIR_EC: &str = "reservoir_ec";
 
 /// The binding roles the UI offers (shared by the live tiles, the
-/// onboarding wizard's step 1 and this section's pickers).
-pub const BINDING_ROLES: &[(&str, &str)] = &[
-    (ROLE_TEMPERATURE, "Temperature"),
-    (ROLE_HUMIDITY, "Humidity"),
-    (ROLE_CO2, "CO2"),
-    (ROLE_SOIL_MOISTURE, "Soil moisture"),
-    (ROLE_LIGHT, "Light"),
-    (ROLE_RESERVOIR_PH, "Reservoir pH"),
-    (ROLE_RESERVOIR_EC, "Reservoir EC"),
+/// onboarding wizard's step 1 and this section's pickers). Display
+/// labels come from the catalogs via
+/// [`crate::labels::binding_role_label`], keyed per locale.
+pub const BINDING_ROLES: &[&str] = &[
+    ROLE_TEMPERATURE,
+    ROLE_HUMIDITY,
+    ROLE_CO2,
+    ROLE_SOIL_MOISTURE,
+    ROLE_LIGHT,
+    ROLE_RESERVOIR_PH,
+    ROLE_RESERVOIR_EC,
 ];
 
 /// The Entity bindings section of the grow edit page: one picker per
@@ -56,6 +60,8 @@ pub fn EntityBindings(grow_id: String, bindings_epoch: RwSignal<u64>) -> impl In
     let bindings = RwSignal::<BTreeMap<String, String>>::new(BTreeMap::new());
     let entities = RwSignal::<Vec<serde_json::Value>>::new(Vec::new());
     let error = RwSignal::<Option<String>>::new(None);
+    let i18n = use_i18n();
+    let locale = i18n.get_locale();
 
     let refresh = {
         let grow_id = grow_id.clone();
@@ -112,22 +118,21 @@ pub fn EntityBindings(grow_id: String, bindings_epoch: RwSignal<u64>) -> impl In
     view! {
         <div class="my-4">
             <ErrorIf error />
-            <h3>"Entity bindings"</h3>
+            <h3>{t!(i18n, binding.heading)}</h3>
             <p class="text-base-content/70 text-sm">
-                "Bind a Home Assistant entity to each role — bindings are the only
-                sensor setup there is, and the picks here are this grow's own."
+                {t!(i18n, binding.intro)}
             </p>
             <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
                 {BINDING_ROLES
                     .iter()
-                    .map(|(role, label)| {
-                        let role = *role;
+                    .map(|&role| {
+                        let label = binding_role_label(locale, role);
                         let current = bindings;
                         let options = entities;
                         let save = save_binding.clone();
                         view! {
                             <label class="fieldset">
-                                <span class="fieldset-label">{*label}</span>
+                                <span class="fieldset-label">{label}</span>
                                 <select class="select"
                                     prop:value=move || {
                                         // Re-apply when the option list lands
@@ -140,7 +145,7 @@ pub fn EntityBindings(grow_id: String, bindings_epoch: RwSignal<u64>) -> impl In
                                         save(role, event_target_value(&ev));
                                     }
                                 >
-                                    <option value="">"— unbound —"</option>
+                                    <option value="">{t!(i18n, binding.unbound)}</option>
                                     {move || {
                                         options
                                             .get()

@@ -20,7 +20,8 @@ use crate::ErrorIf;
 use crate::api;
 use crate::bindings::BINDING_ROLES;
 use crate::grows::photoperiod_options;
-use crate::i18n::use_i18n;
+use crate::i18n::{t, t_string, use_i18n};
+use crate::labels::binding_role_label;
 use crate::non_empty;
 
 /// The `GET /api/onboarding` state.
@@ -40,6 +41,7 @@ pub struct OnboardingState {
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
 pub fn OnboardingWizard() -> impl IntoView {
+    let i18n = use_i18n();
     let state = RwSignal::<Option<OnboardingState>>::new(None);
     let error = RwSignal::<Option<String>>::new(None);
     let step = RwSignal::<u8>::new(1);
@@ -53,7 +55,8 @@ pub fn OnboardingWizard() -> impl IntoView {
     // the grow exists — the picks here mirror the grow page's pickers).
     let picks = RwSignal::<BTreeMap<String, String>>::new(BTreeMap::new());
     let entities = RwSignal::<Vec<serde_json::Value>>::new(Vec::new());
-    let plant_prefix = RwSignal::<String>::new(String::from("Plant"));
+    let plant_prefix =
+        RwSignal::<String>::new(t_string!(i18n, onboarding.plant_prefix_default).into_owned());
     let plant_count = RwSignal::<u32>::new(1);
     let grow_name = RwSignal::<String>::new(String::new());
     let strain_label = RwSignal::<String>::new(String::new());
@@ -109,7 +112,7 @@ pub fn OnboardingWizard() -> impl IntoView {
                 let prefix = {
                     let name = plant_prefix.get();
                     if name.trim().is_empty() {
-                        "Plant".to_owned()
+                        t_string!(i18n, onboarding.plant_prefix_default).into_owned()
                     } else {
                         name
                     }
@@ -117,7 +120,10 @@ pub fn OnboardingWizard() -> impl IntoView {
                 let input = GrowInput {
                     name: {
                         let name = grow_name.get();
-                        non_empty(name).unwrap_or_else(|| format!("{prefix} run"))
+                        non_empty(name).unwrap_or_else(|| {
+                            t_string!(i18n, onboarding.grow_name_fallback, prefix = prefix.clone())
+                                .into_owned()
+                        })
                     },
                     feed_template_id: None,
                     planned_veg_weeks: None,
@@ -213,36 +219,35 @@ pub fn OnboardingWizard() -> impl IntoView {
 
     view! {
         <Show when=visible>
-            <section class="card bg-base-100 shadow-sm px-5 py-4 my-4" aria-label="First-run setup">
-                <h2>"Welcome to Leaflog"</h2>
+            <section class="card bg-base-100 shadow-sm px-5 py-4 my-4"
+                aria-label={t_string!(i18n, onboarding.aria_label).into_owned()}
+            >
+                <h2>{t!(i18n, onboarding.title)}</h2>
                 <p class="text-base-content/70">
-                    "Two quick steps to a first grow — skip any of them, everything stays
-                     reachable from the tabs."
+                    {t!(i18n, onboarding.intro)}
                 </p>
                 <ul class="steps my-2">
-                    <li class=step_class(1)>"Bind sensors"</li>
-                    <li class=step_class(2)>"Plants"</li>
+                    <li class=step_class(1)>{t!(i18n, onboarding.step_sensors)}</li>
+                    <li class=step_class(2)>{t!(i18n, onboarding.step_plants)}</li>
                 </ul>
                 <ErrorIf error />
 
                 <Show when=move || step.get() == 1>
                     <div>
-                        <h3>"1. Bind sensors"</h3>
+                        <h3>{t!(i18n, onboarding.sensors_heading)}</h3>
                         <p class="text-base-content/70">
-                            "Pick a Home Assistant entity per role — the picks become this
-                             grow's bindings. Everything optional; you can bind (or rebind)
-                             on the grow page any time."
+                            {t!(i18n, onboarding.sensors_intro)}
                         </p>
                         <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
                             {BINDING_ROLES
                                 .iter()
-                                .map(|(role, label)| {
-                                    let role = *role;
+                                .map(|&role| {
+                                    let label = binding_role_label(i18n.get_locale(), role);
                                     let current = picks;
                                     let options = entities;
                                     view! {
                                         <label class="fieldset">
-                                            <span class="fieldset-label">{*label}</span>
+                                            <span class="fieldset-label">{label}</span>
                                             <select class="select"
                                                 prop:value=move || {
                                                     current.get().get(role).cloned().unwrap_or_default()
@@ -258,7 +263,7 @@ pub fn OnboardingWizard() -> impl IntoView {
                                                     });
                                                 }
                                             >
-                                                <option value="">"— unbound —"</option>
+                                                <option value="">{t!(i18n, binding.unbound)}</option>
                                                 {move || {
                                                     options
                                                         .get()
@@ -287,33 +292,33 @@ pub fn OnboardingWizard() -> impl IntoView {
                                 .collect::<Vec<_>>()}
                         </div>
                         <div class="flex flex-wrap gap-2 mt-4">
-                            <button class="btn btn-sm" on:click=skip>"Skip this step"</button>
-                            <button class="btn btn-primary btn-sm" on:click=skip>"Next"</button>
+                            <button class="btn btn-sm" on:click=skip>{t!(i18n, onboarding.skip)}</button>
+                            <button class="btn btn-primary btn-sm" on:click=skip>{t!(i18n, onboarding.next)}</button>
                         </div>
                     </div>
                 </Show>
 
                 <Show when=move || step.get() == 2>
                     <form on:submit=finish>
-                        <h3>"2. Plants"</h3>
+                        <h3>{t!(i18n, onboarding.plants_heading)}</h3>
                         <p class="text-base-content/70">
-                            "Finishing creates the grow (today counts as day one — change it
-                             if the seeds went in earlier) and opens its dashboard."
+                            {t!(i18n, onboarding.plants_intro)}
                         </p>
                         <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
-                            <label class="fieldset"><span class="fieldset-label">"Grow name"</span>
-                                <input class="input" type="text" placeholder="First run"
+                            <label class="fieldset"><span class="fieldset-label">{t!(i18n, onboarding.grow_name)}</span>
+                                <input class="input" type="text"
+                                    placeholder={t_string!(i18n, onboarding.grow_name_placeholder).into_owned()}
                                     prop:value=move || grow_name.get()
                                     on:input=move |ev| grow_name.set(event_target_value(&ev))
                                 />
                             </label>
-                            <label class="fieldset"><span class="fieldset-label">"Strain label"</span>
+                            <label class="fieldset"><span class="fieldset-label">{t!(i18n, form.strain_label)}</span>
                                 <input class="input" type="text" placeholder="Northern Lights #5"
                                     prop:value=move || strain_label.get()
                                     on:input=move |ev| strain_label.set(event_target_value(&ev))
                                 />
                             </label>
-                            <label class="fieldset"><span class="fieldset-label">"Photoperiod"</span>
+                            <label class="fieldset"><span class="fieldset-label">{t!(i18n, form.photoperiod)}</span>
                                 <select class="select"
                                     prop:value=move || photoperiod.get().label().to_owned()
                                     on:change=move |ev| {
@@ -323,16 +328,16 @@ pub fn OnboardingWizard() -> impl IntoView {
                                         );
                                     }
                                 >
-                                    {photoperiod_options(use_i18n().get_locale())}
+                                    {photoperiod_options(i18n.get_locale())}
                                 </select>
                             </label>
-                            <label class="fieldset"><span class="fieldset-label">"Name prefix"</span>
+                            <label class="fieldset"><span class="fieldset-label">{t!(i18n, onboarding.prefix_label)}</span>
                                 <input class="input" type="text"
                                     prop:value=move || plant_prefix.get()
                                     on:input=move |ev| plant_prefix.set(event_target_value(&ev))
                                 />
                             </label>
-                            <label class="fieldset"><span class="fieldset-label">"Plants"</span>
+                            <label class="fieldset"><span class="fieldset-label">{t!(i18n, onboarding.step_plants)}</span>
                                 <input class="input" type="number" min="1" max="99" step="1"
                                     prop:value=move || plant_count.get().to_string()
                                     on:input=move |ev| {
@@ -340,7 +345,7 @@ pub fn OnboardingWizard() -> impl IntoView {
                                     }
                                 />
                             </label>
-                            <label class="fieldset"><span class="fieldset-label">"Germination (day one)"</span>
+                            <label class="fieldset"><span class="fieldset-label">{t!(i18n, onboarding.germination_label)}</span>
                                 <input class="input" type="date"
                                     prop:value=move || started_on.get()
                                     on:input=move |ev| started_on.set(event_target_value(&ev))
@@ -348,13 +353,13 @@ pub fn OnboardingWizard() -> impl IntoView {
                             </label>
                         </div>
                         <div class="flex flex-wrap gap-2 mt-4">
-                            <button class="btn btn-sm" type="button" on:click=move |_| step.set(1)>"Back"</button>
+                            <button class="btn btn-sm" type="button" on:click=move |_| step.set(1)>{t!(i18n, onboarding.back)}</button>
                             <button class="btn btn-sm btn-error btn-outline" type="button"
                                 on:click=move |_| set_dismissed(true)
                             >
-                                "Dismiss — I'll explore on my own"
+                                {t!(i18n, onboarding.dismiss)}
                             </button>
-                            <button class="btn btn-primary btn-sm" type="submit">"Start the grow"</button>
+                            <button class="btn btn-primary btn-sm" type="submit">{t!(i18n, onboarding.start)}</button>
                         </div>
                     </form>
                 </Show>
@@ -365,10 +370,10 @@ pub fn OnboardingWizard() -> impl IntoView {
         // grown — one tap restarts the wizard (spec §4.12).
         <Show when=restartable>
             <section class="card bg-base-100 shadow-sm px-5 py-4 my-4">
-                <h3>"Set up your first grow"</h3>
-                <p class="text-base-content/70">"The setup wizard is available whenever you want it."</p>
+                <h3>{t!(i18n, onboarding.restart_heading)}</h3>
+                <p class="text-base-content/70">{t!(i18n, onboarding.restart_text)}</p>
                 <button class="btn btn-primary btn-sm" on:click=move |_| set_dismissed(false)>
-                    "Run the setup wizard"
+                    {t!(i18n, onboarding.restart_button)}
                 </button>
             </section>
         </Show>
