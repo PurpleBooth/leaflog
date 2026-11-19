@@ -114,6 +114,13 @@ test.describe('german-forced browser', () => {
       page.getByRole('heading', { name: 'Backend-Zustand' }),
     ).toBeVisible();
 
+    // The grow-less empty banner (catalog grows.empty) — the spec's
+    // "a banner" assertion, on /grows with the pinned empty list.
+    await page.goto(url('/grows'));
+    await expect(
+      page.getByText('Noch keine Anbauten — starte deinen ersten.'),
+    ).toBeVisible();
+
     // The ingress spike (catalog page.spike_*, grows.back_home).
     await page.goto(url('/spike'));
     await expect(
@@ -254,6 +261,13 @@ test.describe('default locale', () => {
     await expect(page.getByText(/Track your grows/)).toBeVisible();
     await expect(
       page.getByRole('heading', { name: 'Backend health' }),
+    ).toBeVisible();
+
+    // The grow-less empty banner in the default locale (catalog
+    // grows.empty), mirroring the German sweep's banner assertion.
+    await page.goto(url('/grows'));
+    await expect(
+      page.getByText('No grows yet — start your first one.'),
     ).toBeVisible();
 
     await page.goto(url('/spike'));
