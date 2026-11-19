@@ -86,6 +86,91 @@ test.describe('german-forced browser', () => {
     ).toHaveCount(0);
   });
 
+  test('sweep surfaces render german', async ({ page }) => {
+    // Ticket 04 sweep: the nav landmark label, Home, the ingress
+    // spike and the history report join the keyed surfaces.
+
+    // Home is the landing fallback for a grow-less instance (D073);
+    // sibling specs create grows in the shared throwaway DB, so pin
+    // the empty list for this page alone to reach it.
+    await page.route('**/api/grows', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: '[]',
+      }),
+    );
+
+    // Nav landmark (catalog nav.main) on the landing page.
+    await page.goto(url('/'));
+    await expect(
+      page.getByRole('navigation', { name: 'Hauptnavigation' }),
+    ).toBeVisible();
+
+    // Home marketing copy and backend-health block (catalog page.*).
+    await expect(page.getByText(/Verfolge deine Anbauten/)).toBeVisible();
+    await expect(page.getByText(/Alles hängt jetzt am Anbau/)).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Backend-Zustand' }),
+    ).toBeVisible();
+
+    // The ingress spike (catalog page.spike_*, grows.back_home).
+    await page.goto(url('/spike'));
+    await expect(
+      page.getByRole('heading', { name: 'Ingress-Spike' }),
+    ).toBeVisible();
+    await expect(page.getByText(/Dieser Deep Link wurde von der SPA/)).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: 'Zurück zur Startseite' }),
+    ).toBeVisible();
+
+    // The history report: predicted-vs-actual heading plus, since
+    // earlier specs leave grows behind, the per-row accuracy terms
+    // and the keyed aggregate headings/table headers (catalog
+    // history.*). The grow-less empty line and the "nothing weighed"
+    // fallbacks only render on a fresh instance and are pinned via
+    // their absence in the English sweep below.
+    await page.goto(url('/history'));
+    await expect(
+      page.getByRole('heading', { name: 'Prognose und Ist' }),
+    ).toBeVisible();
+    await expect(page.getByText('Plan-Genauigkeit').first()).toBeVisible();
+    await expect(
+      page.getByText('noch kein Flip und keine Ernte eingetragen').first(),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Ertrag nach Sortenetikett' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Ertrag nach Substrat' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Ertrag nach Düngervorlage' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('columnheader', { name: 'Nass (g)' }).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('columnheader', { name: 'Anbauten' }).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: 'Zurück zur Startseite' }),
+    ).toBeVisible();
+
+    // And none of the freshly keyed English surfaces renders.
+    await expect(page.getByText(/Track your grows/)).toHaveCount(0);
+    await expect(
+      page.getByRole('heading', { name: 'Backend health' }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole('heading', { name: 'Predicted vs actual' }),
+    ).toHaveCount(0);
+    await expect(page.getByText('Nothing weighed yet.')).toHaveCount(0);
+    await expect(
+      page.getByRole('heading', { name: 'Ingress spike' }),
+    ).toHaveCount(0);
+  });
+
   test('grow edit form renders german labels', async ({ page, request }) => {
     const name = uniqueName('E2E Deutsche Bearbeitung');
     const growId = await createGrow(request, name);
@@ -150,5 +235,59 @@ test.describe('default locale', () => {
     await expect(
       page.getByRole('heading', { name: 'Anbauten' }),
     ).toHaveCount(0);
+  });
+
+  test('sweep surfaces stay english', async ({ page }) => {
+    // Ticket 04 sweep on the default (English) locale: nav label,
+    // home copy, spike and history report keep their English strings.
+    // Home is the landing fallback for a grow-less instance (D073);
+    // pin the empty list for this page alone to reach it.
+    await page.route('**/api/grows', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: '[]',
+      }),
+    );
+    await page.goto(url('/'));
+    await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
+    await expect(page.getByText(/Track your grows/)).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Backend health' }),
+    ).toBeVisible();
+
+    await page.goto(url('/spike'));
+    await expect(
+      page.getByRole('heading', { name: 'Ingress spike' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: 'Back to home' }),
+    ).toBeVisible();
+
+    await page.goto(url('/history'));
+    await expect(
+      page.getByRole('heading', { name: 'Predicted vs actual' }),
+    ).toBeVisible();
+    await expect(page.getByText('Plan accuracy').first()).toBeVisible();
+    await expect(
+      page.getByText('no flip or harvest logged yet').first(),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Yield by substrate' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('columnheader', { name: 'Wet g' }).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('columnheader', { name: 'Grows' }).first(),
+    ).toBeVisible();
+
+    // And no German leaks through — including the grow-less fallback
+    // lines this shared-DB run can never render.
+    await expect(
+      page.getByRole('heading', { name: 'Prognose und Ist' }),
+    ).toHaveCount(0);
+    await expect(page.getByText('Noch nichts gewogen.')).toHaveCount(0);
+    await expect(page.getByText(/Noch keine Anbauten/)).toHaveCount(0);
   });
 });
