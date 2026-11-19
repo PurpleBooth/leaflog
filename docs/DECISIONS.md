@@ -6,6 +6,31 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-19 — deny: build-only unsafe-libyaml advisory ignored (CI repair)
+
+### D118: `RUSTSEC-2024-0449` is ignored in `deny.toml` — the advisory rides a build-time-only path of the localisation mechanism
+
+CI went red on the first post-localisation push: `cargo deny` fails on
+`unsafe-libyaml 0.2.11` (RUSTSEC-2024-0449, unmaintained, repo archived).
+The crate enters the graph solely via `serde_yaml` ← `leptos_i18n_parser`
+0.6.3 ← `leptos_i18n_build` / `leptos_i18n_codegen` / `leptos_i18n_macro`
+— all **build dependencies** of the frontend's localisation mechanism
+(D112). It compiles the locale catalogs at build time and never ships:
+neither the WASM bundle nor the backend binary contain it, so there is no
+runtime exposure.
+
+No fix exists inside the `leptos_i18n` 0.6 line (0.6.3 is the latest
+release; `serde_yaml` is its parser's pinned choice), and switching the
+catalogs' own format would not help — the advisory is inside the parser
+crate, not our usage. Follows the D046 precedent set for `paste`
+(RUSTSEC-2024-0436): ignore with a reason and a re-check trigger. The
+ignore names the `leptos_i18n` upgrade (its 0.7 line or the Leptos 0.9
+stack) as the point where the entry must be re-evaluated or dropped.
+
+`just deny` still gates everything else: licences, bans, sources, and
+all other advisories. The advisory would fail CI again loudly if the
+ignore were stale.
+
 ## 2026-11-19 — prose gate narrowing (locale ticket 06, git-bug cbfde49)
 
 ### D117: the prose gate covers markdown and Rust comments only; the UI-string extractor left `lint-prose`

@@ -23,6 +23,11 @@ ignore = [
     # path inside the 0.8 line. Informational severity only. Re-check
     # at the Leptos 0.9 upgrade (spec §3; D047).
     { id = "RUSTSEC-2024-0436", reason = "via leptos 0.8 stack; drop at the 0.9 upgrade" },
+    # `unsafe-libyaml` is unmaintained, but it reaches the graph only
+    # through serde_yaml inside leptos_i18n_parser 0.6.3 — build-time
+    # catalog parsing (D112); nothing ships it (D118). Re-check at the
+    # leptos_i18n 0.7 / Leptos 0.9 upgrade.
+    { id = "RUSTSEC-2024-0449", reason = "build-only via leptos_i18n_parser; re-check at the leptos_i18n upgrade (D118)" },
 ]
 
 [licenses]
