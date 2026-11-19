@@ -24,7 +24,7 @@ use leptos_i18n::td_string;
 
 /// The four phase hour fields as raw input text, keyed like
 /// [`PhaseHoursInput`].
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 struct HoursText {
     germination: String,
     seedling: String,
@@ -260,7 +260,7 @@ pub fn LightCycleEditor(
         undo_pending.update(|records| {
             records.push(PendingUndo {
                 recorded_at_ms: now_ms(),
-                payload: previous,
+                payload: previous.clone(),
             });
         });
         spawn_local(async move {
@@ -274,9 +274,16 @@ pub fn LightCycleEditor(
                 }
                 Err(failure) => {
                     // Nothing was reset: the capture must not offer an
-                    // undo of a no-op.
+                    // undo of a no-op. Remove exactly this reset's
+                    // record, not whichever sits on top — two resets
+                    // can be in flight at once (reviewer P2, follows
+                    // the same payload-keyed rule as grows.rs).
                     undo_pending.update(|records| {
-                        records.pop();
+                        if let Some(pos) =
+                            records.iter().position(|record| record.payload == previous)
+                        {
+                            records.remove(pos);
+                        }
                     });
                     status.set(Some(api::failure_text(
                         &failure,
