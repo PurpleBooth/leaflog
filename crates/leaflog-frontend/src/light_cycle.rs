@@ -19,6 +19,7 @@ use leaflog_core::light_cycle::{
 use crate::api;
 use crate::i18n::{Locale, t, t_string, use_i18n};
 use crate::labels::phase_label;
+use crate::ui::{PendingUndo, UNDO_WINDOW_MS, UndoBanner, live_undo, now_ms};
 use leptos_i18n::td_string;
 
 /// The four phase hour fields as raw input text, keyed like
@@ -202,20 +203,86 @@ pub fn LightCycleEditor(
         }
     };
 
+    // Undoable reset (D126): the values on screen before the reset are
+    // captured first, so one Undo re-PUTs them through the ordinary
+    // save endpoint. Same one-banner, last-delete-wins rule as the
+    // timeline: dismissing, undoing or lapsing clears the stack.
+    let undo_pending = RwSignal::<Vec<PendingUndo<(String, HoursText)>>>::new(Vec::new());
+    let undo_message = RwSignal::<Option<String>>::new(None);
+    let dismiss_undo = move || {
+        undo_pending.set(Vec::new());
+        undo_message.set(None);
+    };
+    let undo_reset = move || {
+        let records = undo_pending.get();
+        let Some(record) = live_undo(&records, now_ms(), UNDO_WINDOW_MS).cloned() else {
+            // The window lapsed between the timer firing and the
+            // click — the same as dismissing.
+            dismiss_undo();
+            return;
+        };
+        dismiss_undo();
+        let (time, fields) = record.payload;
+        let built = build_input(locale, &time, &fields);
+        match built {
+            Ok(input) => {
+                let id = grow_id.get();
+                spawn_local(async move {
+                    match api::put::<LightCycleInput, LightCycle>(
+                        &format!("api/grows/{id}/light-cycle"),
+                        &input,
+                    )
+                    .await
+                    {
+                        Ok(cycle) => {
+                            let (time, fields) = fields_of(&cycle);
+                            stored.set(true);
+                            lights_on.set(time);
+                            hours.set(fields);
+                            status.set(Some(t_string!(i18n, light_cycle.saved).into_owned()));
+                        }
+                        Err(failure) => status.set(Some(api::failure_text(
+                            &failure,
+                            i18n.get_locale_untracked(),
+                        ))),
+                    }
+                });
+            }
+            Err(message) => status.set(Some(message)),
+        }
+    };
+
     let reset = move |_: leptos::ev::MouseEvent| {
         let id = grow_id.get();
+        // Capture what the form shows now: undo restores exactly that,
+        // through the same save endpoint reset replaces.
+        let previous = (lights_on.get_untracked(), hours.get_untracked());
+        undo_pending.update(|records| {
+            records.push(PendingUndo {
+                recorded_at_ms: now_ms(),
+                payload: previous,
+            });
+        });
         spawn_local(async move {
             match api::delete(&format!("api/grows/{id}/light-cycle")).await {
                 Ok(()) => {
                     stored.set(false);
                     lights_on.set(String::new());
                     hours.set(HoursText::default());
-                    status.set(Some(t_string!(i18n, light_cycle.reset_done).into_owned()));
+                    status.set(None);
+                    undo_message.set(Some(t_string!(i18n, light_cycle.reset_done).into_owned()));
                 }
-                Err(failure) => status.set(Some(api::failure_text(
-                    &failure,
-                    i18n.get_locale_untracked(),
-                ))),
+                Err(failure) => {
+                    // Nothing was reset: the capture must not offer an
+                    // undo of a no-op.
+                    undo_pending.update(|records| {
+                        records.pop();
+                    });
+                    status.set(Some(api::failure_text(
+                        &failure,
+                        i18n.get_locale_untracked(),
+                    )));
+                }
             }
         });
     };
@@ -234,6 +301,7 @@ pub fn LightCycleEditor(
                 }
             })
         }}
+        <UndoBanner message=undo_message.into() on_undo=undo_reset on_dismiss=dismiss_undo />
         <form class="flex flex-wrap gap-2 items-end my-2" on:submit=save>
             <label class="fieldset">
                 <span class="fieldset-label">{t!(i18n, light_cycle.lights_on)}</span>

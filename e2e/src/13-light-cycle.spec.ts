@@ -94,6 +94,43 @@ test('photoperiod defaults show, the cycle saves, persists and resets', async ({
   expect(reset!.hours_on.vegetative).toBeNull();
 });
 
+// Undoing a reset re-PUTs the values the form showed before the
+// reset, through the same save endpoint (D126).
+test('a reset raises the undo banner and Undo restores the values', async ({
+  page,
+  request,
+}) => {
+  const growId = await createGrow(request, uniqueName('E2E Cycle Undo'));
+  await page.goto(url(`/grows/${growId}/edit`));
+
+  const lightsOn = page.getByLabel('Lights on time (local)');
+  await lightsOn.fill('07:30');
+  await page.getByLabel('Vegetative hours on').fill('20');
+  await page.getByLabel('Flowering hours on').fill('11');
+  await page.getByRole('button', { name: 'Apply cycle' }).click();
+  await expect(page.getByText('Saved.')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Reset to default' }).click();
+  // The reset itself raises the undo banner instead of a bare status.
+  await expect(page.getByText('Reset to default.')).toBeVisible();
+  await expect(lightsOn).toHaveValue('');
+
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(page.getByText('Saved.')).toBeVisible();
+  await expect(lightsOn).toHaveValue('07:30');
+  await expect(page.getByLabel('Vegetative hours on')).toHaveValue('20');
+  await expect(page.getByLabel('Flowering hours on')).toHaveValue('11');
+
+  const restored = await api<LightCycle>(
+    request,
+    'GET',
+    `api/grows/${growId}/light-cycle`,
+  );
+  expect(restored!.lights_on).toBe('07:30');
+  expect(restored!.hours_on.vegetative).toBe(20);
+  expect(restored!.hours_on.flower).toBe(11);
+});
+
 test('an autoflower grow defaults to long days through flower', async ({
   page,
   request,

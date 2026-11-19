@@ -6,6 +6,53 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-19 — undoable entry-level destructive actions (D126)
+
+### D126: entry deletes and light-cycle resets are undoable within 8 s instead of confirmed; the whole-grow delete keeps its confirmation
+
+- **Undo policy**: a per-entry delete on the timeline and the light-cycle
+  reset no longer ask for confirmation — the destructive step happens
+  immediately and an undo banner offers the reversal for
+  `ui::UNDO_WINDOW_MS` (8 s). The whole-grow delete on the edit page
+  **keeps** its confirmation dialog: its cascade removes photos and
+  photo files, which no client-side capture can bring back. Entry-level
+  deletes only ever lose one log row, and the data needed to rebuild it
+  travels with the banner.
+- **What undo captures**: the timeline's undo holds the deleted entry's
+  `ActionEntry` reduced by `entry_to_input` to the exact `ActionInput`
+  a fresh create would carry — `ActionEntry` is a strict superset of
+  `ActionInput` (id, grow id, phase, grow day and timestamps are all
+  backend-filled), so the reconstruction is faithful and has **no
+  gap**. Undo re-POSTs that payload to the ordinary create endpoint:
+  the backend mints a **new id** and re-derives phase and grow day from
+  the same `occurred_at` (deterministic), so the restored row reads
+  identically. Ids are internal, so the new id is acceptable; the e2e
+  spec asserts the new id explicitly. The light-cycle reset captures
+  the form's current `lights_on`/hours before deleting and undo re-PUTs
+  them through the ordinary save endpoint.
+- **One banner, last delete wins**: rapid deletes push onto a pending
+  stack; the banner always names the **newest** record
+  (`ui::live_undo`). Undo or dismissal clears the whole stack, and a
+  lapsed window hides it — an earlier delete never resurfaces after a
+  newer one, and its undo expires with the banner. The pure
+  recency/expiry rule lives in `ui.rs` (`undo_is_live`, `live_undo`)
+  with unit tests; the banner component (`ui::UndoBanner`) re-arms its
+  8 s auto-dismiss on every new record, is `role=status` /
+  `aria-live=polite`, and animates nothing.
+- **Failed deletes roll back their own capture**: each pending record
+  is keyed by the deleted entry's id, so a rejected DELETE drops
+  exactly its own record — Undo must never re-create a duplicate of an
+  entry that is still on the timeline. Keying by id rather than
+  timestamp keeps this exact even if two rapid deletes share a
+  millisecond.
+- **Cast exceptions**: `ui::now_ms` narrows `js_sys::Date::now()`'s
+  `f64` to `u64` under
+  `#[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]`
+  — the value is a positive, finite millisecond count. The banner's
+  timer converts `UNDO_WINDOW_MS` with `u32::try_from(...).unwrap_or(0)`
+  (gloo's `Timeout::new` takes `u32`), following the env_section arming
+  timer's idiom, so no cast allow is needed there.
+
 ## 2026-11-19 — the unsaved-changes guard on the grow edit page (D125)
 
 ### D125: dirty-form guard without a router blocker — capture-phase click guard, pure snapshot seam, native beforeunload

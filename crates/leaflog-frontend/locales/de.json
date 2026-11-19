@@ -358,5 +358,12 @@
         "volume_ml": "Volumen (ml)",
         "wet_weight_g": "Nassgewicht (g)",
         "when_utc": "Zeitpunkt (UTC) *"
+    },
+    "common": {
+        "undo": "Rückgängig"
+    },
+    "entries": {
+        "delete": "Eintrag löschen",
+        "deleted": "Eintrag gelöscht."
     }
 }

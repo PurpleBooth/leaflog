@@ -31,7 +31,7 @@ use crate::i18n::{Locale, t, t_string, td_string, use_i18n};
 use crate::labels;
 use crate::route_href;
 use crate::ui;
-use crate::ui::EmptyState;
+use crate::ui::{EmptyState, PendingUndo, UNDO_WINDOW_MS, UndoBanner, live_undo, now_ms};
 
 /// The grows overview page.
 #[component]
@@ -316,6 +316,90 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
         refresh();
     });
 
+    // Undoable entry deletes (D126): deleting a single timeline entry
+    // needs no confirmation — the capture below lets one Undo replay
+    // it. One banner, last delete wins: dismissing, undoing or letting
+    // the window lapse clears the whole stack, so an earlier delete can
+    // never resurface after a newer one. The whole-grow delete on the
+    // edit page keeps its confirmation dialog (its cascade removes
+    // photos, which no undo can bring back).
+    let undo_pending = RwSignal::<Vec<PendingUndo<(String, ActionInput)>>>::new(Vec::new());
+    let undo_message = RwSignal::<Option<String>>::new(None);
+    let dismiss_undo = move || {
+        undo_pending.set(Vec::new());
+        undo_message.set(None);
+    };
+    let undo_delete = move || {
+        let records = undo_pending.get();
+        let Some(record) = live_undo(&records, now_ms(), UNDO_WINDOW_MS).cloned() else {
+            // The window lapsed between the timer firing and the
+            // click — the same as dismissing.
+            dismiss_undo();
+            return;
+        };
+        dismiss_undo();
+        let id = grow_id.get();
+        spawn_local(async move {
+            let (_, input) = record.payload;
+            // Undo re-POSTs the captured payload; the backend mints a
+            // new id and re-derives phase and grow day from the same
+            // occurred_at (D126 — ids are internal).
+            match api::post::<ActionInput, ActionEntry>(&format!("api/grows/{id}/actions"), &input)
+                .await
+            {
+                Ok(_) => {
+                    error.set(None);
+                    refresh();
+                }
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
+            }
+        });
+    };
+    let delete_entry = move |entry: ActionEntry| {
+        undo_pending.update(|records| {
+            records.push(PendingUndo {
+                recorded_at_ms: now_ms(),
+                payload: (entry.id.clone(), entry_to_input(&entry)),
+            });
+        });
+        undo_message.set(Some(
+            td_string!(i18n.get_locale_untracked(), entries.deleted).into_owned(),
+        ));
+        let entry_id = entry.id;
+        spawn_local(async move {
+            // The delete endpoint is global (api/actions/{id}); the
+            // grow-scoped route only lists and creates.
+            match api::delete(&format!("api/actions/{entry_id}")).await {
+                Ok(()) => {
+                    error.set(None);
+                    refresh();
+                }
+                Err(failure) => {
+                    // The entry is still on the timeline: drop exactly
+                    // this delete's record (keyed by the entry id, so
+                    // a millisecond collision between two rapid
+                    // deletes cannot take the wrong one) — Undo must
+                    // not re-create a duplicate.
+                    undo_pending
+                        .update(|records| records.retain(|record| record.payload.0 != entry_id));
+                    let caption = undo_pending.with(|records| {
+                        live_undo(records, now_ms(), UNDO_WINDOW_MS).map(|_| {
+                            td_string!(i18n.get_locale_untracked(), entries.deleted).into_owned()
+                        })
+                    });
+                    undo_message.set(caption);
+                    error.set(Some(api::failure_text(
+                        &failure,
+                        i18n.get_locale_untracked(),
+                    )));
+                }
+            }
+        });
+    };
+
     // prevent_default first — see docs/DECISIONS.md D061.
     let save_action = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
@@ -591,6 +675,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             <div class="grid gap-4 items-start lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
                 <div>
                     <h3>{t!(i18n, grow.timeline)}</h3>
+                    <UndoBanner message=undo_message.into() on_undo=undo_delete on_dismiss=dismiss_undo />
                     <ul class="list-none m-0 p-0 grid gap-2">
                         {move || {
                             let locale = i18n.get_locale();
@@ -599,6 +684,9 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                 .into_iter()
                                 .map(|entry| {
                                     let tags = entry.appearance_tags.clone();
+                                    let row = entry.clone();
+                                    let delete_label =
+                                        td_string!(locale, entries.delete).into_owned();
                                     view! {
                                         <li class=ui::card()>
                                             <div class="flex flex-wrap items-baseline gap-2">
@@ -607,6 +695,14 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                                 {entry.phase.map(|phase| view! {
                                                     <span class="badge badge-ghost">{labels::phase_label(locale, phase)}</span>
                                                 })}
+                                                <button
+                                                    class="btn btn-ghost btn-sm min-h-11 min-w-11 ml-auto self-center"
+                                                    type="button"
+                                                    aria-label=delete_label
+                                                    on:click=move |_| delete_entry(row.clone())
+                                                >
+                                                    {"×"}
+                                                </button>
                                             </div>
                                             <dl class="facts">
                         {entry.details.volume_ml.map(|volume| view! {
@@ -1162,6 +1258,24 @@ pub fn empty_grow() -> GrowInput {
     }
 }
 
+/// Strips the backend-filled fields (id, grow, phase, grow day,
+/// timestamps) from a timeline entry, leaving exactly the
+/// [`ActionInput`] a fresh create would carry — every input field is
+/// carried over verbatim, so an undo replay re-POSTs the same payload
+/// and the backend re-derives phase and grow day from the same
+/// `occurred_at` (docs/DECISIONS.md D126).
+#[must_use]
+pub fn entry_to_input(entry: &ActionEntry) -> ActionInput {
+    ActionInput {
+        plant_ids: entry.plant_ids.clone(),
+        occurred_at: entry.occurred_at.clone(),
+        action_type: entry.action_type,
+        details: entry.details.clone(),
+        notes: entry.notes.clone(),
+        appearance_tags: entry.appearance_tags.clone(),
+    }
+}
+
 /// A blank action draft: a `note` with no structured fields,
 /// timestamped now (UTC) in the shape a `datetime-local` input
 /// accepts.
@@ -1426,5 +1540,56 @@ mod timeout_retry_tests {
         ));
         assert_eq!(outcome, Err("gave up"));
         assert_eq!(attempts.get(), 2);
+    }
+}
+
+#[cfg(test)]
+mod entry_undo_tests {
+    use super::entry_to_input;
+    use leaflog_core::actions::{ActionDetails, ActionType};
+    use leaflog_core::grows::{ActionEntry, ActionInput};
+
+    fn sample_entry() -> ActionEntry {
+        ActionEntry {
+            id: "01JEXAMPLEULID000000000".to_owned(),
+            grow_id: "01JGROWULID000000000000000".to_owned(),
+            plant_ids: vec!["01JPLANTULID000000000000".to_owned()],
+            occurred_at: "2026-05-04T08:30:00Z".to_owned(),
+            action_type: ActionType::Water,
+            phase: Some(leaflog_core::Phase::Vegetative),
+            grow_day: 12,
+            details: ActionDetails {
+                volume_ml: Some(250.0),
+                input_ph: Some(6.3),
+                ..ActionDetails::default()
+            },
+            notes: Some("ran clear runoff".to_owned()),
+            appearance_tags: vec!["healthy".to_owned()],
+            created_at: "2026-05-04T08:30:01Z".to_owned(),
+            updated_at: "2026-05-04T08:30:01Z".to_owned(),
+        }
+    }
+
+    // The undo replay must carry exactly the create payload: the
+    // backend-filled fields (id, grow, phase, grow day, timestamps)
+    // are stripped; everything the create form owned is verbatim.
+    #[test]
+    fn the_undo_replay_carries_exactly_the_create_payload() {
+        let input = entry_to_input(&sample_entry());
+        assert_eq!(
+            input,
+            ActionInput {
+                plant_ids: vec!["01JPLANTULID000000000000".to_owned()],
+                occurred_at: "2026-05-04T08:30:00Z".to_owned(),
+                action_type: ActionType::Water,
+                details: ActionDetails {
+                    volume_ml: Some(250.0),
+                    input_ph: Some(6.3),
+                    ..ActionDetails::default()
+                },
+                notes: Some("ran clear runoff".to_owned()),
+                appearance_tags: vec!["healthy".to_owned()],
+            }
+        );
     }
 }

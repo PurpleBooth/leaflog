@@ -358,5 +358,12 @@
         "volume_ml": "Volume (ml)",
         "wet_weight_g": "Wet weight (g)",
         "when_utc": "When (UTC) *"
+    },
+    "common": {
+        "undo": "Undo"
+    },
+    "entries": {
+        "delete": "Delete entry",
+        "deleted": "Entry deleted."
     }
 }

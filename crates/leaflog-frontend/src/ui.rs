@@ -31,6 +31,56 @@ pub const fn tile() -> &'static str {
 /// shrinking into it.
 pub const CARD_GRID: &str = "grid grid-cols-1 gap-4 items-start lg:grid-cols-2";
 
+use crate::i18n::{t_string, use_i18n};
+use gloo_timers::callback::Timeout;
+
+/// The undo window: how long a pending undo stays live after its
+/// record was made (docs/DECISIONS.md D126).
+pub const UNDO_WINDOW_MS: u64 = 8_000;
+
+/// One pending undo: what an Undo would restore, plus the caller-clock
+/// instant it was recorded. The clock is a plain millisecond count so
+/// the expiry rule below stays pure and testable on every target.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct PendingUndo<T> {
+    /// Caller-clock instant the record was made, in milliseconds.
+    pub recorded_at_ms: u64,
+    /// What an Undo would restore.
+    pub payload: T,
+}
+
+/// A record is live while its own window has not passed: measured
+/// from when it was recorded, not from when the banner was last
+/// touched, so a rapid second delete cannot extend the first one.
+#[must_use]
+pub const fn undo_is_live(recorded_at_ms: u64, now_ms: u64, window_ms: u64) -> bool {
+    now_ms.saturating_sub(recorded_at_ms) < window_ms
+}
+
+/// The surviving undo: the newest record, if it is still live — one
+/// banner, last delete wins; earlier records never surface again
+/// (docs/DECISIONS.md D126).
+#[must_use]
+pub fn live_undo<T>(
+    pending: &[PendingUndo<T>],
+    now_ms: u64,
+    window_ms: u64,
+) -> Option<&PendingUndo<T>> {
+    pending
+        .last()
+        .filter(|record| undo_is_live(record.recorded_at_ms, now_ms, window_ms))
+}
+
+/// The wall clock in milliseconds — the caller-clock the undo window
+/// is measured against (also used to time-stamp recorded undoes).
+// f64 -> u64 is the one unavoidable primitive cast; `Date::now()` is
+// always a positive, finite millisecond count.
+#[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)] // see docs/DECISIONS.md
+#[must_use]
+pub fn now_ms() -> u64 {
+    js_sys::Date::now() as u64
+}
+
 /// A bound entity id chip: the id is data, not copy — it renders
 /// verbatim as one ellipsized line (`.entity-id` truncates in CSS,
 /// so the DOM text stays complete for screen readers and tests) and
@@ -78,9 +128,75 @@ pub fn SectionHeader(
     }
 }
 
+/// The shared undo banner: an alert-style card (the [`card`] recipe)
+/// shown above whatever it undoes while `message` holds a caption,
+/// with one localized Undo action. The caller owns the pending state
+/// and the caption; the banner owns the 8 s auto-dismiss and re-arms
+/// it on every caption change, so a rapid second delete never cuts
+/// the first window short. A cleared caption cancels the stale timer,
+/// so an early Undo can never fire a late dismissal. Quiet by design:
+/// `role=status` + `aria-live=polite`, no animation.
+#[component]
+#[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
+pub fn UndoBanner(
+    /// Localized caption for the live undo; `None` renders nothing.
+    message: Signal<Option<String>>,
+    /// Runs when the user clicks Undo (the caller replays the record).
+    on_undo: impl Fn() + Clone + Send + 'static,
+    /// Runs when the window lapses (the caller prunes its records and
+    /// the banner hides once nothing is live).
+    on_dismiss: impl Fn() + Clone + Send + 'static,
+) -> impl IntoView {
+    let i18n = use_i18n();
+    // The auto-dismiss timer lives in a local slot: wasm handles are
+    // neither Send nor Sync, and the effect re-arms on every caption
+    // change, so a rapid second delete must not cut the first window
+    // short. Cancelling is just taking the slot empty (env_section.rs
+    // keeps its arming timer the same way).
+    let dismiss_slot = StoredValue::new_local(Option::<Timeout>::None);
+    let stop_dismiss = move || {
+        dismiss_slot.update_value(|slot| {
+            if let Some(timer) = slot.take() {
+                timer.cancel();
+            }
+        });
+    };
+    Effect::new(move |_| {
+        stop_dismiss();
+        if message.get().is_some() {
+            let on_dismiss = on_dismiss.clone();
+            let timer = Timeout::new(u32::try_from(UNDO_WINDOW_MS).unwrap_or(0), move || {
+                on_dismiss();
+            });
+            dismiss_slot.set_value(Some(timer));
+        }
+    });
+    on_cleanup(stop_dismiss);
+    move || {
+        message.get().map(|text| {
+            let undo_label = t_string!(i18n, common.undo).into_owned();
+            let on_undo = on_undo.clone();
+            let banner_class = format!("{} flex flex-wrap items-center gap-2 my-2", card());
+            view! {
+                <div class=banner_class role="status" aria-live="polite">
+                    <span class="min-w-0 flex-1 text-sm">{text}</span>
+                    <button
+                        class="btn btn-ghost btn-sm min-h-11"
+                        type="button"
+                        aria-label=undo_label
+                        on:click=move |_| on_undo()
+                    >
+                        {undo_label.clone()}
+                    </button>
+                </div>
+            }
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{card, tile};
+    use super::{PendingUndo, UNDO_WINDOW_MS, card, live_undo, tile, undo_is_live};
 
     #[test]
     fn card_is_the_full_card_tier_recipe() {
@@ -93,5 +209,57 @@ mod tests {
             tile(),
             "rounded-box border border-base-300 bg-base-100 px-4 py-3"
         );
+    }
+
+    #[test]
+    fn an_undo_is_live_only_inside_its_own_window() {
+        let recorded_at_ms = 1_000;
+        assert!(undo_is_live(recorded_at_ms, recorded_at_ms, UNDO_WINDOW_MS));
+        assert!(undo_is_live(
+            recorded_at_ms,
+            recorded_at_ms + UNDO_WINDOW_MS - 1,
+            UNDO_WINDOW_MS
+        ));
+        // The window lapsing expires the record, never the clock itself.
+        assert!(!undo_is_live(
+            recorded_at_ms,
+            recorded_at_ms + UNDO_WINDOW_MS,
+            UNDO_WINDOW_MS
+        ));
+    }
+
+    #[test]
+    fn the_newest_record_inside_the_window_wins() {
+        let pending = vec![
+            PendingUndo {
+                recorded_at_ms: 1_000,
+                payload: "earlier delete",
+            },
+            PendingUndo {
+                recorded_at_ms: 7_500,
+                payload: "latest delete",
+            },
+        ];
+        let live = live_undo(&pending, 8_000, UNDO_WINDOW_MS);
+        assert_eq!(live.map(|record| record.payload), Some("latest delete"));
+    }
+
+    #[test]
+    fn an_expired_newest_record_hides_the_banner_entirely() {
+        let pending = vec![
+            PendingUndo {
+                recorded_at_ms: 1_000,
+                payload: "earlier delete",
+            },
+            PendingUndo {
+                recorded_at_ms: 7_500,
+                payload: "latest delete",
+            },
+        ];
+        // The newest record's window lapsed: nothing is live, even
+        // though an older record would still be inside its own window
+        // — one banner, last delete wins (docs/DECISIONS.md D126).
+        assert!(live_undo(&pending, 7_500 + UNDO_WINDOW_MS, UNDO_WINDOW_MS).is_none());
+        assert!(live_undo::<&str>(&[], 0, UNDO_WINDOW_MS).is_none());
     }
 }
