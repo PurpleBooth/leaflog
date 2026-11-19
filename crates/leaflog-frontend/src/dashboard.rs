@@ -338,14 +338,14 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                             <span class="text-xs uppercase tracking-wide text-base-content/60">{t!(i18n, env.rh)}</span>
                             <span class="text-lg font-semibold">{rh_display}</span>
                         </div> }.into_any(),
+                        view! { <div class={format!("{} grid gap-0.5", ui::tile())}>
+                            <span class="text-xs uppercase tracking-wide text-base-content/60">{t!(i18n, env.rh_window)}</span>
+                            <span class="text-lg font-semibold">{format!("{}–{} %", leaflog_core::format::format_decimal(v.rh_window.0, 0, style), leaflog_core::format::format_decimal(v.rh_window.1, 0, style))}</span>
+                        </div> }.into_any(),
                         view! { <div class=vpd_class>
                             <span class="text-xs uppercase tracking-wide text-base-content/60">{t!(i18n, env.vpd_tile)}</span>
                             <span class="text-lg font-semibold">{vpd_display}</span>
                             <span class="text-xs text-base-content/60">{t!(i18n, env.band_prefix)}{leaflog_core::format::format_decimal(e.vpd_band.0, 1, style)}{"–"}{leaflog_core::format::format_decimal(e.vpd_band.1, 1, style)}</span>
-                        </div> }.into_any(),
-                        view! { <div class={format!("{} grid gap-0.5", ui::tile())}>
-                            <span class="text-xs uppercase tracking-wide text-base-content/60">{t!(i18n, env.rh_window)}</span>
-                            <span class="text-lg font-semibold">{format!("{}–{} %", leaflog_core::format::format_decimal(v.rh_window.0, 0, style), leaflog_core::format::format_decimal(v.rh_window.1, 0, style))}</span>
                         </div> }.into_any(),
                         view! { <div class={format!("{} grid gap-0.5", ui::tile())}>
                             <span class="text-xs uppercase tracking-wide text-base-content/60">{t!(i18n, env.co2_tile)}</span>
