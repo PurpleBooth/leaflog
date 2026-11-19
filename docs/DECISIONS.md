@@ -6,6 +6,24 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-19 — keying the remaining form flows (locale ticket 03, git-bug d32e7c5)
+
+### D115: the plural keys need ICU's compiled data; it is baked at build time
+
+`plant.photos_linked` (ticket 03) was the first plural key actually
+rendered by the app and it panicked with "No DataProvider provided":
+leptos_i18n's `plurals` feature selects plural variants through ICU
+plural rules, and without `icu_compiled_data` the data provider is
+`None` until the app installs one. The pre-existing `feed.days` keys
+(ticket 02) carry the same latent defect — no e2e case renders a
+feed-days line, so it never fired. The fix is the feature flag:
+`icu_compiled_data` on `leaflog-frontend`'s `leptos_i18n` dependency
+bakes the plural-rule data into the binary at compile time — zero
+runtime fetches (SPEC story 23), native tests and wasm behave alike,
+and the bundle stays inside the verify.mjs size window. The
+alternative (installing a runtime provider or hand-rolling plural
+selection) buys nothing and adds code.
+
 ## 2026-11-18 — keying the grow pages (locale ticket 02, git-bug 390fbde)
 
 ### D114: core-generated coach and lamp-why strings travel as wire codes, not text
