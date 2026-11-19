@@ -116,13 +116,108 @@ fn icon_for(kind: ActionType) -> Option<icondata_core::Icon> {
     Some(icon)
 }
 
+/// localStorage key holding the most recent quick-add picks, most
+/// recent first, as the actions' stable `snake_case` keys — the same
+/// wire encoding the database and API use (D127).
+const RECENTS_KEY: &str = "leaflog.quick-add-recents";
+
+/// How many recent picks the dialog remembers (D127).
+const RECENTS_MAX: usize = 3;
+
+/// The updated recents list after picking `picked`: most recent
+/// first, deduplicated (a re-pick moves the entry to the front),
+/// capped at `max` entries.
+#[must_use]
+fn update_recents(existing: &[String], picked: &str, max: usize) -> Vec<String> {
+    let mut updated = vec![picked.to_owned()];
+    updated.extend(
+        existing
+            .iter()
+            .filter(|key| key.as_str() != picked)
+            .cloned(),
+    );
+    updated.truncate(max);
+    updated
+}
+
+/// Parses a stored wire key back to the picker action it selects.
+/// Unknown keys (older or tampered storage) and `PhaseChange` (never
+/// offered by the picker) degrade to "not recent".
+#[must_use]
+fn parse_key(key: &str) -> Option<ActionType> {
+    let kind = ActionType::all()
+        .into_iter()
+        .find(|kind| kind.label() == key)?;
+    (kind != ActionType::PhaseChange).then_some(kind)
+}
+
+/// Reads the stored recent picks; a missing or locked-down storage
+/// area (private mode) degrades to no recents.
+fn load_recents() -> Vec<ActionType> {
+    let stored = web_sys::window()
+        .and_then(|window| window.local_storage().ok().flatten())
+        .and_then(|storage| storage.get_item(RECENTS_KEY).ok().flatten());
+    stored
+        .as_deref()
+        .and_then(|raw| serde_json::from_str::<Vec<String>>(raw).ok())
+        .map(|keys| keys.iter().filter_map(|key| parse_key(key)).collect())
+        .unwrap_or_default()
+}
+
+/// Persists the recent picks per browser; a locked-down storage area
+/// is ignored (the session keeps its recents in memory).
+fn save_recents(keys: &[String]) {
+    if let Some(storage) =
+        web_sys::window().and_then(|window| window.local_storage().ok().flatten())
+        && let Ok(raw) = serde_json::to_string(keys)
+    {
+        let _ = storage.set_item(RECENTS_KEY, &raw);
+    }
+}
+
+/// One labelled group of picker buttons: the recents row (D127) and
+/// the taxonomy groups share this rendering, so a recent behaves and
+/// looks exactly like its taxonomy chip.
+fn action_group(
+    locale: Locale,
+    heading: String,
+    actions: Vec<ActionType>,
+    pick: impl Fn(ActionType) + Copy + 'static,
+) -> impl IntoView {
+    view! {
+        <section class="mt-3">
+            <h3 class="m-0 mb-2 text-xs font-semibold uppercase tracking-wider text-base-content/60">
+                {heading}
+            </h3>
+            <div class="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2">
+                {actions
+                    .into_iter()
+                    .map(|kind| {
+                        view! {
+                            <button
+                                type="button"
+                                class="btn min-h-11"
+                                on:click=move |_| pick(kind)
+                            >
+                                {icon_for(kind).map(|icon| view! { <Icon icon=icon /> })}
+                                {labels::action_label(locale, kind)}
+                            </button>
+                        }
+                    })
+                    .collect::<Vec<_>>()}
+            </div>
+        </section>
+    }
+}
+
 /// The quick-add picker (ticket 06, D122): a trigger button opening a
 /// native modal `<dialog>` — the browser owns the focus trap, the
 /// Escape cancel and the focus restore to the trigger, while daisyUI's
 /// `modal` chrome draws backdrop and box. Actions sit in labelled
 /// groups of 44px buttons, one Lucide SVG each. Picking an action
 /// opens the inline logging form card with the same draft semantics
-/// the chip row had (D069).
+/// the chip row had (D069). The last three picks resurface in a
+/// "Recent" group at the top of the dialog (D127).
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
 pub(crate) fn QuickAddMenu(
@@ -132,6 +227,7 @@ pub(crate) fn QuickAddMenu(
     let open = RwSignal::new(false);
     let i18n = use_i18n();
     let dialog = NodeRef::<leptos::html::Dialog>::new();
+    let recents = RwSignal::new(Vec::<ActionType>::new());
 
     // Picking sets the entry's type on a fresh draft and opens the
     // form card — a plain reset left the draft as `note`, so every
@@ -141,6 +237,16 @@ pub(crate) fn QuickAddMenu(
         reset.action_type = kind;
         chip.set(Some(kind));
         draft.set(reset);
+        // Remember the pick for the recents row (D127): stored most
+        // recent first and capped, whatever path led to the pick.
+        let keys = recents
+            .get_untracked()
+            .iter()
+            .map(|recent| recent.label().to_owned())
+            .collect::<Vec<_>>();
+        let updated = update_recents(&keys, kind.label(), RECENTS_MAX);
+        save_recents(&updated);
+        recents.set(updated.iter().filter_map(|key| parse_key(key)).collect());
         // Natively close the dialog before reopening the form card;
         // the on:close handler keeps aria-expanded honest.
         if let Some(el) = dialog.get_untracked() {
@@ -166,6 +272,9 @@ pub(crate) fn QuickAddMenu(
         if el.open() {
             return;
         }
+        // Read the stored recents once per open (D127), not
+        // reactively on every keystroke.
+        recents.set(load_recents());
         // showModal puts the dialog in the top layer: the browser
         // then traps Tab, closes on Escape and restores focus to the
         // trigger on its own — no manual key handling needed.
@@ -210,36 +319,27 @@ pub(crate) fn QuickAddMenu(
                 </h2>
                 {move || {
                     let locale = i18n.get_locale();
-                    action_groups()
+                    let groups = action_groups()
                         .into_iter()
-                        .map(|(key, actions)| {
-                            view! {
-                                <section class="mt-3">
-                                    <h3 class="m-0 mb-2 text-xs font-semibold uppercase tracking-wider text-base-content/60">
-                                        {key.label(locale)}
-                                    </h3>
-                                    <div class="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2">
-                                        {actions
-                                            .into_iter()
-                                            .map(|kind| {
-                                                view! {
-                                                    <button
-                                                        type="button"
-                                                        class="btn min-h-11"
-                                                        on:click=move |_| pick(kind)
-                                                    >
-                                                        {icon_for(kind)
-                                                            .map(|icon| view! { <Icon icon=icon /> })}
-                                                        {labels::action_label(locale, kind)}
-                                                    </button>
-                                                }
-                                            })
-                                            .collect::<Vec<_>>()}
-                                    </div>
-                                </section>
-                            }
-                        })
-                        .collect::<Vec<_>>()
+                        .map(|(key, actions)| action_group(locale, key.label(locale), actions, pick))
+                        .collect::<Vec<_>>();
+                    // The recents group leads only when there is
+                    // something remembered (D127).
+                    let recent = recents.get();
+                    let recents_group = (!recent.is_empty()).then(|| {
+                        action_group(
+                            locale,
+                            td_string!(locale, quick_add.recents_heading).to_owned(),
+                            recent,
+                            pick,
+                        )
+                    });
+                    view! {
+                        <>
+                            {recents_group}
+                            {groups}
+                        </>
+                    }
                 }}
             </div>
             // Clicking the backdrop submits this method=dialog form,
@@ -254,6 +354,49 @@ pub(crate) fn QuickAddMenu(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_recents_storage_key_is_namespaced_to_leaflog() {
+        assert_eq!(RECENTS_KEY, "leaflog.quick-add-recents");
+    }
+
+    #[test]
+    fn empty_history_gains_the_pick() {
+        assert_eq!(update_recents(&[], "water", RECENTS_MAX), vec!["water"]);
+    }
+
+    #[test]
+    fn re_picking_moves_the_entry_to_the_front() {
+        let existing = vec!["water".to_owned(), "feed".to_owned(), "note".to_owned()];
+        assert_eq!(
+            update_recents(&existing, "feed", RECENTS_MAX),
+            vec!["feed", "water", "note"]
+        );
+    }
+
+    #[test]
+    fn capping_evicts_the_oldest_entry() {
+        let existing = vec!["water".to_owned(), "feed".to_owned(), "note".to_owned()];
+        assert_eq!(
+            update_recents(&existing, "trim_defoliate", 3),
+            vec!["trim_defoliate", "water", "feed"]
+        );
+    }
+
+    #[test]
+    fn unrelated_entries_keep_their_order_after_the_pick() {
+        let existing = vec!["water".to_owned(), "note".to_owned()];
+        assert_eq!(
+            update_recents(&existing, "photo", RECENTS_MAX),
+            vec!["photo", "water", "note"]
+        );
+    }
+
+    #[test]
+    fn max_zero_remembers_nothing() {
+        let existing = vec!["water".to_owned()];
+        assert_eq!(update_recents(&existing, "feed", 0), Vec::<String>::new());
+    }
 
     #[test]
     fn every_picker_action_has_a_distinct_icon() {

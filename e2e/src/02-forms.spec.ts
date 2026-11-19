@@ -303,6 +303,60 @@ test('quick add: log a watering from the grow page', async ({ page, request }) =
   ).toContainText('250');
 });
 
+test('quick add recents: last picks resurface at the top', async ({ page, request }) => {
+  const name = uniqueName('E2E Recents Grow');
+  const id = await createGrow(request, name);
+  await page.goto(url(`/grows/${id}`));
+  // Fresh profile (D127): nothing remembered yet, so the recents
+  // group is skipped entirely.
+  await page.evaluate(() => window.localStorage.clear());
+
+  const trigger = page.getByRole('button', { name: 'Quick add', exact: true });
+  const dialog = page.getByRole('dialog', { name: 'Add an entry' });
+  const recentsGroup = dialog.locator('.modal-box section').first();
+  await trigger.click();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('heading', { name: 'Recent' })).toHaveCount(0);
+
+  // Picking Water remembers it; the dialog closes with the form
+  // card focused, exactly like the taxonomy path (D069).
+  await dialog.getByRole('button', { name: 'Water', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator('#quick-add-form')).toBeFocused();
+
+  // Reopen: the recents group leads, above the taxonomy groups.
+  await trigger.click();
+  await expect(recentsGroup.getByRole('heading')).toHaveText('Recent');
+  await expect(recentsGroup.getByRole('button')).toHaveText(['Water']);
+
+  // A second pick lands in front: most recent first.
+  await dialog.getByRole('button', { name: 'Feed', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await trigger.click();
+  await expect(recentsGroup.getByRole('button')).toHaveText(['Feed', 'Water']);
+
+  // Clicking a recent behaves exactly like its taxonomy chip:
+  // same draft, same close-and-focus, same form. Log it to prove it.
+  await recentsGroup.getByRole('button', { name: 'Feed', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator('#quick-add-form')).toBeFocused();
+  await page.getByLabel('Volume (ml)').fill('250');
+  await armNoReloadGuard(page);
+  await page.getByRole('button', { name: 'Log it' }).click();
+  const entry = page
+    .locator('ul.list-none li')
+    .filter({ has: page.locator('strong:text-is("Feed")') });
+  await expect(entry).toBeVisible();
+  await expect(entry).toContainText('250');
+  await expectNoReload(page);
+
+  // Recents live in localStorage: they survive a reload unchanged.
+  await page.reload();
+  await trigger.click();
+  await expect(recentsGroup.getByRole('heading')).toHaveText('Recent');
+  await expect(recentsGroup.getByRole('button')).toHaveText(['Feed', 'Water']);
+});
+
 test('plant: edit weights from the plant page', async ({ page, request }) => {
   const plantName = uniqueName('E2E Plant');
   const growId = await createGrow(request, uniqueName('E2E Plant Grow'));

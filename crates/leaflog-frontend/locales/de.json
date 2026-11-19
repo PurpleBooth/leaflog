@@ -246,6 +246,7 @@
         "trigger": "Schnell-Eintrag",
         "dialog_title": "Eintrag hinzufügen",
         "close": "Schließen",
+        "recents_heading": "Zuletzt verwendet",
         "group_watering": "Gießen & Düngen",
         "group_plant_care": "Pflanzenpflege",
         "group_environment": "Umwelt",

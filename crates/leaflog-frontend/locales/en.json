@@ -246,6 +246,7 @@
         "trigger": "Quick add",
         "dialog_title": "Add an entry",
         "close": "Close",
+        "recents_heading": "Recent",
         "group_watering": "Watering & feeding",
         "group_plant_care": "Plant care",
         "group_environment": "Environment",

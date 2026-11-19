@@ -6,6 +6,29 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-19 — recents in the quick-add dialog picker (D127)
+
+### D127: the quick-add dialog remembers the last three picks in localStorage, most recent first, and degrades to no recents when storage is unavailable
+
+- **Storage**: `localStorage` key `leaflog.quick-add-recents`, namespaced
+  like `leaflog.history-window` in env_section.rs. Values are the
+  actions' stable `snake_case` keys (`ActionType::label`) — the same
+  encoding the database and API use, stored as a JSON array; no second
+  key mapping exists. The list is capped at 3 entries, most recent
+  first, and a re-pick moves the entry back to the front. The pure
+  rule lives in quick_add.rs (`update_recents`) with unit tests;
+  unknown or stale keys degrade to "not recent" on load.
+- **Degradation**: private mode or disabled storage yields "no
+  recents" — the dialog renders only the taxonomy groups and never
+  errors, following the history-window load/save pattern's error
+  handling. A failed write keeps the session's in-memory recents.
+- **Scope**: only picks made through the dialog are remembered
+  (`PhaseChange` never reaches it); the list is read once when the
+  dialog opens, not reactively. Recents render through the same group
+  renderer as the taxonomy chips, so a recent pick behaves exactly
+  like its taxonomy chip — same draft reset, close and focus
+  semantics (D069).
+
 ## 2026-11-19 — undoable entry-level destructive actions (D126)
 
 ### D126: entry deletes and light-cycle resets are undoable within 8 s instead of confirmed; the whole-grow delete keeps its confirmation
