@@ -18,10 +18,11 @@ crate-type = ["cdylib"]
 leaflog-core.workspace = true
 leptos = { version = "0.8", features = ["csr"] }
 leptos_router = "0.8"
-# Compile-time i18n (D112): JSON catalogs under locales/, en is the
-# default locale and the key source of truth. CSR, no cookie and no
-# system-locale auto-detection — the locale chain (HA → browser → en)
-# is applied explicitly in the app (docs/ARCHITECTURE.md).
+# Compile-time i18n (D112, ADR 0003): JSON catalogs under locales/, en is
+# the default locale and the key source of truth. CSR, no cookie; the
+# HA-language step of the chain (HA → browser → en) is applied explicitly
+# by LocaleChain, the browser step is leptos_i18n's implicit
+# navigator.languages matching at first paint (docs/ARCHITECTURE.md).
 leptos_i18n = { workspace = true, default-features = false, features = [
     "csr",
     "plurals",
