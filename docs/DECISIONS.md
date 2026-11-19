@@ -6,6 +6,49 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-19 — locale-aware decimal formatting and the German copy pass (D123)
+
+### D123: pure decimal formatter, one Locale→style mapping, backend-compat note, German grow terms
+
+- **Mechanism**: `leaflog_core::format::format_decimal(value, decimals,
+  DecimalStyle)` — a pure, no-`Intl` formatter (local-first; wasm-safe).
+  Rust's `{:.N}` stays the rounding authority (half-to-even on exact
+  binary ties); the module only swaps separators and inserts thousands
+  grouping, so a rounded carry regroups for free (`999.995` at one
+  decimal → `1,000.0` / `1.000,0`). `DecimalStyle` is `Dot`/`Comma`;
+  the frontend maps `Locale`→style in exactly one place
+  (`decimal_style(locale)` in leaflog-frontend/src/lib.rs). The chart
+  axis/tooltip closures and the dashboard/timeline formatters receive
+  the style at their existing locale read, so a locale swap rebuilds
+  with the right separators.
+- **Backend-compat choice**: `units.rs` helpers (`temp_both`,
+  `temp_preferred`, `length_both`, `length_preferred`, `volume_both`,
+  `volume_preferred`, `small_volume_both`) gained a `DecimalStyle`
+  parameter in place — no dot-style shims kept. Verified first that the
+  backend has **zero** consumers of these helpers (they are
+  display-only; the API ships raw numbers), so the smallest non-breaking
+  shape is the breaking-to-nobody one.
+- **German terms**: the curing phase is now **„Aushärten"**
+  (`phases.curing` was the literal English "Curing"; register matches
+  the existing „Trocknung"). The same concept is spelled one way
+  everywhere: `actions.dry_cure_check` „Trocknen/Curing" →
+  „Trocknen/Aushärten", `env.coach_curing_jars_why` leading "Curing" →
+  „Aushärten". The praying leaf sign is **„Aufgerichtet"** (was
+  „Betend" — a literal rendering of "praying"; the new label parallels
+  „Hängend" and stays chip-compact). `form.when_utc` is now
+  „Zeitpunkt (UTC) *". Reviewed and deliberately left: the de/en
+  identical abbreviations (CO₂, EC, pH, VPD, Temp), „Autoflower",
+  „Dimmer (%)", „Status", „Tolerant", „Flip 12/12" — established
+  German grower usage, not leaks.
+- **Gantt caption**: the caption sentence, day count and ` / total`
+  suffix were three adjacent view nodes, which Leptos renders with no
+  separator (`…Zeitpunkt.65 / 141`). Composed in a pure
+  `forecast_caption()` helper (pinned by a test) so the space is
+  built in, in both locales. The unused `gantt.day_count` de key was
+  left alone (dead key, separate cleanup).
+
+---
+
 ## 2026-11-19 — the quick-add picker is a grouped native dialog (D122)
 
 ### D122: the quick-add picker is a grouped native `<dialog>`, not a dropdown

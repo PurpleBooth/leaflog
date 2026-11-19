@@ -95,7 +95,7 @@ test('feed ph and ec measurements plot as scatter points', async ({
 
   const ecCard = page.locator('.card', { has: ecChart });
   await hoverCenter(page, ecChart);
-  await expect(ecCard.getByText(/1500.*µS\/cm.*UTC/)).toBeVisible();
+  await expect(ecCard.getByText(/1,500.*µS\/cm.*UTC/)).toBeVisible();
 });
 
 test('a grow with no entries renders no ph or ec card', async ({

@@ -34,6 +34,7 @@ pub mod chart;
 pub mod env;
 pub mod feed;
 pub mod forecast;
+pub mod format;
 pub mod grows;
 pub mod history;
 pub mod light_cycle;

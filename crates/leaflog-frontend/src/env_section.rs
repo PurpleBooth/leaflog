@@ -29,6 +29,7 @@ use crate::route_href;
 use crate::ui;
 use crate::ui::SectionHeader;
 use leaflog_core::chart::{ChartGroup, chart_group};
+use leaflog_core::format::DecimalStyle;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::components::A;
@@ -59,8 +60,9 @@ struct SectionChart {
     role: &'static str,
     /// The card (and chip) title, one spelling per concept.
     title: &'static str,
-    /// The card's value formatter.
-    format_value: fn(f64) -> String,
+    /// The card's value formatter (the locale's decimal style rides
+    /// along per call).
+    format_value: fn(f64, DecimalStyle) -> String,
     /// Whether a missing binding chips the role on the not-measured
     /// card. False for VPD (it derives from temperature + humidity,
     /// so one of those chips explains its absence) and for pH/EC

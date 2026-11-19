@@ -20,16 +20,18 @@ use crate::i18n::{t, t_string, use_i18n};
 use crate::labels;
 use crate::ui;
 use js_sys::{Function, Reflect};
+use leaflog_core::format::{DecimalStyle, format_decimal};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_i18n::td_string;
 use serde::Serialize;
 use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 
-/// Axis formatter: relative humidity percent.
+/// Axis formatter: relative humidity percent, separated per `style`
+/// (D123 — the locale's decimal style, mapped in [`crate::decimal_style`]).
 #[must_use]
-pub fn format_pct(value: f64) -> String {
-    format!("{value:.0} %")
+pub fn format_pct(value: f64, style: DecimalStyle) -> String {
+    format!("{} %", format_decimal(value, 0, style))
 }
 
 /// The soil-moisture band editor: two percent inputs with save and
@@ -140,26 +142,26 @@ pub fn BandEditor() -> impl IntoView {
 
 /// Axis formatter: VPD kilopascals.
 #[must_use]
-pub fn format_kpa(value: f64) -> String {
-    format!("{value:.2} kPa")
+pub fn format_kpa(value: f64, style: DecimalStyle) -> String {
+    format!("{} kPa", format_decimal(value, 2, style))
 }
 
 /// Axis formatter: CO₂ parts per million.
 #[must_use]
-pub fn format_ppm(value: f64) -> String {
-    format!("{value:.0} ppm")
+pub fn format_ppm(value: f64, style: DecimalStyle) -> String {
+    format!("{} ppm", format_decimal(value, 0, style))
 }
 
 /// Axis formatter: pH values (dimensionless).
 #[must_use]
-pub fn format_ph(value: f64) -> String {
-    format!("{value:.1}")
+pub fn format_ph(value: f64, style: DecimalStyle) -> String {
+    format_decimal(value, 1, style)
 }
 
 /// Axis formatter: EC in µS/cm (canonical, spec §5.3).
 #[must_use]
-pub fn format_ec_us(value: f64) -> String {
-    format!("{value:.0} µS/cm")
+pub fn format_ec_us(value: f64, style: DecimalStyle) -> String {
+    format!("{} µS/cm", format_decimal(value, 0, style))
 }
 
 /// One windowed chart for one sensor role on the grow overview.
@@ -189,7 +191,7 @@ pub fn format_ec_us(value: f64) -> String {
 pub fn HistoryChart(
     grow_id: String,
     #[prop(default = "temperature")] role: &'static str,
-    format_value: fn(f64) -> String,
+    format_value: fn(f64, DecimalStyle) -> String,
     shared_window: RwSignal<String>,
     shared_markers: RwSignal<bool>,
     #[prop(optional)] children: Option<ChildrenFn>,
@@ -364,7 +366,7 @@ pub(crate) fn WindowToggles(
 #[component]
 fn EChartsHistory(
     data: RwSignal<Option<GrowHistory>>,
-    format_value: fn(f64) -> String,
+    format_value: fn(f64, DecimalStyle) -> String,
     markers: RwSignal<bool>,
 ) -> impl IntoView {
     let container = NodeRef::<leptos::html::Div>::new();
@@ -380,8 +382,10 @@ fn EChartsHistory(
             chart.markers.clear();
         }
         // Reading the locale here makes a locale swap rebuild the
-        // option (series names, marker captions) in the new language.
+        // option (series names, marker captions, decimal separators)
+        // in the new language.
         let locale = i18n.get_locale();
+        let decimal_style = crate::decimal_style(locale);
         let Some(el) = container.get() else { return };
         let style = chart_option::role_style(&chart.role);
         let option = chart_option::history_option(&chart, &theme_look(), &style, locale);
@@ -397,8 +401,8 @@ fn EChartsHistory(
         // Fresh closures per option build: setOption replaces the
         // previous references, and `into_js_value` lets the JS GC
         // reclaim each one once nothing points at it any more.
-        let axis_labels = axis_label_closure(format_value).into_js_value();
-        let tooltip_html = tooltip_closure(format_value).into_js_value();
+        let axis_labels = axis_label_closure(format_value, decimal_style).into_js_value();
+        let tooltip_html = tooltip_closure(format_value, decimal_style).into_js_value();
         attach_formatters(&option_js, &axis_labels, &tooltip_html);
         if let Some(existing) = instance.get_value() {
             call_chart_method(
@@ -551,12 +555,14 @@ fn label_svg_root(container: &JsValue, label: &str) {
 
 /// The value-axis label closure: raw tick value in, dual-unit string
 /// out (`format_value` is the HA-unit-system formatter the card gets
-/// as a prop).
+/// as a prop; `style` is the locale's decimal style, captured at the
+/// option build).
 fn axis_label_closure(
-    format_value: fn(f64) -> String,
+    format_value: fn(f64, DecimalStyle) -> String,
+    style: DecimalStyle,
 ) -> Closure<dyn Fn(JsValue, JsValue) -> JsValue> {
     Closure::new(move |value: JsValue, _index: JsValue| {
-        JsValue::from_str(&format_value(value.as_f64().unwrap_or(0.0)))
+        JsValue::from_str(&format_value(value.as_f64().unwrap_or(0.0), style))
     })
 }
 
@@ -567,14 +573,15 @@ fn axis_label_closure(
 /// and runoff) get a `name:` prefix; unnamed single-series charts keep
 /// the plain `value — time` line they always showed.
 fn tooltip_closure(
-    format_value: fn(f64) -> String,
+    format_value: fn(f64, DecimalStyle) -> String,
+    style: DecimalStyle,
 ) -> Closure<dyn Fn(JsValue, JsValue, JsValue) -> JsValue> {
     Closure::new(
         move |params: JsValue, _ticket: JsValue, _callback: JsValue| {
             let mut lines: Vec<String> = Vec::new();
             if let Ok(entries) = params.dyn_into::<js_sys::Array>() {
                 entries.for_each(&mut |entry: JsValue, _index, _array| {
-                    if let Some(line) = tooltip_line(&entry, format_value) {
+                    if let Some(line) = tooltip_line(&entry, format_value, style) {
                         lines.push(line);
                     }
                 });
@@ -589,7 +596,11 @@ fn tooltip_closure(
 /// tick (the marker series) names its event instead — its y position
 /// is placement geometry, not a reading. Entries without a usable
 /// `[epoch ms, value]` pair drop out.
-fn tooltip_line(entry: &JsValue, format_value: fn(f64) -> String) -> Option<String> {
+fn tooltip_line(
+    entry: &JsValue,
+    format_value: fn(f64, DecimalStyle) -> String,
+    style: DecimalStyle,
+) -> Option<String> {
     let value = Reflect::get(entry, &JsValue::from_str("value")).ok()?;
     let pair = value.dyn_into::<js_sys::Array>().ok()?;
     let at = pair.get(0).as_f64().unwrap_or(0.0);
@@ -606,7 +617,7 @@ fn tooltip_line(entry: &JsValue, format_value: fn(f64) -> String) -> Option<Stri
             .unwrap_or_else(|| "Event".to_owned());
         return Some(format!("{event} — {}", utc_minutes(at)));
     }
-    let body = format!("{} — {}", format_value(reading), utc_minutes(at));
+    let body = format!("{} — {}", format_value(reading, style), utc_minutes(at));
     Some(match series_name {
         Some(name) => format!("{name}: {body}"),
         None => body,
@@ -658,4 +669,30 @@ fn probe_color(class: &str) -> Option<String> {
         .filter(|colour| !colour.is_empty() && colour != "rgb(0, 0, 0)");
     let _ = parent.remove_child(&probe);
     colour
+}
+
+#[cfg(test)]
+mod formatter_tests {
+    use super::{format_ec_us, format_kpa, format_pct, format_ph, format_ppm};
+    use leaflog_core::format::DecimalStyle;
+
+    #[test]
+    fn formatters_separate_and_group_per_style() {
+        assert_eq!(format_ph(6.5, DecimalStyle::Dot), "6.5");
+        assert_eq!(format_ph(6.5, DecimalStyle::Comma), "6,5");
+        assert_eq!(format_pct(48.2, DecimalStyle::Dot), "48 %");
+        assert_eq!(format_pct(1234.2, DecimalStyle::Comma), "1.234 %");
+        assert_eq!(format_kpa(0.85, DecimalStyle::Comma), "0,85 kPa");
+        assert_eq!(format_kpa(0.85, DecimalStyle::Dot), "0.85 kPa");
+        assert_eq!(format_ppm(892.6, DecimalStyle::Dot), "893 ppm");
+        assert_eq!(format_ppm(892.6, DecimalStyle::Comma), "893 ppm");
+        assert_eq!(
+            format_ec_us(1_234_567.4, DecimalStyle::Comma),
+            "1.234.567 µS/cm"
+        );
+        assert_eq!(
+            format_ec_us(1_234_567.4, DecimalStyle::Dot),
+            "1,234,567 µS/cm"
+        );
+    }
 }

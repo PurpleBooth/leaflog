@@ -205,6 +205,7 @@ mod tests {
     fn german_labels_render() {
         assert_eq!(phase_label(Locale::de, Phase::Flower), "Blüte");
         assert_eq!(phase_label(Locale::de, Phase::Drying), "Trocknung");
+        assert_eq!(phase_label(Locale::de, Phase::Curing), "Aushärten");
         assert_eq!(action_label(Locale::de, ActionType::Water), "Gießen");
         assert_eq!(
             action_label(Locale::de, ActionType::TrichomeCheck),
@@ -219,6 +220,7 @@ mod tests {
     fn appearance_tags_map_and_echo() {
         assert_eq!(appearance_label(Locale::en, "canoe"), "Canoeing");
         assert_eq!(appearance_label(Locale::de, "canoeing"), "Kahnblätter");
+        assert_eq!(appearance_label(Locale::de, "praying"), "Aufgerichtet");
         assert_eq!(appearance_label(Locale::en, "frost bite"), "frost bite");
         assert_eq!(appearance_label(Locale::de, "frost bite"), "frost bite");
     }

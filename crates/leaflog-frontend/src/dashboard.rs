@@ -313,11 +313,17 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                     // The tile colours read the same merged values, so
                     // they track the live stream too.
                     let v = crate::live::strip_values(&e, live.get().as_ref());
-                    let temp_display = v.temperature_c.map_or_else(|| "—".to_owned(), leaflog_core::units::temp_both);
-                    let rh_display = v.humidity_pct.map_or_else(|| "—".to_owned(), crate::chart::format_pct);
-                    let vpd_display = v.vpd_kpa.map_or_else(|| "—".to_owned(), crate::chart::format_kpa);
-                    let co2_display = v.co2_ppm.map_or_else(|| "—".to_owned(), crate::chart::format_ppm);
-                    let soil_display = v.soil_moisture_pct.map_or_else(|| "—".to_owned(), crate::chart::format_pct);
+                    let style = crate::decimal_style(i18n.get_locale());
+                    let temp_display = v.temperature_c
+                        .map_or_else(|| "—".to_owned(), |value| leaflog_core::units::temp_both(value, style));
+                    let rh_display = v.humidity_pct
+                        .map_or_else(|| "—".to_owned(), |value| crate::chart::format_pct(value, style));
+                    let vpd_display = v.vpd_kpa
+                        .map_or_else(|| "—".to_owned(), |value| crate::chart::format_kpa(value, style));
+                    let co2_display = v.co2_ppm
+                        .map_or_else(|| "—".to_owned(), |value| crate::chart::format_ppm(value, style));
+                    let soil_display = v.soil_moisture_pct
+                        .map_or_else(|| "—".to_owned(), |value| crate::chart::format_pct(value, style));
                     // The colours come from the merged StripValues, not
                     // the page-load snapshot: a live push that crosses
                     // the threshold recolours the tile on the spot.

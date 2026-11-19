@@ -32,7 +32,7 @@
         "vegetative": "Vegetativ",
         "flower": "Blüte",
         "drying": "Trocknung",
-        "curing": "Curing"
+        "curing": "Aushärten"
     },
     "actions": {
         "lights": "Licht",
@@ -51,11 +51,11 @@
         "note": "Notiz",
         "trichome_check": "Trichome",
         "harvest": "Ernte",
-        "dry_cure_check": "Trocknen/Curing"
+        "dry_cure_check": "Trocknen/Aushärten"
     },
     "appearance": {
         "healthy": "Gesund",
-        "praying": "Betend",
+        "praying": "Aufgerichtet",
         "dark_green": "Dunkelgrün",
         "light_green": "Hellgrün",
         "yellowing": "Vergilbt",
@@ -134,7 +134,7 @@
         "coach_coco_runoff_ec": "Prüfe bei jeder Düngung die Sickerwasser-EC",
         "coach_coco_runoff_ec_why": "Vergleiche Gießwasser- und Sickerwasser-EC: weit über dem Gießwasser (≥1000 ppm) spricht für eine Spülung.",
         "coach_curing_jars": "Wecke bei 58–62 % Luftfeuchte ein; lüfte in Woche 1 täglich, in Woche 2 alle 2–3 Tage",
-        "coach_curing_jars_why": "Curing bei der richtigen Luftfeuchte glättet den Rauch und entwickelt das Aroma.",
+        "coach_curing_jars_why": "Aushärten bei der richtigen Luftfeuchte glättet den Rauch und entwickelt das Aroma.",
         "coach_drying_conditions": "Trockne bei 16–20 °C und 50 % Luftfeuchte, später rund 55 %, bis die Stängel brechen",
         "coach_drying_conditions_why": "Langsames, dunkles Trocknen erhält die Terpene.",
         "coach_flower_late_rh": "Senke spät in der Blüte die Luftfeuchte, um Schimmel vorzubeugen",
@@ -353,6 +353,6 @@
         "veg_weeks": "Geplante Vegetationswochen",
         "volume_ml": "Volumen (ml)",
         "wet_weight_g": "Nassgewicht (g)",
-        "when_utc": "Wann (UTC) *"
+        "when_utc": "Zeitpunkt (UTC) *"
     }
 }

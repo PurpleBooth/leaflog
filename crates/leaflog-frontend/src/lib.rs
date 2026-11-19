@@ -188,6 +188,18 @@ pub(crate) fn locale_from_tag(tag: &str) -> Option<Locale> {
     }
 }
 
+/// Maps one shipped [`Locale`] onto its decimal style (D123): German
+/// writes comma decimals with dot grouping, English dot decimals with
+/// comma grouping. The single mapping site — every formatter takes the
+/// style from here instead of re-deciding per call site.
+#[must_use]
+pub(crate) const fn decimal_style(locale: Locale) -> leaflog_core::format::DecimalStyle {
+    match locale {
+        Locale::de => leaflog_core::format::DecimalStyle::Comma,
+        Locale::en => leaflog_core::format::DecimalStyle::Dot,
+    }
+}
+
 /// Applies the backend half of the locale chain (D112): the Home
 /// Assistant user language (`GET api/locale`) wins over the browser
 /// locale, which the i18n context has already resolved from the
