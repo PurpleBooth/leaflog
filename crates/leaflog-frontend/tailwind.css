@@ -339,10 +339,23 @@ pre {
   min-height: 1px;
 }
 
-/* HA entity ids are one long lowercase token; allow breaks inside the
-   word so cards never overflow — the full id stays on hover (title). */
+/* HA entity ids are one long lowercase token: the chip renders on a
+   single ellipsized line instead of breaking anywhere (D120). The
+   minmax(0, 1fr) track is the root-cause fix — it pins the chip's
+   min-content to zero, so the daisyUI alert grid and the flex chip
+   row can shrink it instead of overflowing (ticket 10). The DOM text
+   stays complete; the full id rides on the title tooltip. */
 .entity-id {
-  overflow-wrap: anywhere;
+  display: inline-grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  max-width: 100%;
+}
+
+.entity-id-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Quick-add menu (ticket 06, D099): the dropdown opens via the

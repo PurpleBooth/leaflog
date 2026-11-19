@@ -13,6 +13,8 @@ use crate::api;
 use crate::i18n::{t, t_string, use_i18n};
 use crate::labels::action_label_for_kind;
 use crate::route_href;
+use crate::ui;
+use crate::ui::EmptyState;
 use leaflog_core::grows::{Plant, PlantInput};
 
 /// One logged-boundary comparison from the backend.
@@ -126,7 +128,7 @@ pub fn HistoryPage() -> impl IntoView {
                         .map(|row| {
                             let grow_id = row.grow_id.clone();
                             view! {
-                                <li class="card bg-base-100 shadow-sm px-5 py-4">
+                                <li class=ui::card()>
                                     <div class="flex flex-wrap items-baseline gap-2">
                                         <strong>
                                             <A href=route_href(&format!("/grows/{}", row.grow_id))>
@@ -167,7 +169,7 @@ pub fn HistoryPage() -> impl IntoView {
                                             })
                                             .collect::<Vec<_>>()}
                                     </dl>
-                                    <div class="flex flex-wrap gap-2 mt-3">
+                                    <div class="flex flex-wrap gap-2 mt-4">
                                         <button class="btn btn-sm" on:click=move |_| next_run(&grow_id)>
                                             {t!(i18n, history.start_next_run)}
                                         </button>
@@ -179,7 +181,7 @@ pub fn HistoryPage() -> impl IntoView {
                 }}
             </ul>
             <Show when=move || report.get().accuracy.is_empty()>
-                <p class="py-6 text-center text-base-content/60">{t!(i18n, history.empty)}</p>
+                <EmptyState>{t!(i18n, history.empty)}</EmptyState>
             </Show>
 
             <Aggregate
@@ -210,7 +212,7 @@ fn Aggregate(title: Signal<String>, rows: Signal<Vec<YieldAggregate>>) -> impl I
         <Show
             when=move || !rows.get().is_empty()
             fallback=move || view! {
-                <p class="py-6 text-center text-base-content/60">{t!(i18n, history.nothing_weighed)}</p>
+                <EmptyState>{t!(i18n, history.nothing_weighed)}</EmptyState>
             }
         >
             <table class="table table-sm">
@@ -330,7 +332,7 @@ pub fn PlantViewPage() -> impl IntoView {
                         trimmed_g: data.plant.trimmed_g,
                     };
                     view! {
-                        <div class="card bg-base-100 shadow-sm px-5 py-4 my-4">
+                        <div class={format!("{} my-4", ui::card())}>
                             <div class="flex flex-wrap items-baseline gap-2">
                                 <strong>{data.plant.name.clone()}</strong>
                                 <A href=route_href(&format!("/grows/{grow_id}"))>{t!(i18n, plant.back_to_grow)}</A>
@@ -352,7 +354,7 @@ pub fn PlantViewPage() -> impl IntoView {
                             <h3>{t!(i18n, plant.log_heading)}</h3>
                             <Show
                                 when=move || has_actions
-                                fallback=move || view! { <p class="py-6 text-center text-base-content/60">{t!(i18n, plant.log_empty)}</p> }
+                                fallback=move || view! { <EmptyState>{t!(i18n, plant.log_empty)}</EmptyState> }
                             >
                                 <ul class="list-disc pl-5">
                                     {actions
@@ -372,16 +374,16 @@ pub fn PlantViewPage() -> impl IntoView {
                                 </ul>
                             </Show>
                             <h3>{t!(i18n, grow.photos)}</h3>
-                            <p class="py-6 text-center text-base-content/60">
+                            <EmptyState>
                                 {td_string!(locale, plant.photos_linked, count = photos)}
-                            </p>
+                            </EmptyState>
                         </div>
                     }
                 })
             }}
 
             <Show when=move || edit_open.get()>
-                <form class="card bg-base-100 shadow-sm px-5 py-4 my-4" on:submit=save>
+                <form class={format!("{} my-4", ui::card())} on:submit=save>
                     <h3>{t!(i18n, plant.edit)}</h3>
                     <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
                         <label class="fieldset">

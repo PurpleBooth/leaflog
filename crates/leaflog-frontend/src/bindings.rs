@@ -128,7 +128,7 @@ pub fn EntityBindings(grow_id: String, bindings_epoch: RwSignal<u64>) -> impl In
             <p class="text-base-content/70 text-sm">
                 {t!(i18n, binding.intro)}
             </p>
-            <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
+            <div class="grid gap-2 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
                 {BINDING_ROLES
                     .iter()
                     .map(|&role| {

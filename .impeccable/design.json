@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-18T14:31:00Z",
+  "generatedAt": "2026-11-19T10:01:29Z",
   "title": "Design System: Leaflog",
   "extensions": {
     "colorMeta": {
@@ -323,9 +323,49 @@
       "name": "Card",
       "kind": "card",
       "refersTo": "card",
-      "description": "The resting surface: base-100 on the base-200 page, hairline-toned depth and one whisper of shadow.",
+      "description": "The resting surface: base-100 on the base-200 page, hairline-toned depth and one whisper of shadow; extracted as ui::card() (px-5 py-4) with my-4 rhythm margins at call sites.",
       "html": "<div class=\"ds-card\"><h3 class=\"ds-card-title\">Grow facts</h3><p>Card body sits at px-5 py-4 rhythm on base-100.</p></div>",
       "css": ".ds-card { background: var(--color-base-100, #ffffff); color: var(--color-base-content, #1d2b1f); border-radius: 0.875rem; padding: 16px 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); font-size: 0.875rem; line-height: 1.55; } .ds-card-title { margin: 0 0 0.5rem; font-size: 1.05rem; font-weight: 600; }"
+    },
+    {
+      "name": "Tile",
+      "kind": "custom",
+      "refersTo": "ui::tile",
+      "description": "The compact surface tier extracted to ui::tile(): hairline-bordered radius-boxed box at px-4 py-3 (env-strip tiles). The tinted live variants in live.rs keep full literals but share the tier padding.",
+      "html": "<div class=\"rounded-box border border-base-300 bg-base-100 px-4 py-3 grid gap-0.5\"><span class=\"text-xs uppercase tracking-wide text-base-content/60\">Air</span><span class=\"text-lg font-semibold\">24.1 °C</span></div>",
+      "css": ".ds-tile { border: 1px solid var(--color-base-300, #e3e7e0); border-radius: var(--radius-box, 0.75rem); background: var(--color-base-100, #ffffff); padding: 12px 16px; display: grid; gap: 0.125rem; }"
+    },
+    {
+      "name": "Entity Id Chip",
+      "kind": "custom",
+      "refersTo": "ui::EntityIdChip",
+      "description": "A bound HA entity id (data, not copy): ghost badge on one ellipsized line. A minmax(0,1fr) grid track pins the chip's min-content to zero so alert grids and flex rows can shrink it; the full id rides on the title tooltip.",
+      "html": "<span class=\"badge badge-ghost entity-id\" title=\"sensor.growhub_e42a_inside_humidity\"><span class=\"entity-id-text\">sensor.growhub_e42a_inside_humidity</span></span>",
+      "css": ".entity-id { display: inline-grid; grid-template-columns: minmax(0, 1fr); align-items: center; max-width: 100%; } .entity-id-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }"
+    },
+    {
+      "name": "Empty State",
+      "kind": "custom",
+      "refersTo": "ui::EmptyState",
+      "description": "The quiet placeholder extracted to ui::EmptyState(): one centered muted line where a list or table has nothing to show; the message stays with the caller as reactive children.",
+      "html": "<p class=\"py-6 text-center text-base-content/60\">Nothing logged yet.</p>",
+      "css": ".ds-empty { padding: 1.5rem 0; text-align: center; color: color-mix(in srgb, var(--color-base-content, #1d2b1f) 60%, transparent); font-size: 0.875rem; }"
+    },
+    {
+      "name": "Section Header",
+      "kind": "custom",
+      "refersTo": "ui::SectionHeader",
+      "description": "The uppercase micro-label above a content group, generalized from the Air/Root zone group labels: optional legend hint beside the title; title and hint arrive as locale-reactive signals.",
+      "html": "<div class=\"flex flex-wrap items-baseline gap-2 mt-4\"><h4 class=\"m-0 text-xs font-semibold uppercase tracking-wider text-base-content/60\">Air</h4><span class=\"text-xs text-base-content/50\">night shading shown</span></div>",
+      "css": ".ds-section-header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; margin-top: 1rem; } .ds-section-header h4 { margin: 0; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: color-mix(in srgb, var(--color-base-content, #1d2b1f) 60%, transparent); } .ds-section-header .hint { font-size: 0.75rem; color: color-mix(in srgb, var(--color-base-content, #1d2b1f) 50%, transparent); }"
+    },
+    {
+      "name": "Chart Card Grid",
+      "kind": "custom",
+      "refersTo": "ui::CARD_GRID",
+      "description": "The chart-card grid (ui::CARD_GRID): explicit grid-cols-1 at the base keeps every track minmax(0,1fr) so a not-yet-resized chart SVG cannot stretch its column; two-up from lg.",
+      "html": "<div class=\"grid grid-cols-1 gap-4 items-start lg:grid-cols-2\"><div>Card A</div><div>Card B</div></div>",
+      "css": ".ds-chart-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; align-items: start; } @media (min-width: 64rem) { .ds-chart-grid { grid-template-columns: 1fr 1fr; } }"
     },
     {
       "name": "Fact Grid",

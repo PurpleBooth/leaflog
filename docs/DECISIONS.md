@@ -6,6 +6,79 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-19 — two surface tiers, ui primitives, gap consolidation (design re-anchor)
+
+### D120: the frontend adopts exactly two surface tiers — full card (`px-5 py-4`) and tile (`px-4 py-3`) — with the class recipes extracted to `crates/leaflog-frontend/src/ui.rs`
+
+The design spec names exactly two surface tiers; the code drifted (small
+`px-4 py-3` cards on chart/lamp/coach/timeline/plant/not-measured surfaces,
+`px-3 py-2` env-strip tiles, scattered `gap-3`/`gap-6` rhythm gaps). The
+spec is the truth, so the code moved to it:
+
+- `ui::card()` returns the full-card recipe `card bg-base-100 shadow-sm
+  px-5 py-4`; `ui::tile()` returns the tile recipe `rounded-box border
+  border-base-300 bg-base-100 px-4 py-3`. Both are pinned by unit tests.
+  Rhythm margins (`my-4`) stay at call sites, so cards inside gap-managed
+  grids do not double the spacing; Leptos rejects a second `class`
+  attribute, so call sites compose with `format!("{} my-4", ui::card())` —
+  every Tailwind token stays a source literal.
+- Small cards upgraded to the full tier: chart card, Grow overview
+  lamp/coach cards, timeline entries, plant card, not-measured card, and
+  the edit page's danger card. The env-strip tiles and the tinted
+  `live::tile_class` variants moved to the tile padding; the tinted
+  variants keep full literal strings rather than composing over
+  `ui::tile()` — the border-*color* utility would then depend on CSS
+  order between two literals (double-applied `border`), and the existing
+  test pins those strings.
+- `CARD_GRID` moved from `env_section.rs` into `ui.rs` and is used by the
+  environment section and the Grow overview lamp/coach grid alike.
+- Components extracted alongside: `EntityIdChip` (see below),
+  `EmptyState` (the `py-6 text-center text-base-content/60` idiom, six
+  call sites; the message stays with the caller as children so it keeps
+  its reactive translation), and `SectionHeader` (generalized from the
+  Air/Root zone group labels; title and hint arrive as `Signal<String>`
+  props so a locale swap re-translates the label, same contract as the
+  history `Aggregate` title).
+
+**Gap consolidation rule**: rhythm-level gaps use only `gap-2` (content
+clusters) and `gap-4` (section splits); `gap-0.5`/`1`/`1.5` stay legal
+only inside content clusters (chip rows, `.facts`, the feed bar list).
+Converted accordingly: the page stacks, the 14-rem form-field grids, the
+timeline/plants split (`gap-6` → `gap-4`), the history-window control,
+feed inputs, the navbar cluster. Heading/card rhythm margins moved
+`mt-3` → `mt-4` (photo grid, prediction-card footer); `mt-3` stays only
+on margins directly attached to a control inside its cluster (the edit
+danger button, the photo fieldset).
+
+**Entity chip root cause**: the long-id overflow (ticket 10) was treated
+with `overflow-wrap: anywhere`, which trades layout overflow for
+collapsed min-content inside the daisyUI alert grid. The fix is
+controlled truncation: `.entity-id` is an `inline-grid` whose single
+`minmax(0, 1fr)` track pins the chip's min-content to zero (grid and
+flex ancestors can shrink it — no overflow by construction), and the
+text ellipsizes on one line while the DOM text stays complete for
+screen readers and tests; the full id rides on the `title` tooltip.
+The dead-binding banner renders the chips in one `flex flex-wrap gap-2`
+row via `EntityIdChip`.
+
+**Feed grid fix**: the before/after chart pair auto-placed into
+`lg:grid-cols-[minmax(10rem,1fr)_minmax(0,3fr)]`, so an absent before
+list dropped the after chart into the narrow track. `.feed-after` now
+carries explicit `lg:col-start-2` placement — it occupies the `3fr`
+track whether or not the before list renders; mobile stays stacked and
+the `.feed-chart` horizontal scroll is untouched.
+
+**Judgment calls logged**: the danger card takes the standard `my-4`
+>rhythm (it is a full card, not a sub-block); the timeline/plant list
+items drop their margins — the surrounding `gap-2`/`gap-4` grids own
+the rhythm; the not-measured card keeps its hairline border over the
+full-card tier because it flags "nothing feeds these charts", not a
+primary surface.
+
+**Lint exceptions**: the three new `#[component]` items in `ui.rs` carry
+the established narrow `clippy::must_use_candidate` allow (register
+below; same macro behaviour as `ErrorIf`).
+
 ## 2026-11-19 — the subscribe seed is not a state change (light auto-log)
 
 ### D119: `subscribe_entities` seed events populate the live map but never emit auto-log light flips; only `c`-diff state updates do
@@ -2881,4 +2954,5 @@ once per crate.
 | leaflog-frontend | component `App` | `clippy::must_use_candidate` | The Leptos `#[component]` macro drops a hand-written `#[must_use]`, so the lint fires on the generated function |
 | leaflog-frontend | components `Home`, `LocaleChain`, `AppShell` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` (`Home` predates the register row; `LocaleChain`/`AppShell` arrive with D112) |
 | leaflog-frontend | component `ErrorIf` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` |
+| leaflog-frontend | components `EntityIdChip`, `EmptyState`, `SectionHeader` in `ui.rs` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` (arrive with D120) |
 | leaflog-frontend | component `LightCycleEditor` in `light_cycle.rs` | `clippy::too_many_lines` | Declarative view code, not logic; splitting would obscure the form (same pattern as the M2 register row) |

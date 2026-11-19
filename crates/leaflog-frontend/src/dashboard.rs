@@ -4,6 +4,8 @@ use crate::ErrorIf;
 use crate::api;
 use crate::i18n::{Locale, t, t_string, td_string, use_i18n};
 use crate::labels;
+use crate::ui;
+use crate::ui::EntityIdChip;
 use leaflog_core::Phase;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -253,7 +255,7 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
     });
 
     view! {
-        <div class="my-4 grid gap-3">
+        <div class="my-4 grid gap-4">
             <ErrorIf error />
 
             // Entity drift (spec §4.1): a dead binding shows a chip
@@ -278,26 +280,23 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                     view! {
                         <p class="alert alert-warning py-2 px-4 text-sm" role="status">
                             {t!(i18n, env.no_data_prefix)}
-                            {dead
-                                .into_iter()
-                                .map(|binding| {
-                                    // The badge is where a bound entity id
-                                    // renders as text, so it carries the
-                                    // wrap-anywhere treatment (the long-id
-                                    // regression, ticket 10) and the full
-                                    // id on hover. The id itself is data,
-                                    // not copy — it renders verbatim.
-                                    let entity_id = binding.entity_id;
-                                    let title_id = entity_id.clone();
-                                    view! {
-                                        <span class="badge badge-ghost entity-id"
-                                            title=title_id
-                                        >
-                                            {entity_id}
-                                        </span>
-                                    }
-                                })
-                                .collect::<Vec<_>>()}
+                            // The chips sit in one wrapping row so a
+                            // dead id truncates against its own slot
+                            // instead of stretching the alert's grid
+                            // track (the long-id regression, ticket
+                            // 10 — root cause in .entity-id, D120).
+                            <span class="flex flex-wrap gap-2">
+                                {dead
+                                    .into_iter()
+                                    .map(|binding| {
+                                        // The id itself is data, not
+                                        // copy — the chip renders it
+                                        // verbatim, one ellipsized
+                                        // line, full id on hover.
+                                        view! { <EntityIdChip entity_id=binding.entity_id /> }
+                                    })
+                                    .collect::<Vec<_>>()}
+                            </span>
                             {t!(i18n, env.rebind_intro)}
                             <a class="link" href=edit_href>{t!(i18n, env.rebind_link)}</a>
                             "."
@@ -329,7 +328,7 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                             <span class="text-xs uppercase tracking-wide text-base-content/60">{t!(i18n, env.temp)}</span>
                             <span class="text-lg font-semibold">{temp_display}</span>
                         </div> }.into_any(),
-                        view! { <div class="rounded-box border border-base-300 bg-base-100 px-3 py-2 grid gap-0.5">
+                        view! { <div class={format!("{} grid gap-0.5", ui::tile())}>
                             <span class="text-xs uppercase tracking-wide text-base-content/60">{t!(i18n, env.rh)}</span>
                             <span class="text-lg font-semibold">{rh_display}</span>
                         </div> }.into_any(),
@@ -338,15 +337,15 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                             <span class="text-lg font-semibold">{vpd_display}</span>
                             <span class="text-xs text-base-content/60">{t!(i18n, env.band_prefix)}{format!("{:.1}–{:.1}", e.vpd_band.0, e.vpd_band.1)}</span>
                         </div> }.into_any(),
-                        view! { <div class="rounded-box border border-base-300 bg-base-100 px-3 py-2 grid gap-0.5">
+                        view! { <div class={format!("{} grid gap-0.5", ui::tile())}>
                             <span class="text-xs uppercase tracking-wide text-base-content/60">{t!(i18n, env.rh_window)}</span>
                             <span class="text-lg font-semibold">{format!("{:.0}–{:.0} %", v.rh_window.0, v.rh_window.1)}</span>
                         </div> }.into_any(),
-                        view! { <div class="rounded-box border border-base-300 bg-base-100 px-3 py-2 grid gap-0.5">
+                        view! { <div class={format!("{} grid gap-0.5", ui::tile())}>
                             <span class="text-xs uppercase tracking-wide text-base-content/60">{t!(i18n, env.co2_tile)}</span>
                             <span class="text-lg font-semibold">{co2_display}</span>
                         </div> }.into_any(),
-                        view! { <div class="rounded-box border border-base-300 bg-base-100 px-3 py-2 grid gap-0.5">
+                        view! { <div class={format!("{} grid gap-0.5", ui::tile())}>
                             <span class="text-xs uppercase tracking-wide text-base-content/60">{t!(i18n, env.soil_tile)}</span>
                             <span class="text-lg font-semibold">{soil_display}</span>
                         </div> }.into_any(),
@@ -358,12 +357,12 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
             // cards with one short fact each stop wasting a full row
             // of whitespace each. Explicit base track, same reasoning
             // as the history grid in grows.rs.
-            <div class="grid grid-cols-1 gap-4 items-start lg:grid-cols-2">
+            <div class=ui::CARD_GRID>
                 {move || {
                     lamp.get().map(|advice| {
                         let locale = i18n.get_locale();
                         view! {
-                            <div class="card bg-base-100 shadow-sm px-4 py-3">
+                            <div class=ui::card()>
                                 <h4>{t!(i18n, env.lamp_height)}</h4>
                                 <p>{t_string!(
                                     i18n,
@@ -389,7 +388,7 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                             |known| labels::phase_label(locale, known),
                         );
                         view! {
-                            <div class="card bg-base-100 shadow-sm px-4 py-3">
+                            <div class=ui::card()>
                                 <h4>{t_string!(i18n, env.coach_heading, phase = heading)}</h4>
                                 // Hairline dividers between tips: a loud
                                 // colored border per tip is chrome shouting

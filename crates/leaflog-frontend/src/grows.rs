@@ -30,6 +30,8 @@ use crate::gantt::GanttTimeline;
 use crate::i18n::{Locale, t, t_string, td_string, use_i18n};
 use crate::labels;
 use crate::route_href;
+use crate::ui;
+use crate::ui::EmptyState;
 
 /// The grows overview page.
 #[component]
@@ -117,7 +119,7 @@ pub fn GrowsPage() -> impl IntoView {
             </Show>
 
             <Show when=move || form_open.get()>
-                <form class="card bg-base-100 shadow-sm px-5 py-4 my-4" on:submit=save>
+                <form class={format!("{} my-4", ui::card())} on:submit=save>
                     <h3>{t!(i18n, grows.new_grow)}</h3>
                     <GrowForm draft />
                     <div class="flex flex-wrap gap-2 mt-4">
@@ -134,7 +136,7 @@ pub fn GrowsPage() -> impl IntoView {
                         .into_iter()
                         .map(|grow| {
                             view! {
-                                <li class="card bg-base-100 shadow-sm px-5 py-4">
+                                <li class=ui::card()>
                                     <div class="flex flex-wrap items-baseline gap-2">
                                         <A href=route_href(&format!("/grows/{}", grow.id))>
                                             <strong>{grow.name.clone()}</strong>
@@ -162,7 +164,7 @@ pub fn GrowsPage() -> impl IntoView {
                         && error.get().is_none()
                 }
             >
-                <p class="py-6 text-center text-base-content/60">{t!(i18n, grows.empty)}</p>
+                <EmptyState>{t!(i18n, grows.empty)}</EmptyState>
             </Show>
             <p><A href=route_href("/")>{t!(i18n, grows.back_home)}</A></p>
         </section>
@@ -447,7 +449,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                 // quick add is the page's primary loop, edit
                                 // the rare one. An unlabelled grow leaves the
                                 // label slot empty — no placeholder.
-                                <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+                                <div class="flex flex-wrap items-center gap-x-2 gap-y-2">
                                     <div class="flex flex-wrap items-center gap-2">
                                         <h2>{current.name.clone()}</h2>
                                         <span class="badge badge-ghost">
@@ -523,7 +525,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                 <form
                     id="quick-add-form"
                     tabindex="-1"
-                    class="card bg-base-100 shadow-sm px-5 py-4 mt-4"
+                    class={format!("{} mt-4", ui::card())}
                     on:submit=save_action
                 >
                     <ActionForm draft kind=chip />
@@ -586,7 +588,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             <h3>{t!(i18n, grow.feed_schedule)}</h3>
             <FeedPanel grow_id=grow_id.get() />
 
-            <div class="grid gap-6 items-start lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+            <div class="grid gap-4 items-start lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
                 <div>
                     <h3>{t!(i18n, grow.timeline)}</h3>
                     <ul class="list-none m-0 p-0 grid gap-2">
@@ -598,7 +600,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                 .map(|entry| {
                                     let tags = entry.appearance_tags.clone();
                                     view! {
-                                        <li class="card bg-base-100 shadow-sm px-4 py-3">
+                                        <li class=ui::card()>
                                             <div class="flex flex-wrap items-baseline gap-2">
                                                 <strong>{labels::action_label(locale, entry.action_type)}</strong>
                                                 <span class="badge badge-ghost">{td_string!(locale, grow.day, day = entry.grow_day.to_string())}</span>
@@ -652,7 +654,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                         }}
                     </ul>
                     <Show when=move || actions.get().is_empty()>
-                        <p class="py-6 text-center text-base-content/60">{t!(i18n, grow.nothing_logged)}</p>
+                        <EmptyState>{t!(i18n, grow.nothing_logged)}</EmptyState>
                     </Show>
                 </div>
 
@@ -665,7 +667,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                 .into_iter()
                                 .map(|plant| {
                                     view! {
-                                        <li class="card bg-base-100 shadow-sm px-4 py-3 my-3">
+                                        <li class=ui::card()>
                                             <A href=route_href(&format!("/plants/{}", plant.id))>
                                                 {plant.name.clone()}
                                             </A>
@@ -685,7 +687,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                         />
                     </label>
                     {move || upload_note.get().map(|note| view! { <p class="text-base-content/70 text-sm">{note}</p> })}
-                    <div class="grid gap-2 mt-3 grid-cols-[repeat(auto-fill,minmax(7rem,1fr))]">
+                    <div class="grid gap-2 mt-4 grid-cols-[repeat(auto-fill,minmax(7rem,1fr))]">
                         {move || {
                             let locale = i18n.get_locale();
                             photos
@@ -725,7 +727,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
 pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
     let i18n = use_i18n();
     view! {
-        <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
+        <div class="grid gap-2 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
             <label class="fieldset">
                 <span class="fieldset-label">{t!(i18n, form.name)}</span>
                 <input class="input" type="text" required placeholder={t_string!(i18n, form.name_placeholder)}
@@ -913,7 +915,7 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
 fn ActionForm(draft: RwSignal<ActionInput>, kind: RwSignal<Option<ActionType>>) -> impl IntoView {
     let i18n = use_i18n();
     view! {
-        <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
+        <div class="grid gap-2 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
             <label class="fieldset">
                 <span class="fieldset-label">{t!(i18n, form.when_utc)}</span>
                 <input class="input" type="datetime-local" required

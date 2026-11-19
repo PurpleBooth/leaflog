@@ -46,6 +46,7 @@ mod onboarding;
 mod phase_pick;
 mod quick_add;
 mod theme;
+mod ui;
 
 // The compile-time i18n module (D112): `build.rs` generates it from
 // `locales/{en,de}.json` into OUT_DIR and the include declares
@@ -200,7 +201,7 @@ fn AppShell() -> impl IntoView {
     let i18n = use_i18n();
     view! {
         <div class="mx-auto max-w-6xl px-5">
-            <header class="navbar min-h-0 w-full flex-wrap gap-x-3 px-1 py-3">
+            <header class="navbar min-h-0 w-full flex-wrap gap-x-2 px-1 py-3">
                 <span class="text-2xl" aria-hidden="true">"🌿"</span>
                 <h1 class="m-0 text-xl font-semibold tracking-wide">"Leaflog"</h1>
                 <nav class="mainnav ml-auto flex flex-wrap items-center gap-4 text-sm"
@@ -257,7 +258,7 @@ pub fn Home() -> impl IntoView {
     view! {
         <section class="pb-12">
             <OnboardingWizard />
-            <div class="card bg-base-100 shadow-sm px-5 py-4 my-4">
+            <div class={format!("{} my-4", ui::card())}>
                 <h2>{t!(i18n, page.home_heading)}</h2>
                 <p>
                     {t!(i18n, page.home_intro)}
@@ -278,7 +279,7 @@ pub fn Home() -> impl IntoView {
 fn Spike() -> impl IntoView {
     let i18n = use_i18n();
     view! {
-        <section class="card bg-base-100 shadow-sm px-5 py-4 my-4">
+        <section class={format!("{} my-4", ui::card())}>
             <h2>{t!(i18n, page.spike_heading)}</h2>
             <p>{t!(i18n, page.spike_intro)}</p>
             <p><code>{ingress_base()}</code></p>

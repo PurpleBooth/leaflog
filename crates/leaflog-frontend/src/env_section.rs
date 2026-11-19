@@ -26,6 +26,8 @@ use crate::dashboard::EnvDashboard;
 use crate::i18n::{t_string, use_i18n};
 use crate::labels;
 use crate::route_href;
+use crate::ui;
+use crate::ui::SectionHeader;
 use leaflog_core::chart::{ChartGroup, chart_group};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -119,15 +121,6 @@ const SECTION_CHARTS: &[SectionChart] = &[
     },
 ];
 
-/// The chart-card grid: two-up on wide screens (the paired roles
-/// read side by side and the scroll shortens by half). Explicit
-/// `grid-cols-1` at the base keeps every track `minmax(0, 1fr)`: an
-/// implicit auto track would let a not-yet-resized chart SVG
-/// stretch the column, and `resize()` — which re-reads the
-/// container — would then confirm the stale width instead of
-/// shrinking into it.
-const CARD_GRID: &str = "grid grid-cols-1 gap-4 items-start lg:grid-cols-2";
-
 /// Builds one chart card from the section table. The soil-moisture
 /// card carries the Target Bands editor as its child; every other
 /// card is childless — the optional-children prop takes the closure
@@ -206,7 +199,7 @@ fn save_history_window(label: &str) {
 fn HistoryWindowControl(window: RwSignal<String>, markers: RwSignal<bool>) -> impl IntoView {
     let i18n = use_i18n();
     view! {
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2">
             <WindowToggles window />
             <span class="w-9 h-6" aria-hidden="true"></span>
             <label class="flex items-center gap-1 cursor-pointer text-sm text-base-content/70">
@@ -238,14 +231,12 @@ fn GroupLabel(group: ChartGroup, #[prop(default = false)] night_hint: bool) -> i
         }
     };
     view! {
-        <div class="flex flex-wrap items-baseline gap-2 mt-4">
-            <h4 class="m-0 text-xs font-semibold uppercase tracking-wider text-base-content/60">
-                {text}
-            </h4>
-            {night_hint.then(|| {
-                view! { <span class="text-xs text-base-content/50">{move || t_string!(i18n, env.night_hint)}</span> }
-            })}
-        </div>
+        <SectionHeader
+            title=Signal::derive(move || text().into_owned())
+            hint=night_hint.then(|| {
+                Signal::derive(move || t_string!(i18n, env.night_hint).into_owned())
+            })
+        />
     }
 }
 
@@ -445,7 +436,7 @@ pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
                 .filter(|chart| chart_group(chart.role) == ChartGroup::RootZone)
                 .map(|chart| section_chart_card(chart, grow_id.clone(), window, markers))
                 .collect();
-            view! { <div class=CARD_GRID>{cards}</div> }.into_any()
+            view! { <div class=ui::CARD_GRID>{cards}</div> }.into_any()
         })
     };
 
@@ -459,7 +450,7 @@ pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
             // The Air group: above-ground concerns under their
             // micro-label header.
             <GroupLabel group=ChartGroup::Air night_hint=true />
-            <div class=CARD_GRID>{air_cards}</div>
+            <div class=ui::CARD_GRID>{air_cards}</div>
             // The Root zone group: below-ground concerns. Its chart
             // grid mounts lazily (ticket 07) once the group scrolls
             // into view; the label above stays structural, so the
@@ -513,7 +504,10 @@ fn NotMeasuredCard(grow_id: String) -> impl IntoView {
             let edit_href = edit_href.clone();
             (!roles.is_empty()).then(move || {
                 view! {
-                    <div class="card border border-base-300 bg-base-100 px-4 py-3 mt-4">
+                    // The bordered card keeps its hairline over the
+                    // full-card tier (D120): it flags "nothing feeds
+                    // these charts", not a primary surface.
+                    <div class={format!("{} border border-base-300 mt-4", ui::card())}>
                         <div class="flex flex-wrap items-baseline gap-2">
                             <h4 class="m-0">{t_string!(i18n, env.not_measured)}</h4>
                             <span class="text-sm text-base-content/60">

@@ -18,6 +18,7 @@ use crate::api::{GrowHistory, SoilBand};
 use crate::chart_option;
 use crate::i18n::{t, t_string, use_i18n};
 use crate::labels;
+use crate::ui;
 use js_sys::{Function, Reflect};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -258,7 +259,7 @@ pub fn HistoryChart(
                 let locale = i18n.get_locale();
                 let footer = children.clone().map(|build| build());
                 view! {
-                    <div class="card bg-base-100 shadow-sm px-4 py-3">
+                    <div class=ui::card()>
                         <div class="flex flex-wrap items-baseline gap-2">
                             <h5 class="m-0 text-base font-semibold">{
                                 labels::chart_title(locale, role)

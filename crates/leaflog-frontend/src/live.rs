@@ -107,9 +107,9 @@ fn live_number(
 #[must_use]
 pub const fn tile_class(ok: Option<bool>) -> &'static str {
     match ok {
-        Some(true) => "rounded-box border border-success/50 bg-success/10 px-3 py-2 grid gap-0.5",
-        Some(false) => "rounded-box border border-warning/60 bg-warning/10 px-3 py-2 grid gap-0.5",
-        None => "rounded-box border border-base-300 bg-base-100 px-3 py-2 grid gap-0.5",
+        Some(true) => "rounded-box border border-success/50 bg-success/10 px-4 py-3 grid gap-0.5",
+        Some(false) => "rounded-box border border-warning/60 bg-warning/10 px-4 py-3 grid gap-0.5",
+        None => "rounded-box border border-base-300 bg-base-100 px-4 py-3 grid gap-0.5",
     }
 }
 
@@ -330,15 +330,15 @@ mod tests {
         use super::tile_class;
         assert_eq!(
             tile_class(Some(true)),
-            "rounded-box border border-success/50 bg-success/10 px-3 py-2 grid gap-0.5",
+            "rounded-box border border-success/50 bg-success/10 px-4 py-3 grid gap-0.5",
         );
         assert_eq!(
             tile_class(Some(false)),
-            "rounded-box border border-warning/60 bg-warning/10 px-3 py-2 grid gap-0.5",
+            "rounded-box border border-warning/60 bg-warning/10 px-4 py-3 grid gap-0.5",
         );
         assert_eq!(
             tile_class(None),
-            "rounded-box border border-base-300 bg-base-100 px-3 py-2 grid gap-0.5",
+            "rounded-box border border-base-300 bg-base-100 px-4 py-3 grid gap-0.5",
         );
     }
 }

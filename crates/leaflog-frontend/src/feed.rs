@@ -133,7 +133,7 @@ pub fn FeedPanel(grow_id: String) -> impl IntoView {
     view! {
         <div class="my-4">
             <ErrorIf error />
-            <div class="flex flex-wrap gap-3 items-end mb-3">
+            <div class="flex flex-wrap gap-2 items-end mb-4">
                 <label class="fieldset">
                     <span class="fieldset-label">{t_string!(i18n, feed.template_label)}</span>
                     <select class="select"
@@ -203,7 +203,7 @@ pub fn FeedPanel(grow_id: String) -> impl IntoView {
                                 </div>
                             }
                         })}
-                        <div class="feed-after">
+                        <div class="feed-after lg:col-start-2">
                             <h4>{td_string!(locale, feed.after_heading)}</h4>
                             <div class="feed-chart" role="img" aria-label=td_string!(locale, feed.chart_aria)>
                                 {result

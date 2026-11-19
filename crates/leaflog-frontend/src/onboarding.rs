@@ -23,6 +23,7 @@ use crate::grows::photoperiod_options;
 use crate::i18n::{t, t_string, use_i18n};
 use crate::labels::binding_role_label;
 use crate::non_empty;
+use crate::ui;
 
 /// The `GET /api/onboarding` state.
 // The endpoint reports a snapshot of booleans by design; the flags are
@@ -234,7 +235,7 @@ pub fn OnboardingWizard() -> impl IntoView {
 
     view! {
         <Show when=visible>
-            <section class="card bg-base-100 shadow-sm px-5 py-4 my-4"
+            <section class={format!("{} my-4", ui::card())}
                 aria-label={t_string!(i18n, onboarding.aria_label).into_owned()}
             >
                 <h2>{t!(i18n, onboarding.title)}</h2>
@@ -253,7 +254,7 @@ pub fn OnboardingWizard() -> impl IntoView {
                         <p class="text-base-content/70">
                             {t!(i18n, onboarding.sensors_intro)}
                         </p>
-                        <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
+                        <div class="grid gap-2 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
                             {BINDING_ROLES
                                 .iter()
                                 .map(|&role| {
@@ -319,7 +320,7 @@ pub fn OnboardingWizard() -> impl IntoView {
                         <p class="text-base-content/70">
                             {t!(i18n, onboarding.plants_intro)}
                         </p>
-                        <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
+                        <div class="grid gap-2 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
                             <label class="fieldset"><span class="fieldset-label">{t!(i18n, onboarding.grow_name)}</span>
                                 <input class="input" type="text"
                                     placeholder={t_string!(i18n, onboarding.grow_name_placeholder).into_owned()}
@@ -384,7 +385,7 @@ pub fn OnboardingWizard() -> impl IntoView {
         // The empty-state "set up" card: dismissed but still nothing
         // grown — one tap restarts the wizard (spec §4.12).
         <Show when=restartable>
-            <section class="card bg-base-100 shadow-sm px-5 py-4 my-4">
+            <section class={format!("{} my-4", ui::card())}>
                 <h3>{t!(i18n, onboarding.restart_heading)}</h3>
                 <p class="text-base-content/70">{t!(i18n, onboarding.restart_text)}</p>
                 <button class="btn btn-primary btn-sm" on:click=move |_| set_dismissed(false)>
