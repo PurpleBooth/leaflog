@@ -87,8 +87,9 @@ test.describe('german-forced browser', () => {
   });
 
   test('sweep surfaces render german', async ({ page }) => {
-    // Ticket 04 sweep: the nav landmark label, Home, the ingress
-    // spike and the history report join the keyed surfaces.
+    // Ticket 04 sweep: the nav landmark label, Home and the history
+    // report join the keyed surfaces. The ingress spike is a debug-
+    // only page since D124, so it has no release surface to sweep.
 
     // Home is the landing fallback for a grow-less instance (D073);
     // sibling specs create grows in the shared throwaway DB, so pin
@@ -113,22 +114,14 @@ test.describe('german-forced browser', () => {
     await expect(
       page.getByRole('heading', { name: 'Backend-Zustand' }),
     ).toBeVisible();
+    // Status-first health card (D124): the live status line.
+    await expect(page.getByText('Funktioniert')).toBeVisible();
 
     // The grow-less empty banner (catalog grows.empty) — the spec's
     // "a banner" assertion, on /grows with the pinned empty list.
     await page.goto(url('/grows'));
     await expect(
       page.getByText('Noch keine Anbauten — starte deinen ersten.'),
-    ).toBeVisible();
-
-    // The ingress spike (catalog page.spike_*, grows.back_home).
-    await page.goto(url('/spike'));
-    await expect(
-      page.getByRole('heading', { name: 'Ingress-Spike' }),
-    ).toBeVisible();
-    await expect(page.getByText(/Dieser Deep Link wurde von der SPA/)).toBeVisible();
-    await expect(
-      page.getByRole('link', { name: 'Zurück zur Startseite' }),
     ).toBeVisible();
 
     // The history report: predicted-vs-actual heading plus, since
@@ -173,9 +166,6 @@ test.describe('german-forced browser', () => {
       page.getByRole('heading', { name: 'Predicted vs actual' }),
     ).toHaveCount(0);
     await expect(page.getByText('Nothing weighed yet.')).toHaveCount(0);
-    await expect(
-      page.getByRole('heading', { name: 'Ingress spike' }),
-    ).toHaveCount(0);
   });
 
   test('grow edit form renders german labels', async ({ page, request }) => {
@@ -246,7 +236,8 @@ test.describe('default locale', () => {
 
   test('sweep surfaces stay english', async ({ page }) => {
     // Ticket 04 sweep on the default (English) locale: nav label,
-    // home copy, spike and history report keep their English strings.
+    // home copy and history report keep their English strings. The
+    // ingress spike is a debug-only page since D124.
     // Home is the landing fallback for a grow-less instance (D073);
     // pin the empty list for this page alone to reach it.
     await page.route('**/api/grows', (route) =>
@@ -262,20 +253,14 @@ test.describe('default locale', () => {
     await expect(
       page.getByRole('heading', { name: 'Backend health' }),
     ).toBeVisible();
+    // Status-first health card (D124): the live status line.
+    await expect(page.getByText('Healthy')).toBeVisible();
 
     // The grow-less empty banner in the default locale (catalog
     // grows.empty), mirroring the German sweep's banner assertion.
     await page.goto(url('/grows'));
     await expect(
       page.getByText('No grows yet — start your first one.'),
-    ).toBeVisible();
-
-    await page.goto(url('/spike'));
-    await expect(
-      page.getByRole('heading', { name: 'Ingress spike' }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole('link', { name: 'Back to home' }),
     ).toBeVisible();
 
     await page.goto(url('/history'));

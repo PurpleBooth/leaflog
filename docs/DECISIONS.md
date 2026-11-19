@@ -6,6 +6,37 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-19 — debug-only spike route and the status-first health card (D124)
+
+### D124: the `/spike` route is cfg-gated to debug builds; the health card leads with a status line
+
+- **Spike gating mechanism**: `#[cfg]` cannot sit on a single view
+  element inside `view!`, and an interpolated `{expr}` child of
+  `<Routes>` is forced through `IntoRender` by the view macro, so a
+  helper returning the `<Route>` tuple cannot satisfy the typed
+  `RouteChildren` bound. The whole routes segment is therefore
+  cfg-paired as two `routes()` functions in leaflog-frontend/src/lib.rs:
+  the debug arm registers all seven routes (including `/spike`), the
+  release arm the same six without the spike, and AppShell renders
+  `{routes()}` as a plain view child. `trunk build --release` compiles
+  without the `Spike` component or its imports; the `page.spike_*`
+  i18n keys stay in the catalog for debug builds. The e2e locale sweep
+  (25-locale.spec.ts) drops its spike assertions and instead pins the
+  new health status line.
+- **Health card design**: the landing card showed the raw
+  `api/health` JSON in a `<pre aria-live="polite">`. It now leads with
+  a status line — localized `page.health_ok` / `page.health_unreachable`
+  beside a small dot in the existing palette roles (`bg-primary` /
+  `bg-error`, no new colors), still `aria-live="polite"` — and keeps the
+  raw payload for honest diagnosis inside a `<details>` labelled
+  `page.health_details` (`page.health_read_error` /
+  `page.health_network_error` text lands in the details block and reads
+  as unreachable). Healthiness is decided by the pure helper
+  `api::health_ok`, which tolerantly parses `{ "status": "ok", ... }`
+  and errs toward unreachable on any garbage (unit-tested).
+
+---
+
 ## 2026-11-19 — locale-aware decimal formatting and the German copy pass (D123)
 
 ### D123: pure decimal formatter, one Locale→style mapping, backend-compat note, German grow terms

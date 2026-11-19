@@ -258,15 +258,7 @@ fn AppShell() -> impl IntoView {
                 </nav>
             </header>
             <main id="main">
-                <Routes fallback=move || view! { <p>{t!(i18n, page.loading)}</p> }>
-                    <Route path=path!("/") view=Landing />
-                    <Route path=path!("/spike") view=Spike />
-                    <Route path=path!("/history") view=HistoryPage />
-                    <Route path=path!("/plants/:id") view=PlantViewPage />
-                    <Route path=path!("/grows") view=GrowsPage />
-                    <Route path=path!("/grows/:id") view=GrowsRoute />
-                    <Route path=path!("/grows/:id/edit") view=GrowEditRoute />
-                </Routes>
+                {routes()}
             </main>
         </div>
     }
@@ -279,25 +271,36 @@ fn AppShell() -> impl IntoView {
 #[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
 pub fn Home() -> impl IntoView {
     let i18n = use_i18n();
-    let health = RwSignal::new(String::from("…"));
+    // Status-first health card (D124): the flag drives the status
+    // line; the raw payload — or the localised error line on a failed
+    // fetch — stays in the collapsible details for honest diagnosis.
+    let healthy = RwSignal::new(false);
+    let details = RwSignal::new(String::from("…"));
     Effect::new(move |_| {
         spawn_local(async move {
-            let fetched = match gloo_net::http::Request::get("api/health").send().await {
+            let (ok, payload) = match gloo_net::http::Request::get("api/health").send().await {
                 Ok(resp) => match resp.text().await {
-                    Ok(body) => body,
-                    Err(err) => td_string!(
-                        i18n.get_locale_untracked(),
-                        page.health_read_error,
-                        error = err.to_string()
+                    Ok(body) => (api::health_ok(&body), body),
+                    Err(err) => (
+                        false,
+                        td_string!(
+                            i18n.get_locale_untracked(),
+                            page.health_read_error,
+                            error = err.to_string()
+                        ),
                     ),
                 },
-                Err(err) => td_string!(
-                    i18n.get_locale_untracked(),
-                    page.health_network_error,
-                    error = err.to_string()
+                Err(err) => (
+                    false,
+                    td_string!(
+                        i18n.get_locale_untracked(),
+                        page.health_network_error,
+                        error = err.to_string()
+                    ),
                 ),
             };
-            health.set(fetched);
+            healthy.set(ok);
+            details.set(payload);
         });
     });
     view! {
@@ -312,15 +315,75 @@ pub fn Home() -> impl IntoView {
                     {t!(i18n, page.home_privacy)}
                 </p>
                 <h3>{t!(i18n, page.health_heading)}</h3>
-                <pre aria-live="polite">{move || health.get()}</pre>
+                <p class="flex items-center gap-2 text-sm" aria-live="polite">
+                    <span
+                        class=move || if healthy.get() {
+                            "inline-block size-2.5 rounded-full bg-primary"
+                        } else {
+                            "inline-block size-2.5 rounded-full bg-error"
+                        }
+                        aria-hidden="true"
+                    ></span>
+                    {move || if healthy.get() {
+                        t_string!(i18n, page.health_ok).into_owned()
+                    } else {
+                        t_string!(i18n, page.health_unreachable).into_owned()
+                    }}
+                </p>
+                <details class="mt-2">
+                    <summary class="cursor-pointer text-sm text-base-content/70">
+                        {t!(i18n, page.health_details)}
+                    </summary>
+                    <pre class="mt-2 text-xs"><code>{move || details.get()}</code></pre>
+                </details>
             </div>
         </section>
     }
 }
 
+/// The route table (D124): `#[cfg]` cannot sit on a view element, and
+/// an interpolated `{expr}` child of `<Routes>` is forced through
+/// `IntoRender` by the view macro, so a helper cannot inject a single
+/// route tuple. The whole segment is therefore cfg-paired: debug
+/// builds keep the M1 spike deep link; release builds drop the
+/// segment, and `/spike` falls to the fallback.
+#[cfg(debug_assertions)]
+fn routes() -> impl IntoView {
+    let i18n = use_i18n();
+    view! {
+        <Routes fallback=move || view! { <p>{t!(i18n, page.loading)}</p> }>
+            <Route path=path!("/") view=Landing />
+            <Route path=path!("/spike") view=Spike />
+            <Route path=path!("/history") view=HistoryPage />
+            <Route path=path!("/plants/:id") view=PlantViewPage />
+            <Route path=path!("/grows") view=GrowsPage />
+            <Route path=path!("/grows/:id") view=GrowsRoute />
+            <Route path=path!("/grows/:id/edit") view=GrowEditRoute />
+        </Routes>
+    }
+}
+
+/// Release counterpart of [`routes`] (D124): no spike segment.
+#[cfg(not(debug_assertions))]
+fn routes() -> impl IntoView {
+    let i18n = use_i18n();
+    view! {
+        <Routes fallback=move || view! { <p>{t!(i18n, page.loading)}</p> }>
+            <Route path=path!("/") view=Landing />
+            <Route path=path!("/history") view=HistoryPage />
+            <Route path=path!("/plants/:id") view=PlantViewPage />
+            <Route path=path!("/grows") view=GrowsPage />
+            <Route path=path!("/grows/:id") view=GrowsRoute />
+            <Route path=path!("/grows/:id/edit") view=GrowEditRoute />
+        </Routes>
+    }
+}
+
 /// Deep-link target proving router navigation and refreshes work under
-/// the runtime base (kept from the M1 spike).
+/// the runtime base (kept from the M1 spike). Debug builds only (D124).
 #[component]
+#[cfg(debug_assertions)]
+#[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
 fn Spike() -> impl IntoView {
     let i18n = use_i18n();
     view! {

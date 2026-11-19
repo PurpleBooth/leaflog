@@ -62,6 +62,22 @@ pub(crate) fn classify_failure(failure: &ApiFailure) -> FailureKind {
     }
 }
 
+/// Tolerant parse of the `GET /api/health` payload (D124): healthy
+/// only when the body decodes to an object whose `status` reads
+/// `"ok"` — the backend's own contract (the `Health` struct in
+/// `crates/leaflog-backend/src/app.rs`). Any other status, a missing
+/// status, or a non-JSON body reads as unhealthy, so the health
+/// card's status line errs on the side of unreachable.
+#[must_use]
+pub(crate) fn health_ok(payload: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(payload).is_ok_and(|value| {
+        value
+            .get("status")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|status| status == "ok")
+    })
+}
+
 /// The banner text for an [`ApiFailure`], chosen by [`classify_failure`] (D121).
 ///
 /// A backend catalog message passes through verbatim (already
@@ -384,7 +400,7 @@ pub struct LocaleReport {
 
 #[cfg(test)]
 mod tests {
-    use super::{ApiFailure, FailureKind, classify_failure, failure_text};
+    use super::{ApiFailure, FailureKind, classify_failure, failure_text, health_ok};
     use crate::i18n::Locale;
 
     fn failure(status: u16, message: Option<&str>) -> ApiFailure {
@@ -461,6 +477,23 @@ mod tests {
             failure_text(&failure(500, None), Locale::de),
             "Anfrage fehlgeschlagen (Status 500)."
         );
+    }
+
+    /// The backend's actual `GET /api/health` body (the `Health`
+    /// struct in `crates/leaflog-backend/src/app.rs`) reads as
+    /// healthy; any other `status`, a missing status, or a non-JSON
+    /// body reads as unreachable without panicking (D124).
+    #[test]
+    fn health_ok_tolerates_the_real_payload_and_garbage() {
+        assert!(health_ok(
+            r#"{"status":"ok","version":"0.12.0","mode":"production"}"#
+        ));
+        assert!(!health_ok(
+            r#"{"status":"degraded","version":"0.12.0","mode":"production"}"#
+        ));
+        assert!(!health_ok(r#"{"version":"0.12.0"}"#));
+        assert!(!health_ok("<html>502 Bad Gateway</html>"));
+        assert!(!health_ok(""));
     }
 
     /// Transport/parse noise is replaced by the calm interrupted
