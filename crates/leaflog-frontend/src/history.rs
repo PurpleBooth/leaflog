@@ -233,9 +233,9 @@ fn Aggregate(title: Signal<String>, rows: Signal<Vec<YieldAggregate>>) -> impl I
                                 view! {
                                     <tr>
                                         <td>{row.label.clone()}</td>
-                                        <td>{format!("{:.0}", row.total_wet_g)}</td>
-                                        <td>{format!("{:.0}", row.total_dry_g)}</td>
-                                        <td>{format!("{:.0}", row.total_trimmed_g)}</td>
+                                        <td>{leaflog_core::format::format_decimal(row.total_wet_g, 0, crate::decimal_style(i18n.get_locale()))}</td>
+                                        <td>{leaflog_core::format::format_decimal(row.total_dry_g, 0, crate::decimal_style(i18n.get_locale()))}</td>
+                                        <td>{leaflog_core::format::format_decimal(row.total_trimmed_g, 0, crate::decimal_style(i18n.get_locale()))}</td>
                                         <td>{row.grows}</td>
                                     </tr>
                                 }

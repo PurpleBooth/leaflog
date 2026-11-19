@@ -613,10 +613,10 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                             <div><dt>{t!(i18n, grow.volume)}</dt><dd>{leaflog_core::units::small_volume_both(volume, crate::decimal_style(locale))}</dd></div>
                         })}
                         {entry.details.input_ph.map(|ph| view! {
-                            <div><dt>{t!(i18n, grow.ph_in)}</dt><dd>{format!("{ph:.1}")}</dd></div>
+                            <div><dt>{t!(i18n, grow.ph_in)}</dt><dd>{crate::chart::format_ph(ph, crate::decimal_style(locale))}</dd></div>
                         })}
                         {entry.details.runoff_ph.map(|ph| view! {
-                            <div><dt>{t!(i18n, grow.ph_out)}</dt><dd>{format!("{ph:.1}")}</dd></div>
+                            <div><dt>{t!(i18n, grow.ph_out)}</dt><dd>{crate::chart::format_ph(ph, crate::decimal_style(locale))}</dd></div>
                         })}
                         {entry.details.input_ec_us.map(|ec| view! {
                             <div><dt>{t!(i18n, grow.ec_in)}</dt><dd>{format!("{ec} µS/cm")}</dd></div>

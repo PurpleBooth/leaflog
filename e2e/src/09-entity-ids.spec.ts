@@ -1,8 +1,9 @@
-// HA entity ids (ticket 10): one long lowercase token must wrap
-// inside its card instead of overflowing the layout, with the full
-// id on hover. The id now surfaces as text in the grow page's drift
-// banner for a dead binding (the equipment page that used to show it
-// is gone — feature-strip), so that badge carries the treatment.
+// HA entity ids (ticket 10, D120): one long lowercase token must
+// truncate with an ellipsis inside its card instead of overflowing
+// the layout, with the full id on hover via the title attribute.
+// The id surfaces as an EntityIdChip in the grow page's drift banner
+// for a dead binding (the equipment page that used to show it is
+// gone — feature-strip).
 
 import { test, expect } from '@playwright/test';
 import { api, dismissOnboarding, uniqueName, url } from './helpers';

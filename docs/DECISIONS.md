@@ -80,7 +80,12 @@ browser sidebar. The picker is now a native `<dialog>` with daisyUI
   closes the dialog and focuses `#quick-add-form` next frame.
 
 The `.dropdown.quick-add` overrides in tailwind.css died with the
-dropdown and were removed.
+dropdown and were removed. Supersession note for the lint register:
+the D099-era row for `quick_add::QuickAddMenu`
+(`clippy::too_many_lines`) gives "menu markup plus its keydown
+handlers" as the reason; the dialog version has no keydown handlers —
+the allow now covers the dialog and grouped-grid markup, the old
+reason text no longer applies.
 
 ## 2026-11-19 — api failure classification and dismissable error banners
 
