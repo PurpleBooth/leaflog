@@ -2,6 +2,31 @@
 All notable changes to the Leaflog Home Assistant app. Version headings are exactly `## <version>` — Home Assistant slices release notes on them. Generated file; never edit by hand.
 
 - - -
+## 0.12.0
+
+_Released 2026-11-19._
+
+#### Bug Fixes
+- **(backend)** land the subscribe_entities seed so steady entities report available - (1bd23b7) - billie.codes
+- **(frontend)** key the light-cycle reset rollback to its captured values - (74b0551) - billie.codes
+- **(frontend)** gate the spike route to debug builds and summarize the health card - (32750cf) - billie.codes
+- **(frontend)** place the humidity window tile beside the humidity reading - (9d54643) - billie.codes
+- **(frontend)** route the remaining decimal sites through the locale formatter - (4a8c8be) - billie.codes
+- **(frontend)** locale-aware number formatting and german copy pass - (1fd7b04) - billie.codes
+- **(frontend)** classify api failures and add dismissable, retryable error banners - (795f345) - billie.codes
+#### Features
+- **(frontend)** remember recent quick-add actions - (e6dfc11) - billie.codes
+- **(frontend)** add undoable entry deletion and light-cycle reset - (88bd4a3) - billie.codes
+- **(frontend)** warn before abandoning unsaved grow edits - (89f078c) - billie.codes
+- **(frontend)** regroup quick-add actions into a dialog picker - (b1c1ca7) - billie.codes
+#### Miscellaneous
+- **(release)** bump version to 0.11.0 - (3ba944a) - github-actions[bot]
+- **(version)** 0.12.0 - (4e861e0) - billie.codes
+#### Refactoring
+- **(frontend)** extract ui primitives and re-anchor spacing to the design spec - (f9bf746) - billie.codes
+
+- - -
+
 ## 0.11.0
 
 _Released 2026-11-19._
