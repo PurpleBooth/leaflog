@@ -6,6 +6,29 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-19 — prose gate narrowing (locale ticket 06, git-bug cbfde49)
+
+### D117: the prose gate covers markdown and Rust comments only; the UI-string extractor left `lint-prose`
+
+Tickets 02–04 keyed every frontend prose literal into the
+compile-time catalogs (D112, 307 keys per locale). The D065
+extractor therefore polices nothing: Rust keeps keys, not literals.
+The prose it could still see sits where the gate must never scan —
+locale text lives in `crates/leaflog-frontend/locales/*.json`, and
+the German catalog would trip the English prose rules.
+
+The UI-string extraction block is gone from the `lint-prose`
+recipe. Markdown and Rust comments stay gated exactly as before;
+the Rust-comment paragraphing awk is untouched.
+
+Wording follows the mechanism, history stays put: AGENTS.md's
+`just ci` line now reads "markdown and Rust comments", and the
+`.vale.ini` header's scope note drops the UI strings. D065's text
+is a dated record and keeps its "frontend's UI strings" wording;
+this entry is the note of that change. D112's "Prose gate
+narrowing" paragraph recorded the intent ahead of the keying
+batches — this is its implementation.
+
 ## 2026-11-19 — keying the remaining surfaces (locale ticket 04, git-bug 394f2c8)
 
 ### D116: the frontend's residual English is an inventoried set of non-prose exceptions, and error banners substitute a localised status line only when the backend sends none

@@ -288,10 +288,11 @@ deny:
         echo "cargo-deny not installed; run inside devbox: devbox run -- just deny"
     fi
 
-# Prose gate (vale; skip if not installed): markdown, Rust comments
-# and UI strings must not contain LLM-sounding vocabulary or
-# wall-of-text sentences (D065). Changelogs and the licence are not
-# prose and are not linted.
+# Prose gate (vale; skip if not installed): markdown and Rust
+# comments must not contain LLM-sounding vocabulary or wall-of-text
+# sentences (D065). The former UI-string extractor left the gate in
+# D117 — locale text lives in the catalogs (D112). Changelogs and
+# the licence are not prose and are not linted.
 lint-prose:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -338,33 +339,6 @@ lint-prose:
         ' "$f" > "$out"
     done < <(find crates -type f -name '*.rs' | sort)
     vale "$tmp/comments" || status=1
-    # UI strings: prose-looking string literals from the frontend.
-    # Keep literals with at least three plain alphabetic words (real
-    # labels and sentences); drop Leptos attribute fragments
-    # (" aria-label="), format-spec/separator-only strings, {…}
-    # placeholders, and Tailwind utility-class lists (their hyphen/
-    # slash/colon tokens are not prose words). Each string is closed
-    # with a period and separated by a blank line so the sentence cap
-    # judges each label on its own.
-    while IFS= read -r f; do
-        out="$tmp/ui/${f}.txt"
-        mkdir -p "$(dirname "$out")"
-        grep -hoE '"[^"]*[[:space:]][^"]*"' "$f" \
-            | sed -E 's/^"//; s/"$//; s/[{][^}]*[}]/#/g' \
-            | grep -vE '^[[:space:]]*[a-z0-9-]+=$' \
-            | awk '{
-                words = 0
-                for (i = 1; i <= NF; i++)
-                    if ($i ~ /^[A-Za-z][A-Za-z]+$/ && length($i) >= 2) words++
-                if (words >= 3) {
-                    if ($0 !~ /[.!?:]$/) print $0 "."
-                    else print
-                    print ""
-                }
-              }' \
-            > "$out" || true
-    done < <(find crates/leaflog-frontend/src -type f -name '*.rs' | sort)
-    vale "$tmp/ui" || status=1
     exit "$status"
 
 # Everything CI checks: fmt, clippy (native + wasm), tests, WASM

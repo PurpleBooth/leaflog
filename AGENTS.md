@@ -99,7 +99,7 @@ Automation lives in a `justfile` (or `xtask` crate) — no bash-only scripts.
   prefix + `X-Ingress-Path`).
 - `just ci` — fmt, clippy (native + wasm, `-D warnings`), unit/integration tests, WASM build,
   prose lint (`just lint-prose`, vale: no LLM-sounding vocabulary or wall-of-text sentences in
-  markdown, Rust comments or UI strings; config in `.vale.ini`, D065).
+  markdown and Rust comments; config in `.vale.ini`, D065, D117).
 - Cutting a release — `docs/RELEASE.md`. Push a signed `v*` tag on the version commit and
   let the Release workflow own the changelog commits; never hand-commit `just changelog`
   output (D062).
