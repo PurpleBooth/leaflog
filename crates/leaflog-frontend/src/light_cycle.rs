@@ -156,7 +156,10 @@ pub fn LightCycleEditor(
                     lights_on.set(time);
                     hours.set(fields);
                 }
-                Err(failure) => status.set(Some(failure.message)),
+                Err(failure) => status.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
         });
     };
@@ -188,7 +191,10 @@ pub fn LightCycleEditor(
                             hours.set(fields);
                             status.set(Some(t_string!(i18n, light_cycle.saved).into_owned()));
                         }
-                        Err(failure) => status.set(Some(failure.message)),
+                        Err(failure) => status.set(Some(api::failure_text(
+                            &failure,
+                            i18n.get_locale_untracked(),
+                        ))),
                     }
                 });
             }
@@ -206,7 +212,10 @@ pub fn LightCycleEditor(
                     hours.set(HoursText::default());
                     status.set(Some(t_string!(i18n, light_cycle.reset_done).into_owned()));
                 }
-                Err(failure) => status.set(Some(failure.message)),
+                Err(failure) => status.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
         });
     };

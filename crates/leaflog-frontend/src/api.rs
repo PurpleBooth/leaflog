@@ -10,14 +10,41 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use gloo_net::http::{Request, RequestBuilder, Response};
+use leptos_i18n::td_string;
+
+use crate::i18n::Locale;
 
 /// The HTTP status returned with an error body.
 #[derive(Debug, Clone)]
 pub struct ApiFailure {
     /// HTTP status code (or 0 when the request never completed).
     pub status: u16,
-    /// The server's error message, or a transport error string.
-    pub message: String,
+    /// The server's error message or a transport error string — both
+    /// display as-is (the backend localises its own wrappers, D113,
+    /// and transport detail is library text). `None` when the backend
+    /// answered with a status but no `error` field: [`failure_text`]
+    /// then substitutes the localised generic so no raw English prose
+    /// reaches the banner.
+    pub message: Option<String>,
+}
+
+/// The banner text for an [`ApiFailure`]: deep detail when present,
+/// else the localised generic for the HTTP status.
+///
+/// "Deep detail" is the backend's message (already localised, D113)
+/// or the transport error string. Call sites read the locale
+/// untracked — the string is built once when the failure lands,
+/// matching the request-timeout precedent in the grows list (which
+/// composes its message before the request).
+#[must_use]
+pub fn failure_text(failure: &ApiFailure, locale: Locale) -> String {
+    failure.message.clone().unwrap_or_else(|| {
+        td_string!(
+            locale,
+            errors.request_failed,
+            status = failure.status.to_string()
+        )
+    })
 }
 
 /// `GET` a JSON endpoint.
@@ -109,7 +136,7 @@ fn json_body<T: Serialize>(builder: RequestBuilder, body: &T) -> Request {
 async fn check(result: Result<Response, gloo_net::Error>) -> Result<Response, ApiFailure> {
     let response = result.map_err(|error| ApiFailure {
         status: 0,
-        message: error.to_string(),
+        message: Some(error.to_string()),
     })?;
     if response.ok() {
         return Ok(response);
@@ -123,8 +150,7 @@ async fn check(result: Result<Response, gloo_net::Error>) -> Result<Response, Ap
             body.get("error")
                 .and_then(serde_json::Value::as_str)
                 .map(str::to_owned)
-        })
-        .unwrap_or_else(|| format!("request failed with status {status}"));
+        });
     Err(ApiFailure { status, message })
 }
 
@@ -132,7 +158,7 @@ async fn check(result: Result<Response, gloo_net::Error>) -> Result<Response, Ap
 async fn parse<T: DeserializeOwned>(response: Response) -> Result<T, ApiFailure> {
     response.json::<T>().await.map_err(|error| ApiFailure {
         status: 0,
-        message: error.to_string(),
+        message: Some(error.to_string()),
     })
 }
 

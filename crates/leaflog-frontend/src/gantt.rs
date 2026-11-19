@@ -5,6 +5,7 @@
 #![allow(clippy::cast_precision_loss)]
 
 use crate::ErrorIf;
+use crate::api;
 use crate::api::{Forecast, PhaseWindowData};
 use crate::i18n::use_i18n;
 use crate::labels;
@@ -100,7 +101,10 @@ pub fn GanttTimeline(grow_id: String) -> impl IntoView {
         spawn_local(async move {
             match crate::api::get::<Forecast>(&format!("api/grows/{grow_id}/forecast")).await {
                 Ok(data) => forecast.set(Some(data)),
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
         });
     });

@@ -55,7 +55,10 @@ pub fn BandEditor() -> impl IntoView {
                         max.set(format!("{}", band.max));
                     }
                 }
-                Err(failure) => status.set(Some(failure.message)),
+                Err(failure) => status.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
         });
     });
@@ -93,7 +96,10 @@ pub fn BandEditor() -> impl IntoView {
                         td_string!(locale, env.band_saved).into_owned()
                     }));
                 }
-                Err(failure) => status.set(Some(failure.message)),
+                Err(failure) => status.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
         });
     };
@@ -218,7 +224,10 @@ pub fn HistoryChart(
                     data.set(Some(value));
                 }
                 Err(failure) => {
-                    fetch_failed.set(Some(failure.message));
+                    fetch_failed.set(Some(api::failure_text(
+                        &failure,
+                        i18n.get_locale_untracked(),
+                    )));
                     // The response that would say `bound` never
                     // arrived; the bindings endpoint is the
                     // independent source. A sensor role with a binding

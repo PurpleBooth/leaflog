@@ -67,7 +67,10 @@ pub fn OnboardingWizard() -> impl IntoView {
         spawn_local(async move {
             match api::get::<OnboardingState>("api/onboarding").await {
                 Ok(fetched) => state.set(Some(fetched)),
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
         });
     };
@@ -86,7 +89,10 @@ pub fn OnboardingWizard() -> impl IntoView {
             let body = json!({ "onboarding_dismissed": value });
             match api::put::<serde_json::Value, serde_json::Value>("api/settings", &body).await {
                 Ok(_) => refresh_state(),
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
         });
     };
@@ -151,7 +157,10 @@ pub fn OnboardingWizard() -> impl IntoView {
                             )
                             .await
                             {
-                                error.set(Some(failure.message));
+                                error.set(Some(api::failure_text(
+                                    &failure,
+                                    i18n.get_locale_untracked(),
+                                )));
                                 return;
                             }
                         }
@@ -165,13 +174,19 @@ pub fn OnboardingWizard() -> impl IntoView {
                             )
                             .await
                         {
-                            error.set(Some(failure.message));
+                            error.set(Some(api::failure_text(
+                                &failure,
+                                i18n.get_locale_untracked(),
+                            )));
                             return;
                         }
                         grow_id = Some(grow.id);
                     }
                     Err(failure) => {
-                        error.set(Some(failure.message));
+                        error.set(Some(api::failure_text(
+                            &failure,
+                            i18n.get_locale_untracked(),
+                        )));
                         return;
                     }
                 }

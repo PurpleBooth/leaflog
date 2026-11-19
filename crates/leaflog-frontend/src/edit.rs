@@ -54,7 +54,10 @@ pub fn GrowEditPage(grow_id: Signal<String>) -> impl IntoView {
                     grow.set(Some(value));
                     error.set(None);
                 }
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
         });
     };
@@ -88,7 +91,10 @@ pub fn GrowEditPage(grow_id: Signal<String>) -> impl IntoView {
                         leptos_router::NavigateOptions::default(),
                     );
                 }
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
         });
     };
@@ -121,7 +127,10 @@ pub fn GrowEditPage(grow_id: Signal<String>) -> impl IntoView {
         spawn_local(async move {
             match api::delete(&format!("api/grows/{id}")).await {
                 Ok(()) => deleted.set(true),
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
         });
     };

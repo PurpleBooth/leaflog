@@ -58,7 +58,10 @@ pub fn GrowsPage() -> impl IntoView {
                     grows.set(list);
                     error.set(None);
                 }
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
             loading.set(false);
         });
@@ -77,7 +80,10 @@ pub fn GrowsPage() -> impl IntoView {
                     error.set(None);
                     refresh();
                 }
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
         });
     };
@@ -266,25 +272,40 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             let base = format!("api/grows/{id}");
             match api::get::<Grow>(&base).await {
                 Ok(value) => grow.set(Some(value)),
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
             match api::get::<Vec<Plant>>(&format!("{base}/plants")).await {
                 Ok(value) => plants.set(value),
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
             match api::get::<Vec<ActionEntry>>(&format!("{base}/actions?limit=200")).await {
                 Ok(value) => actions.set(value),
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
             match api::get::<Vec<Photo>>(&format!("{base}/photos")).await {
                 Ok(value) => photos.set(value),
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
             // The phase-day badge rides the same refresh, so a new
             // phase pick re-anchors it without a reload.
             match api::get::<api::Forecast>(&format!("{base}/forecast")).await {
                 Ok(value) => forecast.set(Some(value)),
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
         });
     };
@@ -308,7 +329,10 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                     just_logged.set(true);
                     refresh();
                 }
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
         });
     };
@@ -341,7 +365,10 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                     error.set(None);
                     refresh();
                 }
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
         });
     };
@@ -366,7 +393,10 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             .await
             {
                 Ok(_) => refresh(),
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
         });
     };
@@ -392,7 +422,10 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                     upload_note.set(Some(t_string!(i18n, grow.photos_uploaded).into_owned()));
                     refresh();
                 }
-                Err(failure) => upload_note.set(Some(failure.message)),
+                Err(failure) => upload_note.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
         });
     };
@@ -1050,7 +1083,7 @@ async fn fetch_list<T: DeserializeOwned>(
         || TimeoutFuture::new(REQUEST_TIMEOUT_MS),
         || ApiFailure {
             status: 0,
-            message: timeout_message.clone(),
+            message: Some(timeout_message.clone()),
         },
     )
     .await

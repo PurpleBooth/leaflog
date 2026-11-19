@@ -84,7 +84,10 @@ pub fn FeedPanel(grow_id: String) -> impl IntoView {
             spawn_local(async move {
                 match api::get::<Vec<FeedTemplateInfo>>("api/feeds/templates").await {
                     Ok(list) => templates.set(list),
-                    Err(failure) => error.set(Some(failure.message)),
+                    Err(failure) => error.set(Some(api::failure_text(
+                        &failure,
+                        i18n.get_locale_untracked(),
+                    ))),
                 }
                 // Load the existing plan if there is one.
                 match api::get::<Vec<PlanDayData>>(&format!("api/grows/{grow_id}/feed/fit")).await {
@@ -119,7 +122,10 @@ pub fn FeedPanel(grow_id: String) -> impl IntoView {
             .await
             {
                 Ok(result) => fit.set(Some(result)),
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
         });
     };

@@ -81,7 +81,10 @@ pub fn HistoryPage() -> impl IntoView {
         spawn_local(async move {
             match api::get::<HistoryReport>("api/history").await {
                 Ok(fetched) => report.set(fetched),
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
         });
     };
@@ -97,7 +100,10 @@ pub fn HistoryPage() -> impl IntoView {
                 .await
             {
                 Ok(_) => refresh(),
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
         });
     };
@@ -248,7 +254,10 @@ pub fn PlantViewPage() -> impl IntoView {
         spawn_local(async move {
             match api::get::<PlantView>(&format!("api/plants/{id}/view")).await {
                 Ok(fetched) => view.set(Some(fetched)),
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
         });
     };
@@ -276,7 +285,10 @@ pub fn PlantViewPage() -> impl IntoView {
                     error.set(None);
                     refresh();
                 }
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
         });
     };

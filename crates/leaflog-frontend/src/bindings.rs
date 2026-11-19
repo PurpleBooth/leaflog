@@ -72,7 +72,10 @@ pub fn EntityBindings(grow_id: String, bindings_epoch: RwSignal<u64>) -> impl In
                     .await
                 {
                     Ok(data) => bindings.set(data),
-                    Err(failure) => error.set(Some(failure.message)),
+                    Err(failure) => error.set(Some(api::failure_text(
+                        &failure,
+                        i18n.get_locale_untracked(),
+                    ))),
                 }
                 match api::get::<serde_json::Value>("api/ha/entities").await {
                     Ok(value) => {
@@ -110,7 +113,10 @@ pub fn EntityBindings(grow_id: String, bindings_epoch: RwSignal<u64>) -> impl In
                     // caption re-derives (D102).
                     bindings_epoch.update(|epoch| *epoch += 1);
                 }
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
         });
     };

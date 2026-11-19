@@ -230,15 +230,24 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
         spawn_local(async move {
             match api::get::<EnvSnapshot>(&format!("api/grows/{grow_id}/env")).await {
                 Ok(data) => env.set(Some(data)),
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
             match api::get::<LampAdvice>(&format!("api/grows/{grow_id}/lamp")).await {
                 Ok(data) => lamp.set(Some(data)),
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
             match api::get::<CoachResponse>(&format!("api/grows/{grow_id}/coach")).await {
                 Ok(data) => coach.set(Some(data)),
-                Err(failure) => error.set(Some(failure.message)),
+                Err(failure) => error.set(Some(api::failure_text(
+                    &failure,
+                    i18n.get_locale_untracked(),
+                ))),
             }
         });
     });
