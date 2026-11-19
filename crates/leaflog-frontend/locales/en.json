@@ -2,16 +2,26 @@
     "nav": {
         "home": "Home",
         "history": "History",
-        "grows": "Grows"
+        "grows": "Grows",
+        "main": "Main"
     },
     "page": {
         "home_heading": "Grow diary, at home in Home Assistant",
+        "home_intro": "Track your grows: log actions and photos with sensor data, follow a feeding schedule fitted to your plants, and keep every degree, pH point and watt in one private place.",
+        "home_privacy": "Everything lives on the grow now: sensors bind per grow, and the strain label and photoperiod are grow fields.",
+        "health_heading": "Backend health",
+        "health_read_error": "read error: {{ error }}",
+        "health_network_error": "network error: {{ error }}",
         "history_heading": "History",
         "grows_heading": "Grows",
-        "edit_heading": "Edit grow"
+        "edit_heading": "Edit grow",
+        "loading": "Loading…",
+        "spike_heading": "Ingress spike",
+        "spike_intro": "This deep link was served by the SPA under runtime base:"
     },
     "errors": {
-        "request_timeout": "The request to {{ path }} kept timing out."
+        "request_timeout": "The request to {{ path }} kept timing out.",
+        "request_failed": "Request failed (status {{ status }})."
     },
     "phases": {
         "germination": "Germination",
@@ -187,6 +197,22 @@
         "range_open": "{{ name }} (day {{ from }}–ongoing)",
         "ongoing": "ongoing",
         "duration": "{{ count }}d"
+    },
+    "history": {
+        "predicted_heading": "Predicted vs actual",
+        "plan_accuracy": "Plan accuracy",
+        "no_boundaries": "no flip or harvest logged yet",
+        "day_line": "day {{ actual }} (planned {{ planned }}, {{ delta }})",
+        "start_next_run": "Start next run",
+        "empty": "No grows yet — history builds itself as grows finish.",
+        "yield_by_label": "Yield by label",
+        "yield_by_substrate": "Yield by substrate",
+        "yield_by_feed_template": "Yield by feed template",
+        "nothing_weighed": "Nothing weighed yet.",
+        "wet_g": "Wet g",
+        "dry_g": "Dry g",
+        "trimmed_g": "Trimmed g",
+        "grows_col": "Grows"
     },
     "feed": {
         "after_heading": "Fitted schedule (after)",

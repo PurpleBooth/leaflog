@@ -2,16 +2,26 @@
     "nav": {
         "home": "Startseite",
         "history": "Verlauf",
-        "grows": "Anbauten"
+        "grows": "Anbauten",
+        "main": "Hauptnavigation"
     },
     "page": {
         "home_heading": "Grow-Tagebuch, zu Hause in Home Assistant",
+        "home_intro": "Verfolge deine Anbauten: Trage Aktionen und Fotos mit Sensordaten ein, folge einem auf deine Pflanzen angepassten Düngeplan und behalte jeden Grad, jeden pH-Punkt und jedes Watt an einem privaten Ort.",
+        "home_privacy": "Alles hängt jetzt am Anbau: Sensoren werden pro Anbau gebunden, und Sortenetikett und Fotoperiode sind Felder des Anbaus.",
+        "health_heading": "Backend-Zustand",
+        "health_read_error": "Lesefehler: {{ error }}",
+        "health_network_error": "Netzwerkfehler: {{ error }}",
         "history_heading": "Verlauf",
         "grows_heading": "Anbauten",
-        "edit_heading": "Anbau bearbeiten"
+        "edit_heading": "Anbau bearbeiten",
+        "loading": "Wird geladen …",
+        "spike_heading": "Ingress-Spike",
+        "spike_intro": "Dieser Deep Link wurde von der SPA unter der Laufzeit-Basis ausgeliefert:"
     },
     "errors": {
-        "request_timeout": "Die Anfrage an {{ path }} hat immer wieder das Zeitlimit überschritten."
+        "request_timeout": "Die Anfrage an {{ path }} hat immer wieder das Zeitlimit überschritten.",
+        "request_failed": "Anfrage fehlgeschlagen (Status {{ status }})."
     },
     "phases": {
         "germination": "Keimung",
@@ -187,6 +197,22 @@
         "range_open": "{{ name }} (Tag {{ from }}–laufend)",
         "ongoing": "laufend",
         "duration": "{{ count }} T"
+    },
+    "history": {
+        "predicted_heading": "Prognose und Ist",
+        "plan_accuracy": "Plan-Genauigkeit",
+        "no_boundaries": "noch kein Flip und keine Ernte eingetragen",
+        "day_line": "Tag {{ actual }} (geplant {{ planned }}, {{ delta }})",
+        "start_next_run": "Nächsten Durchgang starten",
+        "empty": "Noch keine Anbauten — der Verlauf entsteht, wenn Anbauten abschließen.",
+        "yield_by_label": "Ertrag nach Sortenetikett",
+        "yield_by_substrate": "Ertrag nach Substrat",
+        "yield_by_feed_template": "Ertrag nach Düngervorlage",
+        "nothing_weighed": "Noch nichts gewogen.",
+        "wet_g": "Nass (g)",
+        "dry_g": "Trocken (g)",
+        "trimmed_g": "Trim (g)",
+        "grows_col": "Anbauten"
     },
     "feed": {
         "after_heading": "Angepasster Plan (nachher)",
