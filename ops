@@ -1,1 +1,1 @@
-{"author":{"id":"ce771b8a9b8c30a8aac165a8b1cdb0957637d3941276ec4f27335daee16d79de"},"ops":[{"type":2,"timestamp":1794622753,"nonce":"51rdOs5PNvSDraV50jsdXTdzHZ8=","title":"07: Proofread + release v0.6.0","was":"**What to build:** The human gate and the ship. The owner proofreads both catalogs in one"}]}
+{"author":{"id":"ce771b8a9b8c30a8aac165a8b1cdb0957637d3941276ec4f27335daee16d79de"},"ops":[{"type":5,"timestamp":1795050627,"nonce":"VUwYV6qzW5q3woMW0YCuS0oTE7U=","added":["ready-for-human"],"removed":null}]}
