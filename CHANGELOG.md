@@ -2,7 +2,75 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
-## v0.10.0 - 2026-11-18
+## v0.11.0 - 2026-11-19
+#### Bug Fixes
+- **(backend)** window-bound the marker scan before its limit - (3b3c646) - billie.codes
+- **(frontend)** bake icu plural data so plural keys render - (ddde21c) - billie.codes
+- **(frontend)** drift-banner badge shows the entity id again - (0887bc6) - billie.codes
+- **(frontend)** hold the lazy mount until the section layout settles - (820f1a7) - billie.codes
+- **(frontend)** fixed grid insets align every connect-group plot - (1846aa5) - billie.codes
+#### CI
+- **(prose)** narrow the prose gate to markdown and Rust comments - (c3cc3b0) - billie.codes
+#### Documentation
+- **(adr)** record the localisation mechanism as ADR 0003 - (e9f889f) - billie.codes
+- **(decisions)** split the D110 opener under the prose sentence cap - (85fc491) - billie.codes
+- **(i18n)** D112 decision entry and the keying pattern - (c50ea3e) - billie.codes
+- correct the locale-chain and parity comments - (5d1c30b) - billie.codes
+- record the sweep's residual-English inventory as D116 - (47de281) - billie.codes
+- correct D105's chip list — light retired by D110 - (8ccc601) - billie.codes
+- endorse the palette on record; log D111 (lazy watch, hint keying, sweep) - (870fe6c) - billie.codes
+- night-shading decision D110; fix the duplicate D106 id and a stray merge fragment - (e8f36d4) - billie.codes
+- log the marker zone split and the hide/replace render (D107-D108) - (7e2c4bc) - billie.codes
+#### Features
+- **(backend)** hand-rolled message catalog for alerts and error wrappers - (4a7aec8) - billie.codes
+- **(backend)** capture the HA user language and serve it on /api/locale - (65a595e) - billie.codes
+- **(backend)** night stretches on the Air-group history payload - (a67fb09) - billie.codes
+- **(backend)** markers on the grow history response - (c3af46f) - billie.codes
+- **(core)** event-marker selection for chart roles - (fe01bc1) - billie.codes
+- **(env)** temperature and VPD Target Bands - (7a8ed78) - billie.codes
+- **(frontend)** key home, spike, nav label and the history report - (98a0fa7) - billie.codes
+- **(frontend)** localise the api failure fallback for error banners - (cfc48d5) - billie.codes
+- **(frontend)** add keys for the remaining surfaces to the locale catalogs - (6008606) - billie.codes
+- **(frontend)** key the plant view page and the default plant name - (976007f) - billie.codes
+- **(frontend)** key the grow edit page and the light cycle editor - (a9af62d) - billie.codes
+- **(frontend)** key the bindings grid and the onboarding wizard - (8c25042) - billie.codes
+- **(frontend)** add form-surface keys to the locale catalogs - (c82f5a6) - billie.codes
+- **(frontend)** key the grow-form name placeholder; e2e and docs - (dafca2a) - billie.codes
+- **(frontend)** key environment, gantt and feed surfaces for locale - (7b05a02) - billie.codes
+- **(frontend)** i18n catalogs, label helpers and coach/lamp wiring - (bad1f73) - billie.codes
+- **(frontend)** leptos_i18n catalogs with the locale chain wired - (a0d02ba) - billie.codes
+- **(frontend)** lazy root-zone charts and honest empty-window hint - (9e2bb8e) - billie.codes
+- **(frontend)** fold the Light card into the Air charts' night shading - (0f95828) - billie.codes
+- **(frontend)** night shading as a silent back layer in the chart option - (927560c) - billie.codes
+- **(frontend)** shared marker toggle in the section header - (255a717) - billie.codes
+- **(frontend)** log-event ticks on history charts - (e03535d) - billie.codes
+- **(frontend)** Air and Root zone chart groups with crosshair sync - (53e6c9a) - billie.codes
+- **(frontend)** shared y-label gutter and line crosshair for the connect group - (c420855) - billie.codes
+- **(frontend)** a not-measured card chips the unbound sensor roles - (9b81de6) - billie.codes
+- **(frontend)** the Environment section owns its shared history window - (323f33f) - billie.codes
+#### Miscellaneous
+- **(deps)** ignore the build-only unsafe-libyaml advisory - (b210dd0) - billie.codes
+- **(release)** bump version to 0.10.0 - (f299ff3) - github-actions[bot]
+- **(version)** 0.11.0 - (960b847) - billie.codes
+#### Refactoring
+- **(core)** stable codes for coach tips and lamp advice, citations dropped - (3054a29) - billie.codes
+- **(core)** make chart_group the single role-to-group table - (363a7dd) - billie.codes
+- **(e2e)** one filled-path walker under the chart predicates - (650c2cc) - billie.codes
+- **(frontend)** drop the dead joined_crosshair opt-out - (a78cc6c) - billie.codes
+#### Tests
+- **(backend)** the marker history rides real chart data - (25394db) - billie.codes
+- **(e2e)** assert the grow-less banner in both locale sweeps - (cd01a95) - billie.codes
+- **(e2e)** sweep the newly keyed surfaces in both locales - (6f04841) - billie.codes
+- **(e2e)** assert the german-forced grow edit form labels - (74fbed5) - billie.codes
+- **(e2e)** pin the German-forced browser and the English default - (8a7a47b) - billie.codes
+- **(e2e)** verification sweep — quiet ticks, stable svg roots, screenshot matrix - (195240e) - billie.codes
+- **(e2e)** night shading coverage; retire the light-card assertions - (44118ec) - billie.codes
+- **(e2e)** chart-group and crosshair-sync specs, mock history spread - (f1f4819) - billie.codes
+- **(e2e)** log-event marker selection, ticks, toggle, tooltip - (0e29fd3) - billie.codes
+
+- - -
+
+## v0.10.0 - 2026-11-19
 #### Features
 - **(frontend)** the logging loop opens in the grow header - (841c0fc) - billie.codes
 #### Miscellaneous
@@ -12,7 +80,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.9.0 - 2026-11-18
+## v0.9.0 - 2026-11-19
 #### Bug Fixes
 - **(frontend)** tile_class is const - (a474b03) - billie.codes
 - **(frontend)** env tile colours track the merged live readings - (bd5e463) - billie.codes
@@ -66,7 +134,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.8.0 - 2026-11-18
+## v0.8.0 - 2026-11-19
 #### Bug Fixes
 - **(frontend)** a bound chart card survives a failed history fetch - (e0f9f15) - billie.codes
 - **(mock-ha)** push a flipped light state on the next tick (bug c62200c) - (7b99597) - billie.codes
@@ -89,7 +157,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.7.0 - 2026-11-18
+## v0.7.0 - 2026-11-19
 #### Bug Fixes
 - **(frontend)** give ECharts the option as plain objects (bug 1b2b540) - (c27c7af) - billie.codes
 - **(frontend)** editor buttons submit the right thing - (1cede2d) - billie.codes
@@ -153,7 +221,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.6.0 - 2026-11-18
+## v0.6.0 - 2026-11-19
 #### Bug Fixes
 - **(frontend)** space and seed-batch selects keep their pick on refetch - (16b7b3e) - billie.codes
 #### CI
@@ -190,7 +258,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.5.1 - 2026-11-18
+## v0.5.1 - 2026-11-19
 #### Bug Fixes
 - **(dashboard)** show the No-data banner only for real dead bindings - (d788fe3) - billie.codes
 - **(e2e)** point the stack at its mock; honest env poll, strain locators - (f9ce5aa) - billie.codes
@@ -213,7 +281,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.5.0 - 2026-11-18
+## v0.5.0 - 2026-11-19
 #### Bug Fixes
 - **(ci)** UI prose extraction drops Tailwind class lists (D065) - (063b515) - billie.codes
 - **(image)** fetch the daisyUI bundles inside the container build - (ca3df1f) - billie.codes
@@ -235,7 +303,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.4.1 - 2026-11-18
+## v0.4.1 - 2026-11-19
 #### Bug Fixes
 - **(frontend)** submit handlers must prevent_default themselves (D061) - (f949965) - billie.codes
 #### Miscellaneous
@@ -244,7 +312,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.4.0 - 2026-11-18
+## v0.4.0 - 2026-11-19
 #### CI
 - **(changelog)** generate CHANGELOG.md with cocogitto in CI - (fed0dea) - billie.codes
 - **(deny)** cargo-deny gate for advisories and licences (D047) - (780f227) - billie.codes
@@ -273,7 +341,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.3.0 - 2026-11-18
+## v0.3.0 - 2026-11-19
 #### Bug Fixes
 - **(backend)** add nosniff and a hash-pinned CSP to served responses - (bae8103) - billie.codes
 - **(backend)** reject traversal and interior separators in photo path builders - (e139c7e) - billie.codes
@@ -292,7 +360,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.2.0 - 2026-11-18
+## v0.2.0 - 2026-11-19
 #### Bug Fixes
 - **(backend)** normalize photos to rgb8 so non-rgb inputs cannot panic - (ebcf88e) - billie.codes
 - **(ci)** cocogitto tarball extracts to x86_64-unknown-linux-musl/cog - (726b341) - billie.codes
@@ -318,7 +386,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.1.0 - 2026-11-18
+## v0.1.0 - 2026-11-19
 #### Bug Fixes
 - **(ci)** reference arch-tagged images when merging the multi-arch manifest - (23a7e5a) - billie.codes
 - **(ha)** pin wasm-bindgen-cli in the image builder (trunk auto-fetch failed on aarch64 CI) - (d458f19) - billie.codes
