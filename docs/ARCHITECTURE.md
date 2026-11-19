@@ -124,7 +124,7 @@ Three subsystems and one rule, per D073/D074:
 - **The app lands on the active grow's overview**, not a marketing
   page; fresh installs still meet the onboarding wizard.
 
-## Localisation (D112)
+## Localisation (D112, ADR 0003)
 
 The app speaks English and German. Strings live in compile-time
 catalogs (`leptos_i18n` 0.6.3): `crates/leaflog-frontend/locales/en.json`
