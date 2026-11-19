@@ -75,7 +75,8 @@ use leptos_router::path;
 use onboarding::OnboardingWizard;
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 
-use i18n::{I18nContextProvider, Locale, t, use_i18n};
+use i18n::{I18nContextProvider, Locale, t, t_string, use_i18n};
+use leptos_i18n::td_string;
 
 /// Reads `window.__LEAFLOG_BASE__`, injected at serve time by the
 /// backend from the `X-Ingress-Path` header. Empty string when the app
@@ -203,7 +204,7 @@ fn AppShell() -> impl IntoView {
                 <span class="text-2xl" aria-hidden="true">"🌿"</span>
                 <h1 class="m-0 text-xl font-semibold tracking-wide">"Leaflog"</h1>
                 <nav class="mainnav ml-auto flex flex-wrap items-center gap-4 text-sm"
-                    aria-label="Main"
+                    aria-label={t_string!(i18n, nav.main).into_owned()}
                 >
                     <A href=route_href("/") exact=true>{t!(i18n, nav.home)}</A>
                     <A href=route_href("/history")>{t!(i18n, nav.history)}</A>
@@ -211,7 +212,7 @@ fn AppShell() -> impl IntoView {
                 </nav>
             </header>
             <main id="main">
-                <Routes fallback=|| view! { <p>"Loading…"</p> }>
+                <Routes fallback=move || view! { <p>{t!(i18n, page.loading)}</p> }>
                     <Route path=path!("/") view=Landing />
                     <Route path=path!("/spike") view=Spike />
                     <Route path=path!("/history") view=HistoryPage />
@@ -238,9 +239,17 @@ pub fn Home() -> impl IntoView {
             let fetched = match gloo_net::http::Request::get("api/health").send().await {
                 Ok(resp) => match resp.text().await {
                     Ok(body) => body,
-                    Err(err) => format!("read error: {err}"),
+                    Err(err) => td_string!(
+                        i18n.get_locale_untracked(),
+                        page.health_read_error,
+                        error = err.to_string()
+                    ),
                 },
-                Err(err) => format!("network error: {err}"),
+                Err(err) => td_string!(
+                    i18n.get_locale_untracked(),
+                    page.health_network_error,
+                    error = err.to_string()
+                ),
             };
             health.set(fetched);
         });
@@ -251,15 +260,12 @@ pub fn Home() -> impl IntoView {
             <div class="card bg-base-100 shadow-sm px-5 py-4 my-4">
                 <h2>{t!(i18n, page.home_heading)}</h2>
                 <p>
-                    "Track your grows: log actions and photos with sensor data, follow a
-                     feeding schedule fitted to your plants, and keep every degree,
-                     pH point and watt in one private place."
+                    {t!(i18n, page.home_intro)}
                 </p>
                 <p class="text-base-content/70 text-sm">
-                    "Everything lives on the grow now: sensors bind per grow, and the
-                     strain label and photoperiod are grow fields."
+                    {t!(i18n, page.home_privacy)}
                 </p>
-                <h3>"Backend health"</h3>
+                <h3>{t!(i18n, page.health_heading)}</h3>
                 <pre aria-live="polite">{move || health.get()}</pre>
             </div>
         </section>
@@ -270,12 +276,13 @@ pub fn Home() -> impl IntoView {
 /// the runtime base (kept from the M1 spike).
 #[component]
 fn Spike() -> impl IntoView {
+    let i18n = use_i18n();
     view! {
         <section class="card bg-base-100 shadow-sm px-5 py-4 my-4">
-            <h2>"Ingress spike"</h2>
-            <p>"This deep link was served by the SPA under runtime base:"</p>
+            <h2>{t!(i18n, page.spike_heading)}</h2>
+            <p>{t!(i18n, page.spike_intro)}</p>
             <p><code>{ingress_base()}</code></p>
-            <p><A href=route_href("/")>"Back to home"</A></p>
+            <p><A href=route_href("/")>{t!(i18n, grows.back_home)}</A></p>
         </section>
     }
 }

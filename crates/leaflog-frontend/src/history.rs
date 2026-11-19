@@ -10,7 +10,8 @@ use serde::Deserialize;
 
 use crate::ErrorIf;
 use crate::api;
-use crate::i18n::{t, use_i18n};
+use crate::i18n::{t, t_string, use_i18n};
+use crate::labels::action_label_for_kind;
 use crate::route_href;
 use leaflog_core::grows::{Plant, PlantInput};
 
@@ -115,7 +116,7 @@ pub fn HistoryPage() -> impl IntoView {
             </div>
             <ErrorIf error />
 
-            <h3>"Predicted vs actual"</h3>
+            <h3>{t!(i18n, history.predicted_heading)}</h3>
             <ul class="grid gap-4 lg:grid-cols-2">
                 {move || {
                     report
@@ -140,8 +141,8 @@ pub fn HistoryPage() -> impl IntoView {
                                         {row.boundaries.is_empty().then(|| {
                                             view! {
                                                 <div>
-                                                    <dt>"Plan accuracy"</dt>
-                                                    <dd>"no flip or harvest logged yet"</dd>
+                                                    <dt>{t!(i18n, history.plan_accuracy)}</dt>
+                                                    <dd>{t!(i18n, history.no_boundaries)}</dd>
                                                 </div>
                                             }
                                         })}
@@ -151,13 +152,14 @@ pub fn HistoryPage() -> impl IntoView {
                                             .map(|boundary| {
                                                 view! {
                                                     <div>
-                                                        <dt>{boundary.boundary.clone()}</dt>
+                                                        <dt>{action_label_for_kind(i18n.get_locale(), &boundary.boundary)}</dt>
                                                         <dd>
-                                                            {format!(
-                                                                "day {} (planned {}, {:+})",
-                                                                boundary.actual_day,
-                                                                boundary.predicted_day,
-                                                                boundary.delta_days,
+                                                            {t_string!(
+                                                                i18n,
+                                                                history.day_line,
+                                                                actual = boundary.actual_day.to_string(),
+                                                                planned = boundary.predicted_day.to_string(),
+                                                                delta = format!("{:+}", boundary.delta_days),
                                                             )}
                                                         </dd>
                                                     </div>
@@ -167,7 +169,7 @@ pub fn HistoryPage() -> impl IntoView {
                                     </dl>
                                     <div class="flex flex-wrap gap-2 mt-3">
                                         <button class="btn btn-sm" on:click=move |_| next_run(&grow_id)>
-                                            "Start next run"
+                                            {t!(i18n, history.start_next_run)}
                                         </button>
                                     </div>
                                 </li>
@@ -177,30 +179,49 @@ pub fn HistoryPage() -> impl IntoView {
                 }}
             </ul>
             <Show when=move || report.get().accuracy.is_empty()>
-                <p class="py-6 text-center text-base-content/60">"No grows yet — history builds itself as grows finish."</p>
+                <p class="py-6 text-center text-base-content/60">{t!(i18n, history.empty)}</p>
             </Show>
 
-            <Aggregate title="Yield by label" rows=Signal::derive(move || report.get().yield_by_label) />
-            <Aggregate title="Yield by substrate" rows=Signal::derive(move || report.get().yield_by_substrate) />
-            <Aggregate title="Yield by feed template" rows=Signal::derive(move || report.get().yield_by_feed_template) />
+            <Aggregate
+                title=Signal::derive(move || t_string!(i18n, history.yield_by_label).into_owned())
+                rows=Signal::derive(move || report.get().yield_by_label)
+            />
+            <Aggregate
+                title=Signal::derive(move || t_string!(i18n, history.yield_by_substrate).into_owned())
+                rows=Signal::derive(move || report.get().yield_by_substrate)
+            />
+            <Aggregate
+                title=Signal::derive(move || t_string!(i18n, history.yield_by_feed_template).into_owned())
+                rows=Signal::derive(move || report.get().yield_by_feed_template)
+            />
 
-            <p><A href=route_href("/")>"Back to home"</A></p>
+            <p><A href=route_href("/")>{t!(i18n, grows.back_home)}</A></p>
         </section>
     }
 }
 
-/// One yield-aggregate table.
+/// One yield-aggregate table. The title arrives as a signal so a
+/// locale swap re-translates it alongside the rows.
 #[component]
-fn Aggregate(title: &'static str, rows: Signal<Vec<YieldAggregate>>) -> impl IntoView {
+fn Aggregate(title: Signal<String>, rows: Signal<Vec<YieldAggregate>>) -> impl IntoView {
+    let i18n = use_i18n();
     view! {
-        <h3>{title}</h3>
+        <h3>{move || title.get()}</h3>
         <Show
             when=move || !rows.get().is_empty()
-            fallback=move || view! { <p class="py-6 text-center text-base-content/60">"Nothing weighed yet."</p> }
+            fallback=move || view! {
+                <p class="py-6 text-center text-base-content/60">{t!(i18n, history.nothing_weighed)}</p>
+            }
         >
             <table class="table table-sm">
                 <thead>
-                    <tr><th>" "</th><th>"Wet g"</th><th>"Dry g"</th><th>"Trimmed g"</th><th>"Grows"</th></tr>
+                    <tr>
+                        <th>" "</th>
+                        <th>{t!(i18n, history.wet_g)}</th>
+                        <th>{t!(i18n, history.dry_g)}</th>
+                        <th>{t!(i18n, history.trimmed_g)}</th>
+                        <th>{t!(i18n, history.grows_col)}</th>
+                    </tr>
                 </thead>
                 <tbody>
                     {move || {
