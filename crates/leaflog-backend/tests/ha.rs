@@ -287,6 +287,60 @@ async fn bindings_put_while_connected_resubscribes_and_lands_the_states() {
 }
 
 #[tokio::test]
+async fn a_steady_light_lands_from_the_subscribe_seed() {
+    // The "Keine Daten" bug, end to end: a bound light that never
+    // changes (sensors tick their way into the live map, a light only
+    // changes when toggled) must land via real HA's initial batch —
+    // full states under `event.a`, which the parser used to drop.
+    let (mock_url, _mock) = spawn_mock().await;
+    let (base, _db, bridge) = spawn_api(&mock_url).await;
+    let grow_id = create_grow(&base).await;
+    let client = reqwest::Client::new();
+    client
+        .put(format!("{base}/api/grows/{grow_id}/bindings"))
+        .json(&json!({ "bindings": { "light": "light.grow_led" } }))
+        .send()
+        .await
+        .unwrap();
+
+    // No tick changes the light, so only the subscribe seed can land
+    // it — poll like the env snapshot does.
+    for _ in 0..40 {
+        if bridge.live_now().entities.contains_key("light.grow_led") {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    let live = bridge.live_now();
+    let light = live
+        .entities
+        .get("light.grow_led")
+        .expect("a steady light never landed without a seed");
+    assert_eq!(
+        light.state, "off",
+        "the seed carries the mock's light state"
+    );
+
+    // And the user-facing surface: the env endpoint reports the
+    // binding available — no "Keine Daten" banner.
+    let env: Value = client
+        .get(format!("{base}/api/grows/{grow_id}/env"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let binding = env["bindings"]
+        .as_array()
+        .expect("bindings is an array")
+        .iter()
+        .find(|binding| binding["entity_id"] == "light.grow_led")
+        .expect("the light binding is present");
+    assert_eq!(binding["available"], true);
+}
+
+#[tokio::test]
 async fn app_works_with_supervisor_unreachable() {
     // Point at a dead port; every API endpoint must still answer.
     let dead_url = "http://127.0.0.1:1".to_owned();

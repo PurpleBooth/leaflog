@@ -439,8 +439,9 @@ async fn run_socket(
         return SocketOutcome::Retry(tracked);
     }
 
-    // Connected: seed from REST states so the UI is not blind until the
-    // first event, then mark online.
+    // Connected. HA's `subscribe_entities` initial batch (an
+    // `event.a` payload) seeds the live map the moment it arrives,
+    // so there is nothing to fetch from REST here.
     live_tx.send_modify(|data| data.connected = true);
 
     // A binding-set change on this live connection exits the stream
@@ -560,10 +561,11 @@ where
         return false;
     }
     // Only a `result` for our command id with `success == true` counts
-    // as subscribed. An error result (for example a bound entity id
-    // that no longer exists) fails, ending this connection so the
-    // reconnect path with backoff runs instead of idling on a dead
-    // subscription.
+    // as subscribed. An error result fails, ending this connection so
+    // the reconnect path with backoff runs instead of idling on a dead
+    // subscription. (HA accepts unknown entity ids silently — they
+    // simply never appear in the initial batch — so an error here is
+    // rare: a malformed command, or the user losing access.)
     match socket.next().await {
         Some(Ok(Message::Text(text))) => {
             let Ok(value) = serde_json::from_str::<Value>(text.as_str()) else {
@@ -576,48 +578,85 @@ where
     }
 }
 
-/// Applies one `subscribe_entities` event to the live map (compact
-/// diff format: `event.c` keyed by entity id with `+`/`-` and `s`/`a`).
+/// Applies one `subscribe_entities` event to the live map. HA's
+/// compact dialect (websocket `messages.py::_state_diff_event`) has
+/// three shapes:
+///
+/// - `event.a` seeds full compressed states `{entity: {s, a, ...}}` —
+///   the initial batch after subscribing and entities added while
+///   subscribed;
+/// - `event.c` carries per-entity diffs: `+` additions (a new state
+///   and/or attribute values), `-` the attribute keys removed;
+/// - `event.r` lists entity ids dropped from the state machine.
+///
+/// Seeding lands entities in the map but is not a state change; only
+/// `c`-diff state updates are returned as `(entity, state)` pairs, so
+/// the light auto-log records flips, not reconnects. Bare `s`/`a` keys
+/// at the entity level (an older abridged shape) are still merged.
 fn apply_event(text: &str, live_tx: &watch::Sender<LiveData>) -> Vec<(String, String)> {
     let mut changed = Vec::new();
     let Ok(value) = serde_json::from_str::<Value>(text) else {
         return changed;
     };
-    let Some(event_changes) = value.pointer("/event/c").and_then(Value::as_object) else {
-        return changed;
-    };
     live_tx.send_modify(|data| {
-        for (entity_id, diff) in event_changes {
-            let Some(diff) = diff.as_object() else {
+        // Seed: the initial batch and mid-subscription additions are
+        // full compressed states without a diff wrapper.
+        let added = value.pointer("/event/a").and_then(Value::as_object);
+        for (entity_id, compressed) in added.into_iter().flatten() {
+            let Some(state) = compressed.get("s").and_then(Value::as_str) else {
                 continue;
             };
-            if diff.contains_key("-") {
-                data.entities.remove(entity_id);
-                continue;
-            }
-            if let Some(added) = diff.get("+").and_then(Value::as_object) {
-                let state = added
-                    .get("s")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_owned();
-                let entity = LiveEntity {
+            let entity = data
+                .entities
+                .entry(entity_id.clone())
+                .or_insert_with(|| LiveEntity {
                     entity_id: entity_id.clone(),
-                    state: state.clone(),
-                    attributes: attrs(added.get("a")),
-                };
-                data.entities.insert(entity_id.clone(), entity);
-                changed.push((entity_id.clone(), state));
-                continue;
+                    state: String::new(),
+                    attributes: BTreeMap::new(),
+                });
+            state.clone_into(&mut entity.state);
+            entity.attributes.extend(attrs(compressed.get("a")));
+        }
+
+        // Diffs: `+` additions and `-` attribute-key removals (a `-`
+        // here never removes the entity — that is `event.r`).
+        let diffs = value.pointer("/event/c").and_then(Value::as_object);
+        for (entity_id, diff) in diffs.into_iter().flatten() {
+            if let Some(keys) = diff.pointer("/-/a").and_then(Value::as_array)
+                && let Some(entity) = data.entities.get_mut(entity_id)
+            {
+                for key in keys.iter().filter_map(Value::as_str) {
+                    entity.attributes.remove(key);
+                }
             }
-            if let Some(entity) = data.entities.get_mut(entity_id) {
-                if let Some(state) = diff.get("s").and_then(Value::as_str) {
-                    entity.state.clone_from(&state.to_owned());
-                    changed.push((entity_id.clone(), state.to_owned()));
-                }
-                if let Some(new_attrs) = diff.get("a") {
-                    merge_attrs(&mut entity.attributes, new_attrs);
-                }
+            // `+` additions, or tolerated bare `s`/`a` at the entity
+            // level (an older abridged shape).
+            let updates = diff.get("+").unwrap_or(diff);
+            let Some(updates) = updates.as_object() else {
+                continue;
+            };
+            let entity = data
+                .entities
+                .entry(entity_id.clone())
+                .or_insert_with(|| LiveEntity {
+                    entity_id: entity_id.clone(),
+                    state: String::new(),
+                    attributes: BTreeMap::new(),
+                });
+            if let Some(state) = updates.get("s").and_then(Value::as_str) {
+                state.clone_into(&mut entity.state);
+                changed.push((entity_id.clone(), state.to_owned()));
+            }
+            if let Some(new_attrs) = updates.get("a") {
+                merge_attrs(&mut entity.attributes, new_attrs);
+            }
+        }
+
+        // Removals: entity ids dropped from the state machine.
+        let removed = value.pointer("/event/r").and_then(Value::as_array);
+        for entity_id in removed.into_iter().flatten() {
+            if let Some(id) = entity_id.as_str() {
+                data.entities.remove(id);
             }
         }
     });
@@ -733,7 +772,10 @@ fn day_from(started_on: &str, occurred_at: &str) -> Option<u16> {
 mod tests {
     use std::time::Duration;
 
-    use super::{LiveData, backoff_for};
+    use serde_json::json;
+    use tokio::sync::watch;
+
+    use super::{LiveData, apply_event, backoff_for};
 
     #[test]
     fn backoff_grows_and_caps() {
@@ -749,5 +791,140 @@ mod tests {
         let data = LiveData::offline();
         assert!(!data.connected);
         assert!(data.entities.is_empty());
+    }
+
+    /// Applies events to a fresh offline live map and returns the
+    /// receiver plus the pairs the last event reported as changes.
+    fn apply(events: &[serde_json::Value]) -> (watch::Receiver<LiveData>, Vec<(String, String)>) {
+        let (tx, rx) = watch::channel(LiveData::offline());
+        let mut changed = Vec::new();
+        for event in events {
+            changed = apply_event(&event.to_string(), &tx);
+        }
+        (rx, changed)
+    }
+
+    /// The bug behind the "Keine Daten" banner: real HA seeds
+    /// subscribers with a full batch under `event.a` — a shape the
+    /// old parser dropped, so steady entities never reached the map.
+    #[test]
+    fn the_subscribe_seed_populates_the_map_without_reporting_changes() {
+        let seed = json!({ "event": { "a": {
+            "light.grow_led": { "s": "on", "a": { "friendly_name": "Grow LED" } },
+        } } });
+        let (rx, changed) = apply(&[seed]);
+        assert_eq!(
+            changed,
+            [] as [(String, String); 0],
+            "seeding is not a state change"
+        );
+        let light = rx
+            .borrow()
+            .entities
+            .get("light.grow_led")
+            .cloned()
+            .expect("the seed lands the light");
+        assert_eq!(light.state, "on");
+        assert_eq!(
+            light.attributes.get("friendly_name"),
+            Some(&json!("Grow LED"))
+        );
+    }
+
+    #[test]
+    fn a_plus_diff_updates_the_state_and_reports_the_change() {
+        let seed = json!({ "event": { "a": { "light.grow_led": { "s": "off" } } } });
+        let flip = json!({ "event": { "c": { "light.grow_led": { "+": { "s": "on" } } } } });
+        let (rx, changed) = apply(&[seed, flip]);
+        assert_eq!(
+            changed,
+            vec![("light.grow_led".to_owned(), "on".to_owned())]
+        );
+        assert_eq!(rx.borrow().entities["light.grow_led"].state, "on");
+    }
+
+    #[test]
+    fn attribute_only_diffs_merge_without_reporting_a_change() {
+        let seed = json!({ "event": { "a": {
+            "sensor.grow_humidity": { "s": "44", "a": { "unit_of_measurement": "%" } },
+        } } });
+        let attrs = json!({ "event": { "c": {
+            "sensor.grow_humidity": { "+": { "a": { "unit_of_measurement": " %" } } },
+        } } });
+        let (rx, changed) = apply(&[seed, attrs]);
+        assert_eq!(changed, [] as [(String, String); 0]);
+        let sensor = rx.borrow().entities["sensor.grow_humidity"].clone();
+        assert_eq!(sensor.state, "44", "the state survives an attrs-only diff");
+        assert_eq!(sensor.state, "44", "the state survives an attrs-only diff");
+        assert_eq!(
+            sensor.attributes.get("unit_of_measurement"),
+            Some(&json!(" %"))
+        );
+    }
+
+    /// A `-` inside a diff removes attribute keys only; the entity
+    /// itself is dropped by `event.r` (tested below).
+    #[test]
+    fn minus_in_a_diff_drops_attribute_keys_but_keeps_the_entity() {
+        let seed = json!({ "event": { "a": {
+            "light.grow_led": { "s": "on", "a": { "friendly_name": "Grow LED", "effect": "bloom" } },
+        } } });
+        let drop = json!({ "event": { "c": {
+            "light.grow_led": { "-": { "a": ["effect"] } },
+        } } });
+        let (rx, changed) = apply(&[seed, drop]);
+        assert_eq!(changed, [] as [(String, String); 0]);
+        let light = rx.borrow().entities["light.grow_led"].clone();
+        assert_eq!(light.state, "on", "the entity survives the diff");
+        assert_eq!(light.state, "on", "the entity survives the diff");
+        assert!(!light.attributes.contains_key("effect"));
+        assert_eq!(
+            light.attributes.get("friendly_name"),
+            Some(&json!("Grow LED"))
+        );
+    }
+
+    #[test]
+    fn removals_drop_the_entity_from_the_map() {
+        let seed = json!({ "event": { "a": { "light.grow_led": { "s": "on" } } } });
+        let removal = json!({ "event": { "r": ["light.grow_led"] } });
+        let (rx, changed) = apply(&[seed, removal]);
+        assert_eq!(changed, [] as [(String, String); 0]);
+        assert!(!rx.borrow().entities.contains_key("light.grow_led"));
+    }
+
+    /// HA also emits `c` diffs for entities created while subscribed
+    /// (old state unknown) — the map grows instead of ignoring them.
+    #[test]
+    fn a_diff_on_an_unknown_entity_creates_it() {
+        let diff = json!({ "event": { "c": { "light.new_lamp": { "+": { "s": "on" } } } } });
+        let (rx, changed) = apply(&[diff]);
+        assert_eq!(
+            changed,
+            vec![("light.new_lamp".to_owned(), "on".to_owned())]
+        );
+        assert_eq!(rx.borrow().entities["light.new_lamp"].state, "on");
+    }
+
+    /// Older abridged messages carried bare `s`/`a` at the entity
+    /// level without a `+` wrapper; tolerate them alongside the
+    /// documented shapes.
+    #[test]
+    fn bare_s_and_a_keys_are_still_merged() {
+        let seed = json!({ "event": { "a": { "sensor.grow_co2": { "s": "850" } } } });
+        let legacy = json!({ "event": { "c": {
+            "sensor.grow_co2": { "s": "852", "a": { "unit_of_measurement": "ppm" } },
+        } } });
+        let (rx, changed) = apply(&[seed, legacy]);
+        assert_eq!(
+            changed,
+            vec![("sensor.grow_co2".to_owned(), "852".to_owned())]
+        );
+        let sensor = rx.borrow().entities["sensor.grow_co2"].clone();
+        assert_eq!(sensor.state, "852");
+        assert_eq!(
+            sensor.attributes.get("unit_of_measurement"),
+            Some(&json!("ppm"))
+        );
     }
 }

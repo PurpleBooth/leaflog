@@ -6,6 +6,26 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-19 — the subscribe seed is not a state change (light auto-log)
+
+### D119: `subscribe_entities` seed events populate the live map but never emit auto-log light flips; only `c`-diff state updates do
+
+The "Keine Daten" bug fix (real HA sends its initial batch as full
+states under `event.a`, which the live-map parser dropped) raised the
+question of whether a seed should count as a light flip for the
+auto-capture log. It must not: a seed is HA replaying the current
+truth after every (re)connect and rebind, so counting it would write
+a `lights` entry per grow on every app boot — a reconnect log-spam
+channel, not a diary. The flip record stays reserved for observed
+transitions, which arrive as `c` diffs carrying a state. Unverified
+in reverse: no test or feature depends on auto-log entries appearing
+on connect.
+
+The mock replays real HA's shapes (`a` for the batch, `+`-wrapped
+`c` diffs for ticks) so the integration suite exercises the parser
+that ships; its older abridged shapes remain tolerated in the parser
+for forwards compatibility.
+
 ## 2026-11-19 — deny: build-only unsafe-libyaml advisory ignored (CI repair)
 
 ### D118: `RUSTSEC-2024-0449` is ignored in `deny.toml` — the advisory rides a build-time-only path of the localisation mechanism

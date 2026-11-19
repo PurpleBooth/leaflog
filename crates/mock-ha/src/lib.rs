@@ -103,14 +103,16 @@ impl FakeRoom {
         ])
     }
 
-    /// One `subscribe_entities` initial-change batch.
-    fn initial_changes(&self) -> Value {
+    /// One `subscribe_entities` initial batch: full compressed
+    /// states (`{entity: {s, a}}`), as real HA sends them under
+    /// `event.a` — no `+` diff wrapper here.
+    fn initial_states(&self) -> Value {
         json!({
-            "sensor.grow_temperature": { "+": { "s": format!("{:.1}", self.temperature), "a": { "unit_of_measurement": "°C" } } },
-            "sensor.grow_humidity": { "+": { "s": format!("{:.0}", self.humidity), "a": { "unit_of_measurement": "%" } } },
-            "sensor.grow_soil_moisture": { "+": { "s": format!("{:.0}", self.soil_moisture), "a": { "unit_of_measurement": "%" } } },
-            "sensor.grow_co2": { "+": { "s": format!("{:.0}", self.co2), "a": { "unit_of_measurement": "ppm" } } },
-            "light.grow_led": { "+": { "s": if self.light_on { "on" } else { "off" }, "a": {} } },
+            "sensor.grow_temperature": { "s": format!("{:.1}", self.temperature), "a": { "unit_of_measurement": "°C" } },
+            "sensor.grow_humidity": { "s": format!("{:.0}", self.humidity), "a": { "unit_of_measurement": "%" } },
+            "sensor.grow_soil_moisture": { "s": format!("{:.0}", self.soil_moisture), "a": { "unit_of_measurement": "%" } },
+            "sensor.grow_co2": { "s": format!("{:.0}", self.co2), "a": { "unit_of_measurement": "ppm" } },
+            "light.grow_led": { "s": if self.light_on { "on" } else { "off" }, "a": {} },
         })
     }
 
@@ -141,20 +143,22 @@ impl FakeRoom {
         self.co2 += co2_delta;
     }
 
-    /// The next change batch after a tick. Home Assistant only
-    /// pushes what changed, so the binary light enters the batch
-    /// only when the session has not yet pushed its current state —
+    /// The next diff event after a tick. Home Assistant only
+    /// pushes what changed, wrapped per entity in `+` additions
+    /// (`event.c`), so the binary light enters the batch only when
+    /// the session has not yet pushed its current state —
     /// `toggle_light` therefore reaches subscribers on the next tick
     /// (the contract `toggle_light` documents).
     fn tick_changes(&self, light_changed: bool) -> Value {
         let mut changes = json!({
-            "sensor.grow_temperature": { "s": format!("{:.1}", self.temperature) },
-            "sensor.grow_humidity": { "s": format!("{:.0}", self.humidity) },
-            "sensor.grow_soil_moisture": { "s": format!("{:.0}", self.soil_moisture) },
-            "sensor.grow_co2": { "s": format!("{:.0}", self.co2) },
+            "sensor.grow_temperature": { "+": { "s": format!("{:.1}", self.temperature) } },
+            "sensor.grow_humidity": { "+": { "s": format!("{:.0}", self.humidity) } },
+            "sensor.grow_soil_moisture": { "+": { "s": format!("{:.0}", self.soil_moisture) } },
+            "sensor.grow_co2": { "+": { "s": format!("{:.0}", self.co2) } },
         });
         if light_changed {
-            changes["light.grow_led"] = json!({ "s": if self.light_on { "on" } else { "off" } });
+            changes["light.grow_led"] =
+                json!({ "+": { "s": if self.light_on { "on" } else { "off" } } });
         }
         changes
     }
@@ -511,7 +515,7 @@ where
                 let room = state.room.lock().await;
                 json!({
                     "id": *next_event_id, "type": "event",
-                    "event": { "c": room.initial_changes() },
+                    "event": { "a": room.initial_states() },
                 })
             };
             *next_event_id += 1;
@@ -549,10 +553,10 @@ impl FakeRoom {
     }
 }
 
-/// Exposes the initial-change batch for tests.
+/// Exposes the initial state batch for tests.
 #[must_use]
-pub fn initial_changes(room: &FakeRoom) -> Value {
-    room.initial_changes()
+pub fn initial_states(room: &FakeRoom) -> Value {
+    room.initial_states()
 }
 
 #[cfg(test)]
@@ -577,24 +581,26 @@ mod tests {
         assert_eq!(co2["attributes"]["unit_of_measurement"], "ppm");
         assert_eq!(co2["state"], "850");
 
-        // The subscribe_entities initial batch seeds the same reading.
-        let initial = initial_changes(&room);
+        // The subscribe_entities initial batch seeds the same reading
+        // as full compressed states (real HA's `event.a` shape).
+        let initial = initial_states(&room);
         assert_eq!(
-            initial["sensor.grow_co2"]["+"]["s"], "850",
+            initial["sensor.grow_co2"]["s"], "850",
             "initial batch seeds CO₂"
         );
         assert_eq!(
-            initial["sensor.grow_co2"]["+"]["a"]["unit_of_measurement"],
+            initial["sensor.grow_co2"]["a"]["unit_of_measurement"],
             "ppm"
         );
 
-        // Every tick pushes a fresh CO₂ state: the live tile has
-        // something new to show on each push (the light starts off,
-        // so a dark tent accumulates CO₂).
+        // Every tick pushes a fresh CO₂ state as a `+` addition (real
+        // HA's `event.c` shape): the live tile has something new to
+        // show on each push (the light starts off, so a dark tent
+        // accumulates CO₂).
         let mut after_tick = room;
         after_tick.tick();
         let changes = after_tick.tick_changes(false);
-        assert_eq!(changes["sensor.grow_co2"]["s"], "852");
+        assert_eq!(changes["sensor.grow_co2"]["+"]["s"], "852");
     }
 
     /// RH and soil moisture cycle instead of clamping (grow-page
