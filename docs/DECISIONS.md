@@ -6,6 +6,43 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-19 — keying the remaining surfaces (locale ticket 04, git-bug 394f2c8)
+
+### D116: the frontend's residual English is an inventoried set of non-prose exceptions, and error banners substitute a localised status line only when the backend sends none
+
+The sweep closes the keying: nav landmark, Home (intro, privacy,
+backend-health block), the ingress spike, the route fallback, the
+history report (predicted-vs-actual phrasing, aggregate titles as
+signals, table headers) and every error banner are catalog-driven.
+What deliberately stays unkeyed — each judged in the ticket 04 grep
+sweep (quoted literals with a letter and a space across
+`crates/leaflog-frontend/src`, minus classes, styles and URLs):
+
+- Chart/SVG wire anchors already on the D114 list (`{role} history`
+  aria suffix, `No data: ` prefix, the "Events" series token).
+- `{date} UTC` in the chart tooltip: the ISO timestamp is
+  locale-neutral and UTC is the zone designation, not prose.
+- Numeric and unit compositions (`{value:.0} kPa`, `{grams:.0} g`,
+  `{ec} µS/cm`, ` / {total_days}`, `{name} ({id})`): numbers, SI
+  units and user data joined by punctuation — nothing to translate
+  (SPEC story 22 keeps units out of the catalogs).
+- `role_style`'s axis names (chart_option.rs): `°C / °F` is unit
+  text; `on / off` belongs to a light-role chart that ticket D110's
+  night shading retired — the match arm is dead at runtime and stays
+  only for shape completeness.
+- Rust doc comments, `expect`/`assert` panic strings, and test
+  fixtures: developer-facing, not UI prose (the vale gate covers the
+  comments).
+
+For the banners: `ApiFailure` now distinguishes "the backend said
+something" (`message: Some(_)`, displayed as-is — deep detail stays
+English per D113, and backend messages already arrive localised)
+from "only a status came back" (`message: None`).
+`api::failure_text` substitutes the catalog's
+`errors.request_failed` ("Request failed (status N).") for `None`,
+so no set site keeps a baked English fallback; transport errors
+(gloo's text) remain library deep detail under the same rule.
+
 ## 2026-11-19 — keying the remaining form flows (locale ticket 03, git-bug d32e7c5)
 
 ### D115: the plural keys need ICU's compiled data; it is baked at build time
@@ -77,7 +114,6 @@ Deep interpolated detail text stays English by design: store errors,
 alert kinds, grow names ride inside the templates as-is. The German
 templates are du-form in Home Assistant register ("Ungültige Anfrage:",
 "schau im Panel nach").
-||||||| parent of 8146b40 (feat(frontend): key the grow-form name placeholder; e2e and docs)
 
 ## 2026-11-18 — EN+DE localisation plumbing (locale ticket 01, git-bug b67691f)
 
