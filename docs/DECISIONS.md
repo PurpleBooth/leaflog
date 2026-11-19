@@ -6,6 +6,40 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-19 — api failure classification and dismissable error banners
+
+### D121: `ApiFailure` is classified before display; raw transport/parse detail goes to the browser console, never the banner
+
+`failure_text` used to return `ApiFailure.message` verbatim, so a status-0
+serde/transport error string reached the `alert-error` banner as user copy.
+The display path now classifies first (`classify_failure` in api.rs):
+
+- `BackendMessage` — status above 0 and a non-empty message. The message
+  was decoded from the backend's localized error catalog (D113) and passes
+  through unchanged, as D116 already mandated.
+- `StatusOnly` — status above 0 with no usable message. Renders the
+  localized generic `errors.request_failed` with the status interpolated.
+- `TransportOrParse` — status 0. Renders the new calm copy
+  `errors.request_interrupted` (en + de) and logs the raw detail via
+  `web_sys::console` so diagnosis survives; the raw string never enters
+  the DOM (copy hygiene and privacy in one move).
+
+The classification is a pure function pinned by unit tests with
+representative payloads (serde noise at status 0, a German catalog
+sentence at 4xx/5xx, an empty message at 500). `failure_text` keeps its
+`(&ApiFailure, Locale) -> String` signature, so every banner call site
+(chart, grows, history, live) inherits the fix without touching them.
+The console logging is inlined into the match arm rather than extracted:
+the nursery const-fn lint would fire on a helper that only exists to
+carry a wasm-only body, and no `#[allow]` register row is warranted for
+a two-line block.
+
+The `ErrorIf` banner gains dismiss (clears the error signal) and retry
+(a bare `window.location().reload()` — no URL construction, so the
+ingress prefix is untouched). Both buttons are `min-h-11` touch targets
+with `aria-label`s from the new `errors.dismiss` / `errors.retry` keys;
+the `p[role=alert]` contract that the e2e specs pin is unchanged.
+
 ## 2026-11-19 — two surface tiers, ui primitives, gap consolidation (design re-anchor)
 
 ### D120: the frontend adopts exactly two surface tiers — full card (`px-5 py-4`) and tile (`px-4 py-3`) — with the class recipes extracted to `crates/leaflog-frontend/src/ui.rs`

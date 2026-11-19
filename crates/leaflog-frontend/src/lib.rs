@@ -125,15 +125,48 @@ pub(crate) fn non_empty(value: String) -> Option<String> {
 }
 
 /// The shared inline error banner: renders while `error` holds a
-/// message, clears from the tree when it is `None`. Lived in the
-/// equipment module before the catalogue left (D078); every data page
-/// imports it from the crate root now.
+/// message, clears from the tree when it is `None`. Retry reloads
+/// the page in place — a bare `location.reload()`, no URL is built,
+/// so the ingress prefix survives; dismiss clears the signal. Both
+/// buttons are `min-h-11` targets. Lived in the equipment module
+/// before the catalogue left (D078); every data page imports it
+/// from the crate root now.
 #[component]
 #[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
 pub(crate) fn ErrorIf(error: RwSignal<Option<String>>) -> impl IntoView {
+    let i18n = use_i18n();
     move || {
         error.get().map(|message| {
-            view! { <p class="alert alert-error py-2 px-4 text-sm" role="alert">{message}</p> }
+            let retry_label = t_string!(i18n, errors.retry).into_owned();
+            let dismiss_label = t_string!(i18n, errors.dismiss).into_owned();
+            view! {
+                <p
+                    class="alert alert-error py-2 px-4 text-sm flex flex-wrap items-center gap-2"
+                    role="alert"
+                >
+                    <span class="min-w-0 flex-1">{message}</span>
+                    <span class="flex flex-wrap gap-2">
+                        <button
+                            class="btn btn-outline btn-sm min-h-11"
+                            aria-label={retry_label}
+                            on:click=move |_| {
+                                if let Some(window) = leptos::web_sys::window() {
+                                    let _ = window.location().reload();
+                                }
+                            }
+                        >
+                            {retry_label.clone()}
+                        </button>
+                        <button
+                            class="btn btn-ghost btn-sm min-h-11"
+                            aria-label={dismiss_label}
+                            on:click=move |_| error.set(None)
+                        >
+                            {dismiss_label.clone()}
+                        </button>
+                    </span>
+                </p>
+            }
         })
     }
 }

@@ -21,7 +21,10 @@
     },
     "errors": {
         "request_timeout": "Die Anfrage an {{ path }} hat immer wieder das Zeitlimit überschritten.",
-        "request_failed": "Anfrage fehlgeschlagen (Status {{ status }})."
+        "request_failed": "Anfrage fehlgeschlagen (Status {{ status }}).",
+        "request_interrupted": "Die Verbindung wurde unterbrochen, bevor eine Antwort ankam.",
+        "dismiss": "Ausblenden",
+        "retry": "Erneut versuchen"
     },
     "phases": {
         "germination": "Keimung",

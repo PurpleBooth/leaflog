@@ -21,7 +21,10 @@
     },
     "errors": {
         "request_timeout": "The request to {{ path }} kept timing out.",
-        "request_failed": "Request failed (status {{ status }})."
+        "request_failed": "Request failed (status {{ status }}).",
+        "request_interrupted": "The connection was interrupted before an answer arrived.",
+        "dismiss": "Dismiss",
+        "retry": "Retry"
     },
     "phases": {
         "germination": "Germination",

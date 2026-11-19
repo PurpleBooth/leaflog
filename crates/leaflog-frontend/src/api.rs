@@ -19,32 +19,80 @@ use crate::i18n::Locale;
 pub struct ApiFailure {
     /// HTTP status code (or 0 when the request never completed).
     pub status: u16,
-    /// The server's error message or a transport error string — both
-    /// display as-is (the backend localises its own wrappers, D113,
-    /// and transport detail is library text). `None` when the backend
-    /// answered with a status but no `error` field: [`failure_text`]
-    /// then substitutes the localised generic so no raw English prose
-    /// reaches the banner.
+    /// The backend's error message (already localised, D113), or the
+    /// transport/parse detail when the request never produced a
+    /// decodable answer. Display routes through [`failure_text`];
+    /// raw detail never renders (D121).
     pub message: Option<String>,
 }
 
-/// The banner text for an [`ApiFailure`]: deep detail when present,
-/// else the localised generic for the HTTP status.
+/// Which display bucket an [`ApiFailure`] falls into (D121): backend
+/// answers carry localised catalog copy, the other buckets get
+/// substituted frontend copy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FailureKind {
+    /// The backend answered with a status and its own (already
+    /// localised, D113) message: passes through verbatim.
+    BackendMessage,
+    /// The backend answered with a status but no usable message.
+    StatusOnly,
+    /// The request never produced a decodable answer — a transport
+    /// error or a body that failed to parse. Raw detail, never
+    /// rendered.
+    TransportOrParse,
+}
+
+/// Sorts an [`ApiFailure`] into its display [`FailureKind`] (D121).
 ///
-/// "Deep detail" is the backend's message (already localised, D113)
-/// or the transport error string. Call sites read the locale
-/// untracked — the string is built once when the failure lands,
-/// matching the request-timeout precedent in the grows list (which
-/// composes its message before the request).
+/// Status 0 always means transport or parse noise; a status above 0
+/// is a backend answer, and its message is trusted when non-empty.
+#[must_use]
+pub(crate) fn classify_failure(failure: &ApiFailure) -> FailureKind {
+    if failure.status == 0 {
+        return FailureKind::TransportOrParse;
+    }
+    let message_usable = failure
+        .message
+        .as_deref()
+        .is_some_and(|message| !message.is_empty());
+    if message_usable {
+        FailureKind::BackendMessage
+    } else {
+        FailureKind::StatusOnly
+    }
+}
+
+/// The banner text for an [`ApiFailure`], chosen by [`classify_failure`] (D121).
+///
+/// A backend catalog message passes through verbatim (already
+/// localised, D113), a bare status renders the localised generic, and
+/// transport/parse noise renders `errors.request_interrupted` while
+/// the raw detail goes to the browser console only.
+///
+/// Call sites read the locale untracked — the string is built once
+/// when the failure lands, matching the request-timeout precedent in
+/// the grows list (which composes its message before the request).
 #[must_use]
 pub fn failure_text(failure: &ApiFailure, locale: Locale) -> String {
-    failure.message.clone().unwrap_or_else(|| {
-        td_string!(
+    match classify_failure(failure) {
+        FailureKind::BackendMessage => failure.message.clone().unwrap_or_default(),
+        FailureKind::StatusOnly => td_string!(
             locale,
             errors.request_failed,
             status = failure.status.to_string()
-        )
-    })
+        ),
+        FailureKind::TransportOrParse => {
+            // Raw detail goes to the browser console so diagnosis
+            // survives the substitution; it never enters the DOM (D121).
+            #[cfg(target_arch = "wasm32")]
+            web_sys::console::error_1(&wasm_bindgen::JsValue::from(format!(
+                "request failed (status {}): {}",
+                failure.status,
+                failure.message.as_deref().unwrap_or("no detail"),
+            )));
+            td_string!(locale, errors.request_interrupted).to_string()
+        }
+    }
 }
 
 /// `GET` a JSON endpoint.
@@ -332,4 +380,105 @@ pub struct PhaseWindowData {
 pub struct LocaleReport {
     /// BCP-47 tag of the HA user language (e.g. `en`, `de`).
     pub language: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ApiFailure, FailureKind, classify_failure, failure_text};
+    use crate::i18n::Locale;
+
+    fn failure(status: u16, message: Option<&str>) -> ApiFailure {
+        ApiFailure {
+            status,
+            message: message.map(str::to_owned),
+        }
+    }
+
+    /// Status 0 is the "no decodable answer" bucket: transport
+    /// errors and serde noise both land there, whatever the string
+    /// says.
+    #[test]
+    fn transport_and_parse_noise_at_status_zero_classifies_as_transport_or_parse() {
+        let parse_noise = failure(0, Some("missing field `role` at line 1 column 42"));
+        assert!(matches!(
+            classify_failure(&parse_noise),
+            FailureKind::TransportOrParse
+        ));
+        let transport = failure(0, None);
+        assert!(matches!(
+            classify_failure(&transport),
+            FailureKind::TransportOrParse
+        ));
+    }
+
+    /// A status plus a message means the backend answered and
+    /// localized its own catalog text (D113) — trusted as-is (D116).
+    #[test]
+    fn backend_status_with_message_classifies_as_backend_message() {
+        let not_found = failure(404, Some("Anbau nicht gefunden."));
+        let unavailable = failure(503, Some("Verbindung zum Supervisor nicht möglich."));
+        assert!(matches!(
+            classify_failure(&not_found),
+            FailureKind::BackendMessage
+        ));
+        assert!(matches!(
+            classify_failure(&unavailable),
+            FailureKind::BackendMessage
+        ));
+    }
+
+    /// A status without a usable message renders the localized
+    /// generic instead of an empty banner; an empty string counts as
+    /// unusable.
+    #[test]
+    fn status_without_usable_message_classifies_as_status_only() {
+        let bare = failure(500, None);
+        let empty = failure(500, Some(""));
+        assert!(matches!(classify_failure(&bare), FailureKind::StatusOnly));
+        assert!(matches!(classify_failure(&empty), FailureKind::StatusOnly));
+    }
+
+    /// Backend messages are already localized copy: they pass
+    /// through byte for byte.
+    #[test]
+    fn backend_messages_pass_through_unchanged() {
+        let german = failure(409, Some("Der Anbau ist bereits abgeschlossen."));
+        assert_eq!(
+            failure_text(&german, Locale::de),
+            "Der Anbau ist bereits abgeschlossen."
+        );
+    }
+
+    /// A bare status renders the localized generic with the status
+    /// interpolated.
+    #[test]
+    fn status_only_renders_the_localized_generic() {
+        assert_eq!(
+            failure_text(&failure(500, None), Locale::en),
+            "Request failed (status 500)."
+        );
+        assert_eq!(
+            failure_text(&failure(500, None), Locale::de),
+            "Anfrage fehlgeschlagen (Status 500)."
+        );
+    }
+
+    /// Transport/parse noise is replaced by the calm interrupted
+    /// line; the raw detail must never reach the banner.
+    #[test]
+    fn transport_or_parse_noise_is_never_rendered() {
+        let raw = failure(0, Some("missing field `role` at line 1 column 42"));
+        let english = failure_text(&raw, Locale::en);
+        let german = failure_text(&raw, Locale::de);
+        assert_eq!(
+            english,
+            "The connection was interrupted before an answer arrived."
+        );
+        assert_eq!(
+            german,
+            "Die Verbindung wurde unterbrochen, bevor eine Antwort ankam."
+        );
+        assert!(!english.contains("missing field"));
+        assert!(!german.contains("missing field"));
+    }
 }
