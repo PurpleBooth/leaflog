@@ -2,6 +2,17 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.13.0 - 2026-11-19
+#### Documentation
+- **(release)** the v0.13.0 upgrade note - (a745746) - billie.codes
+#### Features
+- feeding schedules are product-dose grids, fit per grow - (a61f76f) - billie.codes
+#### Miscellaneous
+- **(release)** bump version to 0.12.0 - (2fa43a1) - github-actions[bot]
+- **(version)** 0.13.0 - (93d6994) - billie.codes
+
+- - -
+
 ## v0.12.0 - 2026-11-19
 #### Bug Fixes
 - **(backend)** land the subscribe_entities seed so steady entities report available - (1bd23b7) - billie.codes

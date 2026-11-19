@@ -2,6 +2,20 @@
 All notable changes to the Leaflog Home Assistant app. Version headings are exactly `## <version>` — Home Assistant slices release notes on them. Generated file; never edit by hand.
 
 - - -
+## 0.13.0
+
+_Released 2026-11-19._
+
+#### Documentation
+- **(release)** the v0.13.0 upgrade note - (a745746) - billie.codes
+#### Features
+- feeding schedules are product-dose grids, fit per grow - (a61f76f) - billie.codes
+#### Miscellaneous
+- **(release)** bump version to 0.12.0 - (2fa43a1) - github-actions[bot]
+- **(version)** 0.13.0 - (93d6994) - billie.codes
+
+- - -
+
 ## 0.12.0
 
 _Released 2026-11-19._
