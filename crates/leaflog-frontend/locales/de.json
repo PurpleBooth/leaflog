@@ -317,7 +317,8 @@
         "danger_heading": "Gefahrenzone",
         "danger_text": "Beim Löschen des Anbaus gehen seine Pflanzen, Einträge und Fotos verloren. Das kann nicht rückgängig gemacht werden.",
         "delete_grow": "Anbau löschen",
-        "delete_confirm": "„{{ name }}“ mit allen Pflanzen, Einträgen und Fotos löschen? Das kann nicht rückgängig gemacht werden."
+        "delete_confirm": "„{{ name }}“ mit allen Pflanzen, Einträgen und Fotos löschen? Das kann nicht rückgängig gemacht werden.",
+        "unsaved_confirm": "Du hast ungespeicherte Änderungen. Trotzdem verlassen?"
     },
     "form": {
         "advanced": "Erweiterte Einstellungen",

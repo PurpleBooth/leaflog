@@ -317,7 +317,8 @@
         "danger_heading": "Danger zone",
         "danger_text": "Deleting a grow takes its plants, log entries and photos with it. This cannot be undone.",
         "delete_grow": "Delete grow",
-        "delete_confirm": "Delete '{{ name }}' with all its plants, log entries and photos? This cannot be undone."
+        "delete_confirm": "Delete '{{ name }}' with all its plants, log entries and photos? This cannot be undone.",
+        "unsaved_confirm": "You have unsaved changes. Leave anyway?"
     },
     "form": {
         "advanced": "Advanced settings",

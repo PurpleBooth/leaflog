@@ -221,6 +221,73 @@ test('edit page: dismissing the delete confirm keeps the page', async ({
   expect(stillThere.ok()).toBe(true);
 });
 
+test('edit page: a clean form leaves without the unsaved-changes guard', async ({
+  page,
+  request,
+}) => {
+  const name = uniqueName('E2E Clean Exit Grow');
+  const growId = await createGrow(request, name);
+  await openEdit(page, growId);
+
+  // Nothing edited yet: the nav anchor navigates directly, no confirm.
+  await page.getByRole('link', { name: 'Grows', exact: true }).click();
+  await expect(page).toHaveURL(url('/grows'));
+});
+
+test('edit page: abandoning unsaved edits asks first and can stay', async ({
+  page,
+  request,
+}) => {
+  const name = uniqueName('E2E Guard Stay Grow');
+  const growId = await createGrow(request, name);
+  await openEdit(page, growId);
+
+  // Edit the name, then click a plain nav anchor. Playwright
+  // auto-dismisses dialogs by default, so the handler is wired
+  // explicitly: capture the message, then dismiss.
+  const renamed = uniqueName('E2E Guard Stay v2');
+  const nameField = page.getByLabel('Name *', { exact: true });
+  await nameField.fill(renamed);
+  let asked: string | null = null;
+  page.once('dialog', (dialog) => {
+    asked = dialog.message();
+    return dialog.dismiss();
+  });
+  await page.getByRole('link', { name: 'Grows', exact: true }).click();
+
+  // Dismissed: still on the edit page, edits intact, nothing saved.
+  expect(asked).toBe('You have unsaved changes. Leave anyway?');
+  await expect(page).toHaveURL(url(`/grows/${growId}/edit`));
+  await expect(nameField).toHaveValue(renamed);
+  const stored = await api<{ name: string }>(request, 'GET', `api/grows/${growId}`);
+  expect(stored!.name).toBe(name);
+});
+
+test('edit page: abandoning unsaved edits can be confirmed', async ({
+  page,
+  request,
+}) => {
+  const name = uniqueName('E2E Guard Leave Grow');
+  const growId = await createGrow(request, name);
+  await openEdit(page, growId);
+
+  const renamed = uniqueName('E2E Guard Leave v2');
+  await page.getByLabel('Name *', { exact: true }).fill(renamed);
+  let asked: string | null = null;
+  page.once('dialog', (dialog) => {
+    asked = dialog.message();
+    return dialog.accept();
+  });
+  await page.getByRole('link', { name: 'Grows', exact: true }).click();
+
+  // Accepted: the guard asked, the SPA navigated, the edit was
+  // never saved.
+  expect(asked).toBe('You have unsaved changes. Leave anyway?');
+  await expect(page).toHaveURL(url('/grows'));
+  const stored = await api<{ name: string }>(request, 'GET', `api/grows/${growId}`);
+  expect(stored!.name).toBe(name);
+});
+
 test('overview: no configuration surfaces left on the grow page', async ({
   page,
   request,

@@ -6,6 +6,51 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-19 — the unsaved-changes guard on the grow edit page (D125)
+
+### D125: dirty-form guard without a router blocker — capture-phase click guard, pure snapshot seam, native beforeunload
+
+- **Mechanism**: leptos_router 0.8 ships no navigation blocker API, so
+  the edit page answers for itself while its form is dirty. A
+  document-level capture-phase click listener runs before the router's
+  global anchor handler (bubble phase), which honours
+  `default_prevented`: preventing the event suppresses the SPA
+  navigation, the page asks `window.confirm` with the localized
+  `grow_edit.unsaved_confirm` once, and a confirmed leave re-navigates
+  through the router with the plain route path (the runtime ingress
+  base is stripped back off the anchor's `href` — a base-prefixed path
+  handed to `navigate` would double the prefix). The in-page Cancel
+  button is a button, not an anchor, and runs the same dirty check
+  explicitly. Modified clicks (ctrl/meta/shift/alt) and anchors with
+  an explicit `target` open elsewhere and never abandon the page, so
+  they are not intercepted; `route_path_from_href` returns `None` for
+  anything that is not an in-app route path (foreign URLs, hash
+  links) and the guard leaves those alone too.
+- **Snapshot seam**: `FormSnapshot` + `edits_dirty(before, after)` in
+  edit.rs — a plain `PartialEq` struct over exactly the form-editable
+  fields (the fitted feed template is not form-editable and stays
+  out). Text fields trim at snapshot time and blank notes read as
+  `None`, matching the form's `non_empty` write path, so whitespace
+  churn is never an edit worth a confirm — but blanking previously
+  set notes is one. The baseline (`StoredValue`) anchors when the grow
+  loads and re-anchors after a successful save, before that save
+  navigates, so the guard never fires on the path home after a
+  write. Save failures leave the baseline untouched: the form stays
+  dirty, exactly what the guard should report.
+- **beforeunload scope**: while dirty, a window `beforeunload`
+  listener prevent-defaults and sets `returnValue`, giving the
+  browser's native prompt for reloads and tab closes. It is
+  deliberately not localized (browsers render it themselves) and not
+  duplicated in-page; it is not covered by e2e (headless Chromium
+  cannot surface it) — the two listener paths share the same dirty
+  check the anchor guard exercises.
+- The delete flow keeps its own confirmation: the danger-zone button
+  navigates only via the `deleted` signal's `<Redirect>` after the
+  API call succeeded, and no anchor is involved, so the guard never
+  fires on it.
+
+---
+
 ## 2026-11-19 — debug-only spike route and the status-first health card (D124)
 
 ### D124: the `/spike` route is cfg-gated to debug builds; the health card leads with a status line
