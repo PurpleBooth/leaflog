@@ -44,7 +44,7 @@ pub struct GrowAccuracy {
 }
 
 /// The whole history section (spec §4.15): per-grow accuracy plus
-/// yield aggregates by strain label, substrate and feed template.
+/// yield aggregates by strain label, substrate and feed schedule.
 #[derive(Debug, Serialize)]
 pub struct HistoryReport {
     /// One row per grow, oldest start first.
@@ -54,8 +54,8 @@ pub struct HistoryReport {
     pub yield_by_label: Vec<YieldAggregate>,
     /// Totals grouped by substrate label.
     pub yield_by_substrate: Vec<YieldAggregate>,
-    /// Totals grouped by feed-template name.
-    pub yield_by_feed_template: Vec<YieldAggregate>,
+    /// Totals grouped by feed-schedule name.
+    pub yield_by_feed_schedule: Vec<YieldAggregate>,
 }
 
 /// The aggregate key for grows without a strain label: they group
@@ -75,7 +75,7 @@ async fn history(State(state): State<AppState>) -> Result<Json<HistoryReport>, A
             let mut accuracy = Vec::new();
             let mut by_label: Vec<(String, YieldSummary)> = Vec::new();
             let mut by_substrate: Vec<(String, YieldSummary)> = Vec::new();
-            let mut by_template: Vec<(String, YieldSummary)> = Vec::new();
+            let mut by_schedule: Vec<(String, YieldSummary)> = Vec::new();
             for grow in &grows {
                 // The strain label is display only (D075: never a
                 // recommendation input); yields group by it across
@@ -114,18 +114,19 @@ async fn history(State(state): State<AppState>) -> Result<Json<HistoryReport>, A
                     summary.clone(),
                 ));
                 by_substrate.push((grow.substrate.clone(), summary.clone()));
-                let template = grow.feed_template_id.as_deref().and_then(|id| {
-                    store::feeds::get_template(conn, id)
+                let schedule = grow.feed_schedule_id.as_deref().and_then(|id| {
+                    store::feeds::try_get_schedule(conn, id)
                         .ok()
-                        .map(|template| template.name)
+                        .flatten()
+                        .map(|schedule| schedule.name)
                 });
-                by_template.push((template.unwrap_or_else(|| "none".to_owned()), summary));
+                by_schedule.push((schedule.unwrap_or_else(|| "none".to_owned()), summary));
             }
             Ok(HistoryReport {
                 accuracy,
                 yield_by_label: aggregate_yields(&by_label),
                 yield_by_substrate: aggregate_yields(&by_substrate),
-                yield_by_feed_template: aggregate_yields(&by_template),
+                yield_by_feed_schedule: aggregate_yields(&by_schedule),
             })
         })
         .await?;
@@ -193,11 +194,11 @@ async fn next_run(
                 .to_owned();
             let input = GrowInput {
                 name: format!("{} (next run)", previous.name),
-                feed_template_id: previous.feed_template_id.clone(),
+                feed_schedule_id: previous.feed_schedule_id.clone(),
                 planned_veg_weeks: previous.planned_veg_weeks,
                 // The grow-carried facts (D075) travel with the rerun:
                 // label and photoperiod verbatim, like substrate and
-                // the feed template already do.
+                // the feed schedule already do.
                 strain_label: previous.strain_label.clone(),
                 photoperiod: previous.photoperiod,
                 heat_tolerance: previous.heat_tolerance,

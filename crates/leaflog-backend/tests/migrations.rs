@@ -577,7 +577,7 @@ async fn dropping_the_strain_catalogue_backfills_label_and_photoperiod() {
             conn,
             &GrowInput {
                 name: "Post-drop run".to_owned(),
-                feed_template_id: None,
+                feed_schedule_id: None,
                 planned_veg_weeks: None,
                 strain_label: "Moby Dick".to_owned(),
                 photoperiod: PhotoperiodType::Auto,
@@ -690,7 +690,7 @@ async fn dropping_the_seed_bank_loses_tables_and_the_grow_column() {
             conn,
             &GrowInput {
                 name: "Post-drop run".to_owned(),
-                feed_template_id: None,
+                feed_schedule_id: None,
                 planned_veg_weeks: None,
                 strain_label: String::new(),
                 photoperiod: PhotoperiodType::default(),
@@ -832,7 +832,7 @@ async fn dropping_spaces_and_equipment_loses_tables_and_the_grow_column() {
             conn,
             &GrowInput {
                 name: "Post-drop run".to_owned(),
-                feed_template_id: None,
+                feed_schedule_id: None,
                 planned_veg_weeks: None,
                 strain_label: String::new(),
                 photoperiod: PhotoperiodType::default(),

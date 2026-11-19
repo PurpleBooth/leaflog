@@ -132,7 +132,7 @@ pub fn OnboardingWizard() -> impl IntoView {
                                 .into_owned()
                         })
                     },
-                    feed_template_id: None,
+                    feed_schedule_id: None,
                     planned_veg_weeks: None,
                     // The strain label is the free text the grow
                     // carries (D075); photoperiod sits beside it.

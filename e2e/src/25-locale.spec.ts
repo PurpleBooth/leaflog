@@ -8,7 +8,7 @@
 // English at this stage.
 
 import { test, expect } from '@playwright/test';
-import { createGrow, url, uniqueName } from './helpers';
+import { createGrow, url, uniqueName , createSchedule } from './helpers';
 
 test.describe('german-forced browser', () => {
   test.use({ locale: 'de-DE' });
@@ -53,7 +53,10 @@ test.describe('german-forced browser', () => {
 
   test('grow detail renders german surfaces', async ({ page, request }) => {
     const name = uniqueName('E2E Deutsche Details');
-    const growId = await createGrow(request, name);
+    const scheduleId = await createSchedule(request, 'Deutscher Düngeplan');
+    const growId = await createGrow(request, name, {
+      feed_schedule_id: scheduleId,
+    });
 
     await page.goto(url(`/grows/${growId}`));
 
@@ -75,7 +78,7 @@ test.describe('german-forced browser', () => {
     ).toBeVisible();
     await expect(page.getByText('Luft', { exact: true })).toBeVisible();
 
-    // Feed schedule section heading (catalog grow.feed_schedule).
+    // Feeding schedule section heading (catalog grow.feed_schedule).
     await expect(
       page.getByRole('heading', { name: 'Düngeplan', exact: true }),
     ).toBeVisible();
@@ -145,7 +148,7 @@ test.describe('german-forced browser', () => {
       page.getByRole('heading', { name: 'Ertrag nach Substrat' }),
     ).toBeVisible();
     await expect(
-      page.getByRole('heading', { name: 'Ertrag nach Düngervorlage' }),
+      page.getByRole('heading', { name: 'Ertrag nach Düngeplan' }),
     ).toBeVisible();
     await expect(
       page.getByRole('columnheader', { name: 'Nass (g)' }).first(),

@@ -52,6 +52,14 @@ _Avoid_: Safe zone, corridor (in UI text), recommended range, band (alone), band
 What the roots grow in: soil, coco, hydro, or a user label. Stored as `substrate`; shown to users as the medium.
 _Avoid_: Substrate in UI text, soil as the field name (soil is one value)
 
+**Feeding schedule**:
+A reusable feeding chart: products as rows (name, unit, free-text group), dose ranges as stage columns — Propagation, Veg*, Flowering week 1…N, Water. Fitting it to a grow's actual timeline produces the grow's Fitted schedule. Any schedule may be assigned to any grow — the grow's Medium does not restrict which schedules are offered.
+_Avoid_: Feed template, nutrient schedule, feed plan, Düngeplan (that is the Fitted schedule)
+
+**Fitted schedule**:
+The result of fitting a Feeding schedule to a grow's actual timeline: one row per grow day with the phase, week number and that day's product doses; the plain-water flush tail is protected. Stored per grow and rendered even if the schedule is later deleted; refitting replaces it wholesale.
+_Avoid_: Feed plan, Düngeplan (that is the German UI word for this), template (a schedule is never grow-specific)
+
 **Day count**:
 Elapsed days since the grow started, shown against the expected total (e.g. 2 / 150).
 _Avoid_: Grow age, progress

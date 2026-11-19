@@ -87,22 +87,29 @@ async fn create_grow(
     Json(input): Json<GrowInput>,
 ) -> Result<(StatusCode, Json<leaflog_core::grows::Grow>), ApiError> {
     validate_grow(&input)?;
-    if let Some(feed_template_id) = &input.feed_template_id {
-        state
+    if let Some(feed_schedule_id) = &input.feed_schedule_id {
+        let lookup = state
             .db
             .with({
-                let feed_template_id = feed_template_id.clone();
-                move |conn| store::feeds::get_template(conn, &feed_template_id)
+                let feed_schedule_id = feed_schedule_id.clone();
+                move |conn| store::feeds::try_get_schedule(conn, &feed_schedule_id)
             })
             .await?;
+        if lookup.is_none() {
+            return Err(ApiError::NotFound);
+        }
     }
     let grow = state
         .db
-        .with(move |conn| -> Result<_, crate::db::StoreError> {
+        .with(move |conn| -> Result<_, crate::api::ApiError> {
             // A new grow binds no sensors yet; the grower picks its
             // entities in the binding pickers (onboarding step 1 or the
             // grow page).
-            store::grows::create(conn, &input)
+            let grow = store::grows::create(conn, &input)?;
+            // An assigned schedule fits immediately: the plan exists
+            // from the grow's first day (ADR 0004).
+            crate::api_feeds::fit_grow(conn, &grow.id)?;
+            Ok(grow)
         })
         .await?;
     Ok((StatusCode::CREATED, Json(grow)))
@@ -131,21 +138,28 @@ async fn update_grow(
     Json(input): Json<GrowInput>,
 ) -> Result<Json<leaflog_core::grows::Grow>, ApiError> {
     validate_grow(&input)?;
-    if let Some(feed_template_id) = &input.feed_template_id {
-        state
+    if let Some(feed_schedule_id) = &input.feed_schedule_id {
+        let lookup = state
             .db
             .with({
-                let feed_template_id = feed_template_id.clone();
-                move |conn| store::feeds::get_template(conn, &feed_template_id)
+                let feed_schedule_id = feed_schedule_id.clone();
+                move |conn| store::feeds::try_get_schedule(conn, &feed_schedule_id)
             })
             .await?;
+        if lookup.is_none() {
+            return Err(ApiError::NotFound);
+        }
     }
     let grow = state
         .db
-        .with(move |conn| -> Result<_, store::StoreOrNotFound> {
+        .with(move |conn| -> Result<_, crate::api::ApiError> {
             // Bindings are the only sensor concept (feature-strip
             // D075): editing a grow never touches them.
-            store::grows::update(conn, &id, &input)
+            let grow = store::grows::update(conn, &id, &input)?;
+            // Re-assigning (or editing veg weeks of) a grow with a
+            // schedule refits the plan to the new timeline (ADR 0004).
+            crate::api_feeds::fit_grow(conn, &id)?;
+            Ok(grow)
         })
         .await?;
     Ok(Json(grow))
@@ -291,6 +305,13 @@ async fn create_action(
     validate_action(&mut input)?;
     let tz = canonical_timezone(&state).await;
     let grow_id_for_capture = id.clone();
+    // Flip, phase pins and harvest move the timeline the plan is fit
+    // against (ADR 0004), so those writes re-fit the schedule.
+    let timeline_moved = matches!(
+        input.action_type,
+        ActionType::Flip | ActionType::PhaseChange | ActionType::Harvest
+    );
+    let grow_id_for_refit = id.clone();
     let entry = state
         .db
         .with(move |conn| -> Result<_, ApiError> {
@@ -358,6 +379,14 @@ async fn create_action(
         .await?;
     // Auto-capture bound sensors (spec 4.2); never blocks the entry.
     crate::api_ha::capture_into(&state, &grow_id_for_capture, &entry.id).await;
+    if timeline_moved {
+        // Best-effort re-fit: an incomplete forecast simply leaves the
+        // existing plan in place (ADR 0004).
+        state
+            .db
+            .with(move |conn| crate::api_feeds::fit_grow(conn, &grow_id_for_refit).map(|_| ()))
+            .await?;
+    }
     Ok((StatusCode::CREATED, Json(entry)))
 }
 

@@ -25,11 +25,12 @@ use crate::ErrorIf;
 use crate::Home;
 use crate::api::{self, ApiFailure};
 use crate::env_section::EnvironmentSection;
-use crate::feed::FeedPanel;
+use crate::feed::FeedSection;
 use crate::gantt::GanttTimeline;
 use crate::i18n::{Locale, t, t_string, td_string, use_i18n};
 use crate::labels;
 use crate::route_href;
+use crate::schedules::ScheduleSummary;
 use crate::ui;
 use crate::ui::{EmptyState, PendingUndo, UNDO_WINDOW_MS, UndoBanner, live_undo, now_ms};
 
@@ -669,8 +670,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             </form>
             <GanttTimeline grow_id=grow_id.get() />
 
-            <h3>{t!(i18n, grow.feed_schedule)}</h3>
-            <FeedPanel grow_id=grow_id.get() />
+            <FeedSection grow_id=grow_id.get() />
 
             <div class="grid gap-4 items-start lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
                 <div>
@@ -822,6 +822,14 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
 pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
     let i18n = use_i18n();
+    let schedules = RwSignal::new(Vec::<ScheduleSummary>::new());
+    Effect::new(move |_| {
+        spawn_local(async move {
+            if let Ok(list) = api::get::<Vec<ScheduleSummary>>("api/schedules").await {
+                schedules.set(list);
+            }
+        });
+    });
     view! {
         <div class="grid gap-2 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
             <label class="fieldset">
@@ -865,6 +873,30 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
                         .iter()
                         .map(|substrate| view! { <option value=*substrate>{*substrate}</option> })
                         .collect::<Vec<_>>()}
+                </select>
+            </label>
+            <label class="fieldset">
+                <span class="fieldset-label">{t_string!(i18n, schedules.assign_label)}</span>
+                <select class="select"
+                    prop:value=move || draft.get().feed_schedule_id.unwrap_or_default()
+                    on:change=move |ev| {
+                        let value = event_target_value(&ev);
+                        draft.update(|d| {
+                            d.feed_schedule_id = (!value.is_empty()).then_some(value);
+                        });
+                    }
+                >
+                    <option value="">{t_string!(i18n, schedules.assign_none)}</option>
+                    {move || {
+                        schedules.get()
+                            .iter()
+                            .map(|summary| {
+                                let id = summary.schedule.id.clone();
+                                let name = summary.schedule.name.clone();
+                                view! { <option value=id>{name}</option> }
+                            })
+                            .collect::<Vec<_>>()
+                    }}
                 </select>
             </label>
             <label class="fieldset">
@@ -1242,7 +1274,7 @@ where
 pub fn empty_grow() -> GrowInput {
     GrowInput {
         name: String::new(),
-        feed_template_id: None,
+        feed_schedule_id: None,
         planned_veg_weeks: None,
         strain_label: String::new(),
         photoperiod: PhotoperiodType::default(),
@@ -1404,7 +1436,7 @@ mod landing_pick_tests {
         Grow {
             id: id.to_owned(),
             name: id.to_owned(),
-            feed_template_id: None,
+            feed_schedule_id: None,
             planned_veg_weeks: None,
             strain_label: String::new(),
             photoperiod: PhotoperiodType::default(),

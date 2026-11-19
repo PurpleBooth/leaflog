@@ -57,6 +57,8 @@ struct FormSnapshot {
     real_watts: Option<f64>,
     /// Whether the lamp is dimmable.
     dimmable: bool,
+    /// The assigned feeding schedule; `None` = unassigned.
+    feed_schedule_id: Option<String>,
 }
 
 impl FormSnapshot {
@@ -84,6 +86,7 @@ impl FormSnapshot {
             light_tolerance: input.light_tolerance,
             real_watts: input.real_watts,
             dimmable: input.dimmable,
+            feed_schedule_id: input.feed_schedule_id.clone(),
         }
     }
 }
@@ -455,7 +458,7 @@ mod form_snapshot_tests {
         Grow {
             id: "01J0000000000000000000000".to_owned(),
             name: "Balcony tent".to_owned(),
-            feed_template_id: Some("tpl-bloom".to_owned()),
+            feed_schedule_id: Some("tpl-bloom".to_owned()),
             planned_veg_weeks: Some(5),
             strain_label: "Northern Lights".to_owned(),
             photoperiod: PhotoperiodType::Photoperiod,

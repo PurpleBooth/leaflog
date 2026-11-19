@@ -6,6 +6,73 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-19 — feeding schedules replace EC feed templates (D128–D130)
+
+### D128: a feeding schedule is a product-dose grid; EC/pH targets leave the feed model and the three builtin EC templates die unconverted
+
+- **Model** (ADR 0004): `FeedSchedule` carries `name`, free-text
+  `source`, `flower_weeks` (clamped 1–24) and its own `ScheduleProduct`
+  rows (free-text name/group/note, unit `ml_per_l` | `g_per_l`,
+  `ProductDoses { propagation, veg, flower: week-indexed, water }`).
+  `Dose { min, max }` stores SI micro-steps (µL/L, mg/L, ×1000 steps);
+  display and input run through `format_dose`/`parse_dose_text` with
+  locale decimals (en-dash ranges, comma decimals, inverted ranges
+  tolerated). No product catalogue — schedules own their rows, free-text
+  groups do the visual grouping (≤ 64 products, client-validated).
+- **Fit**: `fit_schedule` time-warps the grid onto the grow's actual
+  timeline at week granularity; the WATER column pins to the substrate
+  flush and is never dropped. The result freezes into `feed_plan` +
+  `feed_plan_day` (doses as JSON) per grow; the overview renders from
+  plan days alone so finished grows and deleted schedules still show
+  their frozen plan. Editing a schedule refits every grow that uses it.
+- **Migration V19**: drops `feed_template`, `feed_template_row` and all
+  EC `feed_plan_day` rows, renames `grow.feed_template_id` →
+  `feed_schedule_id`. **No EC→dose conversion**: a converted guess would
+  read as authoritative while being fiction. The library ships empty by
+  design; `tests/upgrade.rs` pins the empty-library invariant.
+- **History**: `yield_by_feed_template` becomes
+  `yield_by_feed_schedule`, aggregated by schedule name (unassigned
+  grows under "none") — schedule names are user-owned and may collide;
+  accepted for a single-user diary.
+
+### D129: the grow→schedule reference has no database foreign key; integrity lives in the store layer
+- **Constraint**: SQLite cannot retarget or add an FK column in place,
+  and a table rebuild inside a refinery migration runs with
+  `PRAGMA foreign_keys=ON` (set before `migrate()` in `db.rs`; the
+  pragma is a no-op inside the per-migration transaction, so a
+  migration cannot turn it off). Rebuilding `grow` under FK-ON would
+  fire its cascades; `writable_schema` hacks are disqualified. V19
+  therefore adds `feed_schedule_id TEXT` without a REFERENCES clause.
+- **Integrity in Rust**: grow create/update 404 on an unknown schedule
+  id (`try_get_schedule`, the same pattern the template validation
+  used); schedule delete nulls every referencing `grow.feed_schedule_id`
+  in the same transaction before dropping the schedule's rows. Orphaned
+  ids can only appear by direct database edits; the reader treats an
+  unresolvable id as unassigned.
+- **Semantics**: schedules outlive grows. Deleting a grow never touches
+  the schedule; deleting a schedule leaves finished grows with their
+  frozen plan (rendered from `feed_plan` alone).
+
+### D130: an assigned schedule with no forecast flowering window shows a pending card, not a fabricated plan
+
+- **Constraint**: `fit_schedule` needs the grow's actual timeline,
+  and the forecast produces a flowering window only once the grow has
+  one — an autoflower from photoperiod + planned veg weeks, a
+  photoperiod grow only after the flip is logged. Fitting "something"
+  pre-flip would invent a flip day: the this-week card would print
+  flowering week numbers while the plant is still in veg.
+- **Decision**: `fit_grow` returns `None` when the forecast has no
+  flowering window (the grow keeps its previous plan, if any) and the
+  overview renders the assignment as a **pending card** (schedule
+  name, "the plan appears once the grow's flowering window is known",
+  link to the schedule) instead of the quiet row. Create and update
+  still fit immediately when the window exists; flip, phase-pin and
+  harvest writes re-fit (best-effort — an incomplete forecast leaves
+  the stored plan untouched).
+- **Cost**: a photoperiod grow shows propagation/veg guidance only
+  after the flip. Accepted: honest gaps beat invented weeks.
+
+
 ## 2026-11-19 — recents in the quick-add dialog picker (D127)
 
 ### D127: the quick-add dialog remembers the last three picks in localStorage, most recent first, and degrades to no recents when storage is unavailable
@@ -3217,3 +3284,8 @@ once per crate.
 | leaflog-frontend | component `ErrorIf` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` |
 | leaflog-frontend | components `EntityIdChip`, `EmptyState`, `SectionHeader`, `UndoBanner` in `ui.rs` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` (arrive with D120; `UndoBanner` with D126) |
 | leaflog-frontend | component `LightCycleEditor` in `light_cycle.rs` | `clippy::too_many_lines` | Declarative view code, not logic; splitting would obscure the form (same pattern as the M2 register row) |
+| leaflog-frontend | components `FeedSection` in `feed.rs`, `ScheduleEditorPage`/`EditorGrid` in `schedules.rs` | `clippy::needless_pass_by_value` | Leptos component props are taken by value by the `#[component]` macro contract |
+| leaflog-frontend | components `FeedSection` in `feed.rs`, `SchedulesPage`/`ScheduleEditorPage`/`EditorGrid` in `schedules.rs` | `clippy::too_many_lines` | Declarative view code, not logic; splitting would obscure the form (same pattern as `LightCycleEditor`) |
+| leaflog-backend | `api_feeds.rs` handlers | `clippy::needless_pass_by_value` | Same Axum handler contract as the `app.rs` row above |
+| leaflog-backend | `api_feeds.rs` handlers | `clippy::unused_async` | Same Axum contract as the `app.rs` row above |
+| leaflog-core | `feed.rs` module + `TdsScale` conversions | `clippy::cast_possible_truncation`, `clippy::cast_sign_loss` | SI scaling rounds to whole µL/L·mg/L steps before casting; grafted substrate/TDS arithmetic (ADR 0004) |

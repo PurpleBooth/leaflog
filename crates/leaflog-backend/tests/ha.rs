@@ -723,7 +723,7 @@ async fn grow_days_count_local_calendar_days_in_the_ha_timezone() {
         .post(format!("{base}/api/grows"))
         .json(&json!({
             "name": "TZ run",
-            "feed_template_id": null,
+            "feed_schedule_id": null,
             "substrate": "soil",
             "started_on": "2026-11-10",
             "status": "active",
@@ -786,7 +786,7 @@ async fn env_alerts_route_to_ha_under_optin_rate_limited_and_quiet() {
         .post(format!("{base}/api/grows"))
         .json(&json!({
             "name": "Hot run",
-            "feed_template_id": null,
+            "feed_schedule_id": null,
             "substrate": "soil",
             "started_on": "2026-10-01",
             "status": "active",
@@ -2252,7 +2252,7 @@ async fn run_one_alert_pass(mock: &mock_ha::MockState, base: &str, bridge: &HaBr
         .post(format!("{base}/api/grows"))
         .json(&json!({
             "name": "Hot run",
-            "feed_template_id": null,
+            "feed_schedule_id": null,
             "substrate": "soil",
             "started_on": "2026-10-01",
             "status": "active",

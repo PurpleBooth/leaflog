@@ -124,6 +124,28 @@ Three subsystems and one rule, per D073/D074:
 - **The app lands on the active grow's overview**, not a marketing
   page; fresh installs still meet the onboarding wizard.
 
+## Feeding schedules (ADR 0004, D128–D129)
+
+Feeding is a product-dose grid, not an EC plan. A **feeding schedule**
+owns its product rows (free-text name/group/note, `ml/L` or `g/L`) and
+stage dose ranges (`ProductDoses`: propagation, veg, week-indexed
+flowering, water; SI micro-steps internally, locale decimals on
+screen). Fitting time-warps the grid onto the grow's actual timeline at
+week granularity and freezes the result into `feed_plan` +
+`feed_plan_day` — the overview renders from those plan days alone, so
+a finished grow keeps its plan even if the schedule later disappears.
+Schedules live in a global library (`/schedules`), outlive grows, and
+ignore the grow's medium; deleting one nulls the grows' references and
+leaves their frozen plans untouched (integrity in Rust, D129 — no
+database FK: migrations run under `foreign_keys=ON` inside refinery's
+per-migration transaction, so a rebuild is impossible in place).
+
+The builtin EC feed templates and their fitted EC days were removed by
+migration V19 with no EC→dose conversion (a converted guess would
+masquerade as authority); the library ships empty and users enter real
+charts. Refits run on assign, on timeline changes and on schedule
+edits (the editor refits every grow that uses the schedule on save).
+
 ## Localisation (D112, ADR 0003)
 
 The app speaks English and German. Strings live in compile-time

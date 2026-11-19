@@ -186,7 +186,7 @@ async fn sensors_replace_is_atomic_when_an_insert_fails() {
                     conn,
                     &GrowInput {
                         name: "Closet run".to_owned(),
-                        feed_template_id: None,
+                        feed_schedule_id: None,
                         planned_veg_weeks: None,
                         strain_label: String::new(),
                         photoperiod: PhotoperiodType::default(),
@@ -434,11 +434,42 @@ async fn autoflower_grow_forecasts_and_fits_without_a_strain() {
     let base = spawn_with(db).await;
     let client = reqwest::Client::new();
 
+    // The schedule lives in the library first: created here, assigned
+    // to the grow at create time, refitted on demand.
+    let schedule: Value = client
+        .post(format!("{base}/api/schedules"))
+        .json(&json!({
+            "name": "All-purpose bloom",
+            "source": null,
+            "flower_weeks": 9,
+            "products": [{
+                "id": "",
+                "name": "Bloom",
+                "unit": "ml_per_l",
+                "group": "Feeds",
+                "note": null,
+                "doses": {
+                    "propagation": null,
+                    "veg": { "min": 1000, "max": 2000 },
+                    "flower": [{ "min": 2000, "max": 4000 }, null, null, null, null, null, null, null, null],
+                    "water": null,
+                }
+            }],
+            "created_at": "",
+            "updated_at": "",
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
     let grow: Value = client
         .post(format!("{base}/api/grows"))
         .json(&json!({
             "name": "Auto run",
             "photoperiod": "auto",
+            "feed_schedule_id": schedule["id"],
             "substrate": "soil",
             "started_on": started_today(),
             "status": "active",
@@ -473,19 +504,10 @@ async fn autoflower_grow_forecasts_and_fits_without_a_strain() {
     assert_eq!(flower["likely_end"], 70);
     assert_eq!(flower["latest_end"], 77);
 
-    // Feed-fit consumes the same windows: the auto grow fits on the
-    // toggle alone, no record consulted.
-    let templates: Vec<Value> = client
-        .get(format!("{base}/api/feeds/templates"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let fit: Value = client
-        .post(format!("{base}/api/grows/{grow_id}/feed/fit"))
-        .json(&json!({ "template_id": templates[0]["id"] }))
+    // The refit consumes the same windows: the auto grow fits on the
+    // photoperiod alone, no record consulted.
+    let plan: Value = client
+        .post(format!("{base}/api/grows/{grow_id}/feed/refit"))
         .send()
         .await
         .unwrap()
@@ -493,10 +515,38 @@ async fn autoflower_grow_forecasts_and_fits_without_a_strain() {
         .await
         .unwrap();
     assert!(
-        !fit["after"]["days"].as_array().unwrap().is_empty(),
+        !plan["days"].as_array().unwrap().is_empty(),
         "the fitted plan has days"
     );
-    assert!(fit["after"]["actual_total_days"].as_u64().unwrap() > 0);
+    assert_eq!(plan["flower_weeks"], 9);
+    assert_eq!(plan["schedule_name"], "All-purpose bloom");
+    // The edit page's refit loop walks the grows that use the chart.
+    let used_by: Vec<Value> = client
+        .get(format!(
+            "{base}/api/schedules/{}/grows",
+            schedule["id"].as_str().unwrap()
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(used_by, [json!(grow_id)]);
+    // The edit page's refit loop walks the grows that use the chart.
+    let used_by: Vec<Value> = client
+        .get(format!(
+            "{base}/api/schedules/{}/grows",
+            schedule["id"].as_str().unwrap()
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(used_by, [json!(grow_id)]);
+    assert_eq!(plan["schedule_id"], schedule["id"]);
 
     // Contrast: an unset photoperiod grow without a plan is
     // open-ended — no flower window, and the fit refuses.
@@ -527,9 +577,9 @@ async fn autoflower_grow_forecasts_and_fits_without_a_strain() {
     let windows = forecast["windows"].as_array().unwrap();
     assert_eq!(windows.len(), 3, "open-ended photoperiod veg");
     assert_eq!(windows.last().unwrap()["phase"], "vegetative");
+    // No schedule assigned, no flower window: the refit refuses.
     let status = client
-        .post(format!("{base}/api/grows/{photo_id}/feed/fit"))
-        .json(&json!({ "template_id": templates[0]["id"] }))
+        .post(format!("{base}/api/grows/{photo_id}/feed/refit"))
         .send()
         .await
         .unwrap()
@@ -869,7 +919,7 @@ async fn harvest_weights_round_trip_and_summarise() {
         .json(&json!({
             "name": "Harvest run",
             "strain_label": "My own cross",
-            "feed_template_id": null,
+            "feed_schedule_id": null,
             "substrate": "soil",
             "started_on": "2026-08-01",
             "status": "active",
@@ -976,17 +1026,36 @@ async fn history_accuracy_on_a_golden_grow_and_next_run_by_reference() {
     let base = spawn_with(db).await;
     let client = reqwest::Client::new();
 
-    // A labelled grow (free-text strain label, D075) with a generic
-    // feed template fitted.
-    let templates: Vec<Value> = client
-        .get(format!("{base}/api/feeds/templates"))
+    // A labelled grow (free-text strain label, D075) with a feeding
+    // schedule assigned — its yield groups under the schedule name.
+    let schedule: Value = client
+        .post(format!("{base}/api/schedules"))
+        .json(&json!({
+            "name": "Bloom chart",
+            "source": null,
+            "flower_weeks": 8,
+            "products": [{
+                "id": "",
+                "name": "Bloom",
+                "unit": "ml_per_l",
+                "group": "Feeds",
+                "note": null,
+                "doses": {
+                    "propagation": null,
+                    "veg": null,
+                    "flower": [{ "min": 2000, "max": 2000 }, null, null, null, null, null, null, null, null],
+                    "water": null,
+                }
+            }],
+            "created_at": "",
+            "updated_at": "",
+        }))
         .send()
         .await
         .unwrap()
         .json()
         .await
         .unwrap();
-    let template = &templates[0];
 
     let grow: Value = client
         .post(format!("{base}/api/grows"))
@@ -994,7 +1063,7 @@ async fn history_accuracy_on_a_golden_grow_and_next_run_by_reference() {
             "name": "NL golden run",
             "strain_label": "Northern Lights",
             "photoperiod": "photoperiod",
-            "feed_template_id": template["id"],
+            "feed_schedule_id": schedule["id"],
             "planned_veg_weeks": 4,
             "substrate": "soil",
             "started_on": "2026-08-01",
@@ -1143,13 +1212,20 @@ async fn history_accuracy_on_a_golden_grow_and_next_run_by_reference() {
         .find(|row| row["label"] == "soil")
         .expect("yield grouped by substrate");
     assert_eq!(soil_yield["total_wet_g"], 100.0);
-    let template_yield = report["yield_by_feed_template"]
+    let schedule_yield = report["yield_by_feed_schedule"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|row| row["label"] == template["name"].as_str().unwrap())
-        .expect("yield grouped by feed template");
-    assert_eq!(template_yield["total_trimmed_g"], 23.0);
+        .find(|row| row["label"] == schedule["name"].as_str().unwrap())
+        .expect("yield grouped by feeding schedule");
+    assert_eq!(schedule_yield["total_trimmed_g"], 23.0);
+    let ungrouped = report["yield_by_feed_schedule"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["label"] == "none")
+        .expect("schedule-less grows group under none");
+    assert_eq!(ungrouped["total_trimmed_g"], 2.0);
 
     // The per-plant view ties the plant to its weights.
     let view: Value = client
@@ -1180,7 +1256,7 @@ async fn history_accuracy_on_a_golden_grow_and_next_run_by_reference() {
     assert_eq!(next["name"], "NL golden run (next run)");
     assert_eq!(next["strain_label"], "Northern Lights");
     assert_eq!(next["photoperiod"], "photoperiod");
-    assert_eq!(next["feed_template_id"], template["id"]);
+    assert_eq!(next["feed_schedule_id"], schedule["id"]);
     assert_eq!(next["substrate"], "soil");
     assert_eq!(next["status"], "active");
 }
@@ -1197,7 +1273,7 @@ async fn unavailable_bound_entities_render_no_data_and_can_rebind() {
         .post(format!("{base}/api/grows"))
         .json(&json!({
             "name": "Drift run",
-            "feed_template_id": null,
+            "feed_schedule_id": null,
             "substrate": "soil",
             "started_on": "2026-10-01",
             "status": "active",

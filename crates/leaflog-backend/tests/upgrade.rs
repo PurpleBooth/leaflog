@@ -162,12 +162,22 @@ async fn upgrade_adopts_reids_and_the_drop_surfaces_the_label() {
     // First boot after the upgrade seeds the one thing that is still
     // bundled data: the substrate/feed presets.
     seed::seed_feed_presets(&db).await.expect("feed presets");
-    let templates: i64 = db
+    let profiles: i64 = db
         .with(|conn| {
-            conn.query_row("SELECT COUNT(*) FROM feed_template", [], |r| r.get(0))
+            conn.query_row("SELECT COUNT(*) FROM substrate_profile", [], |r| r.get(0))
                 .map_err(StoreError::from)
         })
         .await
-        .expect("template count");
-    assert!(templates >= 3, "the presets seeded once: {templates}");
+        .expect("preset count");
+    assert!(profiles >= 3, "the presets seeded once: {profiles}");
+    // The feeding-schedule library ships empty (ADR 0004): the bundled
+    // grow data is substrate guidance only.
+    let schedules: i64 = db
+        .with(|conn| {
+            conn.query_row("SELECT COUNT(*) FROM feed_schedule", [], |r| r.get(0))
+                .map_err(StoreError::from)
+        })
+        .await
+        .expect("schedule count");
+    assert_eq!(schedules, 0, "the schedule library ships empty");
 }

@@ -75,7 +75,7 @@ export async function createGrow(
   const today = new Date().toISOString().slice(0, 10);
   const grow = await api<{ id: string }>(request, 'POST', 'api/grows', {
     name,
-    feed_template_id: null,
+    feed_schedule_id: null,
     substrate: 'soil',
     started_on: today,
     status: 'active',
@@ -83,6 +83,28 @@ export async function createGrow(
     ...overrides,
   });
   return grow!.id;
+}
+
+/** Creates a feeding schedule via the API and returns its id. */
+export async function createSchedule(
+  request: APIRequestContext,
+  name: string,
+): Promise<string> {
+  const schedule = await api<{ id: string }>(request, 'POST', 'api/schedules', {
+    name,
+    flower_weeks: 8,
+    products: [
+      {
+        name: 'Bio Bloom',
+        unit: 'ml_per_l',
+        group: 'Feeds',
+        doses: {
+          flower: [{ min: 1000, max: 4000 }, null, null, null, null, null, null, null],
+        },
+      },
+    ],
+  });
+  return schedule!.id;
 }
 
 /** Creates a plant in a grow via the API and returns its id. */

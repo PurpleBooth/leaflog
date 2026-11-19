@@ -1,94 +1,75 @@
-//! Feed template, fit, plan-day and substrate-profile API routes (M6).
+//! Feeding-schedule, plan and substrate-profile API routes (M6).
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
-use leaflog_core::feed::{FitConfig, SubstrateProfile};
-use serde::Deserialize;
-use serde_json::Value;
+use leaflog_core::feed::{FeedPlan, FeedSchedule, SubstrateProfile};
 
 use crate::api::ApiError;
 use crate::app::AppState;
 use crate::store;
 
-/// The feed routes.
+/// The schedule, plan and substrate routes.
 pub fn router() -> Router<AppState> {
     Router::new()
+        .route("/api/schedules", get(list_schedules).post(create_schedule))
         .route(
-            "/api/feeds/templates",
-            get(list_templates).post(create_template),
+            "/api/schedules/{id}",
+            get(get_schedule)
+                .put(update_schedule)
+                .delete(delete_schedule),
         )
-        .route(
-            "/api/feeds/templates/{id}",
-            get(get_template).delete(delete_template),
-        )
+        .route("/api/schedules/{id}/duplicate", post(duplicate_schedule))
+        .route("/api/schedules/{id}/grows", get(list_grow_ids))
+        .route("/api/grows/{id}/feed/plan", get(get_plan))
+        .route("/api/grows/{id}/feed/refit", post(refit_feed))
         .route("/api/substrates", get(list_profiles))
-        .route("/api/grows/{id}/feed/fit", get(get_plan).post(fit_feed))
 }
 
-/// Query for template listing.
-#[derive(Debug, Default, Deserialize)]
-struct TemplateQuery {
-    /// Filter by substrate label.
-    substrate: Option<String>,
-}
-
-// Extractors are taken by value because Axum requires it.
-#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
-async fn list_templates(
-    State(state): State<AppState>,
-    Query(query): Query<TemplateQuery>,
-) -> Result<Json<Vec<store::feeds::FeedTemplate>>, ApiError> {
-    let templates = state
-        .db
-        .with(move |conn| store::feeds::list_templates(conn, query.substrate.as_deref()))
-        .await?;
-    Ok(Json(templates))
-}
-
-// Extractors are taken by value because Axum requires it.
-#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-async fn create_template(
-    State(state): State<AppState>,
-    Json(template): Json<store::feeds::FeedTemplate>,
-) -> Result<(StatusCode, Json<store::feeds::FeedTemplate>), ApiError> {
-    if template.name.trim().is_empty() {
-        return Err(ApiError::BadRequest("name must not be empty".to_owned()));
+/// Maps a schedule validation failure to a client-facing message.
+fn validation_message(error: leaflog_core::feed::ScheduleValidationError) -> String {
+    use leaflog_core::feed::ScheduleValidationError as Error;
+    match error {
+        Error::Name => "the schedule name must not be empty".to_owned(),
+        Error::FlowerWeeks => "the flowering-week count is out of range".to_owned(),
+        Error::TooManyProducts => "too many product rows for one schedule".to_owned(),
+        Error::ProductName => "every product row needs a name".to_owned(),
     }
+}
+
+// Extractors are taken by value because Axum requires it.
+#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
+async fn list_schedules(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<store::feeds::ScheduleSummary>>, ApiError> {
+    let summaries = state.db.with(store::feeds::list_schedules).await?;
+    Ok(Json(summaries))
+}
+
+// Extractors are taken by value because Axum requires it.
+#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
+async fn create_schedule(
+    State(state): State<AppState>,
+    Json(schedule): Json<FeedSchedule>,
+) -> Result<(StatusCode, Json<FeedSchedule>), ApiError> {
+    schedule
+        .validate()
+        .map_err(|error| ApiError::BadRequest(validation_message(error)))?;
     let created = state
         .db
-        .with(move |conn| -> Result<_, crate::db::StoreError> {
-            let id = crate::db::new_id();
-            conn.execute(
-                "INSERT INTO feed_template (id, name, substrate, source, is_builtin, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6)",
-                rusqlite::params![
-                    id,
-                    template.name,
-                    template.substrate,
-                    template.source,
-                    crate::db::now_rfc3339(),
-                    crate::db::now_rfc3339(),
-                ],
-            )?;
-            for row in &template.rows {
-                conn.execute(
-                    "INSERT INTO feed_template_row (id, template_id, phase, day_offset, ec_target_us, ph_min, ph_max)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                    rusqlite::params![
-                        crate::db::new_id(),
-                        id,
-                        row.phase.label(),
-                        i64::from(row.day_offset),
-                        i64::from(row.ec_target_us),
-                        row.ph_min,
-                        row.ph_max,
-                    ],
-                )?;
+        .with(move |conn| -> Result<FeedSchedule, crate::db::StoreError> {
+            let mut schedule = schedule;
+            schedule.id = crate::db::new_id();
+            schedule.created_at = crate::db::now_rfc3339();
+            schedule.updated_at = schedule.created_at.clone();
+            for product in &mut schedule.products {
+                if product.id.is_empty() {
+                    product.id = crate::db::new_id();
+                }
             }
-            Ok(template)
+            store::feeds::put_schedule(conn, &schedule)?;
+            Ok(schedule)
         })
         .await?;
     Ok((StatusCode::CREATED, Json(created)))
@@ -96,41 +77,147 @@ async fn create_template(
 
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
-async fn get_template(
+/// The ids of the grows currently referencing a schedule: the edit
+/// page's refit loop walks this list after a schedule save so the
+/// frozen plans re-fit onto the new chart.
+#[allow(clippy::unused_async)] // Axum handler extractor contract; see docs/DECISIONS.md
+async fn list_grow_ids(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<store::feeds::FeedTemplate>, ApiError> {
-    let template = state
+) -> Result<Json<Vec<String>>, ApiError> {
+    let ids = state
         .db
-        .with(move |conn| store::feeds::get_template(conn, &id))
+        .with(move |conn| store::feeds::schedule_grow_ids(conn, &id))
         .await?;
-    Ok(Json(template))
+    Ok(Json(ids))
+}
+
+async fn get_schedule(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<FeedSchedule>, ApiError> {
+    let schedule = state
+        .db
+        .with(move |conn| store::feeds::get_schedule(conn, &id))
+        .await?;
+    Ok(Json(schedule))
+}
+
+// Extractors are taken by value because Axum requires it.
+#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
+async fn update_schedule(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(schedule): Json<FeedSchedule>,
+) -> Result<Json<FeedSchedule>, ApiError> {
+    schedule
+        .validate()
+        .map_err(|error| ApiError::BadRequest(validation_message(error)))?;
+    let updated = state
+        .db
+        .with(move |conn| -> Result<FeedSchedule, crate::api::ApiError> {
+            let mut schedule = schedule;
+            let existing = store::feeds::get_schedule(conn, &id)?;
+            schedule.id = id;
+            schedule.created_at = existing.created_at;
+            schedule.updated_at = crate::db::now_rfc3339();
+            for product in &mut schedule.products {
+                if product.id.is_empty() {
+                    product.id = crate::db::new_id();
+                }
+            }
+            store::feeds::put_schedule(conn, &schedule)?;
+            Ok(schedule)
+        })
+        .await?;
+    Ok(Json(updated))
 }
 
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 #[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
-async fn delete_template(
+async fn delete_schedule(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     state
         .db
-        .with(move |conn| -> Result<(), ApiError> {
-            let affected = conn
-                .execute(
-                    "DELETE FROM feed_template WHERE id = ?1",
-                    rusqlite::params![id],
-                )
-                .map_err(crate::db::StoreError::from)?;
-            if affected == 0 {
-                return Err(ApiError::NotFound);
-            }
-            Ok(())
-        })
+        .with(move |conn| store::feeds::delete_schedule(conn, &id))
         .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// Extractors are taken by value because Axum requires it.
+#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
+async fn duplicate_schedule(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<(StatusCode, Json<FeedSchedule>), ApiError> {
+    let copy = state
+        .db
+        .with(move |conn| store::feeds::duplicate_schedule(conn, &id))
+        .await?;
+    Ok((StatusCode::CREATED, Json(copy)))
+}
+
+// Extractors are taken by value because Axum requires it.
+#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
+#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
+async fn get_plan(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Option<FeedPlan>>, ApiError> {
+    let plan = state
+        .db
+        .with(move |conn| store::feeds::plan(conn, &id))
+        .await?;
+    Ok(Json(plan))
+}
+
+// Extractors are taken by value because Axum requires it.
+#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
+/// Fits the grow's assigned schedule to its timeline and stores the
+/// plan. `Ok(None)` when the grow has no schedule or its forecast is
+/// incomplete (the stored plan stays untouched); `Err` on store
+/// failures. The shared engine behind the assign-time fit and the
+/// explicit refit endpoint.
+pub(crate) fn fit_grow(
+    conn: &rusqlite::Connection,
+    grow_id: &str,
+) -> Result<Option<leaflog_core::feed::FeedPlan>, crate::api::ApiError> {
+    let grow = store::grows::get(conn, grow_id)?;
+    let Some(schedule_id) = grow.feed_schedule_id.clone() else {
+        return Ok(None);
+    };
+    let actuals = crate::api_phase::forecast_actuals(conn, grow_id)?;
+    let input =
+        leaflog_core::forecast::input_for(grow.photoperiod, grow.planned_veg_weeks, actuals);
+    let windows = leaflog_core::forecast::forecast(&input);
+    let Some(actual) = store::feeds::actual_from_forecast(&windows) else {
+        return Ok(None);
+    };
+    let schedule = store::feeds::get_schedule(conn, &schedule_id)?;
+    Ok(Some(store::feeds::fit_and_store(
+        conn, grow_id, &schedule, actual,
+    )?))
+}
+
+// Extractors are taken by value because Axum requires it.
+#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
+#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
+async fn refit_feed(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<FeedPlan>, ApiError> {
+    let plan = state
+        .db
+        .with(move |conn| -> Result<FeedPlan, crate::api::ApiError> {
+            let plan = fit_grow(conn, &id)?
+                .ok_or_else(|| ApiError::BadRequest("the grow has no schedule".to_owned()))?;
+            Ok(plan)
+        })
+        .await?;
+    Ok(Json(plan))
 }
 
 // Extractors are taken by value because Axum requires it.
@@ -141,78 +228,4 @@ async fn list_profiles(
 ) -> Result<Json<Vec<SubstrateProfile>>, ApiError> {
     let profiles = state.db.with(store::feeds::list_profiles).await?;
     Ok(Json(profiles))
-}
-
-// Extractors are taken by value because Axum requires it.
-#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
-async fn get_plan(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> Result<Json<Vec<leaflog_core::feed::FeedPlanDay>>, ApiError> {
-    let days = state
-        .db
-        .with(move |conn| store::feeds::plan_days(conn, &id))
-        .await?;
-    Ok(Json(days))
-}
-
-/// The fit request: template id + optional config.
-#[derive(Debug, Default, Deserialize)]
-struct FitRequest {
-    /// The template to fit onto the grow.
-    pub template_id: String,
-    /// EC step clamp override (µS/cm; default 200).
-    pub max_ec_step_us: Option<u32>,
-}
-
-// Extractors are taken by value because Axum requires it.
-#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-async fn fit_feed(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    Json(request): Json<FitRequest>,
-) -> Result<Json<Value>, ApiError> {
-    let result = state
-        .db
-        .with(move |conn| -> Result<_, ApiError> {
-            let grow = store::grows::get(conn, &id)?;
-            let actuals = crate::api_phase::forecast_actuals(conn, &id)?;
-            let input = leaflog_core::forecast::input_for(
-                grow.photoperiod,
-                grow.planned_veg_weeks,
-                actuals,
-            );
-            let windows = leaflog_core::forecast::forecast(&input);
-            let actual = store::feeds::actual_from_forecast(&windows)
-                .ok_or_else(|| ApiError::BadRequest("forecast incomplete".to_owned()))?;
-
-            let template = store::feeds::get_template(conn, &request.template_id)?;
-            let config = FitConfig {
-                max_ec_step_us: request.max_ec_step_us.unwrap_or(200),
-            };
-            let result = store::feeds::fit_and_store(conn, &id, &template, actual, config)?;
-
-            // Return both the fit result and the template rows for the
-            // before/after diff view.
-            let before: Vec<Value> = template
-                .rows
-                .iter()
-                .map(|row| {
-                    serde_json::json!({
-                        "phase": row.phase.label(),
-                        "day_offset": row.day_offset,
-                        "ec_target_us": row.ec_target_us,
-                        "ph_min": row.ph_min,
-                        "ph_max": row.ph_max,
-                    })
-                })
-                .collect();
-            Ok(serde_json::json!({
-                "before": before,
-                "after": result,
-            }))
-        })
-        .await?;
-    Ok(Json(result))
 }

@@ -8,7 +8,7 @@
 // window control in the section.
 
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { api, createGrow, dismissOnboarding, url } from './helpers';
+import {api,createGrow,dismissOnboarding,url, createSchedule } from './helpers';
 
 test.beforeAll(async ({ request }) => {
   await dismissOnboarding(request);
@@ -74,7 +74,10 @@ test('one Environment section holds tiles and charts, above the Forecast', async
   page,
   request,
 }) => {
-  const growId = await createGrow(request, 'E2E Env Section');
+  const scheduleId = await createSchedule(request, 'Env Section Chart');
+  const growId = await createGrow(request, 'E2E Env Section', {
+    feed_schedule_id: scheduleId,
+  });
   await bindAndAwaitLive(request, growId);
   await seedSnapshots(request, growId);
   await openGrowPage(page, growId);
@@ -87,16 +90,16 @@ test('one Environment section holds tiles and charts, above the Forecast', async
   // inside the page, above the first chart card.
   await expect(page.locator('#env-strip')).toBeVisible();
 
-  // Section order: Environment, Forecast, Feed schedule, Timeline,
-  // Plants, Photos.
+  // Section order: Environment, Forecast, Feeding schedule,
+  // Timeline, Plants, Photos.
   const headings = await page
     .getByRole('heading')
     .evaluateAll((els) => els.map((el) => el.textContent?.trim() ?? ''));
   const at = (name: string) => headings.indexOf(name);
   expect(at('Environment'), `headings: ${headings.join(' | ')}`).toBeGreaterThanOrEqual(0);
   expect(at('Environment')).toBeLessThan(at('Forecast'));
-  expect(at('Forecast')).toBeLessThan(at('Feed schedule'));
-  expect(at('Feed schedule')).toBeLessThan(at('Timeline'));
+  expect(at('Forecast')).toBeLessThan(at('Feeding schedule'));
+  expect(at('Feeding schedule')).toBeLessThan(at('Timeline'));
   expect(at('Timeline')).toBeLessThan(at('Plants'));
   expect(at('Plants')).toBeLessThan(at('Photos'));
 });

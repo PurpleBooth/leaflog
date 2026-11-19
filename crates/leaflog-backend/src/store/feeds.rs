@@ -1,56 +1,27 @@
-//! Feed template, plan-day and substrate-profile persistence (M6).
+//! Feeding-schedule, frozen-plan and substrate-profile persistence (M6).
 
 use leaflog_core::feed::{
-    ActualTimeline, EcBands, FeedPhase, FeedPlanDay, FeedRow, FitConfig, SubstrateProfile,
-    TemplateTimeline, fit_feed,
+    ActualTimeline, DoseUnit, EcBands, FeedPlan, FeedPlanDay, FeedSchedule, FittedPhase,
+    ProductDoses, ScheduleProduct, SubstrateProfile,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::StoreOrNotFound;
 use crate::db::{StoreError, new_id, now_rfc3339};
 
-/// A stored feed template with its rows.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct FeedTemplate {
-    /// ULID.
-    pub id: String,
-    /// User-facing name.
-    pub name: String,
-    /// Substrate label.
-    pub substrate: String,
-    /// Provenance.
-    pub source: Option<String>,
-    /// True for the bundled generic templates.
-    pub is_builtin: bool,
-    /// Rows in order.
-    pub rows: Vec<FeedRow>,
-    /// Creation instant.
-    pub created_at: String,
-    /// Last modification instant.
-    pub updated_at: String,
-}
-
-/// Derives the template timeline from the rows (segment spans).
-#[must_use]
-pub fn timeline_from_rows(rows: &[FeedRow]) -> TemplateTimeline {
-    let span = |phase_check: fn(FeedPhase) -> bool| -> u16 {
-        rows.iter()
-            .filter(|row| phase_check(row.phase))
-            .map(|row| row.day_offset + 7) // assume 1 week per row
-            .max()
-            .unwrap_or(0)
-    };
-    TemplateTimeline {
-        seedling_days: span(|p| p == FeedPhase::Seedling),
-        veg_days: span(|p| matches!(p, FeedPhase::EarlyVeg | FeedPhase::LateVeg)),
-        flower_days: span(|p| {
-            matches!(
-                p,
-                FeedPhase::EarlyFlower | FeedPhase::MidFlower | FeedPhase::LateFlower
-            )
-        }),
-        ripen_flush_days: span(FeedPhase::is_protected),
-    }
+/// A library row: the schedule plus the facts the list view shows.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ScheduleSummary {
+    /// The schedule itself, products included.
+    pub schedule: FeedSchedule,
+    /// How many product rows the grid has.
+    pub product_count: i64,
+    /// Distinct group labels, in first-seen order.
+    pub groups: Vec<String>,
+    /// Distinct dose units, in first-seen order.
+    pub units: Vec<String>,
+    /// How many grows reference this schedule.
+    pub used_by: i64,
 }
 
 /// Derives the actual timeline from the forecast windows.
@@ -78,22 +49,272 @@ pub fn actual_from_forecast(
     })
 }
 
-/// Fits a template onto a grow's actual timeline and stores the plan
-/// days. Returns the fit result.
+/// Lists the schedule library with list-view facts.
 ///
 /// # Errors
 ///
-/// Returns a [`StoreOrNotFound`] on SQLite failures or missing rows.
+/// Returns a [`StoreError`] on SQLite failures.
+#[allow(clippy::missing_panics_doc)] // JSON of plain values cannot fail
+pub fn list_schedules(conn: &Connection) -> Result<Vec<ScheduleSummary>, StoreError> {
+    let mut stmt = conn.prepare("SELECT id FROM feed_schedule ORDER BY name COLLATE NOCASE")?;
+    let ids: Vec<String> = stmt
+        .query_map([], |row| row.get("id"))?
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut summaries = Vec::new();
+    for id in ids {
+        let schedule = match get_schedule(conn, &id) {
+            Ok(schedule) => schedule,
+            Err(super::StoreOrNotFound::NotFound(_)) => continue,
+            Err(other) => return Err(store_error(other)),
+        };
+        let product_count = conn.query_row(
+            "SELECT COUNT(*) FROM feed_schedule_product WHERE schedule_id = ?1",
+            params![&id],
+            |r| r.get(0),
+        )?;
+        let mut groups = Vec::new();
+        {
+            let mut stmt = conn.prepare(
+                "SELECT DISTINCT group_label FROM feed_schedule_product
+                 WHERE schedule_id = ?1 ORDER BY position",
+            )?;
+            for group in stmt.query_map(params![&id], |r| r.get::<_, String>(0))? {
+                let group = group?;
+                if !groups.contains(&group) {
+                    groups.push(group);
+                }
+            }
+        }
+        let mut units = Vec::new();
+        {
+            let mut stmt = conn.prepare(
+                "SELECT DISTINCT unit FROM feed_schedule_product WHERE schedule_id = ?1",
+            )?;
+            for unit in stmt.query_map(params![&id], |r| r.get::<_, String>(0))? {
+                let unit = unit?;
+                if !units.contains(&unit) {
+                    units.push(unit);
+                }
+            }
+        }
+        let used_by = conn.query_row(
+            "SELECT COUNT(*) FROM grow WHERE feed_schedule_id = ?1",
+            params![&id],
+            |r| r.get(0),
+        )?;
+        summaries.push(ScheduleSummary {
+            schedule,
+            product_count,
+            groups,
+            units,
+            used_by,
+        });
+    }
+    Ok(summaries)
+}
+
+fn store_error(other: StoreOrNotFound) -> StoreError {
+    match other {
+        super::StoreOrNotFound::Store(error) => error,
+        super::StoreOrNotFound::NotFound(_) => {
+            StoreError::Sqlite(rusqlite::Error::QueryReturnedNoRows)
+        }
+    }
+}
+
+/// Fetches one schedule with its product rows.
+///
+/// # Errors
+///
+/// Returns [`super::NotFound`] when the id does not exist.
+#[allow(clippy::missing_panics_doc)] // JSON of plain values cannot fail
+pub fn get_schedule(conn: &Connection, id: &str) -> Result<FeedSchedule, StoreOrNotFound> {
+    let mut schedule = conn
+        .query_row(
+            "SELECT id, name, source, flower_weeks, created_at, updated_at
+             FROM feed_schedule WHERE id = ?1",
+            params![id],
+            |row| {
+                Ok(FeedSchedule {
+                    id: row.get("id")?,
+                    name: row.get("name")?,
+                    source: row.get("source")?,
+                    flower_weeks: u8::try_from(row.get::<_, i64>("flower_weeks")?).unwrap_or(8),
+                    products: Vec::new(),
+                    created_at: row.get("created_at")?,
+                    updated_at: row.get("updated_at")?,
+                })
+            },
+        )
+        .optional()?
+        .ok_or_else(|| super::StoreOrNotFound::NotFound(super::NotFound))?;
+    let mut stmt = conn.prepare(
+        "SELECT id, name, unit, group_label, note, doses
+         FROM feed_schedule_product WHERE schedule_id = ?1 ORDER BY position",
+    )?;
+    let products = stmt
+        .query_map(params![id], |row| {
+            let doses_json: String = row.get("doses")?;
+            let unit_json: String = row.get("unit")?;
+            Ok(ScheduleProduct {
+                id: row.get("id")?,
+                name: row.get("name")?,
+                unit: serde_json::from_str(&unit_json).unwrap_or(DoseUnit::Milliliters),
+                group: row.get("group_label")?,
+                note: row.get("note")?,
+                doses: serde_json::from_str::<ProductDoses>(&doses_json).unwrap_or(ProductDoses {
+                    propagation: None,
+                    veg: None,
+                    flower: Vec::new(),
+                    water: None,
+                }),
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    schedule.products = products;
+    Ok(schedule)
+}
+
+/// Fetches one schedule, or `None` when absent.
+///
+/// # Errors
+///
+/// Returns a [`StoreError`] on SQLite failures.
+pub fn try_get_schedule(conn: &Connection, id: &str) -> Result<Option<FeedSchedule>, StoreError> {
+    match get_schedule(conn, id) {
+        Ok(schedule) => Ok(Some(schedule)),
+        Err(super::StoreOrNotFound::NotFound(_)) => Ok(None),
+        Err(other) => Err(store_error(other)),
+    }
+}
+
+/// Inserts or updates a schedule (products replaced wholesale).
+///
+/// # Errors
+///
+/// Returns a [`StoreError`] on SQLite failures.
+#[allow(clippy::missing_panics_doc)] // JSON of plain values cannot fail
+pub fn put_schedule(conn: &Connection, schedule: &FeedSchedule) -> Result<(), StoreError> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "INSERT INTO feed_schedule (id, name, source, flower_weeks, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT(id) DO UPDATE SET
+             name = ?2, source = ?3, flower_weeks = ?4, updated_at = ?6",
+        params![
+            schedule.id,
+            schedule.name,
+            schedule.source,
+            i64::from(schedule.flower_weeks),
+            schedule.created_at,
+            schedule.updated_at,
+        ],
+    )?;
+    tx.execute(
+        "DELETE FROM feed_schedule_product WHERE schedule_id = ?1",
+        params![schedule.id],
+    )?;
+    let now = now_rfc3339();
+    for (position, product) in schedule.products.iter().enumerate() {
+        tx.execute(
+            "INSERT INTO feed_schedule_product
+                 (id, schedule_id, position, name, unit, group_label, note, doses,
+                  created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                product.id,
+                schedule.id,
+                i64::try_from(position).unwrap_or(0),
+                product.name,
+                serde_json::to_string(&product.unit).expect("DoseUnit serializes"),
+                product.group,
+                product.note,
+                serde_json::to_string(&product.doses).expect("ProductDoses serializes"),
+                now,
+                now,
+            ],
+        )?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+/// Deletes a schedule, nulling the grow references first.
+///
+/// # Errors
+///
+/// Returns [`super::NotFound`] when the id does not exist.
+pub fn delete_schedule(conn: &Connection, id: &str) -> Result<(), StoreOrNotFound> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "UPDATE grow SET feed_schedule_id = NULL WHERE feed_schedule_id = ?1",
+        params![id],
+    )?;
+    tx.execute(
+        "DELETE FROM feed_schedule_product WHERE schedule_id = ?1",
+        params![id],
+    )?;
+    let affected = tx.execute("DELETE FROM feed_schedule WHERE id = ?1", params![id])?;
+    tx.commit()?;
+    if affected == 0 {
+        return Err(super::StoreOrNotFound::NotFound(super::NotFound));
+    }
+    Ok(())
+}
+
+/// Duplicates a schedule under a fresh id with ` (copy)` appended.
+///
+/// # Errors
+///
+/// Returns [`super::NotFound`] when the id does not exist.
+pub fn duplicate_schedule(conn: &Connection, id: &str) -> Result<FeedSchedule, StoreOrNotFound> {
+    let mut schedule = get_schedule(conn, id)?;
+    schedule.id = new_id();
+    schedule.name = format!("{} (copy)", schedule.name);
+    schedule.created_at = now_rfc3339();
+    schedule.updated_at = schedule.created_at.clone();
+    for product in &mut schedule.products {
+        product.id = new_id();
+    }
+    put_schedule(conn, &schedule)?;
+    Ok(schedule)
+}
+
+/// Lists the grow ids that reference a schedule.
+///
+/// # Errors
+///
+/// Returns a [`StoreError`] on SQLite failures.
+pub fn schedule_grow_ids(conn: &Connection, schedule_id: &str) -> Result<Vec<String>, StoreError> {
+    let mut stmt = conn.prepare("SELECT id FROM grow WHERE feed_schedule_id = ?1 ORDER BY name")?;
+    let ids = stmt
+        .query_map(params![schedule_id], |row| row.get(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(ids)
+}
+
+/// Fits a schedule onto a grow's actual timeline and stores the frozen
+/// plan. Returns the stored plan.
+///
+/// # Errors
+///
+/// Returns a [`StoreOrNotFound`] on SQLite failures.
 #[allow(clippy::missing_panics_doc)] // JSON of plain values cannot fail
 pub fn fit_and_store(
     conn: &Connection,
     grow_id: &str,
-    template: &FeedTemplate,
+    schedule: &FeedSchedule,
     actual: ActualTimeline,
-    config: FitConfig,
-) -> Result<leaflog_core::feed::FitResult, StoreOrNotFound> {
-    let template_timeline = timeline_from_rows(&template.rows);
-    let result = fit_feed(&template.rows, template_timeline, actual, config);
+) -> Result<FeedPlan, StoreOrNotFound> {
+    let result = leaflog_core::feed::fit_schedule(schedule, &actual);
+    let fitted_at = now_rfc3339();
+    let plan = FeedPlan {
+        schedule_id: schedule.id.clone(),
+        schedule_name: schedule.name.clone(),
+        flower_weeks: schedule.flower_weeks,
+        fitted_at,
+        days: result.days,
+    };
 
     // One transaction: a failed INSERT must roll back the DELETE so the
     // grow keeps its previously stored plan (D012 single-connection
@@ -103,148 +324,87 @@ pub fn fit_and_store(
         "DELETE FROM feed_plan_day WHERE grow_id = ?1",
         params![grow_id],
     )?;
-    for day in &result.days {
+    for day in &plan.days {
         tx.execute(
-            "INSERT INTO feed_plan_day (id, grow_id, grow_day, phase, ec_target_us, ph_min, ph_max, protected, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT INTO feed_plan_day (id, grow_id, grow_day, phase, week, doses, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 new_id(),
                 grow_id,
                 i64::from(day.grow_day),
                 day.phase.label(),
-                i64::from(day.ec_target_us),
-                day.ph_min,
-                day.ph_max,
-                i64::from(day.protected),
+                day.week.map(i64::from),
+                serde_json::to_string(&day.doses).expect("FittedDose serializes"),
                 now_rfc3339(),
             ],
         )?;
     }
+    tx.execute(
+        "INSERT INTO feed_plan (grow_id, schedule_id, schedule_name, flower_weeks, fitted_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(grow_id) DO UPDATE SET
+             schedule_id = ?2, schedule_name = ?3, flower_weeks = ?4, fitted_at = ?5",
+        params![
+            grow_id,
+            plan.schedule_id,
+            plan.schedule_name,
+            i64::from(plan.flower_weeks),
+            plan.fitted_at,
+        ],
+    )?;
     tx.commit()?;
-    Ok(result)
+    Ok(plan)
 }
 
-/// Lists a grow's stored plan days.
+/// Reads a grow's stored plan, or `None` when the grow has none.
 ///
 /// # Errors
 ///
 /// Returns a [`StoreError`] on SQLite failures.
-pub fn plan_days(conn: &Connection, grow_id: &str) -> Result<Vec<FeedPlanDay>, StoreError> {
+#[allow(clippy::missing_panics_doc)] // JSON of plain values cannot fail
+pub fn plan(conn: &Connection, grow_id: &str) -> Result<Option<FeedPlan>, StoreError> {
+    let header = conn
+        .query_row(
+            "SELECT schedule_id, schedule_name, flower_weeks, fitted_at
+             FROM feed_plan WHERE grow_id = ?1",
+            params![grow_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>("schedule_id")?,
+                    row.get::<_, String>("schedule_name")?,
+                    row.get::<_, i64>("flower_weeks")?,
+                    row.get::<_, String>("fitted_at")?,
+                ))
+            },
+        )
+        .optional()?;
+    let Some((schedule_id, schedule_name, flower_weeks, fitted_at)) = header else {
+        return Ok(None);
+    };
     let mut stmt = conn.prepare(
-        "SELECT grow_day, phase, ec_target_us, ph_min, ph_max, protected
+        "SELECT grow_day, phase, week, doses
          FROM feed_plan_day WHERE grow_id = ?1 ORDER BY grow_day",
     )?;
     let days = stmt
         .query_map(params![grow_id], |row| {
-            let grow_day: i64 = row.get("grow_day")?;
-            let phase: String = row.get("phase")?;
-            let ec: i64 = row.get("ec_target_us")?;
-            let protected: i64 = row.get("protected")?;
+            let doses_json: String = row.get("doses")?;
+            let phase_label: String = row.get("phase")?;
+            let week: Option<i64> = row.get("week")?;
             Ok(FeedPlanDay {
-                grow_day: u16::try_from(grow_day).unwrap_or(0),
-                phase: FeedPhase::all()
-                    .into_iter()
-                    .find(|p| p.label() == phase)
-                    .unwrap_or(FeedPhase::Seedling),
-                ec_target_us: u32::try_from(ec).unwrap_or(0),
-                ph_min: row.get("ph_min")?,
-                ph_max: row.get("ph_max")?,
-                protected: protected != 0,
+                grow_day: u16::try_from(row.get::<_, i64>("grow_day")?).unwrap_or(0),
+                phase: FittedPhase::from_label(&phase_label),
+                week: week.and_then(|w| u8::try_from(w).ok()),
+                doses: serde_json::from_str(&doses_json).unwrap_or_default(),
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(days)
-}
-
-/// Lists feed templates, optionally filtered by substrate.
-///
-/// # Errors
-///
-/// Returns a [`StoreError`] on SQLite failures.
-pub fn list_templates(
-    conn: &Connection,
-    substrate: Option<&str>,
-) -> Result<Vec<FeedTemplate>, StoreError> {
-    let mut stmt = conn.prepare(
-        "SELECT * FROM feed_template WHERE (?1 IS NULL OR substrate = ?1) ORDER BY name",
-    )?;
-    let rows = stmt.query_map(params![substrate], |row| {
-        Ok(FeedTemplate {
-            id: row.get("id")?,
-            name: row.get("name")?,
-            substrate: row.get("substrate")?,
-            source: row.get("source")?,
-            is_builtin: row.get::<_, i64>("is_builtin")? != 0,
-            rows: Vec::new(),
-            created_at: row.get("created_at")?,
-            updated_at: row.get("updated_at")?,
-        })
-    })?;
-    let mut templates = Vec::new();
-    for row in rows {
-        templates.push(row?);
-    }
-    // Load rows for each template.
-    for template in &mut templates {
-        template.rows = template_rows(conn, &template.id)?;
-    }
-    Ok(templates)
-}
-
-/// Fetches one template with rows.
-///
-/// # Errors
-///
-/// Returns [`super::NotFound`] when the id does not exist.
-pub fn get_template(conn: &Connection, id: &str) -> Result<FeedTemplate, StoreOrNotFound> {
-    let mut template = conn
-        .query_row(
-            "SELECT * FROM feed_template WHERE id = ?1",
-            params![id],
-            |row| {
-                Ok(FeedTemplate {
-                    id: row.get("id")?,
-                    name: row.get("name")?,
-                    substrate: row.get("substrate")?,
-                    source: row.get("source")?,
-                    is_builtin: row.get::<_, i64>("is_builtin")? != 0,
-                    rows: Vec::new(),
-                    created_at: row.get("created_at")?,
-                    updated_at: row.get("updated_at")?,
-                })
-            },
-        )
-        .optional()?
-        .ok_or_else(|| super::StoreOrNotFound::NotFound(super::NotFound))?;
-    template.rows = template_rows(conn, id)?;
-    Ok(template)
-}
-
-/// Loads a template's rows.
-///
-/// # Errors
-///
-/// Returns a [`StoreError`] on SQLite failures.
-pub fn template_rows(conn: &Connection, template_id: &str) -> Result<Vec<FeedRow>, StoreError> {
-    let mut stmt = conn.prepare(
-        "SELECT phase, day_offset, ec_target_us, ph_min, ph_max
-         FROM feed_template_row WHERE template_id = ?1 ORDER BY day_offset",
-    )?;
-    let rows = stmt.query_map(params![template_id], |row| {
-        let phase: String = row.get("phase")?;
-        Ok(FeedRow {
-            phase: FeedPhase::all()
-                .into_iter()
-                .find(|p| p.label() == phase)
-                .unwrap_or(FeedPhase::Seedling),
-            day_offset: u16::try_from(row.get::<_, i64>("day_offset")?).unwrap_or(0),
-            ec_target_us: u32::try_from(row.get::<_, i64>("ec_target_us")?).unwrap_or(0),
-            ph_min: row.get("ph_min")?,
-            ph_max: row.get("ph_max")?,
-        })
-    })?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(StoreError::from)
+    Ok(Some(FeedPlan {
+        schedule_id,
+        schedule_name,
+        flower_weeks: u8::try_from(flower_weeks).unwrap_or(0),
+        fitted_at,
+        days,
+    }))
 }
 
 /// Upserts a substrate profile.

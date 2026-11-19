@@ -69,7 +69,7 @@ pub struct HistoryReport {
     /// Yields by substrate.
     pub yield_by_substrate: Vec<YieldAggregate>,
     /// Yields by feed template.
-    pub yield_by_feed_template: Vec<YieldAggregate>,
+    pub yield_by_feed_schedule: Vec<YieldAggregate>,
 }
 
 /// The history page.
@@ -193,8 +193,8 @@ pub fn HistoryPage() -> impl IntoView {
                 rows=Signal::derive(move || report.get().yield_by_substrate)
             />
             <Aggregate
-                title=Signal::derive(move || t_string!(i18n, history.yield_by_feed_template).into_owned())
-                rows=Signal::derive(move || report.get().yield_by_feed_template)
+                title=Signal::derive(move || t_string!(i18n, history.yield_by_feed_schedule).into_owned())
+                rows=Signal::derive(move || report.get().yield_by_feed_schedule)
             />
 
             <p><A href=route_href("/")>{t!(i18n, grows.back_home)}</A></p>

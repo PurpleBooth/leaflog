@@ -45,6 +45,7 @@ mod live;
 mod onboarding;
 mod phase_pick;
 mod quick_add;
+mod schedules;
 mod theme;
 mod ui;
 
@@ -74,6 +75,7 @@ use leptos::task::spawn_local;
 use leptos_router::components::{A, Route, Router, Routes};
 use leptos_router::path;
 use onboarding::OnboardingWizard;
+use schedules::{ScheduleEditRoute, ScheduleNewRoute, SchedulesPage};
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 
 use i18n::{I18nContextProvider, Locale, t, t_string, use_i18n};
@@ -255,6 +257,7 @@ fn AppShell() -> impl IntoView {
                     <A href=route_href("/") exact=true>{t!(i18n, nav.home)}</A>
                     <A href=route_href("/history")>{t!(i18n, nav.history)}</A>
                     <A href=route_href("/grows")>{t!(i18n, nav.grows)}</A>
+                    <A href=route_href("/schedules")>{t!(i18n, nav.schedules)}</A>
                 </nav>
             </header>
             <main id="main">
@@ -359,6 +362,9 @@ fn routes() -> impl IntoView {
             <Route path=path!("/grows") view=GrowsPage />
             <Route path=path!("/grows/:id") view=GrowsRoute />
             <Route path=path!("/grows/:id/edit") view=GrowEditRoute />
+            <Route path=path!("/schedules") view=SchedulesPage />
+            <Route path=path!("/schedules/new") view=ScheduleNewRoute />
+            <Route path=path!("/schedules/:id/edit") view=ScheduleEditRoute />
         </Routes>
     }
 }
@@ -375,6 +381,9 @@ fn routes() -> impl IntoView {
             <Route path=path!("/grows") view=GrowsPage />
             <Route path=path!("/grows/:id") view=GrowsRoute />
             <Route path=path!("/grows/:id/edit") view=GrowEditRoute />
+            <Route path=path!("/schedules") view=SchedulesPage />
+            <Route path=path!("/schedules/new") view=ScheduleNewRoute />
+            <Route path=path!("/schedules/:id/edit") view=ScheduleEditRoute />
         </Routes>
     }
 }

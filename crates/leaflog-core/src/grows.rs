@@ -129,7 +129,7 @@ pub struct Grow {
     /// The feed template fitted to this grow (spec §4.6/§4.15); copied
     /// by reference. Absent JSON parses as `None`.
     #[serde(default)]
-    pub feed_template_id: Option<String>,
+    pub feed_schedule_id: Option<String>,
     /// Planned vegetative weeks for photoperiods (spec §4.5): the
     /// plan projects the flip until one is logged. Absent JSON parses
     /// as `None`.
@@ -196,7 +196,7 @@ pub struct GrowInput {
     pub name: String,
     /// The fitted feed template, copied by reference (spec §4.6).
     #[serde(default)]
-    pub feed_template_id: Option<String>,
+    pub feed_schedule_id: Option<String>,
     /// Planned vegetative weeks for photoperiods (spec §4.5).
     #[serde(default)]
     pub planned_veg_weeks: Option<u8>,
@@ -240,7 +240,7 @@ impl GrowInput {
     pub fn from_grow(grow: &Grow) -> Self {
         Self {
             name: grow.name.clone(),
-            feed_template_id: grow.feed_template_id.clone(),
+            feed_schedule_id: grow.feed_schedule_id.clone(),
             planned_veg_weeks: grow.planned_veg_weeks,
             strain_label: grow.strain_label.clone(),
             photoperiod: grow.photoperiod,

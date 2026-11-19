@@ -11,6 +11,7 @@ use crate::i18n::Locale;
 use leaflog_core::Phase;
 use leaflog_core::actions::ActionType;
 use leaflog_core::appearance;
+use leaflog_core::feed::FittedPhase;
 use leaflog_core::grows::GrowStatus;
 use leptos_i18n::td_string;
 
@@ -113,21 +114,16 @@ pub fn appearance_category_label(locale: Locale, category: appearance::Category)
     }
 }
 
-/// The feed template phase name for a `FeedPhase` wire label; the
-/// 8 known labels map to catalog strings, unknown ones echo through
-/// (matching the backend's tolerant rendering of stray phases).
+/// The fitted-plan phase name for a `FittedPhase`; the four known
+/// phases map to catalog strings (no echo arm needed — the enum is
+/// closed).
 #[must_use]
-pub fn feed_phase_label(locale: Locale, label: &str) -> String {
-    match label {
-        "seedling" => td_string!(locale, feed.phase_seedling).to_owned(),
-        "early_veg" => td_string!(locale, feed.phase_early_veg).to_owned(),
-        "late_veg" => td_string!(locale, feed.phase_late_veg).to_owned(),
-        "early_flower" => td_string!(locale, feed.phase_early_flower).to_owned(),
-        "mid_flower" => td_string!(locale, feed.phase_mid_flower).to_owned(),
-        "late_flower" => td_string!(locale, feed.phase_late_flower).to_owned(),
-        "ripen" => td_string!(locale, feed.phase_ripen).to_owned(),
-        "flush" => td_string!(locale, feed.phase_flush).to_owned(),
-        other => other.to_owned(),
+pub fn fitted_phase_label(locale: Locale, phase: FittedPhase) -> String {
+    match phase {
+        FittedPhase::Propagation => td_string!(locale, schedules.phase_propagation).to_owned(),
+        FittedPhase::Veg => td_string!(locale, schedules.phase_veg).to_owned(),
+        FittedPhase::Flower => td_string!(locale, schedules.phase_flower).to_owned(),
+        FittedPhase::Water => td_string!(locale, schedules.phase_water).to_owned(),
     }
 }
 
@@ -177,10 +173,11 @@ pub fn chart_title(locale: Locale, role: &str) -> String {
 mod tests {
     use super::{
         Locale, action_label, action_label_for_kind, appearance_category_label, appearance_label,
-        binding_role_label, chart_title, feed_phase_label, phase_label, status_label,
+        binding_role_label, chart_title, fitted_phase_label, phase_label, status_label,
     };
     use leaflog_core::Phase;
     use leaflog_core::actions::ActionType;
+    use leaflog_core::feed::FittedPhase;
     use leaflog_core::grows::GrowStatus;
 
     /// English reproduces the core spellings one-to-one: the charts,
@@ -246,19 +243,29 @@ mod tests {
     }
 
     /// The appearance category headings spell out in both locales.
-    /// Feed phase names: English matches the core wire spellings
-    /// spelled out; German renders the horticulture terms; unknown
-    /// labels echo through.
+    /// Fitted-plan phase names render for both locales.
     #[test]
-    fn feed_phase_labels_map_and_echo() {
-        assert_eq!(feed_phase_label(Locale::en, "seedling"), "Seedling");
-        assert_eq!(feed_phase_label(Locale::en, "late_flower"), "Late flower");
-        assert_eq!(feed_phase_label(Locale::de, "seedling"), "Sämling");
-        assert_eq!(feed_phase_label(Locale::de, "flush"), "Wässern");
+    fn fitted_phase_labels_map() {
         assert_eq!(
-            feed_phase_label(Locale::en, "something_else"),
-            "something_else"
+            fitted_phase_label(Locale::en, FittedPhase::Propagation),
+            "Propagation"
         );
+        assert_eq!(fitted_phase_label(Locale::en, FittedPhase::Veg), "Veg");
+        assert_eq!(
+            fitted_phase_label(Locale::en, FittedPhase::Flower),
+            "Flower"
+        );
+        assert_eq!(fitted_phase_label(Locale::en, FittedPhase::Water), "Water");
+        assert_eq!(
+            fitted_phase_label(Locale::de, FittedPhase::Propagation),
+            "Vermehrung"
+        );
+        assert_eq!(
+            fitted_phase_label(Locale::de, FittedPhase::Veg),
+            "Vegetativ"
+        );
+        assert_eq!(fitted_phase_label(Locale::de, FittedPhase::Flower), "Blüte");
+        assert_eq!(fitted_phase_label(Locale::de, FittedPhase::Water), "Wasser");
     }
 
     #[test]
