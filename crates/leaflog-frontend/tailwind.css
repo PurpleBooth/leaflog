@@ -357,16 +357,3 @@ pre {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-/* Quick-add menu (ticket 06, D099): the dropdown opens via the
-   `dropdown-open` class only — daisyUI's `:focus-within` auto-open is
-   suppressed here so the rendered state always matches aria-expanded
-   (Escape hands focus back to the trigger, which would otherwise
-   visually reopen the menu). */
-.dropdown.quick-add:focus-within .dropdown-content {
-  display: none;
-}
-
-.dropdown.quick-add.dropdown-open .dropdown-content {
-  display: block;
-}

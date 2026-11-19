@@ -6,6 +6,39 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-19 — the quick-add picker is a grouped native dialog (D122)
+
+### D122: the quick-add picker is a grouped native `<dialog>`, not a dropdown
+
+The flat dropdown put sixteen actions on one row-order list with small
+targets — wrong for the tent-first grower working one-handed in a
+browser sidebar. The picker is now a native `<dialog>` with daisyUI
+`modal` chrome:
+
+- **Dialog pattern**: a real `<dialog class="modal">` opened with
+  `showModal()`, so the browser owns the focus trap, the Escape cancel
+  and the focus restore to the trigger — no manual key handling. The
+  backdrop is daisyUI's `modal-backdrop` form (`method="dialog"`), so a
+  backdrop click closes natively; `aria-modal` + `aria-labelledby` keep
+  the semantics honest and `aria-expanded` tracks the `close` event.
+  Chosen over a manual daisyUI-div modal because the native element is
+  less code and cannot drift from browser focus semantics.
+- **Taxonomy** (`action_groups()` in quick_add.rs, the testable seam):
+  Watering & feeding (water, feed) · Plant care (trim, train,
+  transplant, pest/IPM) · Environment (lights, env change, light
+  change) · Observations (measure, photo, note, trichomes) ·
+  Milestones (flip, harvest, dry/cure). Within a group the chip order
+  of the old row is preserved; all 16 actions stay reachable
+  (`PhaseChange` is still created only by the forecast/phase UIs).
+- **Targets**: action buttons carry `min-h-11` (44px) and wrap in an
+  auto-fill grid sized for a 390px viewport.
+- **Draft semantics unchanged** (per D069's found-in-e2e rule): pick
+  resets via `empty_action()` with the chosen type, sets chip + draft,
+  closes the dialog and focuses `#quick-add-form` next frame.
+
+The `.dropdown.quick-add` overrides in tailwind.css died with the
+dropdown and were removed.
+
 ## 2026-11-19 — api failure classification and dismissable error banners
 
 ### D121: `ApiFailure` is classified before display; raw transport/parse detail goes to the browser console, never the banner

@@ -241,7 +241,13 @@
     },
     "quick_add": {
         "trigger": "Quick add",
-        "menu_aria": "Quick add action"
+        "dialog_title": "Add an entry",
+        "close": "Close",
+        "group_watering": "Watering & feeding",
+        "group_plant_care": "Plant care",
+        "group_environment": "Environment",
+        "group_observations": "Observations",
+        "group_milestones": "Milestones"
     },
     "binding": {
         "heading": "Entity bindings",

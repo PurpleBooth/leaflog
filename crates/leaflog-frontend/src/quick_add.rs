@@ -1,28 +1,97 @@
-//! Quick add menu: the sixteen-button chip row collapsed into one
-//! daisyUI dropdown with Lucide SVG icons (ticket 06, spec 95b2e66).
+//! Quick add picker: the sixteen logging actions behind one trigger,
+//! opened as a native modal dialog grouped by grow work (D122) with
+//! Lucide SVG icons (ticket 06, spec 95b2e66).
 
 use crate::grows::empty_action;
-use crate::i18n::{t, t_string, use_i18n};
+use crate::i18n::{Locale, t, t_string, use_i18n};
 use crate::labels;
 use leaflog_core::actions::ActionType;
 use leaflog_core::grows::ActionInput;
 use leptos::prelude::*;
+use leptos_i18n::td_string;
 use leptos_icons::Icon;
 use wasm_bindgen::JsCast;
 
-/// The actions the quick-add menu offers: every [`ActionType`] except
-/// `PhaseChange` (which only the forecast/phase UIs create), in chip
-/// order (spec §4.2).
-fn menu_actions() -> Vec<ActionType> {
-    ActionType::all()
-        .into_iter()
-        .filter(|kind| *kind != ActionType::PhaseChange)
-        .collect()
+/// One named section of the quick-add picker. The taxonomy splits the
+/// sixteen actions by grow work — watering/feeding, plant care,
+/// environment, observations, milestones — so the tent-first grower
+/// taps a labelled 44px target instead of scanning a flat menu (D122).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GroupKey {
+    /// Watering and nutrient feeding.
+    Watering,
+    /// Hands-on plant work: trim, train, transplant, pest care.
+    PlantCare,
+    /// The grow environment: lights, climate, lamp settings.
+    Environment,
+    /// Look-and-record checks: measurement, photo, note, trichomes.
+    Observations,
+    /// Events that move the diary: flip, harvest, dry/cure check.
+    Milestones,
+}
+
+impl GroupKey {
+    /// The localized group heading.
+    fn label(self, locale: Locale) -> String {
+        match self {
+            Self::Watering => td_string!(locale, quick_add.group_watering).to_owned(),
+            Self::PlantCare => td_string!(locale, quick_add.group_plant_care).to_owned(),
+            Self::Environment => td_string!(locale, quick_add.group_environment).to_owned(),
+            Self::Observations => td_string!(locale, quick_add.group_observations).to_owned(),
+            Self::Milestones => td_string!(locale, quick_add.group_milestones).to_owned(),
+        }
+    }
+}
+
+/// The picker's action groups: every [`ActionType`] except
+/// `PhaseChange` (which only the forecast/phase UIs create), each
+/// kept in the chip order the pre-picker row had (spec §4.2).
+fn action_groups() -> Vec<(GroupKey, Vec<ActionType>)> {
+    vec![
+        (
+            GroupKey::Watering,
+            vec![ActionType::Water, ActionType::Feed],
+        ),
+        (
+            GroupKey::PlantCare,
+            vec![
+                ActionType::TrimDefoliate,
+                ActionType::Train,
+                ActionType::Transplant,
+                ActionType::PestIpm,
+            ],
+        ),
+        (
+            GroupKey::Environment,
+            vec![
+                ActionType::Lights,
+                ActionType::EnvChange,
+                ActionType::LightChange,
+            ],
+        ),
+        (
+            GroupKey::Observations,
+            vec![
+                ActionType::Measurement,
+                ActionType::Photo,
+                ActionType::Note,
+                ActionType::TrichomeCheck,
+            ],
+        ),
+        (
+            GroupKey::Milestones,
+            vec![
+                ActionType::Flip,
+                ActionType::Harvest,
+                ActionType::DryCureCheck,
+            ],
+        ),
+    ]
 }
 
 /// The Lucide icon for a quick-add action. Actions without a fitting
 /// glyph in the family render no icon rather than a wrong one
-/// (ticket 06); `PhaseChange` never reaches the menu and maps to
+/// (ticket 06); `PhaseChange` never reaches the picker and maps to
 /// `None` for the same reason.
 fn icon_for(kind: ActionType) -> Option<icondata_core::Icon> {
     let icon = match kind {
@@ -47,76 +116,13 @@ fn icon_for(kind: ActionType) -> Option<icondata_core::Icon> {
     Some(icon)
 }
 
-/// Step `current` one slot forward (or back) in a list of `len`
-/// items, wrapping around at both ends; an empty list stays at 0.
-const fn wrapped_step(len: usize, current: usize, forward: bool) -> usize {
-    if len == 0 {
-        return 0;
-    }
-    let len = len - 1; // highest valid index
-    if forward {
-        if current >= len { 0 } else { current + 1 }
-    } else if current == 0 {
-        len
-    } else {
-        current - 1
-    }
-}
-
-/// The quick-add menu items, or `None` before the menu is in the DOM.
-fn menu_items(menu: &impl AsRef<web_sys::Element>) -> Option<web_sys::NodeList> {
-    menu.as_ref().query_selector_all("[role=menuitem]").ok()
-}
-
-/// Focus the item at `index` (a no-op when it is out of range).
-fn focus_item(items: &web_sys::NodeList, index: usize) {
-    let index = u32::try_from(index).unwrap_or(u32::MAX);
-    if let Some(el) = items
-        .item(index)
-        .as_ref()
-        .and_then(|node| node.dyn_ref::<web_sys::HtmlElement>())
-    {
-        let _ = el.focus();
-    }
-}
-
-/// The index of the focused item (0 when nothing in the list has
-/// focus, so arrowing from "nowhere" starts at the top).
-fn active_index(items: &web_sys::NodeList) -> usize {
-    let Some(active) = document().active_element() else {
-        return 0;
-    };
-    let active = active.unchecked_into::<web_sys::Node>();
-    (0..items.length())
-        .find(|&i| items.get(i).is_some_and(|node| node == active))
-        .map_or(0, |i| i as usize)
-}
-
-/// Focus the first (`last` false) or last menu item on the next frame,
-/// after the open state has rendered (focus on a hidden element is a
-/// silent no-op).
-fn focus_menu_edge(menu: &NodeRef<leptos::html::Ul>, last: bool) {
-    let menu = *menu;
-    request_animation_frame(move || {
-        if let Some(list) = menu.get_untracked()
-            && let Some(items) = menu_items(&list)
-        {
-            let index = if last {
-                items.length().saturating_sub(1) as usize
-            } else {
-                0
-            };
-            focus_item(&items, index);
-        }
-    });
-}
-
-/// The sixteen quick-add actions in one daisyUI dropdown (ticket 06):
-/// a trigger button with plus and chevron icons, a Lucide SVG per
-/// action, and menu-button keyboard semantics (ARIA APG: arrows,
-/// Home/End, Escape back to the trigger, Tab-out and outside clicks
-/// close). Picking an action opens the inline logging form card with
-/// the same draft semantics the chip row had (D069).
+/// The quick-add picker (ticket 06, D122): a trigger button opening a
+/// native modal `<dialog>` — the browser owns the focus trap, the
+/// Escape cancel and the focus restore to the trigger, while daisyUI's
+/// `modal` chrome draws backdrop and box. Actions sit in labelled
+/// groups of 44px buttons, one Lucide SVG each. Picking an action
+/// opens the inline logging form card with the same draft semantics
+/// the chip row had (D069).
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
 pub(crate) fn QuickAddMenu(
@@ -125,9 +131,7 @@ pub(crate) fn QuickAddMenu(
 ) -> impl IntoView {
     let open = RwSignal::new(false);
     let i18n = use_i18n();
-    let root = NodeRef::<leptos::html::Div>::new();
-    let trigger = NodeRef::<leptos::html::Button>::new();
-    let menu = NodeRef::<leptos::html::Ul>::new();
+    let dialog = NodeRef::<leptos::html::Dialog>::new();
 
     // Picking sets the entry's type on a fresh draft and opens the
     // form card — a plain reset left the draft as `note`, so every
@@ -137,6 +141,11 @@ pub(crate) fn QuickAddMenu(
         reset.action_type = kind;
         chip.set(Some(kind));
         draft.set(reset);
+        // Natively close the dialog before reopening the form card;
+        // the on:close handler keeps aria-expanded honest.
+        if let Some(el) = dialog.get_untracked() {
+            el.unchecked_into::<web_sys::HtmlDialogElement>().close();
+        }
         open.set(false);
         // The form card just appeared below; hand focus to it so the
         // click that started the flow continues in the form.
@@ -149,151 +158,96 @@ pub(crate) fn QuickAddMenu(
         });
     };
 
-    let menu_for_trigger = menu;
-    let on_trigger_keydown = move |ev: leptos::ev::KeyboardEvent| match ev.key().as_str() {
-        "ArrowDown" => {
-            ev.prevent_default();
-            open.set(true);
-            focus_menu_edge(&menu_for_trigger, false);
-        }
-        "ArrowUp" => {
-            ev.prevent_default();
-            open.set(true);
-            focus_menu_edge(&menu_for_trigger, true);
-        }
-        // Enter and Space click the button, which toggles via on:click.
-        "Escape" => open.set(false),
-        _ => {}
-    };
-
-    let on_menu_keydown = move |ev: leptos::ev::KeyboardEvent| {
-        let Some(list) = menu.get_untracked() else {
+    let on_trigger_click = move |_| {
+        let Some(el) = dialog.get_untracked() else {
             return;
         };
-        let Some(items) = menu_items(&list) else {
+        let el = el.unchecked_into::<web_sys::HtmlDialogElement>();
+        if el.open() {
             return;
-        };
-        let len = items.length() as usize;
-        match ev.key().as_str() {
-            "ArrowDown" => {
-                ev.prevent_default();
-                focus_item(&items, wrapped_step(len, active_index(&items), true));
-            }
-            "ArrowUp" => {
-                ev.prevent_default();
-                focus_item(&items, wrapped_step(len, active_index(&items), false));
-            }
-            "Home" => {
-                ev.prevent_default();
-                focus_item(&items, 0);
-            }
-            "End" => {
-                ev.prevent_default();
-                focus_item(&items, len.saturating_sub(1));
-            }
-            "Escape" => {
-                open.set(false);
-                if let Some(el) = trigger
-                    .get_untracked()
-                    .as_ref()
-                    .and_then(|btn| btn.dyn_ref::<web_sys::HtmlElement>())
-                {
-                    let _ = el.focus();
-                }
-            }
-            _ => {}
         }
+        // showModal puts the dialog in the top layer: the browser
+        // then traps Tab, closes on Escape and restores focus to the
+        // trigger on its own — no manual key handling needed.
+        let _ = el.show_modal();
+        open.set(true);
+        // Focus the first action on the next frame, after the top
+        // layer has rendered (focusing a hidden element is a no-op).
+        request_animation_frame(move || {
+            if let Some(first) = el.query_selector("button").ok().flatten()
+                && let Some(btn) = first.dyn_ref::<web_sys::HtmlElement>()
+            {
+                let _ = btn.focus();
+            }
+        });
     };
-
-    // A click outside the dropdown closes it (mousedown so the menu is
-    // gone before whatever was clicked reacts).
-    let handle = window_event_listener(leptos::ev::mousedown, {
-        move |ev: web_sys::MouseEvent| {
-            let ev = ev.unchecked_ref::<web_sys::Event>();
-            let Some(container) = root.get_untracked() else {
-                return;
-            };
-            let container = container.unchecked_into::<web_sys::Element>();
-            let outside = ev
-                .target()
-                .and_then(|target| target.dyn_into::<web_sys::Element>().ok())
-                .is_none_or(|clicked| {
-                    !container.contains(Some(clicked.unchecked_ref::<web_sys::Node>()))
-                });
-            if outside {
-                open.set(false);
-            }
-        }
-    });
-    on_cleanup(move || handle.remove());
 
     view! {
-        // Opening is controlled by `dropdown-open` only (see the
-        // `.quick-add` override in tailwind.css): daisyUI's
-        // :focus-within auto-open would disagree with aria-expanded.
-        <div
-            node_ref=root
-            class=move || if open.get() {
-                "dropdown dropdown-open quick-add"
-            } else {
-                "dropdown quick-add"
-            }
-            on:focusout=move |ev: leptos::ev::FocusEvent| {
-                if let Some(container) = root.get_untracked() {
-                    let container = container.unchecked_into::<web_sys::Element>();
-                    let left = ev
-                        .related_target()
-                        .and_then(|target| target.dyn_into::<web_sys::Element>().ok())
-                        .is_none_or(|next| {
-                            !container.contains(Some(next.unchecked_ref::<web_sys::Node>()))
-                        });
-                    if left {
-                        open.set(false);
-                    }
-                }
-            }
+        <button
+            type="button"
+            class="btn btn-primary btn-sm"
+            aria-haspopup="dialog"
+            aria-expanded=move || if open.get() { "true" } else { "false" }
+            aria-controls="quick-add-dialog"
+            on:click=on_trigger_click
         >
-            <button
-                node_ref=trigger
-                type="button"
-                class="btn btn-primary btn-sm"
-                aria-haspopup="menu"
-                aria-expanded=move || if open.get() { "true" } else { "false" }
-                aria-controls="quick-add-menu"
-                on:click=move |_| open.set(!open.get())
-                on:keydown=on_trigger_keydown
-            >
-                <Icon icon=icondata_lu::LuCirclePlus />
-                {t!(i18n, quick_add.trigger)}
-                <Icon icon=icondata_lu::LuChevronDown />
-            </button>
-            <ul
-                node_ref=menu
-                id="quick-add-menu"
-                role="menu"
-                aria-label=move || t_string!(i18n, quick_add.menu_aria).into_owned()
-                class="dropdown-content menu bg-base-100 rounded-box shadow-sm z-1 w-56 p-2"
-                on:keydown=on_menu_keydown
-            >
+            <Icon icon=icondata_lu::LuCirclePlus />
+            {t!(i18n, quick_add.trigger)}
+        </button>
+        <dialog
+            node_ref=dialog
+            id="quick-add-dialog"
+            class="modal"
+            aria-modal="true"
+            aria-labelledby="quick-add-dialog-title"
+            // Escape (cancel) and the backdrop form close natively;
+            // this event keeps aria-expanded honest on every path.
+            on:close=move |_| open.set(false)
+        >
+            <div class="modal-box">
+                <h2 id="quick-add-dialog-title" class="m-0 text-lg font-semibold">
+                    {t!(i18n, quick_add.dialog_title)}
+                </h2>
                 {move || {
                     let locale = i18n.get_locale();
-                    menu_actions()
+                    action_groups()
                         .into_iter()
-                        .map(|kind| {
+                        .map(|(key, actions)| {
                             view! {
-                                <li role="none">
-                                    <button type="button" role="menuitem" on:click=move |_| pick(kind)>
-                                        {icon_for(kind)
-                                            .map(|icon| view! { <Icon icon=icon /> })}
-                                        {labels::action_label(locale, kind)}
-                                    </button>
-                                </li>
+                                <section class="mt-3">
+                                    <h3 class="m-0 mb-2 text-xs font-semibold uppercase tracking-wider text-base-content/60">
+                                        {key.label(locale)}
+                                    </h3>
+                                    <div class="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2">
+                                        {actions
+                                            .into_iter()
+                                            .map(|kind| {
+                                                view! {
+                                                    <button
+                                                        type="button"
+                                                        class="btn min-h-11"
+                                                        on:click=move |_| pick(kind)
+                                                    >
+                                                        {icon_for(kind)
+                                                            .map(|icon| view! { <Icon icon=icon /> })}
+                                                        {labels::action_label(locale, kind)}
+                                                    </button>
+                                                }
+                                            })
+                                            .collect::<Vec<_>>()}
+                                    </div>
+                                </section>
                             }
                         })
                         .collect::<Vec<_>>()
                 }}
-            </ul>
-        </div>
+            </div>
+            // Clicking the backdrop submits this method=dialog form,
+            // which closes the dialog natively (HTML spec behaviour).
+            <form method="dialog" class="modal-backdrop">
+                <button aria-label=move || t_string!(i18n, quick_add.close).into_owned()></button>
+            </form>
+        </dialog>
     }
 }
 
@@ -302,38 +256,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn menu_offers_sixteen_actions_in_chip_order_without_phase_change() {
-        let actions = menu_actions();
-        let labels: Vec<&str> = actions.iter().map(|kind| kind.label()).collect();
-        assert_eq!(
-            labels,
-            [
-                "lights",
-                "water",
-                "feed",
-                "trim_defoliate",
-                "train",
-                "transplant",
-                "flip",
-                "pest_ipm",
-                "env_change",
-                "light_change",
-                "measurement",
-                "photo",
-                "note",
-                "trichome_check",
-                "harvest",
-                "dry_cure_check",
-            ],
-        );
-    }
-
-    #[test]
-    fn every_menu_action_has_a_distinct_icon() {
+    fn every_picker_action_has_a_distinct_icon() {
         let mut seen = Vec::new();
-        for kind in menu_actions() {
+        let grouped = action_groups().into_iter().flat_map(|(_, actions)| actions);
+        for kind in grouped {
             let icon = icon_for(kind)
-                .unwrap_or_else(|| panic!("menu action without icon: {}", kind.label()));
+                .unwrap_or_else(|| panic!("picker action without icon: {}", kind.label()));
             assert!(!seen.contains(&icon), "duplicate icon for {}", kind.label());
             seen.push(icon);
         }
@@ -346,18 +274,54 @@ mod tests {
     }
 
     #[test]
-    fn wrapped_step_cycles_in_both_directions() {
-        assert_eq!(wrapped_step(3, 0, true), 1);
-        assert_eq!(wrapped_step(3, 1, true), 2);
-        // wraps around at both ends
-        assert_eq!(wrapped_step(3, 2, true), 0);
-        assert_eq!(wrapped_step(3, 0, false), 2);
-        assert_eq!(wrapped_step(3, 2, false), 1);
-        // single item stays put
-        assert_eq!(wrapped_step(1, 0, true), 0);
-        assert_eq!(wrapped_step(1, 0, false), 0);
-        // empty menu: no crash, no move
-        assert_eq!(wrapped_step(0, 0, true), 0);
-        assert_eq!(wrapped_step(0, 0, false), 0);
+    fn action_groups_carry_every_action_exactly_once_without_phase_change() {
+        let grouped: Vec<ActionType> = action_groups()
+            .into_iter()
+            .flat_map(|(_, actions)| actions)
+            .collect();
+        for kind in ActionType::all() {
+            let count = grouped.iter().filter(|g| **g == kind).count();
+            let expected = usize::from(kind != ActionType::PhaseChange);
+            assert_eq!(
+                count,
+                expected,
+                "action {} appears {} times",
+                kind.label(),
+                count
+            );
+        }
+    }
+
+    #[test]
+    fn groups_preserve_the_chip_order_within_each_group() {
+        let chip_order: Vec<ActionType> = ActionType::all()
+            .into_iter()
+            .filter(|kind| *kind != ActionType::PhaseChange)
+            .collect();
+        for (key, actions) in action_groups() {
+            let expected: Vec<ActionType> = chip_order
+                .iter()
+                .copied()
+                .filter(|kind| actions.contains(kind))
+                .collect();
+            assert_eq!(actions, expected, "group {key:?} scrambles chip order");
+        }
+    }
+
+    #[test]
+    fn the_picker_groups_sixteen_actions_in_total() {
+        let total: usize = action_groups()
+            .into_iter()
+            .map(|(_, actions)| actions.len())
+            .sum();
+        assert_eq!(total, 16);
+    }
+
+    #[test]
+    fn every_group_has_a_localized_label() {
+        for (key, _) in action_groups() {
+            assert!(!key.label(Locale::en).is_empty(), "no en label for {key:?}");
+            assert!(!key.label(Locale::de).is_empty(), "no de label for {key:?}");
+        }
     }
 }

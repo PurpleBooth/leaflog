@@ -193,7 +193,7 @@ test('grow header cluster: an unlabelled grow shows no placeholder', async ({
   await expect(badges).toHaveCount(2);
 });
 
-test('quick add menu: trigger, sixteen iconified actions, keyboard access', async ({
+test('quick add dialog: trigger, grouped actions, keyboard access', async ({
   page,
   request,
 }) => {
@@ -202,60 +202,72 @@ test('quick add menu: trigger, sixteen iconified actions, keyboard access', asyn
   await page.goto(url(`/grows/${id}`));
 
   const trigger = page.getByRole('button', { name: 'Quick add', exact: true });
-  const menu = page.getByRole('menu', { name: 'Quick add action' });
+  const dialog = page.getByRole('dialog', { name: 'Add an entry' });
+  const actions = dialog.locator('.modal-box').getByRole('button');
 
-  // The trigger carries a plus and a chevron SVG and starts closed.
-  await expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
+  // The trigger keeps its accessible name, carries one plus SVG and
+  // announces dialog semantics; the dialog starts closed.
+  await expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
   await expect(trigger).toHaveAttribute('aria-expanded', 'false');
-  await expect(trigger.locator('svg')).toHaveCount(2);
-  await expect(menu).toBeHidden();
+  await expect(trigger.locator('svg')).toHaveCount(1);
+  await expect(dialog).toBeHidden();
 
-  // Click opens: sixteen menuitems in the order the chip row had,
-  // each with exactly one SVG icon — no emoji regression (ticket 06).
+  // Click opens: five labelled groups and sixteen action buttons in
+  // the grouped order, each with exactly one SVG icon (D122).
   await trigger.click();
   await expect(trigger).toHaveAttribute('aria-expanded', 'true');
-  await expect(menu).toBeVisible();
-  const items = menu.getByRole('menuitem');
-  await expect(items).toHaveCount(16);
-  await expect(items).toHaveText([
-    'Lights',
+  await expect(dialog).toBeVisible();
+  for (const group of ['Watering & feeding', 'Plant care', 'Environment', 'Observations', 'Milestones']) {
+    await expect(dialog.getByRole('heading', { name: group })).toBeVisible();
+  }
+  await expect(actions).toHaveCount(16);
+  await expect(actions).toHaveText([
     'Water',
     'Feed',
     'Trim',
     'Train',
     'Transplant',
-    'Flip 12/12',
     'Pest/IPM',
+    'Lights',
     'Env change',
     'Light change',
     'Measure',
     'Photo',
     'Note',
     'Trichomes',
+    'Flip 12/12',
     'Harvest',
     'Dry/cure',
   ]);
   for (let i = 0; i < 16; i += 1) {
-    await expect(items.nth(i).locator('svg')).toHaveCount(1);
+    await expect(actions.nth(i).locator('svg')).toHaveCount(1);
   }
+  // Tent-first persona: every action is a 44px-min touch target.
+  // expect.poll: daisyUI's modal-pop entry animation briefly scales
+  // the box below its settled size, so wait it out before measuring.
+  await expect
+    .poll(async () => (await actions.first().boundingBox())?.height ?? 0)
+    .toBeGreaterThanOrEqual(44);
 
-  // Escape closes and hands focus back to the trigger (APG
-  // menu-button pattern).
+  // showModal focuses the first action; the browser traps Tab inside
+  // the top-layer dialog and Escape returns focus to the trigger.
+  await expect(actions.first()).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(actions.nth(1)).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(actions.first()).toBeFocused();
   await page.keyboard.press('Escape');
-  await expect(menu).toBeHidden();
+  await expect(dialog).toBeHidden();
   await expect(trigger).toHaveAttribute('aria-expanded', 'false');
   await expect(trigger).toBeFocused();
 
-  // Keyboard path: ArrowDown from the trigger opens the menu and
-  // focuses the first item; End jumps to the last.
+  // Keyboard path: Enter on the trigger opens the dialog too.
   await trigger.focus();
-  await page.keyboard.press('ArrowDown');
-  await expect(menu).toBeVisible();
-  await expect(items.first()).toBeFocused();
-  await page.keyboard.press('End');
-  await expect(items.last()).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(dialog).toBeVisible();
+  await expect(actions.first()).toBeFocused();
   await page.keyboard.press('Escape');
-  await expect(menu).toBeHidden();
+  await expect(dialog).toBeHidden();
   await expect(trigger).toBeFocused();
 });
 
@@ -264,12 +276,15 @@ test('quick add: log a watering from the grow page', async ({ page, request }) =
   const id = await createGrow(request, name);
   await page.goto(url(`/grows/${id}`));
 
-  // The sixteen-button row is one dropdown menu now (ticket 06);
-  // picking Water opens the same inline form card the chip did.
-  await page.getByRole('button', { name: 'Quick add', exact: true }).click();
-  const menu = page.getByRole('menu', { name: 'Quick add action' });
-  await menu.getByRole('menuitem', { name: 'Water' }).click();
-  await expect(menu).toBeHidden();
+  // The sixteen-button row is a grouped dialog picker now (ticket 06,
+  // D122); picking Water closes it, focuses the form card and opens
+  // the same inline form the chip did.
+  const trigger = page.getByRole('button', { name: 'Quick add', exact: true });
+  const dialog = page.getByRole('dialog', { name: 'Add an entry' });
+  await trigger.click();
+  await dialog.getByRole('button', { name: 'Water', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator('#quick-add-form')).toBeFocused();
   await page.getByLabel('Volume (ml)').fill('250');
   await armNoReloadGuard(page);
   await page.getByRole('button', { name: 'Log it' }).click();

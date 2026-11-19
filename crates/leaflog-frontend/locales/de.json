@@ -241,7 +241,13 @@
     },
     "quick_add": {
         "trigger": "Schnell-Eintrag",
-        "menu_aria": "Schnell-Eintrag-Aktion"
+        "dialog_title": "Eintrag hinzufügen",
+        "close": "Schließen",
+        "group_watering": "Gießen & Düngen",
+        "group_plant_care": "Pflanzenpflege",
+        "group_environment": "Umwelt",
+        "group_observations": "Beobachtungen",
+        "group_milestones": "Meilensteine"
     },
     "binding": {
         "heading": "Entitäts-Bindungen",

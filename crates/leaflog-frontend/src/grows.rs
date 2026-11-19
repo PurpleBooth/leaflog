@@ -490,7 +490,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                                 }
                                             })}
                                     </div>
-                                    // The logging menu lives in the header
+                                    // The logging picker lives in the header
                                     // (the loop's first tap); the chosen
                                     // form opens right below it.
                                     <div class="flex items-center gap-2 ml-auto">
