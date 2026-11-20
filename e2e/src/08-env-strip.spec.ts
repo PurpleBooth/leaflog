@@ -1,17 +1,25 @@
 // Env strip layout (grow-overview ticket 09, live values ticket 02):
-// the six reading tiles (Temp, RH, VPD, RH window, CO₂, soil
-// moisture) share one row that spans the full container width with
-// equal tiles on desktop, wrap to two columns on phones and a single
-// column on very narrow screens — and never spill into horizontal
-// overflow. Live mock-HA sensors feed the tiles so the assertions run
-// on real values (same setup as 07-grow-page); the CO₂ and soil tiles
-// stay present even when their roles are unbound (they read "—").
+// the five reading tiles (Temp, RH, VPD, CO₂, soil moisture) share
+// one row that spans the full container width with equal tiles on
+// desktop, wrap to two columns on phones and a single column on very
+// narrow screens — and never spill into horizontal overflow. The RH
+// window rides under the RH tile as a band footnote, the way the VPD
+// band rides under VPD (D136). Live mock-HA sensors feed the tiles so
+// the assertions run on real values (same setup as 07-grow-page); the
+// CO₂ and soil tiles stay present even when their roles are unbound
+// (they read "—").
 
 import { test, expect, type Page } from '@playwright/test';
 import { api, createGrow, uniqueName, url } from './helpers';
 
-/** The six tile labels, in strip order. */
-const LABELS = ['Temp', 'RH', 'VPD', 'RH window', 'CO₂', 'Soil moisture'];
+/** The five tile labels, in strip order. */
+const LABELS = ['Temp', 'RH', 'VPD', 'CO₂', 'Soil moisture'];
+
+/** The RH window footnote inside the strip (`band: 21–46 %`) — the
+ *  % suffix keeps it distinct from the VPD band footnote. */
+function bandFootnote(page: Page) {
+  return page.locator('#env-strip').getByText(/band: \d+–\d+ %/);
+}
 
 /** The bounding box of one tile, found by its exact label. Scoped to
  * the strip — role charts carry the same labels ("VPD", "RH"). */
@@ -91,7 +99,7 @@ test('env strip spans the container and wraps without overflow', async ({
     .toBe(true);
 
   await page.goto(url(`/grows/${growId}`));
-  await expect(page.getByText('RH window')).toBeVisible();
+  await expect(bandFootnote(page)).toBeVisible();
 
   // The bound roles' charts render on the overview; unbound roles
   // render no card at all (ticket 04), so no placeholder text either.
@@ -141,7 +149,7 @@ test('env strip spans the container and wraps without overflow', async ({
     page.locator('svg[aria-label="temperature history"]'),
   ).toBeVisible();
 
-  // Desktop: all six tiles in one row, equally wide, spanning the
+  // Desktop: all five tiles in one row, equally wide, spanning the
   // strip edge to edge.
   const strip = await stripBox(page);
   const boxes = await Promise.all(
@@ -161,7 +169,7 @@ test('env strip spans the container and wraps without overflow', async ({
     Math.abs(strip.x - boxes[0].x),
     'strip starts at its first tile',
   ).toBeLessThanOrEqual(2);
-  const lastRight = boxes[5].x + boxes[5].width;
+  const lastRight = boxes[4].x + boxes[4].width;
   expect(
     Math.abs(strip.x + strip.width - lastRight),
     'strip ends at its last tile (full container width)',
@@ -171,7 +179,7 @@ test('env strip spans the container and wraps without overflow', async ({
   // Phone width: the strip wraps to two columns, still without
   // horizontal overflow.
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByText('RH window')).toBeVisible();
+  await expect(bandFootnote(page)).toBeVisible();
   await expectNoHorizontalOverflow(page);
   const phoneStrip = await stripBox(page);
   const phoneBoxes = await Promise.all(
@@ -186,7 +194,7 @@ test('env strip spans the container and wraps without overflow', async ({
 
   // Very narrow: one column, still without horizontal overflow.
   await page.setViewportSize({ width: 320, height: 480 });
-  await expect(page.getByText('RH window')).toBeVisible();
+  await expect(bandFootnote(page)).toBeVisible();
   await expectNoHorizontalOverflow(page);
   const thinStrip = await stripBox(page);
   const thinBoxes = await Promise.all(

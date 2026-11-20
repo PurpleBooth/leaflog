@@ -6,6 +6,47 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-20 — overview copy and layout trims (D136–D137)
+
+### D136: the RH window rides under the RH tile as a band footnote, the way the VPD band rides under VPD
+
+The strip spent a whole tile on a derived quantity the reader can act
+on only together with the humidity reading it derives from. The RH
+tile now carries the phase's RH window as a quiet footnote line
+("band: 21–46 %" / "Bereich: 21–75 %", same register as the VPD band
+footnote), and the strip is five equal tiles again. The
+`env.rh_window` locale key is gone; the value itself is unchanged and
+still computed by `rh_window()` in the core.
+
+### D137: the overview's small static explainer sentences are deleted — titles and data stand alone
+
+One review pass flagged every two-line "small static text" under a
+title or chart as visual noise; all of them go, in both locales and
+in the English wire fallbacks where they existed:
+
+- **Lamp advice.** The "starting points — a PAR meter calibrates
+  them" sentence leaves `advise_lamp`'s whys, and with it the
+  `default_starting_points`/`starting_points` why codes leave the
+  wire entirely (SPEC §4.7 amended accordingly). The frontend
+  `lamp_why` assembly drops the matching arm.
+- **Coach tips.** The VPD tip and the soil wet–dry tip lose their why
+  sentences (wire `why` is now empty for both); the title carries the
+  whole message. A tip with an empty why renders the title only — no
+  empty paragraph gap. The other tips keep their whys.
+- **Night shading.** The Air group's legend hint ("Shaded areas mark
+  night periods.") is gone; `GroupLabel` drops its `night_hint` prop
+  and `SectionHeader` drops the `hint` parameter entirely (it had no
+  other caller).
+- **Not-measured card.** The "no sensor is bound" explainer sentence
+  is gone; the heading plus the per-role bind chips carry the story.
+- **Gantt caption.** The "bars show the likely window" sentence is
+  gone; `forecast_caption` now renders the bare day count
+  ("65 / 141") under the chart, which still has the today marker and
+  its tooltip.
+- **Photo upload.** The fieldset label ("Upload photos (JPEG/PNG/
+  WebP; EXIF/GPS stripped on store)") is gone; the file input stands
+  alone (accept + multiple still constrain it).
+
 ## 2026-11-20 — adopted-theme colour serialization + chart tooltip/series fixes (D135)
 
 ### D135: adopted theme variables serialize as chart-safe sRGB; the chart probes reject colours the renderer cannot parse; the main line travels under a wire name

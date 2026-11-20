@@ -218,12 +218,11 @@ fn HistoryWindowControl(window: RwSignal<String>, markers: RwSignal<bool>) -> im
 }
 
 /// A group's micro-label header: the group's name — a glossary term —
-/// in the section's quiet uppercase register, above its chart grid,
-/// with an optional legend hint beside it (the Air group names its
-/// night shading there). The label resolves from the catalog in the
-/// active locale, re-reading when the locale swaps.
+/// in the section's quiet uppercase register, above its chart grid.
+/// The label resolves from the catalog in the active locale, re-reading
+/// when the locale swaps.
 #[component]
-fn GroupLabel(group: ChartGroup, #[prop(default = false)] night_hint: bool) -> impl IntoView {
+fn GroupLabel(group: ChartGroup) -> impl IntoView {
     let i18n = use_i18n();
     let text = move || -> std::borrow::Cow<'static, str> {
         match group {
@@ -233,12 +232,7 @@ fn GroupLabel(group: ChartGroup, #[prop(default = false)] night_hint: bool) -> i
         }
     };
     view! {
-        <SectionHeader
-            title=Signal::derive(move || text().into_owned())
-            hint=night_hint.then(|| {
-                Signal::derive(move || t_string!(i18n, env.night_hint).into_owned())
-            })
-        />
+        <SectionHeader title=Signal::derive(move || text().into_owned()) />
     }
 }
 
@@ -500,7 +494,7 @@ pub fn EnvironmentSection(
             <EnvDashboard grow_id=grow_id />
             // The Air group: above-ground concerns under their
             // micro-label header.
-            <GroupLabel group=ChartGroup::Air night_hint=true />
+            <GroupLabel group=ChartGroup::Air />
             <div class=ui::CARD_GRID>{air_cards}</div>
             // The Root zone group: below-ground concerns. Its chart
             // grid mounts lazily (ticket 07) once the group scrolls
@@ -559,12 +553,7 @@ fn NotMeasuredCard(
                     // full-card tier (D120): it flags "nothing feeds
                     // these charts", not a primary surface.
                     <div class={format!("{} border border-base-300 mt-4", ui::card())}>
-                        <div class="flex flex-wrap items-baseline gap-2">
-                            <h4 class="m-0">{t_string!(i18n, env.not_measured)}</h4>
-                            <span class="text-sm text-base-content/60">
-                                {t_string!(i18n, env.not_measured_hint)}
-                            </span>
-                        </div>
+                        <h4 class="m-0">{t_string!(i18n, env.not_measured)}</h4>
                         <ul class="list-none m-0 p-0 mt-2 flex flex-wrap gap-2">
                             {roles
                                 .into_iter()

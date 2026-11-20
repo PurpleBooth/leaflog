@@ -921,7 +921,6 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
 
                     <h3>{t!(i18n, grow.photos)}</h3>
                     <label class="fieldset">
-                        <span class="fieldset-label">{t!(i18n, grow.upload_label)}</span>
                         <input type="file" class="file-input file-input-sm" accept="image/jpeg,image/png,image/webp" multiple
                             on:change=upload
                         />

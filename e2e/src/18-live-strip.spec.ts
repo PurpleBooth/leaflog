@@ -1,17 +1,18 @@
 // Live values on the env strip (grow-page rework ticket 02): the
 // overview renders no Live sensors section at all — no heading, no
-// "Loading…" status line — and the six environment tiles (Temp, RH,
-// VPD, RH window, CO₂, soil moisture) are the single live surface:
-// one EventSource subscription on the existing SSE endpoint updates
-// them as the mock pushes state, with browser-native reconnect and
-// quiet degradation (last values or "—", never an alarm banner).
-// The old 5-second poll is gone: one open connection per page.
+// "Loading…" status line — and the five environment tiles (Temp, RH,
+// VPD, CO₂, soil moisture; the RH window rides under RH as a band
+// footnote, D136) are the single live surface: one EventSource
+// subscription on the existing SSE endpoint updates them as the mock
+// pushes state, with browser-native reconnect and quiet degradation
+// (last values or "—", never an alarm banner). The old 5-second poll
+// is gone: one open connection per page.
 
 import { test, expect, type Page } from '@playwright/test';
 import { api, createGrow, dismissOnboarding, uniqueName, url } from './helpers';
 
-/** The six tile labels, in strip order. */
-const LABELS = ['Temp', 'RH', 'VPD', 'RH window', 'CO₂', 'Soil moisture'];
+/** The five tile labels, in strip order. */
+const LABELS = ['Temp', 'RH', 'VPD', 'CO₂', 'Soil moisture'];
 
 test.beforeAll(async ({ request }) => {
   await dismissOnboarding(request);
@@ -32,7 +33,7 @@ function tileFrame(page: Page, label: string) {
   return tile(page, label).locator('xpath=..');
 }
 
-test('six env tiles update live over one SSE connection', async ({
+test('five env tiles update live over one SSE connection', async ({
   page,
   request,
 }) => {
@@ -83,7 +84,7 @@ test('six env tiles update live over one SSE connection', async ({
   await expect(page.getByText('Live sensors')).toHaveCount(0);
   await expect(page.getByText('Loading…', { exact: true })).toHaveCount(0);
 
-  // All six tiles render real readings from the bound entities.
+  // All five tiles render real readings from the bound entities.
   for (const label of LABELS) {
     await expect(tile(page, label)).toBeVisible();
   }
@@ -95,9 +96,8 @@ test('six env tiles update live over one SSE connection', async ({
 
   // Live updates: the mock pushes every 2 s, and each tile's value
   // text must move off its first reading (derived tiles recompute —
-  // VPD and the RH window follow the live temperature, not a stale
-  // snapshot). The slowest digit to roll is the RH window's, so the
-  // poll allows a generous window.
+  // VPD follows the live temperature and humidity, not a stale
+  // snapshot).
   const initial = await Promise.all(
     LABELS.map(async (label) => tileValue(page, label).innerText()),
   );
@@ -219,7 +219,7 @@ test('a dead SSE stream degrades quietly, without an alarm banner', async ({
     .toBe(true);
 
   await page.goto(url(`/grows/${growId}`));
-  await expect(tile(page, 'RH window')).toBeVisible();
+  await expect(page.locator('#env-strip').getByText(/band: \d+–\d+ %/)).toBeVisible();
   await expect(tileValue(page, 'Temp')).toContainText('°C /');
 
   // The page stays open across an outage of the live stream: from

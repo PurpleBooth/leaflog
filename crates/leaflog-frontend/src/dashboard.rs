@@ -122,9 +122,6 @@ fn lamp_why(locale: Locale, advice: &LampAdvice) -> String {
             "stress_raise" => td_string!(locale, env.lamp_stress_raise).to_owned(),
             "light_sensitive" => td_string!(locale, env.lamp_light_sensitive).to_owned(),
             "light_tolerant" => td_string!(locale, env.lamp_light_tolerant).to_owned(),
-            "default_starting_points" | "starting_points" => {
-                td_string!(locale, env.lamp_starting_points).to_owned()
-            }
             // Unknown wire code: keep the backend's English assembly.
             _ => return advice.why.clone(),
         };
@@ -166,7 +163,9 @@ fn coach_tip_lines(
                 ),
                 state
             );
-            (title, td_string!(locale, env.coach_vpd_why).to_owned())
+            // The VPD tip's why sentence is gone (D137): the title
+            // carries the whole message, so no why line renders.
+            (title, String::new())
         }
         "coco_fertigate" => (
             td_string!(locale, env.coach_coco_fertigate).to_owned(),
@@ -182,7 +181,7 @@ fn coach_tip_lines(
         ),
         "soil_wet_dry" => (
             td_string!(locale, env.coach_soil_wet_dry).to_owned(),
-            td_string!(locale, env.coach_soil_wet_dry_why).to_owned(),
+            String::new(),
         ),
         "flower_late_rh" => (
             td_string!(locale, env.coach_flower_late_rh).to_owned(),
@@ -305,7 +304,7 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                 })
             }}
 
-            <div id="env-strip" class="grid gap-2 grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-6">
+            <div id="env-strip" class="grid gap-2 grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-5">
                 {move || {
                     let Some(e) = env.get() else { return Vec::<_>::new() };
                     // Streamed values override the snapshot's; without a
@@ -337,10 +336,11 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                         view! { <div class={format!("{} grid gap-0.5", ui::tile())}>
                             <span class="text-xs uppercase tracking-wide text-base-content/60">{t!(i18n, env.rh)}</span>
                             <span class="text-lg font-semibold">{rh_display}</span>
-                        </div> }.into_any(),
-                        view! { <div class={format!("{} grid gap-0.5", ui::tile())}>
-                            <span class="text-xs uppercase tracking-wide text-base-content/60">{t!(i18n, env.rh_window)}</span>
-                            <span class="text-lg font-semibold">{format!("{}–{} %", leaflog_core::format::format_decimal(v.rh_window.0, 0, style), leaflog_core::format::format_decimal(v.rh_window.1, 0, style))}</span>
+                            // The phase's RH window rides under the LF
+                            // reading the same way the VPD band rides
+                            // under VPD (D136): one tile per quantity,
+                            // the corridor as a quiet footnote.
+                            <span class="text-xs text-base-content/60">{t!(i18n, env.band_prefix)}{leaflog_core::format::format_decimal(v.rh_window.0, 0, style)}{"–"}{leaflog_core::format::format_decimal(v.rh_window.1, 0, style)}{" %"}</span>
                         </div> }.into_any(),
                         view! { <div class=vpd_class>
                             <span class="text-xs uppercase tracking-wide text-base-content/60">{t!(i18n, env.vpd_tile)}</span>
@@ -403,10 +403,18 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                                     {c.tips.iter().map(|tip| {
                                         let (title, why) =
                                             coach_tip_lines(locale, phase, tip, c.light_on);
+                                        // Tips whose why sentence is gone
+                                        // (D137) render the title only —
+                                        // no empty paragraph gap.
+                                        let why_line = (!why.is_empty()).then(|| {
+                                            view! {
+                                                <p class="text-base-content/70 text-sm">{why}</p>
+                                            }
+                                        });
                                         view! {
                                             <li class="py-2 first:pt-0 last:pb-0">
                                                 <strong>{title}</strong>
-                                                <p class="text-base-content/70 text-sm">{why}</p>
+                                                {why_line}
                                             </li>
                                         }
                                     }).collect::<Vec<_>>()}

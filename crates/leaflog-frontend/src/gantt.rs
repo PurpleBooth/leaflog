@@ -33,15 +33,13 @@ fn is_open_ended(windows: &[PhaseWindowData]) -> bool {
     !windows.iter().any(|window| window.phase == "flower")
 }
 
-/// The caption under the chart: the localized caption sentence, then
-/// the Day count against the projected total unless the forecast is
-/// open-ended (no suffix). The three parts are composed here, not as
-/// adjacent view nodes — Leptos renders consecutive text nodes with no
-/// separator, which glued the sentence onto the day count
-/// (`…Zeitpunkt.65 / 141`).
+/// The caption under the chart: the Day count against the projected
+/// total, or a bare count when the forecast is open-ended (no
+/// suffix). The caption sentence is gone (D137); the count rides
+/// alone under the chart's today marker.
 #[must_use]
-fn forecast_caption(caption: &str, today_day: i64, count_suffix: &str) -> String {
-    format!("{caption} {today_day}{count_suffix}")
+fn forecast_caption(today_day: i64, count_suffix: &str) -> String {
+    format!("{today_day}{count_suffix}")
 }
 
 /// The chart horizon in grow days: the percentage base for the bars
@@ -173,8 +171,7 @@ pub fn GanttTimeline(grow_id: String) -> impl IntoView {
                         </div>
                     </div>
                     <p class="text-base-content/70 text-sm">
-                        {forecast_caption(td_string!(locale, gantt.caption), data.today_day,
-                            &count_suffix)}
+                        {forecast_caption(data.today_day, &count_suffix)}
                     </p>
                 }
                 .into_any()
@@ -281,15 +278,10 @@ mod open_ended_forecast_tests {
     }
 
     #[test]
-    fn caption_joins_sentence_and_day_count_with_a_space() {
-        let caption = "Bars show the likely window; light extensions show the \
-            earliest/latest range.";
-        assert_eq!(
-            forecast_caption(caption, 65, " / 141"),
-            "Bars show the likely window; light extensions show the earliest/latest range. 65 / 141"
-        );
-        // Open-ended: no suffix, but the separator space stays.
-        assert_eq!(forecast_caption("Zeitpunkt.", 65, ""), "Zeitpunkt. 65");
+    fn caption_is_the_bare_day_count() {
+        assert_eq!(forecast_caption(65, " / 141"), "65 / 141");
+        // Open-ended: no suffix, no total.
+        assert_eq!(forecast_caption(65, ""), "65");
     }
 
     fn full_windows() -> Vec<PhaseWindowData> {

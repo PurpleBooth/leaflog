@@ -63,7 +63,8 @@ test('healthy bindings show no No-data banner, at load or after load', async ({
   // Snapshot landed (readings strip rendered): still no banner, and a
   // real temperature reading next to it. Scoped to the strip — the
   // history chart's axis labels carry the same "°C /" text (ticket 05).
-  await expect(page.getByText('RH window')).toBeVisible();
+  // The RH window footnote proves the strip's full shape (D136).
+  await expect(page.locator('#env-strip').getByText(/band: \d+–\d+ %/)).toBeVisible();
   await expect(banner(page)).toHaveCount(0);
   await expect(page.locator('#env-strip').getByText('°C /')).toBeVisible();
 });

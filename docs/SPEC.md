@@ -142,7 +142,7 @@ Output: **recommended height range, dim %, target PPFD, DLI** (PPFD × hours × 
   - On "bleaching / taco / crispy" tags, suggest +2–4 in or dim to 70–80%, then re-check after about a week.
 - Prefer "set distance by stage, then fine-tune with the dimmer".
 - The advising fixture is the grow's recorded wall wattage; when it is unset a 330 W-class default applies (D044), so advice never blocks on a form field.
-- Always show the units, say that the numbers are starting points, and recommend a PAR meter or a PPFD-meter log entry to calibrate.
+- Always show the units (D137 removed the "starting points" explainer sentence; the advice line stands alone).
 - If a dimmer entity is bound **and** service calls are opted in, offer a one-tap "apply" with confirmation. Otherwise advise only.
 
 ### 4.8 Substrate-aware recommendations

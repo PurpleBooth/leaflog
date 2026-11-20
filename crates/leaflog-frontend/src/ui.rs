@@ -106,24 +106,16 @@ pub fn EmptyState(children: Children) -> impl IntoView {
 }
 
 /// The section micro-label header: the group's name in the section's
-/// quiet uppercase register, above its content, with an optional
-/// legend hint beside it (the Air group names its night shading
-/// there). The title and hint arrive as signals so a locale swap
-/// re-translates them.
+/// quiet uppercase register, above its content. The title arrives as
+/// a signal so a locale swap re-translates it.
 #[component]
 #[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
-pub fn SectionHeader(
-    title: Signal<String>,
-    #[prop(default = None)] hint: Option<Signal<String>>,
-) -> impl IntoView {
+pub fn SectionHeader(title: Signal<String>) -> impl IntoView {
     view! {
         <div class="flex flex-wrap items-baseline gap-2 mt-4">
             <h4 class="m-0 text-xs font-semibold uppercase tracking-wider text-base-content/60">
                 {move || title.get()}
             </h4>
-            {hint.map(|hint| {
-                view! { <span class="text-xs text-base-content/50">{move || hint.get()}</span> }
-            })}
         </div>
     }
 }

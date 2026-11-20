@@ -646,13 +646,7 @@ pub fn advise_lamp(input: &LampInput) -> LampAdvice {
     });
 
     if why.is_empty() {
-        why = "Set the distance by stage, then fine-tune with the dimmer. These are starting points — a PAR meter calibrates them.".into();
-        why_codes.push("default_starting_points");
-    } else {
-        why.push_str(
-            "These are starting points — a PAR meter or a PPFD-meter log entry calibrates them.",
-        );
-        why_codes.push("starting_points");
+        why = "Set the distance by stage, then fine-tune with the dimmer.".into();
     }
 
     LampAdvice {
@@ -701,8 +695,9 @@ pub fn coach_tips(phase: Phase, substrate_label: &str, light_on: bool) -> Vec<Co
                 " (lights off: keep close to daytime; watch the RH spike)"
             }
         ),
-        why: "VPD drives transpiration and nutrient uptake; the band shifts by phase and lights state."
-            .to_owned(),
+        // The why sentence is gone (D137): the title carries the whole
+        // message, so the fallback why is empty too.
+        why: String::new(),
         code: "vpd_band",
     });
 
@@ -731,7 +726,8 @@ pub fn coach_tips(phase: Phase, substrate_label: &str, light_on: bool) -> Vec<Co
         _ => {
             tips.push(CoachTip {
                 title: "Water when the top 1–2 in of soil is dry".to_owned(),
-                why: "Soil prefers a wet–dry cycle; overwatering suffocates roots.".to_owned(),
+                // The why sentence is gone (D137); the title stands alone.
+                why: String::new(),
                 code: "soil_wet_dry",
             });
         }
@@ -1139,7 +1135,7 @@ mod tests {
             stress_tags_logged: true,
         };
         let advice = advise_lamp(&input);
-        assert_eq!(advice.why_codes.len(), 6);
+        assert_eq!(advice.why_codes.len(), 5);
         assert_eq!(
             advice.why_codes,
             vec![
@@ -1148,7 +1144,6 @@ mod tests {
                 "stretch_raise",
                 "stress_dim",
                 "light_sensitive",
-                "starting_points",
             ]
         );
 
@@ -1162,7 +1157,9 @@ mod tests {
             stretch_logged: false,
             stress_tags_logged: false,
         });
-        assert_eq!(bare.why_codes, vec!["default_starting_points"]);
+        // The starting-points why code is gone (D137): no sentence, no
+        // marker code.
+        assert_eq!(bare.why_codes, Vec::<&str>::new());
 
         assert!(!advice.why.contains("spec §"), "no citations in UI strings");
     }

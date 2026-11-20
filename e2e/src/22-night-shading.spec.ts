@@ -70,9 +70,6 @@ test('a bound light shades the observed nights behind the Air charts only', asyn
   await expect(soil).toBeVisible();
   expect(await nightShades(soil), 'no night layer on the Root zone').toEqual([]);
 
-  // The legend hint names the tint beside the Air group label.
-  await expect(page.getByText('Shaded areas mark night periods.')).toBeVisible();
-
   // The standalone Light card is gone: its story rides the shading.
   await expect(page.locator('svg[aria-label="light history"]')).toHaveCount(0);
 });
