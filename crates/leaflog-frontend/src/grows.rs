@@ -146,7 +146,10 @@ pub fn GrowsPage() -> impl IntoView {
                                             i18n.get_locale(),
                                             grow.status,
                                         )}</span>
-                                        <span class="text-base-content/70">{grow.substrate.clone()}</span>
+                                        <span class="text-base-content/70">{labels::substrate_label(
+                                            i18n.get_locale(),
+                                            &grow.substrate,
+                                        )}</span>
                                     </div>
                                     <p class="text-base-content/70 text-sm">{t!(i18n, grows.started, date = grow.started_on)}</p>
                                 </li>
@@ -541,7 +544,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                             {substrate_glyph(&current.substrate).map(|glyph| view! {
                                                 <span aria-hidden="true">{glyph}</span>
                                             })}
-                                            {current.substrate.clone()}
+                                            {labels::substrate_label(i18n.get_locale(), &current.substrate)}
                                         </span>
                                         {(!strain_label.is_empty()).then(|| {
                                             let label = strain_label.clone();
@@ -871,7 +874,12 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
                 >
                     {leaflog_core::grows::SUBSTRATES
                         .iter()
-                        .map(|substrate| view! { <option value=*substrate>{*substrate}</option> })
+                        .map(|substrate| {
+                            let locale = i18n.get_locale();
+                            view! {
+                                <option value=*substrate>{labels::substrate_label(locale, substrate)}</option>
+                            }
+                        })
                         .collect::<Vec<_>>()}
                 </select>
             </label>
@@ -1393,7 +1401,7 @@ pub fn photoperiod_options(locale: Locale) -> impl IntoView {
     [
         (
             PhotoperiodType::Photoperiod,
-            td_string!(locale, form.photoperiod),
+            td_string!(locale, form.photoperiodic),
         ),
         (PhotoperiodType::Auto, td_string!(locale, form.autoflower)),
     ]

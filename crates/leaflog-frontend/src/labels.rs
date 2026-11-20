@@ -97,6 +97,20 @@ pub fn status_label(locale: Locale, status: GrowStatus) -> String {
     }
 }
 
+/// The grow medium display label for the given locale; the three
+/// known substrates map to catalog strings, a user-defined value
+/// echoes through verbatim (matching the header glyph: an unknown
+/// value must never render as something it is not).
+#[must_use]
+pub fn substrate_label(locale: Locale, substrate: &str) -> String {
+    match substrate {
+        "soil" => td_string!(locale, form.substrate_soil).to_owned(),
+        "coco" => td_string!(locale, form.substrate_coco).to_owned(),
+        "hydro" => td_string!(locale, form.substrate_hydro).to_owned(),
+        other => other.to_owned(),
+    }
+}
+
 /// The appearance category heading for the given locale (the group
 /// caption above one set of trait checkboxes).
 #[must_use]
@@ -174,6 +188,7 @@ mod tests {
     use super::{
         Locale, action_label, action_label_for_kind, appearance_category_label, appearance_label,
         binding_role_label, chart_title, fitted_phase_label, phase_label, status_label,
+        substrate_label,
     };
     use leaflog_core::Phase;
     use leaflog_core::actions::ActionType;
@@ -209,6 +224,19 @@ mod tests {
             "Trichome"
         );
         assert_eq!(status_label(Locale::de, GrowStatus::Active), "Aktiv");
+        assert_eq!(substrate_label(Locale::de, "soil"), "Erde");
+    }
+
+    /// The three known media map to catalog strings; a user-defined
+    /// medium echoes through unchanged (no catalogue left to leak in).
+    #[test]
+    fn substrate_labels_map_and_echo() {
+        assert_eq!(substrate_label(Locale::en, "soil"), "Soil");
+        assert_eq!(substrate_label(Locale::en, "coco"), "Coco");
+        assert_eq!(substrate_label(Locale::en, "hydro"), "Hydro");
+        assert_eq!(substrate_label(Locale::de, "hydro"), "Hydro");
+        assert_eq!(substrate_label(Locale::en, "peat/perlite"), "peat/perlite");
+        assert_eq!(substrate_label(Locale::de, ""), "");
     }
 
     /// Old appearance spellings render under the merged entry; free
