@@ -6,6 +6,24 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-20 — overview spacing rhythm (D138)
+
+### D138: section rhythm lives in the document stylesheet, not in per-call margin utilities
+
+Tailwind's preflight flattens headings, so the grow overview's
+stacked blocks sat flush against each other: the group micro-labels
+("Luft", "Wurzelzone") touched the chart grid below, and the
+"Nicht gemessen" card touched the "Prognose" heading after it.
+Rather than sprinkling `mt-*` on every junction, the document-level
+`h3` rule (which already carries the heading sizes) also carries the
+section rhythm: `1.5rem` above a section heading, `0.5rem` between
+the heading and its own content. Headings that sit at the top of
+their container (first child inside a card — onboarding steps, the
+plant edit form, the bindings and light-cycle cards, the new-grow
+form) opt out with `mt-0`. The group micro-labels keep their `mt-4`
+and gain `mb-2` in `SectionHeader`, so a label breathes above its
+card grid without drifting from it.
+
 ## 2026-11-20 — overview copy and layout trims (D136–D137)
 
 ### D136: the RH window rides under the RH tile as a band footnote, the way the VPD band rides under VPD

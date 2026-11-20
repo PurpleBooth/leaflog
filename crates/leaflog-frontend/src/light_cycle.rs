@@ -296,7 +296,7 @@ pub fn LightCycleEditor(
 
     view! {
         <div class={format!("{} my-4", card())}>
-            <h3>{t!(i18n, light_cycle.heading)}</h3>
+            <h3 class="mt-0">{t!(i18n, light_cycle.heading)}</h3>
             <p class="text-base-content/70 text-sm">
                 {t!(i18n, light_cycle.intro)}
             </p>

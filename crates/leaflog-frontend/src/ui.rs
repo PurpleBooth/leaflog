@@ -112,7 +112,7 @@ pub fn EmptyState(children: Children) -> impl IntoView {
 #[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
 pub fn SectionHeader(title: Signal<String>) -> impl IntoView {
     view! {
-        <div class="flex flex-wrap items-baseline gap-2 mt-4">
+        <div class="flex flex-wrap items-baseline gap-2 mt-4 mb-2">
             <h4 class="m-0 text-xs font-semibold uppercase tracking-wider text-base-content/60">
                 {move || title.get()}
             </h4>

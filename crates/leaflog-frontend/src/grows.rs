@@ -121,7 +121,7 @@ pub fn GrowsPage() -> impl IntoView {
 
             <Show when=move || form_open.get()>
                 <form class={format!("{} my-4", ui::card())} on:submit=save>
-                    <h3>{t!(i18n, grows.new_grow)}</h3>
+                    <h3 class="mt-0">{t!(i18n, grows.new_grow)}</h3>
                     <GrowForm draft />
                     <div class="flex flex-wrap gap-2 mt-4">
                         <button class="btn btn-primary btn-sm" type="submit">{t!(i18n, grows.save)}</button>

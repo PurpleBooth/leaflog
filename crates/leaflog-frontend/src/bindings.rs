@@ -125,7 +125,7 @@ pub fn EntityBindings(grow_id: String, bindings_epoch: RwSignal<u64>) -> impl In
     view! {
         <div class={format!("{} my-4", ui::card())}>
             <ErrorIf error />
-            <h3>{t!(i18n, binding.heading)}</h3>
+            <h3 class="mt-0">{t!(i18n, binding.heading)}</h3>
             <p class="text-base-content/70 text-sm">
                 {t!(i18n, binding.intro)}
             </p>

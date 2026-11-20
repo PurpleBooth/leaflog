@@ -508,7 +508,7 @@ pub fn PlantViewPage() -> impl IntoView {
 
             <Show when=move || edit_open.get()>
                 <form class={format!("{} my-4", ui::card())} on:submit=save>
-                    <h3>{t!(i18n, plant.edit)}</h3>
+                    <h3 class="mt-0">{t!(i18n, plant.edit)}</h3>
                     <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
                         <label class="fieldset">
                             <span class="fieldset-label">{t!(i18n, form.name)}</span>
