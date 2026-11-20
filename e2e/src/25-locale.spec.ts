@@ -8,7 +8,7 @@
 // English at this stage.
 
 import { test, expect } from '@playwright/test';
-import { createGrow, url, uniqueName , createSchedule } from './helpers';
+import { createGrow, url, uniqueName, createSchedule, api } from './helpers';
 
 test.describe('german-forced browser', () => {
   test.use({ locale: 'de-DE' });
@@ -45,6 +45,14 @@ test.describe('german-forced browser', () => {
     await expect(card.getByRole('link', { name, exact: true })).toBeVisible();
     await expect(card.getByText(/Gestartet am \d{4}-\d{2}-\d{2}/)).toBeVisible();
 
+    // The enriched card renders the localized substrate and
+    // photoperiod wording (catalog form.substrate_soil and
+    // form.photoperiodic) — never the raw wire values.
+    await expect(card.getByText('Erde', { exact: true })).toBeVisible();
+    await expect(card.getByText('Fotoperiodisch', { exact: true })).toBeVisible();
+    await expect(card.getByText('soil', { exact: true })).toHaveCount(0);
+    await expect(card.getByText('photoperiod', { exact: true })).toHaveCount(0);
+
     // Nothing re-rendered English: the German page heading is still
     // there after the locale chain settled (the mock reports no HA
     // language, so the browser locale stands).
@@ -56,6 +64,15 @@ test.describe('german-forced browser', () => {
     const scheduleId = await createSchedule(request, 'Deutscher Düngeplan');
     const growId = await createGrow(request, name, {
       feed_schedule_id: scheduleId,
+    });
+    // One manual entry so the timeline has a day group to render.
+    await api(request, 'POST', `api/grows/${growId}/actions`, {
+      plant_ids: [],
+      occurred_at: new Date().toISOString(),
+      action_type: 'water',
+      details: { volume_ml: 250 },
+      notes: null,
+      appearance_tags: [],
     });
 
     await page.goto(url(`/grows/${growId}`));
@@ -82,6 +99,13 @@ test.describe('german-forced browser', () => {
     await expect(
       page.getByRole('heading', { name: 'Düngeplan', exact: true }),
     ).toBeVisible();
+
+    // The timeline groups manual entries under German day headings
+    // (catalog grow.day); the quiet auto tier (grow.auto_heading)
+    // is pinned when mock HA light transitions exist.
+    await expect(
+      page.locator('[data-testid="timeline-day"]').first(),
+    ).toHaveText(/Tag \d+/);
 
     // And nothing drifted back to English.
     await expect(
@@ -156,6 +180,15 @@ test.describe('german-forced browser', () => {
     await expect(
       page.getByRole('columnheader', { name: 'Anbauten' }).first(),
     ).toBeVisible();
+
+    // The dashboard band above the aggregates (history.stat_*):
+    // scoped to the band, since the nav link and a table header
+    // reuse the word "Anbauten".
+    const band = page.locator('[data-testid="history-summary"]');
+    await expect(band.getByText('Anbauten', { exact: true })).toBeVisible();
+    await expect(band.getByText('Ø Abweichung', { exact: true })).toBeVisible();
+    await expect(band.getByText('Ertrag (trocken)', { exact: true })).toBeVisible();
+
     // The old 'Zurück zur Startseite' link is gone by design: the
     // Verlauf rework replaced the trailing link with the dashboard
     // band, and the header nav owns navigation now.
