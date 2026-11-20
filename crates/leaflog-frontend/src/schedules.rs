@@ -123,6 +123,19 @@ fn non_empty(text: &str) -> Option<String> {
     (!trimmed.is_empty()).then(|| trimmed.to_owned())
 }
 
+/// The dose-unit display suffix for a stored unit label; the two
+/// known labels map to the catalog strings the editor's unit select
+/// uses, an unknown label echoes through (tolerant rendering, like
+/// the entity map).
+#[must_use]
+fn dose_unit_display(locale: Locale, unit: &str) -> String {
+    match unit {
+        "ml_per_l" => td_string!(locale, schedules.unit_ml).into_owned(),
+        "g_per_l" => td_string!(locale, schedules.unit_gl).into_owned(),
+        other => other.to_owned(),
+    }
+}
+
 /// The dose behind one raw cell: `None` for blank and dash cells,
 /// the parsed dose otherwise.
 #[must_use]
@@ -241,7 +254,11 @@ pub fn SchedulesPage() -> impl IntoView {
                                 let weeks = row.schedule.flower_weeks;
                                 let products = row.product_count;
                                 let groups = row.groups.len();
-                                let units = row.units.join(", ");
+                                let units = row.units
+                                    .iter()
+                                    .map(|unit| dose_unit_display(locale, unit))
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
                                 let used_by = row.used_by;
                                 let edit_url = format!("/schedules/{id}/edit");
                                 let delete_id = id.clone();
@@ -900,5 +917,20 @@ fn EditorGrid(rows: RwSignal<Vec<RowDraft>>, weeks: RwSignal<u8>) -> impl IntoVi
                 }}
             </tbody>
         </table>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::dose_unit_display;
+    use crate::i18n::Locale;
+
+    /// The library meta line renders the same unit strings the
+    /// editor's select offers; unknown stored labels echo through.
+    #[test]
+    fn dose_unit_display_maps_and_echoes() {
+        assert_eq!(dose_unit_display(Locale::en, "ml_per_l"), "ml/L");
+        assert_eq!(dose_unit_display(Locale::de, "g_per_l"), "g/L");
+        assert_eq!(dose_unit_display(Locale::en, "tsp_per_gal"), "tsp_per_gal");
     }
 }

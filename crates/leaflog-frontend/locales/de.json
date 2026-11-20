@@ -375,7 +375,7 @@
     "phase_flower": "Blüte",
     "phase_water": "Wasser",
     "page_title": "Düngepläne",
-    "intro": "Produkt-Dosis-Tabellen aus dem Dünger-Heft. Einen Plan einer Grow zuweisen — Leaflog passt ihn an die echte Timeline der Grow an; abgeschlossene Keeps behalten ihren eingepassten Plan eingefroren.",
+    "intro": "Produkt-Dosis-Tabellen aus dem Dünger-Heft. Einen Plan einer Grow zuweisen — Leaflog passt ihn an die echte Timeline der Grow an; abgeschlossene Grows behalten ihren eingepassten Plan eingefroren.",
     "new_schedule": "Neuer Plan",
     "library_empty_title": "Noch keine Düngepläne",
     "library_empty_body": "Lege einen aus der Nährstoff-Tabelle des Herstellers an. Grows ohne Plan blenden ihren Düngeabschnitt einfach aus, bis du einen hinzufügst.",
