@@ -11,6 +11,7 @@ use crate::ErrorIf;
 use crate::api;
 use crate::i18n::{t, use_i18n};
 use crate::labels::binding_role_label;
+use crate::ui;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
@@ -122,7 +123,7 @@ pub fn EntityBindings(grow_id: String, bindings_epoch: RwSignal<u64>) -> impl In
     };
 
     view! {
-        <div class="my-4">
+        <div class={format!("{} my-4", ui::card())}>
             <ErrorIf error />
             <h3>{t!(i18n, binding.heading)}</h3>
             <p class="text-base-content/70 text-sm">

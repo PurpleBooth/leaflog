@@ -1029,14 +1029,14 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
                             }
                         />
                     </label>
-                    <label class="fieldset">
-                        <span class="fieldset-label">{t!(i18n, form.dimmable)}</span>
+                    <label class="fieldset flex flex-row items-center gap-2 self-center">
                         <input class="checkbox" type="checkbox"
                             prop:checked=move || draft.get().dimmable
                             on:change=move |ev| {
                                 draft.update(|d| d.dimmable = event_target_checked(&ev));
                             }
                         />
+                        <span class="fieldset-label">{t!(i18n, form.dimmable)}</span>
                     </label>
                 </div>
             </details>

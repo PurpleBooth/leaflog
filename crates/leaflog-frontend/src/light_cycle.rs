@@ -19,7 +19,7 @@ use leaflog_core::light_cycle::{
 use crate::api;
 use crate::i18n::{Locale, t, t_string, use_i18n};
 use crate::labels::phase_label;
-use crate::ui::{PendingUndo, UNDO_WINDOW_MS, UndoBanner, live_undo, now_ms};
+use crate::ui::{PendingUndo, UNDO_WINDOW_MS, UndoBanner, card, live_undo, now_ms};
 use leptos_i18n::td_string;
 
 /// The four phase hour fields as raw input text, keyed like
@@ -295,21 +295,22 @@ pub fn LightCycleEditor(
     };
 
     view! {
-        <h3>{t!(i18n, light_cycle.heading)}</h3>
-        <p class="text-base-content/70 text-sm">
-            {t!(i18n, light_cycle.intro)}
-        </p>
-        {move || {
-            observed.get().map(|reality| {
-                view! {
-                    <p class="text-base-content/70 text-sm" data-testid="light-reality">
-                        {reality_caption(locale, &reality)}
-                    </p>
-                }
-            })
-        }}
-        <UndoBanner message=undo_message.into() on_undo=undo_reset on_dismiss=dismiss_undo />
-        <form class="flex flex-wrap gap-2 items-end my-2" on:submit=save>
+        <div class={format!("{} my-4", card())}>
+            <h3>{t!(i18n, light_cycle.heading)}</h3>
+            <p class="text-base-content/70 text-sm">
+                {t!(i18n, light_cycle.intro)}
+            </p>
+            {move || {
+                observed.get().map(|reality| {
+                    view! {
+                        <p class="text-base-content/70 text-sm" data-testid="light-reality">
+                            {reality_caption(locale, &reality)}
+                        </p>
+                    }
+                })
+            }}
+            <UndoBanner message=undo_message.into() on_undo=undo_reset on_dismiss=dismiss_undo />
+            <form class="flex flex-wrap gap-2 items-end my-2" on:submit=save>
             <label class="fieldset">
                 <span class="fieldset-label">{t!(i18n, light_cycle.lights_on)}</span>
                 <input class="input input-sm" type="time" placeholder="06:00"
@@ -360,7 +361,8 @@ pub fn LightCycleEditor(
                     view! { <span class="text-base-content/60 text-sm">{message}</span> }
                 })
             }}
-        </form>
+            </form>
+        </div>
     }
 }
 
