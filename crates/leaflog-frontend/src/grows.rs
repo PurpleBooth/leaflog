@@ -1504,7 +1504,7 @@ fn day_groups(entries: &[ActionEntry]) -> Vec<(u16, Vec<ActionEntry>)> {
 
 /// Whether any structured fact is set — an empty `<dl class="facts">`
 /// renders as dead margins, so it is omitted entirely.
-fn has_facts(details: &ActionDetails) -> bool {
+const fn has_facts(details: &ActionDetails) -> bool {
     details.volume_ml.is_some()
         || details.input_ph.is_some()
         || details.runoff_ph.is_some()

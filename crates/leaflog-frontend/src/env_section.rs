@@ -413,6 +413,25 @@ pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
     // per visit (only the window persists — the tick choice is a
     // glance, not a preference worth storage).
     let markers = RwSignal::new(true);
+    // One bindings read feeds two decisions: whether the lazy Root
+    // zone block reserves its height at all (a grow with no
+    // root-zone role bound would only reserve empty space) and which
+    // roles the not-measured card chips. `None` until the response
+    // arrives.
+    let bindings = RwSignal::<Option<BTreeMap<String, String>>>::new(None);
+    {
+        let grow_id = grow_id.clone();
+        Effect::new(move |_| {
+            let id = grow_id.clone();
+            spawn_local(async move {
+                if let Ok(map) =
+                    api::get::<BTreeMap<String, String>>(&format!("api/grows/{id}/bindings")).await
+                {
+                    bindings.set(Some(map));
+                }
+            });
+        });
+    }
     // Persist every settled value, including the first visit's
     // default: the stored choice then never disagrees with what the
     // page shows.
@@ -441,6 +460,24 @@ pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
             view! { <div class=ui::CARD_GRID>{cards}</div> }.into_any()
         })
     };
+    // Reserve the lazy block's height only while a Root zone chart
+    // can actually appear there: until the bindings answer arrives
+    // (stay safe, avoid a jump) or once any root-zone role is bound.
+    // With none bound the grid would render nothing — reserving
+    // hundreds of pixels for it is the quiet void this branch
+    // removes; the not-measured card below carries the story
+    // instead. A dead binding is not unbound, so it keeps the
+    // reservation (its card renders with the degraded banner).
+    let reserve_root_zone = Signal::derive(move || {
+        // `None` = the answer is still in flight: stay safe and
+        // reserve, so a bound grow never jumps.
+        bindings.get().is_none_or(|map| {
+            SECTION_CHARTS
+                .iter()
+                .filter(|chart| chart_group(chart.role) == ChartGroup::RootZone)
+                .any(|chart| map.contains_key(chart.role))
+        })
+    });
 
     view! {
         <div id="env-section">
@@ -457,10 +494,19 @@ pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
             // grid mounts lazily (ticket 07) once the group scrolls
             // into view; the label above stays structural, so the
             // section's outline reads at first paint and the lazy
-            // anchor sits right where the grid begins.
+            // anchor sits right where the grid begins. Without any
+            // bound root-zone role the lazy block is skipped
+            // entirely — the label stays, nothing reserves space.
             <GroupLabel group=ChartGroup::RootZone />
-            <LazyCharts children=root_zone_grid />
-            <NotMeasuredCard grow_id=not_measured_grow_id />
+            {move || {
+                reserve_root_zone
+                    .get()
+                    .then(|| {
+                        let root_zone_grid = root_zone_grid.clone();
+                        view! { <LazyCharts children=root_zone_grid /> }
+                    })
+            }}
+            <NotMeasuredCard grow_id=not_measured_grow_id bindings />
         </div>
     }
 }
@@ -470,36 +516,27 @@ pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
 /// cards it follows — lists a chip for every sensor role the grow
 /// has not bound, and each chip is the bind affordance: an in-app
 /// link to the grow edit page, where the existing Entity bindings
-/// flow lives. The card appears only once the bindings response
-/// names at least one unbound role: in flight (or on a failed
-/// fetch) it renders nothing, so it never flashes and never claims
-/// a gap it cannot see. A dead binding is not unbound — its chart
-/// card stays with the degraded banner — so only key absence chips
-/// here.
+/// flow lives. The card appears only once the shared bindings
+/// response names at least one unbound role: in flight (or on a
+/// failed fetch) it renders nothing, so it never flashes and never
+/// claims a gap it cannot see. A dead binding is not unbound — its
+/// chart card stays with the degraded banner — so only key absence
+/// chips here. The bindings signal comes from the section (one
+/// fetch, shared with the reservation decision).
 #[component]
-fn NotMeasuredCard(grow_id: String) -> impl IntoView {
+fn NotMeasuredCard(
+    grow_id: String,
+    bindings: RwSignal<Option<BTreeMap<String, String>>>,
+) -> impl IntoView {
     let i18n = use_i18n();
-    // `None` until the bindings response arrives: no card while the
-    // fetch is in flight or after it failed.
-    let unbound = RwSignal::<Option<Vec<(&'static str, &'static str)>>>::new(None);
     let edit_href = route_href(&format!("/grows/{grow_id}/edit"));
-
-    Effect::new(move |_| {
-        let id = grow_id.clone();
-        spawn_local(async move {
-            if let Ok(bindings) =
-                api::get::<BTreeMap<String, String>>(&format!("api/grows/{id}/bindings")).await
-            {
-                unbound.set(Some(unbound_chart_roles(&bindings)));
-            }
-        });
-    });
 
     view! {
         {move || {
             // `?` on the Option signal: no bindings response, no
             // card — nothing flashes while the fetch is in flight.
-            let roles = unbound.get()?;
+            let bindings = bindings.get()?;
+            let roles = unbound_chart_roles(&bindings);
             // The moved href is a clone, so this outer closure stays
             // `FnMut` and Leptos may rerun it (same pattern as the
             // drift banner's edit link).
