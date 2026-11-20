@@ -800,17 +800,17 @@ fn EditorGrid(rows: RwSignal<Vec<RowDraft>>, weeks: RwSignal<u8>) -> impl IntoVi
         <table class="table table-sm min-w-full">
             <thead>
                 <tr>
-                    <th class="min-w-56">{t_string!(i18n, schedules.col_product)}</th>
-                    <th class="text-center min-w-20">
+                    <th class="min-w-44">{t_string!(i18n, schedules.col_product)}</th>
+                    <th class="text-center min-w-[4.5rem]">
                         {t_string!(i18n, schedules.col_propagation)}
                     </th>
-                    <th class="text-center min-w-20">{t_string!(i18n, schedules.col_veg)}</th>
+                    <th class="text-center min-w-[4.5rem]">{t_string!(i18n, schedules.col_veg)}</th>
                     {move || {
                         let locale = i18n.get_locale();
                         (2..cell_count(weeks.get()) - 1)
                             .map(|index| {
                                 view! {
-                                    <th class="text-center min-w-20">
+                                    <th class="text-center min-w-[4.5rem]">
                                         {td_string!(
                                             locale,
                                             schedules.week_col,
@@ -822,8 +822,8 @@ fn EditorGrid(rows: RwSignal<Vec<RowDraft>>, weeks: RwSignal<u8>) -> impl IntoVi
                             })
                             .collect::<Vec<_>>()
                     }}
-                    <th class="text-center min-w-20">{t_string!(i18n, schedules.col_water)}</th>
-                    <th class="min-w-10" />
+                    <th class="text-center min-w-[4.5rem]">{t_string!(i18n, schedules.col_water)}</th>
+                    <th class="min-w-8" />
                 </tr>
             </thead>
             <tbody>
