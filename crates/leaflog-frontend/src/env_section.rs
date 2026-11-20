@@ -72,12 +72,12 @@ struct SectionChart {
 
 /// The section's cards in render order — the only roles a missing
 /// binding can hide here. The Air/Root-zone split comes from the
-/// core's [`chart_group`], the same table the backend gates its
-/// Air-group light-timeline work on, so membership lives in exactly
-/// one place. Reservoir roles carry no card here, and light has no
-/// card either (ticket 05 folded it into the Air charts' night
-/// shading): both chip nowhere — the edit page still takes the
-/// binding, and the shading reads it.
+/// core's [`chart_group`]; the backend gates its Air-group
+/// light-timeline work on the same table, so membership lives in
+/// exactly one place. Reservoir roles carry no card here, and light
+/// has no card either (ticket 05 folded it into the Air charts'
+/// night shading): both chip nowhere — the edit page still takes
+/// the binding, and the shading reads it.
 const SECTION_CHARTS: &[SectionChart] = &[
     SectionChart {
         role: "temperature",

@@ -6,6 +6,58 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-20 — overview and dashboard cleanup (D131–D134)
+
+### D131: the overview timeline groups manual entries under day headings; Home-Assistant light rows collapse into a quiet auto tier keyed on the `auto:` note prefix
+
+- `day_groups` sorts manual entries by descending grow day and keeps
+  arrival order inside a day; each section heading is the German/English
+  day label plus the phase badge of its first entry. Entry cards keep
+  the day badge so the phase-day e2e pins stay valid.
+- The auto tier renders only when at least one entry has a note
+  starting with `auto:` — the same convention the retention sweeper
+  uses to recognise machine-written rows. No schema change; if a user
+  hand-writes an `auto:` note it simply lands in the quiet tier, which
+  is the correct reading of such a note anyway.
+- Auto rows are one-line (label, truncated note, timestamp, small
+  delete) under an "Automatic (Home Assistant)" heading; they stay
+  undoable like any other entry (D126).
+
+### D132: the root-zone lazy reservation is conditional — reserved while bindings are unknown, dropped only when nothing can render there
+
+- The six-hundred-pixel `min-h` reservation for the lazy root-zone
+  charts was the page's largest dead void on grows without soil
+  sensors. `EnvironmentSection` now reserves the block only while the
+  bindings fetch is in flight, or when something can render there:
+  any bound root-zone role (soil moisture, pH, EC), or a feed log
+  with pH/EC values. The pH and EC charts read the log, not
+  bindings, so a feed-only grow still has a chart to show.
+- The ROOT ZONE micro-label always renders; only the reserved chart
+  grid disappears. In-flight keeps reserving to avoid layout jump;
+  a failed bindings fetch degrades to "reserved" (banner path).
+
+### D133: the Verlauf history page becomes a dashboard — summary band first, three carded aggregates, no trailing back-link
+
+- A `statband` card leads the page: grow count, average **absolute**
+  flip/harvest deviation in days (always plural, one decimal, `—`
+  until a boundary exists) and dry yield with wet/trim subtotals. The
+  yield total prefers the first non-empty grouping of label →
+  substrate → feeding schedule, matching the aggregate cards below.
+- The three aggregate tables are proper cards in a responsive
+  `lg:grid-cols-3` grid; the trailing "back to home" link is removed —
+  the header navigation owns movement between pages.
+- Numbers use tabular numerals via a `.table` rule so columns align.
+
+### D134: grow list and form surfaces localize substrate and photoperiod words; raw wire values never render
+
+- `substrate_label` / photoperiod options map through the locale
+  catalogues (Erde/Coco/Hydro, Fotoperiode/Autoflower in the form;
+  the card shows the adjective Fotoperiodisch/Autoflower). The card
+  second row is strain label · photoperiod · substrate, third row the
+  keyed "started" date; the glyph stays (established vocabulary).
+- The schedule library dose units render as `ml/L` / `g/L` through the
+  same echo-arm pattern instead of the raw `ml_per_l` serde label.
+
 ## 2026-11-19 — feeding schedules replace EC feed templates (D128–D130)
 
 ### D128: a feeding schedule is a product-dose grid; EC/pH targets leave the feed model and the three builtin EC templates die unconverted
@@ -3289,3 +3341,5 @@ once per crate.
 | leaflog-backend | `api_feeds.rs` handlers | `clippy::needless_pass_by_value` | Same Axum handler contract as the `app.rs` row above |
 | leaflog-backend | `api_feeds.rs` handlers | `clippy::unused_async` | Same Axum contract as the `app.rs` row above |
 | leaflog-core | `feed.rs` module + `TdsScale` conversions | `clippy::cast_possible_truncation`, `clippy::cast_sign_loss` | SI scaling rounds to whole µL/L·mg/L steps before casting; grafted substrate/TDS arithmetic (ADR 0004) |
+| leaflog-frontend | `history.rs` fn `summary` | `clippy::cast_precision_loss` | u16/f64 day and gram tallies fit a diary's scales far below float precision; casts are exact in practice (D133) |
+| leaflog-frontend | `history.rs` test `yield_totals_come_from_the_first_nonempty_grouping` | `clippy::float_cmp` | Test re-adds the same f64 constants bit-identically; exact comparison is the point |
