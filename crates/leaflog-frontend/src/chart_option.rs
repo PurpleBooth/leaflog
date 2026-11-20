@@ -218,6 +218,7 @@ pub fn series_is_empty(chart: &GrowHistory) -> bool {
 fn line_series(chart: &GrowHistory, look: &ChartLook, step: bool) -> serde_json::Value {
     let mut series = serde_json::json!({
         "type": "line",
+        "name": MAIN_SERIES_NAME,
         "showSymbol": false,
         "lineStyle": { "width": 2, "color": look.accent },
         "data": series_ms_data(chart),
@@ -349,6 +350,15 @@ fn window_ms(at: &str) -> Option<i64> {
     leaflog_core::chart::parse_epoch(at).map(|seconds| seconds * 1000)
 }
 
+/// The series name every single-line history chart travels under: the
+/// component's tooltip renders the main reading plain (the card title
+/// already names the role), and only an intentionally chosen name
+/// lets it tell that series apart from the pair charts' named
+/// series — `ECharts` fills synthetic `seriesN` names for unnamed
+/// series, which used to leak into the tooltip as a bogus prefix.
+/// A wire token, never displayed.
+pub const MAIN_SERIES_NAME: &str = "Readings";
+
 /// The series name every chart's log-event markers travel under: the
 /// component's tooltip recognises it and names the event instead of
 /// formatting the tick's placement y as a reading. A wire token,
@@ -471,8 +481,8 @@ fn window_bounds(chart: &GrowHistory) -> (serde_json::Value, serde_json::Value) 
 #[cfg(test)]
 mod tests {
     use super::{
-        CONNECT_LABEL_WIDTH, ChartLook, ChartStyle, SeriesKind, history_option, role_style,
-        series_is_empty, window_is_empty,
+        CONNECT_LABEL_WIDTH, ChartLook, ChartStyle, MAIN_SERIES_NAME, SeriesKind, history_option,
+        role_style, series_is_empty, window_is_empty,
     };
     use crate::api::{
         BandSegmentData, ChartPointData, ChartSeriesData, EventMarkerData, GrowHistory,
@@ -1511,5 +1521,30 @@ mod tests {
         assert_eq!(option["yAxis"]["min"], bare_option["yAxis"]["min"]);
         assert_eq!(option["yAxis"]["max"], bare_option["yAxis"]["max"]);
         assert_eq!(option["series"][1]["name"], "Night");
+    }
+
+    #[test]
+    fn the_main_line_travels_under_its_wire_name() {
+        // Unnamed, the renderer fills a synthetic `seriesN` name and
+        // the tooltip used to leak that token as a prefix (D135). The
+        // line carries the wire token; the tooltip special-cases it.
+        let option = history_option(
+            &sample_for_role("temperature"),
+            &look(),
+            &style("temperature"),
+            Locale::en,
+        );
+        assert_eq!(option["series"][0]["name"], MAIN_SERIES_NAME);
+        // The step and pair charts get the same treatment where they
+        // are main lines, and stay out of the pair names' way.
+        let step = history_option(
+            &sample_for_role("light"),
+            &look(),
+            &style("light"),
+            Locale::en,
+        );
+        assert_eq!(step["series"][0]["name"], MAIN_SERIES_NAME);
+        let pair = history_option(&sample_for_role("ph"), &look(), &style("ph"), Locale::en);
+        assert_ne!(pair["series"][0]["name"], MAIN_SERIES_NAME);
     }
 }

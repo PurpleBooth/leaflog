@@ -180,14 +180,29 @@ pub fn rgb_to_oklch(color: Rgb) -> Oklch {
     }
 }
 
-/// Formats a colour as a CSS `oklch()` function value, the format
-/// daisyUI 5 itself uses for its theme variables.
+/// Formats a colour as a CSS `rgb()`/`rgba()` function value (comma
+/// syntax).
+///
+/// sRGB is the serialization every consumer of the adopted variables
+/// understands — the CSS engine, Tailwind's opacity modifiers, and
+/// the chart renderer's own colour parser, which has no `oklch()`
+/// support and silently skips unparseable strokes (D135: the oklch
+/// format blanked the chart lines under every adopted theme).
 #[must_use]
-pub fn oklch_string(color: Oklch) -> String {
-    format!(
-        "oklch({:.5} {:.5} {:.3})",
-        color.lightness, color.chroma, color.hue
-    )
+pub fn rgb_string(color: Rgb) -> String {
+    // Channel math here (alpha flattening, contrast mixing) leaves
+    // fractional channels; rounded CSS integers render identically.
+    let channel = |value: f64| -> f64 { value.clamp(0.0, 255.0).round() };
+    let (red, green, blue) = (
+        channel(color.red),
+        channel(color.green),
+        channel(color.blue),
+    );
+    if color.alpha >= 1.0 {
+        format!("rgb({red:.0}, {green:.0}, {blue:.0})")
+    } else {
+        format!("rgba({red:.0}, {green:.0}, {blue:.0}, {:.3})", color.alpha)
+    }
 }
 
 /// Parses a CSS colour as it can appear in a Home Assistant theme
@@ -371,7 +386,7 @@ impl HaTheme {
 pub struct AdoptedTheme {
     /// `"dark"` or `"light"`, from the page background's lightness.
     color_scheme: &'static str,
-    /// `(css variable, oklch value)` pairs in application order.
+    /// `(css variable, sRGB value)` pairs in application order.
     entries: Vec<(&'static str, String)>,
 }
 
@@ -424,7 +439,7 @@ pub fn adopt(ha: &HaTheme) -> Option<AdoptedTheme> {
 
     let mut entries = Vec::with_capacity(16);
     let push = |name: &'static str, color: Rgb, entries: &mut Vec<(&'static str, String)>| {
-        entries.push((name, oklch_string(rgb_to_oklch(color))));
+        entries.push((name, rgb_string(color)));
     };
 
     push("--color-primary", primary, &mut entries);
@@ -642,22 +657,22 @@ mod tests {
         };
         assert_eq!(
             value("--color-primary"),
-            oklch_string(rgb_to_oklch(Rgb::new(63.0, 81.0, 181.0)))
+            rgb_string(Rgb::new(63.0, 81.0, 181.0))
         );
         assert_eq!(
             value("--color-primary-content"),
-            oklch_string(rgb_to_oklch(Rgb::new(255.0, 255.0, 255.0)))
+            rgb_string(Rgb::new(255.0, 255.0, 255.0))
         );
         assert_eq!(
             value("--color-base-100"),
-            oklch_string(rgb_to_oklch(Rgb::new(255.0, 255.0, 255.0)))
+            rgb_string(Rgb::new(255.0, 255.0, 255.0))
         );
         assert_eq!(
             value("--color-base-300"),
-            oklch_string(rgb_to_oklch(flatten(
+            rgb_string(flatten(
                 Rgb::new(0.0, 0.0, 0.0).with_alpha(0.12),
                 Rgb::new(250.0, 250.0, 250.0)
-            )))
+            ))
         );
         // Missing warning/error/info entries: the built-in values stay.
         assert_eq!(value("--color-warning"), "");
@@ -685,10 +700,19 @@ mod tests {
     }
 
     #[test]
-    fn oklch_string_formats_like_daisyui() {
-        let red = rgb_to_oklch(Rgb::new(255.0, 0.0, 0.0));
-        let text = oklch_string(red);
-        assert!(text.starts_with("oklch(0.627"), "got {text}");
-        assert!(text.ends_with(')'));
+    fn rgb_string_rounds_and_carries_alpha() {
+        // Alpha flattening leaves fractional channels: 12 % black over
+        // white rounds to 220.
+        let flattened = flatten(
+            Rgb::new(0.0, 0.0, 0.0).with_alpha(0.12),
+            Rgb::new(250.0, 250.0, 250.0),
+        );
+        assert_eq!(rgb_string(flattened), "rgb(220, 220, 220)");
+        // A carried alpha renders as rgba() instead of being dropped.
+        let translucent = Rgb::new(0.0, 0.0, 0.0).with_alpha(0.4);
+        assert_eq!(rgb_string(translucent), "rgba(0, 0, 0, 0.400)");
+        // Out-of-range math clamps instead of emitting invalid CSS.
+        let over = Rgb::new(300.0, -5.0, 128.4);
+        assert_eq!(rgb_string(over), "rgb(255, 0, 128)");
     }
 }

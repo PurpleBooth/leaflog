@@ -591,11 +591,14 @@ fn tooltip_closure(
     )
 }
 
-/// One tooltip line for one series entry: `name: value — time` when
-/// the series carries a name, `value — time` otherwise. A log-event
-/// tick (the marker series) names its event instead — its y position
-/// is placement geometry, not a reading. Entries without a usable
-/// `[epoch ms, value]` pair drop out.
+/// One tooltip line for one series entry. The main line travels under
+/// the `MAIN_SERIES_NAME` wire token and renders plain —
+/// `value — time` — because the card title already names the role; a
+/// log-event tick (the marker series) names its event instead, its y
+/// position is placement geometry, not a reading. Any other named
+/// series (the pair scatter's input and runoff) gets a `name:`
+/// prefix. Entries without a usable `[epoch ms, value]` pair drop
+/// out.
 fn tooltip_line(
     entry: &JsValue,
     format_value: fn(f64, DecimalStyle) -> String,
@@ -617,11 +620,23 @@ fn tooltip_line(
             .unwrap_or_else(|| "Event".to_owned());
         return Some(format!("{event} — {}", utc_minutes(at)));
     }
-    let body = format!("{} — {}", format_value(reading, style), utc_minutes(at));
-    Some(match series_name {
-        Some(name) => format!("{name}: {body}"),
-        None => body,
-    })
+    // The main line (and, defensively, anything still unnamed) keeps
+    // the plain reading line; only intentionally named series earn
+    // the prefix.
+    if series_name.as_deref() != Some(chart_option::MAIN_SERIES_NAME)
+        && let Some(name) = series_name
+    {
+        return Some(format!(
+            "{name}: {} — {}",
+            format_value(reading, style),
+            utc_minutes(at)
+        ));
+    }
+    Some(format!(
+        "{} — {}",
+        format_value(reading, style),
+        utc_minutes(at)
+    ))
 }
 
 /// Formats an epoch-ms tooltip timestamp: `2026-11-16 14:03 UTC`.
@@ -641,10 +656,18 @@ fn utc_minutes(epoch_ms: f64) -> String {
 #[must_use]
 fn theme_look() -> chart_option::ChartLook {
     chart_option::ChartLook {
-        accent: probe_color("text-primary").unwrap_or_else(|| "#2e7d4f".to_owned()),
-        compare: probe_color("text-secondary").unwrap_or_else(|| "#4c5f4e".to_owned()),
-        text: probe_color("text-base-content").unwrap_or_else(|| "#1d2b1f".to_owned()),
-        muted: probe_color("text-base-content/50").unwrap_or_else(|| "#1d2b1f80".to_owned()),
+        accent: probe_color("text-primary")
+            .filter(|c| chart_safe_color(c))
+            .unwrap_or_else(|| "#2e7d4f".to_owned()),
+        compare: probe_color("text-secondary")
+            .filter(|c| chart_safe_color(c))
+            .unwrap_or_else(|| "#4c5f4e".to_owned()),
+        text: probe_color("text-base-content")
+            .filter(|c| chart_safe_color(c))
+            .unwrap_or_else(|| "#1d2b1f".to_owned()),
+        muted: probe_color("text-base-content/50")
+            .filter(|c| chart_safe_color(c))
+            .unwrap_or_else(|| "#1d2b1f80".to_owned()),
     }
 }
 
@@ -671,9 +694,26 @@ fn probe_color(class: &str) -> Option<String> {
     colour
 }
 
+/// The colour grammar the chart renderer's own parser accepts: hex
+/// forms and the functional `rgb()/rgba()/hsl()/hsla()` notations
+/// (zrender has no `oklch()`/`color-mix()`/`lab()` support and
+/// silently skips unparseable strokes and fills). The probe rejects
+/// anything else so an exotic adopted-theme format can never blank
+/// the charts — the built-in palette fallback takes over (D135).
+#[must_use]
+fn chart_safe_color(colour: &str) -> bool {
+    let body = colour.trim().to_ascii_lowercase();
+    if let Some(hex) = body.strip_prefix('#') {
+        return matches!(hex.len(), 3 | 4 | 6 | 8) && hex.chars().all(|c| c.is_ascii_hexdigit());
+    }
+    ["rgb(", "rgba(", "hsl(", "hsla("]
+        .iter()
+        .any(|prefix| body.starts_with(prefix))
+}
+
 #[cfg(test)]
 mod formatter_tests {
-    use super::{format_ec_us, format_kpa, format_pct, format_ph, format_ppm};
+    use super::{chart_safe_color, format_ec_us, format_kpa, format_pct, format_ph, format_ppm};
     use leaflog_core::format::DecimalStyle;
 
     #[test]
@@ -694,5 +734,22 @@ mod formatter_tests {
             format_ec_us(1_234_567.4, DecimalStyle::Dot),
             "1,234,567 µS/cm"
         );
+    }
+
+    #[test]
+    fn chart_safe_color_accepts_exactly_the_renderers_grammar() {
+        // Computed styles arrive in these two shapes.
+        assert!(chart_safe_color("rgb(124, 77, 255)"));
+        assert!(chart_safe_color("rgba(29, 43, 31, 0.5)"));
+        assert!(chart_safe_color("#6fcf97"));
+        assert!(chart_safe_color("#6fcf9780"));
+        assert!(chart_safe_color("hsl(140, 56%, 62%)"));
+        // The wide-gamut and functional notations the renderer cannot
+        // parse (D135: oklch vars silently blanked every line).
+        assert!(!chart_safe_color("oklch(0.72 0.19 149.6)"));
+        assert!(!chart_safe_color("color-mix(in srgb, red, blue)"));
+        assert!(!chart_safe_color("lab(52% 40 59)"));
+        assert!(!chart_safe_color(""));
+        assert!(!chart_safe_color("malformed"));
     }
 }

@@ -6,6 +6,52 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-20 — adopted-theme colour serialization + chart tooltip/series fixes (D135)
+
+### D135: adopted theme variables serialize as chart-safe sRGB; the chart probes reject colours the renderer cannot parse; the main line travels under a wire name
+
+Three defects found together on an adopted-theme install (the built-in
+hex themes never reproduced either one, so the chart e2e stayed green
+while the product was broken):
+
+- **Adoption format.** D100 pinned the inline overrides as
+  `oklch(...)` custom properties. The CSS engine wears oklch happily,
+  but the ECharts/zrender colour parser handles only named colours,
+  hex and `rgb()/rgba()/hsl()/hsla()` — everything else silently
+  paints nothing, so under every adopted theme the accent-stroked
+  marks (data line, Target Band, scatter dots) vanished while
+  shading, grid and tooltips kept rendering. The overrides are now
+  written as comma-syntax `rgb()`/`rgba()` (`rgb_string` in
+  `leaflog-core::theme`, channels clamped and rounded to CSS
+  integers): sRGB is the lowest-common-denominator every consumer
+  understands. `rgb_to_oklch` stays — the scheme detection still
+  derives dark/light from the page background's oklch lightness.
+  This amends D100's serialization sentence in place; everything else
+  in D100 stands.
+- **Probe hardening.** `theme_look`'s computed-style probes now
+  reject anything outside the renderer's colour grammar
+  (`chart_safe_color`: hex or rgb/rgba/hsl/hsla prefixes) and fall
+  back to the built-in palette values instead of handing an
+  unparseable string to the option builder. This also catches
+  Tailwind's opacity-modifier classes (`text-base-content/50`
+  computes to a `color-mix()` result the renderer cannot read),
+  which previously reached zrender raw and silently misrendered.
+- **Tooltip wire name.** The single-line charts were the only unnamed
+  series, and the renderer fills synthetic `seriesN` names for
+  unnamed series, so the tooltip leaked a bogus `series0:` prefix.
+  The main line now travels under the `MAIN_SERIES_NAME` wire token
+  ("Readings", alongside the existing `MARKER_SERIES_NAME`), which
+  the tooltip renders plain — value — time — because the card title
+  already names the role; the pair charts' locale names keep their
+  prefixes.
+
+Verified end-to-end against a hand-rolled HA-style hex parent page:
+the adopted root reads `--color-primary: rgb(124, 77, 255)` for a
+`#7c4dff` parent, the idle line stroke is that exact string, and the
+crosshair sync is untouched. New e2e `27-adopted-theme-charts.spec.ts`
+pins the regression; spec 15 additionally pins the stroked line and
+the series-name absence on the plain (non-ingress) path.
+
 ## 2026-11-20 — overview and dashboard cleanup (D131–D134)
 
 ### D131: the overview timeline groups manual entries under day headings; Home-Assistant light rows collapse into a quiet auto tier keyed on the `auto:` note prefix
@@ -1033,16 +1079,19 @@ contrast rule. HA's `--secondary-background-color` has no clean daisyUI
 counterpart (the secondary/neutral slots are barely used in the app, one
 chart legend probe) and stays unmapped — leftover built-ins are accepted.
 
-The overrides are written as inline `oklch(...)` custom properties on the
-app's own root element (`body` sits outside the mount div, so the root is
-the only override point that covers it) plus a `color-scheme` derived
-from the page background's lightness; dark/light follows the parent
-implicitly, and there is no theme picker or toggle anywhere. A
-`MutationObserver` on the parent root's `style` attribute re-runs the
-read+map, so a theme or dark-mode flip in HA re-dresses the app live
-without a reload. Colour math (hex/rgb/rgba parsing, alpha flattening,
-WCAG contrast, Ottosson rgb→oklch) lives in `leaflog-core::theme` as pure
-unit-tested functions; the frontend only bridges DOM and applies.
+The overrides are written as inline custom properties on the app's own
+root element (`body` sits outside the mount div, so the root is the
+only override point that covers it) plus a `color-scheme` derived from
+the page background's lightness; dark/light follows the parent
+implicitly, and there is no theme picker or toggle anywhere. (D135
+amends the original serialization: the overrides were first written as
+`oklch(...)` — chart-invisible, see D135 — and are now comma-syntax
+`rgb()`/`rgba()` values.) A `MutationObserver` on the parent root's
+`style` attribute re-runs the read+map, so a theme or dark-mode flip in
+HA re-dresses the app live without a reload. Colour math
+(hex/rgb/rgba parsing, alpha flattening, WCAG contrast, Ottosson
+rgb→oklch) lives in `leaflog-core::theme` as pure unit-tested
+functions; the frontend only bridges DOM and applies.
 
 The fallback to the built-in theme is mandatory and silent: no parent
 (standalone), a cross-origin or sandboxed parent, or any missing or

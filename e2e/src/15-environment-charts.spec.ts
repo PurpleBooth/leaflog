@@ -93,6 +93,15 @@ test('humidity, vpd and soil charts draw axes and tooltips', async ({
   await hoverCenter(page, humiditySvg);
   await expect(cardOf('humidity history').getByText(/%.*UTC/)).toBeVisible();
 
+  // The data line itself is stroked, and no tooltip ever names a
+  // synthetic series (D135: an unparseable adopted-theme colour
+  // silently blanked every line, and unnamed series leaked the
+  // renderer's "series0" filler into the tooltip).
+  await expect(
+    humiditySvg.locator('path[stroke-width="2"]:not([d=""])').first(),
+  ).toBeVisible();
+  await expect(page.getByText(/series\d/)).toHaveCount(0);
+
   // VPD: the kPa axis and the same tooltip contract.
   const vpdSvg = page.locator('svg[aria-label="vpd history"]');
   await expect(vpdSvg).toBeVisible();
