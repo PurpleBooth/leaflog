@@ -156,9 +156,9 @@ test.describe('german-forced browser', () => {
     await expect(
       page.getByRole('columnheader', { name: 'Anbauten' }).first(),
     ).toBeVisible();
-    await expect(
-      page.getByRole('link', { name: 'Zurück zur Startseite' }),
-    ).toBeVisible();
+    // The old 'Zurück zur Startseite' link is gone by design: the
+    // Verlauf rework replaced the trailing link with the dashboard
+    // band, and the header nav owns navigation now.
 
     // And none of the freshly keyed English surfaces renders.
     await expect(page.getByText(/Track your grows/)).toHaveCount(0);

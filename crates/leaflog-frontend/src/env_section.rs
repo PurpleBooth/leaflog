@@ -403,7 +403,15 @@ fn LazyCharts(children: ChildrenFn) -> impl IntoView {
 /// when a light entity is bound, the Light Cycle otherwise — so the
 /// standalone Light card is gone and its legend rides the Air label.
 #[component]
-pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
+pub fn EnvironmentSection(
+    grow_id: String,
+    /// Whether the grow's action log carries a pH or EC reading.
+    /// The pH/EC charts read that log rather than a sensor binding,
+    /// so this is the second piece of evidence (beside the bindings
+    /// map) that a Root zone chart can render. Reactive: the log
+    /// fetch settles shortly after mount.
+    has_feed_log: Signal<bool>,
+) -> impl IntoView {
     let i18n = use_i18n();
     // The lazy Root zone grid captures `grow_id` into its children
     // closure; the not-measured card keeps its own copy.
@@ -462,12 +470,15 @@ pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
     };
     // Reserve the lazy block's height only while a Root zone chart
     // can actually appear there: until the bindings answer arrives
-    // (stay safe, avoid a jump) or once any root-zone role is bound.
-    // With none bound the grid would render nothing — reserving
-    // hundreds of pixels for it is the quiet void this branch
-    // removes; the not-measured card below carries the story
-    // instead. A dead binding is not unbound, so it keeps the
-    // reservation (its card renders with the degraded banner).
+    // (stay safe, avoid a jump), once any root-zone role is bound,
+    // or while the grow's feed log carries a pH/EC reading (the pH
+    // and EC charts read the action log, not a binding — an unbound
+    // grow can still chart them). With none of that the grid would
+    // render nothing — reserving hundreds of pixels for it is the
+    // quiet void this branch removes; the not-measured card below
+    // carries the story instead. A dead binding is not unbound, so
+    // it keeps the reservation (its card renders with the degraded
+    // banner).
     let reserve_root_zone = Signal::derive(move || {
         // `None` = the answer is still in flight: stay safe and
         // reserve, so a bound grow never jumps.
@@ -476,6 +487,7 @@ pub fn EnvironmentSection(grow_id: String) -> impl IntoView {
                 .iter()
                 .filter(|chart| chart_group(chart.role) == ChartGroup::RootZone)
                 .any(|chart| map.contains_key(chart.role))
+                || has_feed_log.get()
         })
     });
 

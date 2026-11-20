@@ -404,6 +404,21 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
     let grow = RwSignal::<Option<Grow>>::new(None);
     let plants = RwSignal::<Vec<Plant>>::new(Vec::new());
     let actions = RwSignal::<Vec<ActionEntry>>::new(Vec::new());
+    // Evidence for the environment section's lazy reservation: the
+    // pH/EC charts read the action log, so any log entry carrying a
+    // pH/EC reading means a Root zone chart can render even with no
+    // sensor bound (see EnvironmentSection).
+    let has_feed_log = Signal::derive(move || {
+        actions.with(|all| {
+            all.iter().any(|entry| {
+                let details = &entry.details;
+                details.input_ph.is_some()
+                    || details.runoff_ph.is_some()
+                    || details.input_ec_us.is_some()
+                    || details.runoff_ec_us.is_some()
+            })
+        })
+    });
     let photos = RwSignal::<Vec<Photo>>::new(Vec::new());
     let forecast = RwSignal::<Option<api::Forecast>>::new(None);
     let error = RwSignal::<Option<String>>::new(None);
@@ -794,7 +809,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                 })
             }}
 
-            <EnvironmentSection grow_id=grow_id.get() />
+            <EnvironmentSection grow_id=grow_id.get() has_feed_log />
 
             <h3>{t!(i18n, grow.forecast)}</h3>
             <form id="phase-picker" class="flex flex-wrap gap-2 items-end my-2" on:submit=save_pick>
