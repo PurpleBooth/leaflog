@@ -89,6 +89,7 @@
     "back_home": "Zurück zur Startseite"
   },
   "grow": {
+    "auto_heading": "Automatisch (Home Assistant)",
     "edit": "Anbau bearbeiten",
     "day": "Tag {{ day }}",
     "quick_add_log": "Eintragen",

@@ -89,6 +89,7 @@
     "back_home": "Back to home"
   },
   "grow": {
+    "auto_heading": "Automatic (Home Assistant)",
     "edit": "Edit grow",
     "day": "day {{ day }}",
     "quick_add_log": "Log it",

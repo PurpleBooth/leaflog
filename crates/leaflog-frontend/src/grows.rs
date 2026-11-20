@@ -198,6 +198,144 @@ pub fn GrowsPage() -> impl IntoView {
     }
 }
 
+/// One manual diary entry as a card: action label, the day badge the
+/// phase-day split pins (e2e 17), the phase badge, structured facts
+/// when any are set, notes, appearance tags and the local stamp.
+/// `on_delete` is the shared delete-with-undo callback.
+fn timeline_entry(
+    locale: Locale,
+    entry: ActionEntry,
+    on_delete: impl Fn(ActionEntry) + Copy + Send + Sync + 'static,
+) -> impl IntoView {
+    // The delete row keeps a full copy for the undo replay; the view
+    // consumes the rest by move so nothing is cloned twice.
+    let row = entry.clone();
+    let tags = entry.appearance_tags;
+    let facts = entry.details;
+    let notes = entry.notes;
+    let delete_label = td_string!(locale, entries.delete).into_owned();
+    view! {
+        <li class=ui::card()>
+            <div class="flex flex-wrap items-baseline gap-2">
+                <strong>{labels::action_label(locale, entry.action_type)}</strong>
+                <span class="badge badge-ghost">{td_string!(
+                    locale,
+                    grow.day,
+                    day = entry.grow_day.to_string(),
+                )}</span>
+                {entry.phase.map(|phase| view! {
+                    <span class="badge badge-ghost">{labels::phase_label(locale, phase)}</span>
+                })}
+                <button
+                    class="btn btn-ghost btn-sm min-h-11 min-w-11 ml-auto self-center"
+                    type="button"
+                    aria-label=delete_label
+                    on:click=move |_| on_delete(row.clone())
+                >
+                    {"×"}
+                </button>
+            </div>
+            {has_facts(&facts).then(move || {
+                view! {
+                    <dl class="facts">
+                        {facts.volume_ml.map(|volume| view! {
+                            <div><dt>{td_string!(locale, grow.volume)}</dt><dd>{leaflog_core::units::small_volume_both(volume, crate::decimal_style(locale))}</dd></div>
+                        })}
+                        {facts.input_ph.map(|ph| view! {
+                            <div><dt>{td_string!(locale, grow.ph_in)}</dt><dd>{crate::chart::format_ph(ph, crate::decimal_style(locale))}</dd></div>
+                        })}
+                        {facts.runoff_ph.map(|ph| view! {
+                            <div><dt>{td_string!(locale, grow.ph_out)}</dt><dd>{crate::chart::format_ph(ph, crate::decimal_style(locale))}</dd></div>
+                        })}
+                        {facts.input_ec_us.map(|ec| view! {
+                            <div><dt>{td_string!(locale, grow.ec_in)}</dt><dd>{format!("{ec} µS/cm")}</dd></div>
+                        })}
+                        {facts.runoff_ec_us.map(|ec| view! {
+                            <div><dt>{td_string!(locale, grow.ec_out)}</dt><dd>{format!("{ec} µS/cm")}</dd></div>
+                        })}
+                        {facts.plant_height_cm.map(|height| view! {
+                            <div><dt>{td_string!(locale, grow.height)}</dt><dd>{leaflog_core::units::length_both(height, crate::decimal_style(locale))}</dd></div>
+                        })}
+                    </dl>
+                }
+            })}
+            {notes.map(|notes| view! {
+                <p class="mt-2 text-base-content/70">{notes}</p>
+            })}
+            {(!tags.is_empty()).then(move || {
+                view! {
+                    <p class="flex flex-wrap gap-1.5 mt-2">
+                        {tags
+                            .iter()
+                            .map(|tag| {
+                                let label = labels::appearance_label(locale, tag);
+                                view! { <span class="badge badge-sm badge-ghost">{label}</span> }
+                            })
+                            .collect::<Vec<_>>()}
+                    </p>
+                }
+            })}
+            <p class="text-base-content/70 text-sm">
+                {local_stamp(&entry.occurred_at)}
+            </p>
+        </li>
+    }
+}
+
+/// The machine-generated tier: HA light transitions as quiet
+/// one-liners, each still deletable so the diary stays curable. The
+/// delete callback is GrowDetail's delete-with-undo flow, passed
+/// down so both tiers share one undo window.
+#[component]
+fn AutoTier(
+    actions: RwSignal<Vec<ActionEntry>>,
+    on_delete: impl Fn(ActionEntry) + Copy + Send + Sync + 'static,
+) -> impl IntoView {
+    let i18n = use_i18n();
+    view! {
+        <Show when=move || {
+            actions.get().iter().any(is_auto)
+        }>
+            <div class="mt-4" data-testid="timeline-auto">
+                <h4 class="m-0 mb-1 text-sm font-semibold tracking-wide text-base-content/60">
+                    {t!(i18n, grow.auto_heading)}
+                </h4>
+                <ul class="list-none m-0 p-0 grid gap-1">
+                    {move || {
+                        let locale = i18n.get_locale();
+                        actions
+                            .with(|all| {
+                                all.iter()
+                                    .filter(|entry| is_auto(entry))
+                                    .map(|entry| {
+                                        let row = entry.clone();
+                                        let delete_label =
+                                            td_string!(locale, entries.delete).into_owned();
+                                        view! {
+                                            <li class="flex flex-wrap items-center gap-2 text-sm text-base-content/70">
+                                                <strong class="font-medium">{labels::action_label(locale, entry.action_type)}</strong>
+                                                <span class="min-w-0 truncate">{entry.notes.clone().unwrap_or_default()}</span>
+                                                <span class="ml-auto whitespace-nowrap">{local_stamp(&entry.occurred_at)}</span>
+                                                <button
+                                                    class="btn btn-ghost btn-xs min-h-8 min-w-8"
+                                                    type="button"
+                                                    aria-label=delete_label
+                                                    on:click=move |_| on_delete(row.clone())
+                                                >
+                                                    {"×"}
+                                                </button>
+                                            </li>
+                                        }
+                                    })
+                                    .collect::<Vec<_>>()
+                            })
+                    }}
+                </ul>
+            </div>
+        </Show>
+    }
+}
+
 /// The `/grows/:id` route: reads the path id and renders the overview.
 #[component]
 pub fn GrowsRoute() -> impl IntoView {
@@ -702,79 +840,44 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                 <div>
                     <h3>{t!(i18n, grow.timeline)}</h3>
                     <UndoBanner message=undo_message.into() on_undo=undo_delete on_dismiss=dismiss_undo />
-                    <ul class="list-none m-0 p-0 grid gap-2">
+                    // Day-grouped diary: one heading per grow day, the
+                    // day's manual entries as cards under it, and the
+                    // machine-generated HA transitions collapsed into
+                    // a quiet one-liner tier below the diary.
+                    <div class="grid gap-6">
                         {move || {
                             let locale = i18n.get_locale();
-                            actions
-                                .get()
+                            day_groups(&actions.get())
                                 .into_iter()
-                                .map(|entry| {
-                                    let tags = entry.appearance_tags.clone();
-                                    let row = entry.clone();
-                                    let delete_label =
-                                        td_string!(locale, entries.delete).into_owned();
+                                .map(|(day, entries)| {
+                                    let heading_phase = entries
+                                        .first()
+                                        .and_then(|entry| entry.phase);
                                     view! {
-                                        <li class=ui::card()>
-                                            <div class="flex flex-wrap items-baseline gap-2">
-                                                <strong>{labels::action_label(locale, entry.action_type)}</strong>
-                                                <span class="badge badge-ghost">{td_string!(locale, grow.day, day = entry.grow_day.to_string())}</span>
-                                                {entry.phase.map(|phase| view! {
-                                                    <span class="badge badge-ghost">{labels::phase_label(locale, phase)}</span>
+                                        <section data-testid="timeline-day">
+                                            <div class="flex flex-wrap items-baseline gap-2 border-b border-base-300 pb-1">
+                                                <h4 class="m-0 text-sm font-semibold tracking-wide">{td_string!(
+                                                    locale,
+                                                    grow.day,
+                                                    day = day.to_string(),
+                                                )}</h4>
+                                                {heading_phase.map(|phase| view! {
+                                                    <span class="badge badge-ghost badge-sm">{labels::phase_label(locale, phase)}</span>
                                                 })}
-                                                <button
-                                                    class="btn btn-ghost btn-sm min-h-11 min-w-11 ml-auto self-center"
-                                                    type="button"
-                                                    aria-label=delete_label
-                                                    on:click=move |_| delete_entry(row.clone())
-                                                >
-                                                    {"×"}
-                                                </button>
                                             </div>
-                                            <dl class="facts">
-                        {entry.details.volume_ml.map(|volume| view! {
-                            <div><dt>{t!(i18n, grow.volume)}</dt><dd>{leaflog_core::units::small_volume_both(volume, crate::decimal_style(locale))}</dd></div>
-                        })}
-                        {entry.details.input_ph.map(|ph| view! {
-                            <div><dt>{t!(i18n, grow.ph_in)}</dt><dd>{crate::chart::format_ph(ph, crate::decimal_style(locale))}</dd></div>
-                        })}
-                        {entry.details.runoff_ph.map(|ph| view! {
-                            <div><dt>{t!(i18n, grow.ph_out)}</dt><dd>{crate::chart::format_ph(ph, crate::decimal_style(locale))}</dd></div>
-                        })}
-                        {entry.details.input_ec_us.map(|ec| view! {
-                            <div><dt>{t!(i18n, grow.ec_in)}</dt><dd>{format!("{ec} µS/cm")}</dd></div>
-                        })}
-                        {entry.details.runoff_ec_us.map(|ec| view! {
-                            <div><dt>{t!(i18n, grow.ec_out)}</dt><dd>{format!("{ec} µS/cm")}</dd></div>
-                        })}
-                        {entry.details.plant_height_cm.map(|height| view! {
-                            <div><dt>{t!(i18n, grow.height)}</dt><dd>{leaflog_core::units::length_both(height, crate::decimal_style(locale))}</dd></div>
-                        })}
-                                            </dl>
-                                            {entry.notes.clone().map(|notes| view! {
-                                                <p class="mt-2 text-base-content/70">{notes}</p>
-                                            })}
-                                            {(!tags.is_empty()).then(move || {
-                                                view! {
-                                                        <p class="flex flex-wrap gap-1.5 mt-2">
-                                                            {tags
-                                                                .iter()
-                                                                .map(|tag| {
-                                                                    let label = labels::appearance_label(locale, tag);
-                                                                    view! { <span class="badge badge-sm badge-ghost">{label}</span> }
-                                                                })
-                                                                .collect::<Vec<_>>()}
-                                                        </p>
-                                                }
-                                            })}
-                                            <p class="text-base-content/70 text-sm">
-                                                {local_stamp(&entry.occurred_at)}
-                                            </p>
-                                        </li>
+                                            <ul class="list-none m-0 p-0 grid gap-2 mt-2">
+                                                {entries
+                                                    .into_iter()
+                                                    .map(|entry| timeline_entry(locale, entry, delete_entry))
+                                                    .collect::<Vec<_>>()}
+                                            </ul>
+                                        </section>
                                     }
                                 })
                                 .collect::<Vec<_>>()
                         }}
-                    </ul>
+                    </div>
+                    <AutoTier actions on_delete=delete_entry />
                     <Show when=move || actions.get().is_empty()>
                         <EmptyState>{t!(i18n, grow.nothing_logged)}</EmptyState>
                     </Show>
@@ -1374,6 +1477,42 @@ fn datetime_local_now() -> String {
 /// Explicit components (no seconds — diary precision is minutes);
 /// falls back to the raw string when the browser APIs refuse the
 /// value.
+/// Machine-generated entries (HA light transitions) tag themselves in
+/// the note (`auto: light on`) — the same convention the retention
+/// sweeper prunes by, so both sides agree without a schema change.
+fn is_auto(entry: &ActionEntry) -> bool {
+    entry
+        .notes
+        .as_deref()
+        .is_some_and(|note| note.starts_with("auto:"))
+}
+
+/// Groups manual entries into a day-grouped diary: `grow_day`
+/// descending, entries newest-first inside each day. Auto entries are
+/// excluded — they render as the quiet one-liner tier.
+#[must_use]
+fn day_groups(entries: &[ActionEntry]) -> Vec<(u16, Vec<ActionEntry>)> {
+    let mut groups: Vec<(u16, Vec<ActionEntry>)> = Vec::new();
+    for entry in entries.iter().filter(|entry| !is_auto(entry)) {
+        match groups.last_mut() {
+            Some((day, group)) if *day == entry.grow_day => group.push(entry.clone()),
+            _ => groups.push((entry.grow_day, vec![entry.clone()])),
+        }
+    }
+    groups
+}
+
+/// Whether any structured fact is set — an empty `<dl class="facts">`
+/// renders as dead margins, so it is omitted entirely.
+fn has_facts(details: &ActionDetails) -> bool {
+    details.volume_ml.is_some()
+        || details.input_ph.is_some()
+        || details.runoff_ph.is_some()
+        || details.input_ec_us.is_some()
+        || details.runoff_ec_us.is_some()
+        || details.plant_height_cm.is_some()
+}
+
 fn local_stamp(iso: &str) -> String {
     let date = js_sys::Date::new(&wasm_bindgen::JsValue::from_str(iso));
     if date.get_time().is_nan() {
@@ -1520,6 +1659,80 @@ mod landing_pick_tests {
     #[test]
     fn empty_when_there_are_no_grows() {
         assert_eq!(pick_landing_grow(&[]), "");
+    }
+}
+
+#[cfg(test)]
+mod timeline_helpers {
+    use super::{ActionDetails, ActionEntry, ActionType, day_groups, has_facts, is_auto};
+
+    fn entry(grow_day: u16, notes: Option<&str>) -> ActionEntry {
+        ActionEntry {
+            id: format!("e{grow_day}{}", notes.unwrap_or("")),
+            grow_id: "g1".to_owned(),
+            plant_ids: Vec::new(),
+            action_type: ActionType::Lights,
+            grow_day,
+            phase: None,
+            occurred_at: "2026-11-19T03:02:31Z".to_owned(),
+            details: ActionDetails::default(),
+            notes: notes.map(str::to_owned),
+            appearance_tags: Vec::new(),
+            created_at: "2026-11-19T03:02:31Z".to_owned(),
+            updated_at: "2026-11-19T03:02:31Z".to_owned(),
+        }
+    }
+
+    /// HA transitions self-identify by the note prefix; any other note
+    /// is a human's.
+    #[test]
+    fn auto_detection_matches_the_note_prefix() {
+        assert!(is_auto(&entry(3, Some("auto: light on"))));
+        assert!(!is_auto(&entry(3, Some("watered by hand"))));
+        assert!(!is_auto(&entry(3, None)));
+    }
+
+    /// Days group descending with entries kept in arrival order; auto
+    /// entries never open a day group.
+    #[test]
+    fn manual_entries_group_by_day_descending() {
+        let entries = vec![
+            entry(25, Some("auto: light off")),
+            entry(25, None),
+            entry(25, None),
+            entry(24, None),
+            entry(24, Some("auto: light on")),
+            entry(9, None),
+        ];
+        let groups = day_groups(&entries);
+        assert_eq!(
+            groups.iter().map(|(day, _)| *day).collect::<Vec<_>>(),
+            vec![25, 24, 9],
+        );
+        assert_eq!(groups[0].1.len(), 2);
+        assert_eq!(groups[1].1.len(), 1);
+        assert_eq!(groups[2].1.len(), 1);
+    }
+
+    /// No manual entries, no groups — the auto tier takes over.
+    #[test]
+    fn all_auto_yields_no_groups() {
+        let entries = vec![
+            entry(3, Some("auto: light on")),
+            entry(2, Some("auto: light off")),
+        ];
+        assert_eq!(day_groups(&entries), [] as [(u16, Vec<ActionEntry>); 0]);
+    }
+
+    /// The facts grid is omitted unless at least one fact is set.
+    #[test]
+    fn facts_detected_only_when_a_field_is_set() {
+        assert!(!has_facts(&ActionDetails::default()));
+        let watered = ActionDetails {
+            volume_ml: Some(250.0),
+            ..ActionDetails::default()
+        };
+        assert!(has_facts(&watered));
     }
 }
 
