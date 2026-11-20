@@ -52,7 +52,9 @@ test('grow: create from the grows page', async ({ page }) => {
 
   const card = page.locator('li.card', { hasText: name });
   await expect(card).toBeVisible();
-  await expect(card).toContainText('soil');
+  // The card localises the substrate label (the raw wire value
+  // never renders; D-decision in the overview-fixes batch).
+  await expect(card).toContainText('Soil');
   await expectNoReload(page);
   await page.reload();
   await expect(page.locator('li.card', { hasText: name })).toBeVisible();
