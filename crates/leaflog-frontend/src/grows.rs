@@ -136,22 +136,45 @@ pub fn GrowsPage() -> impl IntoView {
                         .get()
                         .into_iter()
                         .map(|grow| {
+                            let locale = i18n.get_locale();
+                            let substrate = labels::substrate_label(locale, &grow.substrate)
+                                .into_owned();
+                            // Same wording the edit form offers, so a
+                            // card and its form never disagree.
+                            let photoperiod = match grow.photoperiod {
+                                PhotoperiodType::Auto => {
+                                    td_string!(locale, form.autoflower).into_owned()
+                                }
+                                PhotoperiodType::Photoperiod => {
+                                    td_string!(locale, form.photoperiodic).into_owned()
+                                }
+                            };
                             view! {
                                 <li class=ui::card()>
                                     <div class="flex flex-wrap items-baseline gap-2">
+                                        {substrate_glyph(&grow.substrate).map(|glyph| view! {
+                                            <span aria-hidden="true">{glyph}</span>
+                                        })}
                                         <A href=route_href(&format!("/grows/{}", grow.id))>
                                             <strong>{grow.name.clone()}</strong>
                                         </A>
                                         <span class="badge badge-ghost">{labels::status_label(
-                                            i18n.get_locale(),
+                                            locale,
                                             grow.status,
                                         )}</span>
-                                        <span class="text-base-content/70">{labels::substrate_label(
-                                            i18n.get_locale(),
-                                            &grow.substrate,
-                                        )}</span>
                                     </div>
-                                    <p class="text-base-content/70 text-sm">{t!(i18n, grows.started, date = grow.started_on)}</p>
+                                    <div class="mt-1 text-sm text-base-content/70 flex flex-wrap gap-x-3">
+                                        {(!grow.strain_label.is_empty()).then(|| view! {
+                                            <span>{grow.strain_label.clone()}</span>
+                                        })}
+                                        <span>{photoperiod}</span>
+                                        <span>{substrate}</span>
+                                    </div>
+                                    <p class="text-base-content/70 text-sm mt-1">{t!(
+                                        i18n,
+                                        grows.started,
+                                        date = grow.started_on,
+                                    )}</p>
                                 </li>
                             }
                         })
