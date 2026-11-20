@@ -208,6 +208,11 @@
   "history": {
     "predicted_heading": "Predicted vs actual",
     "plan_accuracy": "Plan accuracy",
+    "stat_runs": "Grows",
+    "stat_deviation": "Avg. deviation",
+    "stat_deviation_days": "{{ value }} days",
+    "stat_yield_dry": "Yield (dry)",
+    "stat_yield_sub": "Wet {{ wet }} g · Trim {{ trim }} g",
     "no_boundaries": "no flip or harvest logged yet",
     "day_line": "day {{ actual }} (planned {{ planned }}, {{ delta }})",
     "start_next_run": "Start next run",

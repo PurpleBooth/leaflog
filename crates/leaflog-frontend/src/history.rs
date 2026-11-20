@@ -72,6 +72,75 @@ pub struct HistoryReport {
     pub yield_by_feed_schedule: Vec<YieldAggregate>,
 }
 
+/// The figures behind the summary band: run count, mean absolute
+/// boundary deviation, and summed harvest weights. Pure over the
+/// report so the band view stays declarative and the arithmetic is
+/// unit-testable.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct SummaryStats {
+    /// Grows covered by the accuracy report.
+    runs: usize,
+    /// Mean of the absolute boundary deltas, `None` until one flip
+    /// or harvest is logged.
+    mean_abs_delta: Option<f64>,
+    /// Summed dry grams across all harvests.
+    dry_g: f64,
+    /// Summed wet grams.
+    wet_g: f64,
+    /// Summed trimmed grams.
+    trimmed_g: f64,
+    /// Whether any harvest was weighed at all — the band shows a
+    /// dash rather than a row of zeros until then.
+    weighed: bool,
+}
+
+/// Reduces a report to the band's figures. Day counts and row
+/// tallies fit a diary's scales by far below float precision, so the
+/// two numeric casts are exact in practice.
+#[must_use]
+#[allow(clippy::cast_precision_loss)]
+fn summary(report: &HistoryReport) -> SummaryStats {
+    let deltas: Vec<f64> = report
+        .accuracy
+        .iter()
+        .flat_map(|grow| {
+            grow.boundaries
+                .iter()
+                .map(|boundary| boundary.delta_days.abs() as f64)
+        })
+        .collect::<Vec<_>>();
+    let mean_abs_delta =
+        (!deltas.is_empty()).then(|| deltas.iter().sum::<f64>() / deltas.len() as f64);
+    // Each yield grouping is a complete partition of the harvests
+    // (unlabelled grows group together), so the first non-empty list
+    // already carries the grand total; the fallthrough only matters
+    // for a report with no harvests at all.
+    let found = [
+        &report.yield_by_label,
+        &report.yield_by_substrate,
+        &report.yield_by_feed_schedule,
+    ]
+    .into_iter()
+    .find(|rows| !rows.is_empty());
+    let (dry_g, wet_g, trimmed_g) = found.map_or((0.0, 0.0, 0.0), |rows| {
+        rows.iter().fold((0.0, 0.0, 0.0), |(dry, wet, trim), row| {
+            (
+                dry + row.total_dry_g,
+                wet + row.total_wet_g,
+                trim + row.total_trimmed_g,
+            )
+        })
+    });
+    SummaryStats {
+        runs: report.accuracy.len(),
+        mean_abs_delta,
+        dry_g,
+        wet_g,
+        trimmed_g,
+        weighed: found.is_some(),
+    }
+}
+
 /// The history page.
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
@@ -117,6 +186,54 @@ pub fn HistoryPage() -> impl IntoView {
                 <h2>{t!(i18n, page.history_heading)}</h2>
             </div>
             <ErrorIf error />
+
+            // The dashboard band: runs, mean plan deviation, summed
+            // harvest — the facts register scaled to page figures.
+            {move || {
+                let stats = summary(&report.get());
+                let locale = i18n.get_locale();
+                let style = crate::decimal_style(locale);
+                let deviation = stats.mean_abs_delta.map_or_else(
+                    || "—".to_owned(),
+                    |days| {
+                        td_string!(
+                            locale,
+                            history.stat_deviation_days,
+                            value = leaflog_core::format::format_decimal(days, 1, style)
+                        )
+                        .into_owned()
+                    },
+                );
+                let dry = leaflog_core::format::format_decimal(stats.dry_g, 0, style);
+                let wet = leaflog_core::format::format_decimal(stats.wet_g, 0, style);
+                let trim = leaflog_core::format::format_decimal(stats.trimmed_g, 0, style);
+                view! {
+                    <div class={format!("{} my-4", ui::card())} data-testid="history-summary">
+                        <dl class="statband">
+                            <div data-testid="history-stat-runs">
+                                <dt>{t!(i18n, history.stat_runs)}</dt>
+                                <dd>{stats.runs}</dd>
+                            </div>
+                            <div data-testid="history-stat-deviation">
+                                <dt>{t!(i18n, history.stat_deviation)}</dt>
+                                <dd>{deviation}</dd>
+                            </div>
+                            <div data-testid="history-stat-yield">
+                                <dt>{t!(i18n, history.stat_yield_dry)}</dt>
+                                <dd>
+                                    {if stats.weighed { format!("{dry} g") } else { "—".to_owned() }}
+                                    <small>{td_string!(
+                                        locale,
+                                        history.stat_yield_sub,
+                                        wet = wet,
+                                        trim = trim,
+                                    )}</small>
+                                </dd>
+                            </div>
+                        </dl>
+                    </div>
+                }
+            }}
 
             <h3>{t!(i18n, history.predicted_heading)}</h3>
             <ul class="grid gap-4 lg:grid-cols-2">
@@ -184,67 +301,74 @@ pub fn HistoryPage() -> impl IntoView {
                 <EmptyState>{t!(i18n, history.empty)}</EmptyState>
             </Show>
 
-            <Aggregate
-                title=Signal::derive(move || t_string!(i18n, history.yield_by_label).into_owned())
-                rows=Signal::derive(move || report.get().yield_by_label)
-            />
-            <Aggregate
-                title=Signal::derive(move || t_string!(i18n, history.yield_by_substrate).into_owned())
-                rows=Signal::derive(move || report.get().yield_by_substrate)
-            />
-            <Aggregate
-                title=Signal::derive(move || t_string!(i18n, history.yield_by_feed_schedule).into_owned())
-                rows=Signal::derive(move || report.get().yield_by_feed_schedule)
-            />
-
-            <p><A href=route_href("/")>{t!(i18n, grows.back_home)}</A></p>
+            <div class="grid gap-4 lg:grid-cols-3">
+                <Aggregate
+                    title=Signal::derive(move || t_string!(i18n, history.yield_by_label).into_owned())
+                    rows=Signal::derive(move || report.get().yield_by_label)
+                />
+                <Aggregate
+                    title=Signal::derive(move || t_string!(i18n, history.yield_by_substrate).into_owned())
+                    rows=Signal::derive(move || report.get().yield_by_substrate)
+                />
+                <Aggregate
+                    title=Signal::derive(move || {
+                        t_string!(i18n, history.yield_by_feed_schedule).into_owned()
+                    })
+                    rows=Signal::derive(move || report.get().yield_by_feed_schedule)
+                />
+            </div>
         </section>
     }
 }
 
-/// One yield-aggregate table. The title arrives as a signal so a
-/// locale swap re-translates it alongside the rows.
+/// One yield-aggregate table, carded so the three groupings sit as
+/// one band. The title arrives as a signal so a locale swap
+/// re-translates it alongside the rows.
 #[component]
 fn Aggregate(title: Signal<String>, rows: Signal<Vec<YieldAggregate>>) -> impl IntoView {
     let i18n = use_i18n();
     view! {
-        <h3>{move || title.get()}</h3>
-        <Show
-            when=move || !rows.get().is_empty()
-            fallback=move || view! {
-                <EmptyState>{t!(i18n, history.nothing_weighed)}</EmptyState>
-            }
-        >
-            <table class="table table-sm">
-                <thead>
-                    <tr>
-                        <th>" "</th>
-                        <th>{t!(i18n, history.wet_g)}</th>
-                        <th>{t!(i18n, history.dry_g)}</th>
-                        <th>{t!(i18n, history.trimmed_g)}</th>
-                        <th>{t!(i18n, history.grows_col)}</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {move || {
-                        rows.get()
-                            .iter()
-                            .map(|row| {
-                                view! {
-                                    <tr>
-                                        <td>{row.label.clone()}</td>
-                                        <td>{leaflog_core::format::format_decimal(row.total_wet_g, 0, crate::decimal_style(i18n.get_locale()))}</td>
-                                        <td>{leaflog_core::format::format_decimal(row.total_dry_g, 0, crate::decimal_style(i18n.get_locale()))}</td>
-                                        <td>{leaflog_core::format::format_decimal(row.total_trimmed_g, 0, crate::decimal_style(i18n.get_locale()))}</td>
-                                        <td>{row.grows}</td>
-                                    </tr>
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                    }}
-                </tbody>
-            </table>
-        </Show>
+        <div class=ui::card()>
+            <h3 class="mt-0">{move || title.get()}</h3>
+            <Show
+                when=move || !rows.get().is_empty()
+                fallback=move || view! {
+                    <p class="text-base-content/60 text-sm m-0">{t!(i18n, history.nothing_weighed)}</p>
+                }
+            >
+                <div class="overflow-x-auto">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>" "</th>
+                                <th>{t!(i18n, history.wet_g)}</th>
+                                <th>{t!(i18n, history.dry_g)}</th>
+                                <th>{t!(i18n, history.trimmed_g)}</th>
+                                <th>{t!(i18n, history.grows_col)}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {move || {
+                                rows.get()
+                                    .iter()
+                                    .map(|row| {
+                                        view! {
+                                            <tr>
+                                                <td>{row.label.clone()}</td>
+                                                <td>{leaflog_core::format::format_decimal(row.total_wet_g, 0, crate::decimal_style(i18n.get_locale()))}</td>
+                                                <td>{leaflog_core::format::format_decimal(row.total_dry_g, 0, crate::decimal_style(i18n.get_locale()))}</td>
+                                                <td>{leaflog_core::format::format_decimal(row.total_trimmed_g, 0, crate::decimal_style(i18n.get_locale()))}</td>
+                                                <td>{row.grows}</td>
+                                            </tr>
+                                        }
+                                    })
+                                    .collect::<Vec<_>>()
+                            }}
+                        </tbody>
+                    </table>
+                </div>
+            </Show>
+        </div>
     }
 }
 
@@ -454,5 +578,85 @@ const fn empty_plant() -> PlantInput {
         wet_g: None,
         dry_g: None,
         trimmed_g: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BoundaryAccuracy, GrowAccuracy, HistoryReport, YieldAggregate, summary};
+
+    fn boundary(delta: i64) -> BoundaryAccuracy {
+        BoundaryAccuracy {
+            boundary: "flip".to_owned(),
+            predicted_day: 20,
+            actual_day: 20 + delta,
+            delta_days: delta,
+        }
+    }
+
+    fn aggregate(label: &str, dry: f64, wet: f64, trim: f64) -> YieldAggregate {
+        YieldAggregate {
+            label: label.to_owned(),
+            total_dry_g: dry,
+            total_wet_g: wet,
+            total_trimmed_g: trim,
+            grows: 1,
+        }
+    }
+
+    /// An empty report shows zero runs, no deviation and an unweighed
+    /// dash — the band never fabricates a figure (D130's spirit).
+    #[test]
+    fn empty_report_reduces_to_dashes() {
+        let stats = summary(&HistoryReport::default());
+        assert_eq!(stats.runs, 0);
+        assert_eq!(stats.mean_abs_delta, None);
+        assert!(!stats.weighed);
+        assert_eq!((stats.dry_g, stats.wet_g, stats.trimmed_g), (0.0, 0.0, 0.0));
+    }
+
+    /// Deviation is the mean of absolute deltas; sign cancels.
+    #[test]
+    fn deviation_averages_absolute_deltas() {
+        let report = HistoryReport {
+            accuracy: vec![GrowAccuracy {
+                grow_id: "g1".to_owned(),
+                name: "One".to_owned(),
+                strain: None,
+                boundaries: vec![boundary(-4), boundary(6)],
+            }],
+            ..HistoryReport::default()
+        };
+        let stats = summary(&report);
+        assert_eq!(stats.runs, 1);
+        assert_eq!(stats.mean_abs_delta, Some(5.0));
+    }
+
+    /// The first non-empty yield grouping is a complete partition, so
+    /// it alone carries the grand total. Literals compared exactly:
+    /// the sums re-add the same constants bit-identically.
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn yield_totals_come_from_the_first_nonempty_grouping() {
+        let report = HistoryReport {
+            yield_by_substrate: vec![aggregate("Erde", 40.0, 10.0, 2.5)],
+            ..HistoryReport::default()
+        };
+        let stats = summary(&report);
+        assert!(stats.weighed);
+        assert_eq!(stats.dry_g, 40.0);
+        assert_eq!(stats.wet_g, 10.0);
+        assert_eq!(stats.trimmed_g, 2.5);
+
+        let report = HistoryReport {
+            yield_by_label: vec![
+                aggregate("Tropical Tangie", 12.0, 3.0, 1.0),
+                aggregate("", 8.0, 2.0, 0.5),
+            ],
+            ..HistoryReport::default()
+        };
+        let stats = summary(&report);
+        assert_eq!(stats.dry_g, 20.0);
+        assert_eq!(stats.wet_g, 5.0);
     }
 }

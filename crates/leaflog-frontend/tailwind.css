@@ -202,6 +202,45 @@ pre {
   margin: 0;
 }
 
+/* Verlauf summary band: the facts register scaled up — one ledger
+ * row of labelled figures (runs, mean plan deviation, summed
+ * harvest). No tile chrome: the numbers carry the weight. */
+.statband {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 1rem 2.5rem;
+  margin: 0;
+}
+
+.statband dt {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--color-base-content) 65%, transparent);
+}
+
+.statband dd {
+  margin: 0;
+  font-size: 1.75rem;
+  line-height: 1.25;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.statband dd small {
+  display: block;
+  margin-top: 0.125rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--color-base-content) 65%, transparent);
+}
+
+/* Data tables read as figures, not prose. */
+.table td,
+.table th {
+  font-variant-numeric: tabular-nums;
+}
+
 /* Gantt forecast (M5): bar and range geometry is inline-styled from
  * Rust; --color comes per phase from `phase_color`. The chart's
  * padding, gutter and label column are declared once below; the

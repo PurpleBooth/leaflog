@@ -208,6 +208,11 @@
   "history": {
     "predicted_heading": "Prognose und Ist",
     "plan_accuracy": "Plan-Genauigkeit",
+    "stat_runs": "Anbauten",
+    "stat_deviation": "Ø Abweichung",
+    "stat_deviation_days": "{{ value }} Tage",
+    "stat_yield_dry": "Ertrag (trocken)",
+    "stat_yield_sub": "Nass {{ wet }} g · Trim {{ trim }} g",
     "no_boundaries": "noch kein Flip und keine Ernte eingetragen",
     "day_line": "Tag {{ actual }} (geplant {{ planned }}, {{ delta }})",
     "start_next_run": "Nächsten Durchgang starten",
