@@ -134,12 +134,16 @@ p {
   margin-block: 0.5rem;
 }
 
-a {
+/* Scoped to non-button anchors: daisyUI paints .btn anchors
+ * (primary CTAs like "Neuer Plan") from its own recipe, and an
+ * unscoped primary-color rule here overrode it — dark theme rendered
+ * green text on the identical green background, an invisible CTA. */
+a:not(.btn) {
   color: var(--color-primary);
   font-weight: 500;
 }
 
-a:hover {
+a:not(.btn):hover {
   filter: brightness(1.1);
 }
 
