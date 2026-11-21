@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.15.2 - 2026-11-21
+#### Bug Fixes
+- contain the feeding section and restore the prototype dose-list metrics (D143) - (e4f19c3) - billie.codes
+#### Miscellaneous
+- **(release)** bump version to 0.15.1 - (b5146a1) - github-actions[bot]
+- **(version)** 0.15.2 - (c7d0bc7) - billie.codes
+
+- - -
+
 ## v0.15.1 - 2026-11-21
 #### Bug Fixes
 - **(test)** compare the Air shading with slack instead of byte equality - (5fd9360) - billie.codes

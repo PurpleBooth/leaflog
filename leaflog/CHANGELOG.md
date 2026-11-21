@@ -2,6 +2,18 @@
 All notable changes to the Leaflog Home Assistant app. Version headings are exactly `## <version>` — Home Assistant slices release notes on them. Generated file; never edit by hand.
 
 - - -
+## 0.15.2
+
+_Released 2026-11-21._
+
+#### Bug Fixes
+- contain the feeding section and restore the prototype dose-list metrics (D143) - (e4f19c3) - billie.codes
+#### Miscellaneous
+- **(release)** bump version to 0.15.1 - (b5146a1) - github-actions[bot]
+- **(version)** 0.15.2 - (c7d0bc7) - billie.codes
+
+- - -
+
 ## 0.15.1
 
 _Released 2026-11-21._
