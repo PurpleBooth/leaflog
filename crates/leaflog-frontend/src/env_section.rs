@@ -365,7 +365,15 @@ fn LazyCharts(children: ChildrenFn) -> impl IntoView {
         // The new wasm-bindgen closures hand JavaScript a function,
         // not themselves (theme.rs keeps a pair alive the same way).
         let handler = js_sys::Function::from(callback.as_js_value().clone());
-        let Ok(observer) = web_sys::IntersectionObserver::new(&handler) else {
+        // A bottom margin lets the block mount while it is still a
+        // little below the fold: a visitor whose scroll lands the
+        // group label right at the viewport edge sees charts that are
+        // already there instead of watching them pop in, and the
+        // reserved height above keeps the mount from jumping.
+        let options = web_sys::IntersectionObserverInit::new();
+        options.set_root_margin("0px 0px 120px 0px");
+        let Ok(observer) = web_sys::IntersectionObserver::new_with_options(&handler, &options)
+        else {
             // The availability probe lied (the constructor threw):
             // take the immediate path rather than hiding the group
             // behind a watch no callback will ever fire for.

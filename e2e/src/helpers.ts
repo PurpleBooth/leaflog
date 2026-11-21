@@ -233,7 +233,10 @@ export async function bandRegions(
  *  first intersection before fetching or drawing anything. The label
  *  is the group's structural scroll target — it always renders. */
 export async function revealRootZone(page: Page): Promise<void> {
+  // Centered, not just 'into view': at the viewport's bottom edge the
+  // lazy Root-zone block below the heading may still sit outside the
+  // IntersectionObserver's box, and the charts never mount.
   await page
     .getByRole('heading', { name: 'Root zone', exact: true })
-    .scrollIntoViewIfNeeded();
+    .evaluate((el) => el.scrollIntoView({ block: 'center' }));
 }

@@ -30,6 +30,10 @@
 # Devbox generated state (devbox.json + devbox.lock are committed)
 /.devbox
 
+# Component-test harness tools (justfile `test-wasm` downloads pinned
+# wasm-bindgen CLI + Chrome for Testing; docs/DECISIONS.md, D139)
+/wasm-test-tools
+
 # Editors / OS
 .idea/
 .vscode/

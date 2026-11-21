@@ -556,18 +556,15 @@ fn weight_field(
     write: impl Fn(&mut PlantInput, Option<f64>) + Clone + Send + 'static,
 ) -> impl IntoView {
     view! {
-        <label class="fieldset">
-            <span class="fieldset-label">{label}</span>
-            <input class="input" type="number" min="0" step="1"
-                prop:value=move || {
-                    read(&draft.get()).map(|value| format!("{value:.0}")).unwrap_or_default()
-                }
-                on:input=move |ev| {
-                    let parsed = event_target_value(&ev).parse::<f64>().ok();
-                    draft.update(|current| write(current, parsed));
-                }
-            />
-        </label>
+        <ui::NumberField
+            label=label
+            step="1"
+            draft=draft
+            read=read
+            write=write
+            minimum="0"
+            display=std::sync::Arc::new(move |value| format!("{value:.0}"))
+        />
     }
 }
 

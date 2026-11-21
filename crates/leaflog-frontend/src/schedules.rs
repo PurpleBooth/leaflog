@@ -17,6 +17,7 @@ use crate::api;
 use crate::feed::decimal_style;
 use crate::i18n::{Locale, t_string, use_i18n};
 use crate::route_href;
+use crate::ui;
 
 /// One library row: the schedule plus the counts the backend
 /// aggregates in one pass.
@@ -318,29 +319,25 @@ pub fn SchedulesPage() -> impl IntoView {
                                             >
                                                 {t_string!(i18n, schedules.duplicate)}
                                             </button>
-                                            {if armed.get().as_deref() == Some(delete_id.as_str()) {
+                                            {
+                                                let id_for_armed = delete_id.clone();
+                                                let id_for_arm = delete_id.clone();
+                                                let id_for_confirm = delete_id;
                                                 view! {
-                                                    <button
-                                                        class="btn btn-error btn-sm"
-                                                        on:click=move |_| remove(delete_id.clone())
-                                                    >
-                                                        {t_string!(i18n, schedules.confirm_delete)}
-                                                    </button>
-                                                }
-                                                    .into_any()
-                                            } else {
-                                                view! {
-                                                    <button
-                                                        class="btn btn-ghost btn-sm text-error"
-                                                        on:click=move |_| {
-                                                            armed.set(Some(delete_id.clone()));
+                                                    <ui::ArmConfirmButton
+                                                        armed=Signal::derive(move || {
+                                                            armed.get().as_deref() == Some(id_for_armed.as_str())
+                                                        })
+                                                        label=t_string!(i18n, schedules.delete).into_owned()
+                                                        confirm_label=t_string!(i18n, schedules.confirm_delete)
+                                                            .into_owned()
+                                                        on_arm=move |_| {
+                                                            armed.set(Some(id_for_arm.clone()));
                                                         }
-                                                    >
-                                                        {t_string!(i18n, schedules.delete)}
-                                                    </button>
+                                                        on_confirm=move |_| remove(id_for_confirm.clone())
+                                                    />
                                                 }
-                                                    .into_any()
-                                            }}
+                                            }
                                             <span class="text-base-content/60 text-xs ml-auto">
                                                 {t_string!(i18n, schedules.delete_note)}
                                             </span>
@@ -396,6 +393,13 @@ pub fn ScheduleEditorPage(
     let refitting = RwSignal::new(false);
     let armed = RwSignal::new(false);
 
+    // A new schedule starts with one empty row to edit (seeded
+    // eagerly: the load effect only runs while a stored schedule is
+    // still loading, so an else-branch there would never fire).
+    if id.get_value().is_none() {
+        rows.set(vec![empty_row(cell_count(weeks.get_untracked()))]);
+    }
+
     Effect::new(move |_| {
         if !loading.get() {
             return;
@@ -418,8 +422,6 @@ pub fn ScheduleEditorPage(
                 }
             });
         } else {
-            // A new schedule starts with one empty row to edit.
-            rows.set(vec![empty_row(cell_count(weeks.get_untracked()))]);
             loading.set(false);
         }
     });
@@ -676,24 +678,13 @@ pub fn ScheduleEditorPage(
                         </button>
                         <span class="flex-1" />
                         <Show when=move || id.get_value().is_some()>
-                            {if armed.get() {
-                                view! {
-                                    <button class="btn btn-error btn-sm" on:click=delete_schedule>
-                                        {t_string!(i18n, schedules.confirm_delete)}
-                                    </button>
-                                }
-                                    .into_any()
-                            } else {
-                                view! {
-                                    <button
-                                        class="btn btn-ghost btn-sm text-error"
-                                        on:click=move |_| armed.set(true)
-                                    >
-                                        {t_string!(i18n, schedules.delete_schedule)}
-                                    </button>
-                                }
-                                    .into_any()
-                            }}
+                            <ui::ArmConfirmButton
+                                armed=Signal::derive(move || armed.get())
+                                label=t_string!(i18n, schedules.delete_schedule).into_owned()
+                                confirm_label=t_string!(i18n, schedules.confirm_delete).into_owned()
+                                on_arm=move |_| armed.set(true)
+                                on_confirm=delete_schedule
+                            />
                         </Show>
                         <button class="btn btn-primary" disabled=move || saving.get() on:click=save>
                             {t_string!(i18n, schedules.save)}

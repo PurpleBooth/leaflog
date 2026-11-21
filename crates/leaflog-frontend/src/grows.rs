@@ -202,7 +202,7 @@ pub fn GrowsPage() -> impl IntoView {
 /// phase-day split pins (e2e 17), the phase badge, structured facts
 /// when any are set, notes, appearance tags and the local stamp.
 /// `on_delete` is the shared delete-with-undo callback.
-fn timeline_entry(
+pub fn timeline_entry(
     locale: Locale,
     entry: ActionEntry,
     on_delete: impl Fn(ActionEntry) + Copy + Send + Sync + 'static,
@@ -1317,20 +1317,7 @@ fn num_field(
     read: impl Fn(&ActionInput) -> Option<f64> + Clone + Send + 'static,
     write: impl Fn(&mut ActionInput, Option<f64>) + Clone + Send + 'static,
 ) -> impl IntoView {
-    view! {
-        <label class="fieldset">
-            <span class="fieldset-label">{label}</span>
-            <input class="input" type="number" step=step
-                prop:value=move || {
-                    read(&draft.get()).map(|value| value.to_string()).unwrap_or_default()
-                }
-                on:input=move |ev| {
-                    let parsed = event_target_value(&ev).parse::<f64>().ok();
-                    draft.update(|current| write(current, parsed));
-                }
-            />
-        </label>
-    }
+    view! { <ui::NumberField label=label step=step draft=draft read=read write=write /> }
 }
 
 /// Empty strings become `None`.

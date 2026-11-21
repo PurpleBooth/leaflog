@@ -46,7 +46,7 @@ jobs:
   # `just e2e` skips when node is absent — this job installs node and
   # chromium so the gate is actually enforced (the prose-job pattern).
   e2e:
-    name: playwright (frontend e2e)
+    name: playwright e2e + wasm component tests
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -75,6 +75,17 @@ jobs:
 
       - name: Run the e2e suite
         run: just e2e
+
+      # Browser-run component tests (D139): `just test-wasm` downloads
+      # the pinned wasm-bindgen CLI and Chrome for Testing itself; the
+      # job only supplies unzip and the shared-library deps Chrome
+      # needs headless (playwright's dep installer owns that list).
+      - name: Run the wasm component tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip
+          sudo npx playwright install-deps chromium
+          just test-wasm
 
       - name: Upload test report
         if: failure()

@@ -120,6 +120,110 @@ pub fn SectionHeader(title: Signal<String>) -> impl IntoView {
     }
 }
 
+/// The shared form-field wrapper: a daisyUI fieldset with the small
+/// fieldset-label above one control. Every labelled input, select and
+/// textarea in the app renders through this so the label register
+/// stays uniform; the control itself arrives as children.
+#[component]
+#[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
+pub fn Field(label: String, children: Children) -> impl IntoView {
+    view! {
+        <label class="fieldset">
+            <span class="fieldset-label">{label}</span>
+            {children()}
+        </label>
+    }
+}
+
+/// The shared numeric field: the [`Field`] wrapper around a number
+/// input bound to a draft struct. `read` renders the current value
+/// (`display` reformats when a field wants fixed decimals), `write`
+/// stores the parsed input, `None` clearing the value. `minimum`
+/// carries a static `min` attribute for non-negative fields.
+#[component]
+#[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
+pub fn NumberField<T: Clone + Send + Sync + 'static>(
+    label: String,
+    step: &'static str,
+    draft: RwSignal<T>,
+    read: impl Fn(&T) -> Option<f64> + Clone + Send + 'static,
+    write: impl Fn(&mut T, Option<f64>) + Clone + Send + 'static,
+    #[prop(optional)] minimum: Option<&'static str>,
+    /// Shared so the field can hold it without a second generic slot.
+    #[prop(optional)]
+    display: Option<std::sync::Arc<dyn Fn(f64) -> String + Send + Sync>>,
+) -> impl IntoView {
+    let render = move || {
+        read(&draft.get()).map_or_else(String::new, |value| {
+            display
+                .as_ref()
+                .map_or_else(|| value.to_string(), |format| format(value))
+        })
+    };
+    view! {
+        <label class="fieldset">
+            <span class="fieldset-label">{label}</span>
+            <input
+                class="input"
+                type="number"
+                step=step
+                min=minimum
+                // Attribute, not `prop:`: the value attribute prefills
+                // the field at build time; user edits go through
+                // on:input and never touch the attribute again.
+                value=render
+                on:input=move |ev| {
+                    let parsed = event_target_value(&ev).parse::<f64>().ok();
+                    draft.update(|current| write(current, parsed));
+                }
+            />
+        </label>
+    }
+}
+
+/// The shared two-step destructive action: a quiet ghost button that
+/// arms on click and swaps to the loud confirm button. The armed
+/// state belongs to the caller (a list arm per row, an editor one
+/// flag); the component only renders the pair and forwards the
+/// clicks, so an armed row never confirms a different row's delete.
+#[component]
+#[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
+pub fn ArmConfirmButton(
+    /// Whether this instance currently shows the confirm button.
+    armed: Signal<bool>,
+    /// The quiet button's caption ("Delete").
+    label: String,
+    /// The armed button's caption ("Confirm delete").
+    confirm_label: String,
+    on_arm: impl Fn(leptos::ev::MouseEvent) + Clone + Send + 'static,
+    on_confirm: impl Fn(leptos::ev::MouseEvent) + Clone + Send + 'static,
+) -> impl IntoView {
+    // The render closure clones the callbacks and captions so the
+    // whole closure stays `Send` (leptos requires that for view
+    // closures) while re-running on every `armed` flip.
+    view! {
+        {move || {
+            if armed.get() {
+                let on_confirm = on_confirm.clone();
+                view! {
+                    <button class="btn btn-error btn-sm" on:click=on_confirm>
+                        {confirm_label.clone()}
+                    </button>
+                }
+                    .into_any()
+            } else {
+                let on_arm = on_arm.clone();
+                view! {
+                    <button class="btn btn-ghost btn-sm text-error" on:click=on_arm>
+                        {label.clone()}
+                    </button>
+                }
+                    .into_any()
+            }
+        }}
+    }
+}
+
 /// The shared undo banner: an alert-style card (the [`card`] recipe)
 /// shown above whatever it undoes while `message` holds a caption,
 /// with one localized Undo action. The caller owns the pending state

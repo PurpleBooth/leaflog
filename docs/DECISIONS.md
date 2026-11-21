@@ -6,6 +6,60 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-21 — component tests and the shared field/button components (D139–D140)
+
+### D139: the frontend gets browser-run component tests via wasm-bindgen-test, downloaded with pinned SHA-256 gates
+
+The crate has native unit tests for pure logic and Playwright e2e for
+whole-stack flows, but nothing rendered one component in its states —
+with data, without, error, loading — and asserted on the
+colors-and-classes contract between those extremes.
+
+`just test-wasm` compiles `leaflog-frontend` for wasm32 and runs the
+new `src/component_tests/` suite in headless Chrome (Chrome for
+Testing + the matching ChromeDriver, plus the wasm-bindgen CLI, all
+downloaded on first use into the gitignored `wasm-test-tools/` with
+the same pin-and-sha256-gate pattern as the daisyUI bundles).
+
+The tests mount components with `leptos::mount_to` into throwaway
+containers. `fetch` goes through an installed per-test matcher chain
+(newest install wins, so concurrent tests answer their own URLs).
+The locale pins to `en` by defining `navigator.language(s)` before
+the i18n provider initializes. ECharts is mocked with a small
+`window.echarts` stand-in that appends an `<svg role="img">` the
+chart code can label. The recipe skips with a notice on machines
+where the downloads fail; the CI e2e job runs it unconditionally,
+so the gate is enforced.
+
+Two harness findings shaped production code. `/schedules/new`
+rendered an empty product grid because its seed ran in a load effect
+whose else-branch could never fire (loading starts `false` for new
+schedules — the seed is now eager). And `ArmConfirmButton` taught
+that a plain `if` in a component body never re-runs, so armed/
+disarmed swaps need a reactive render closure.
+
+### D140: the repeated field and arm/confirm markup collapses into `ui::Field`, `ui::NumberField`, and `ui::ArmConfirmButton`
+
+The same `<label class="fieldset"><span class="fieldset-label">`
+wrapper had drifted into 39 call sites across nine files, the
+number-input plus parse-and-write draft plumbing existed twice
+(`grows.rs::num_field`, `history.rs::weight_field`), and the delete
+arm/confirm button pair existed twice in `schedules.rs`.
+
+The three shared components in `ui.rs` own that markup
+byte-identically; `NumberField` takes its draft accessors as closures
+(`read`/`write`) and an optional `display` formatter (an `Arc<dyn Fn>`
+so the component avoids a second generic slot). It prefills via the
+reactive `value` attribute: `prop:` never applied an initial value in
+the component-test harness, and the attribute path is the one the
+browser exercises.
+
+The dashboard's five env-strip tiles became a local `EnvTile`
+(band footnotes ride along as an optional prop). Deliberately not
+extracted: badge chips (variants differ per context), the `dl.facts`
+blocks (three heterogeneous sites), and the entity selects (their
+role loops already share `Field`).
+
 ## 2026-11-20 — overview spacing rhythm (D138)
 
 ### D138: section rhythm lives in the document stylesheet, not in per-call margin utilities
@@ -3443,6 +3497,7 @@ once per crate.
 | leaflog-frontend | components `Home`, `LocaleChain`, `AppShell` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` (`Home` predates the register row; `LocaleChain`/`AppShell` arrive with D112) |
 | leaflog-frontend | component `ErrorIf` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` |
 | leaflog-frontend | components `EntityIdChip`, `EmptyState`, `SectionHeader`, `UndoBanner` in `ui.rs` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` (arrive with D120; `UndoBanner` with D126) |
+| leaflog-frontend | components `Field`, `NumberField`, `ArmConfirmButton` in `ui.rs`; `EnvTile` in `dashboard.rs` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` (arrive with D140) |
 | leaflog-frontend | component `LightCycleEditor` in `light_cycle.rs` | `clippy::too_many_lines` | Declarative view code, not logic; splitting would obscure the form (same pattern as the M2 register row) |
 | leaflog-frontend | components `FeedSection` in `feed.rs`, `ScheduleEditorPage`/`EditorGrid` in `schedules.rs` | `clippy::needless_pass_by_value` | Leptos component props are taken by value by the `#[component]` macro contract |
 | leaflog-frontend | components `FeedSection` in `feed.rs`, `SchedulesPage`/`ScheduleEditorPage`/`EditorGrid` in `schedules.rs` | `clippy::too_many_lines` | Declarative view code, not logic; splitting would obscure the form (same pattern as `LightCycleEditor`) |

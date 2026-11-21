@@ -138,8 +138,7 @@ pub fn EntityBindings(grow_id: String, bindings_epoch: RwSignal<u64>) -> impl In
                         let options = entities;
                         let save = save_binding.clone();
                         view! {
-                            <label class="fieldset">
-                                <span class="fieldset-label">{label}</span>
+                            <ui::Field label=label>
                                 <select class="select"
                                     prop:value=move || {
                                         // Re-apply when the option list lands
@@ -175,7 +174,7 @@ pub fn EntityBindings(grow_id: String, bindings_epoch: RwSignal<u64>) -> impl In
                                             .collect::<Vec<_>>()
                                     }}
                                 </select>
-                            </label>
+                            </ui::Field>
                         }
                     })
                     .collect::<Vec<_>>()}

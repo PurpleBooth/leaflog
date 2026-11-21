@@ -49,6 +49,12 @@ mod schedules;
 mod theme;
 mod ui;
 
+// Browser-run component tests (D139): compiled only for the wasm
+// target under `cargo test`, executed by wasm-bindgen-test-runner in
+// headless Chrome via `just test-wasm`.
+#[cfg(all(test, target_arch = "wasm32"))]
+mod component_tests;
+
 // The compile-time i18n module (D112): `build.rs` generates it from
 // `locales/{en,de}.json` into OUT_DIR and the include declares
 // `crate::i18n`. English is the default locale and the key source of

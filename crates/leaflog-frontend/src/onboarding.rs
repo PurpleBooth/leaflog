@@ -262,8 +262,7 @@ pub fn OnboardingWizard() -> impl IntoView {
                                     let current = picks;
                                     let options = entities;
                                     view! {
-                                        <label class="fieldset">
-                                            <span class="fieldset-label">{label}</span>
+                                        <ui::Field label=label>
                                             <select class="select"
                                                 prop:value=move || {
                                                     current.get().get(role).cloned().unwrap_or_default()
@@ -302,7 +301,7 @@ pub fn OnboardingWizard() -> impl IntoView {
                                                         .collect::<Vec<_>>()
                                                 }}
                                             </select>
-                                        </label>
+                                        </ui::Field>
                                     }
                                 })
                                 .collect::<Vec<_>>()}

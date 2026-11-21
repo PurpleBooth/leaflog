@@ -357,7 +357,7 @@ ci:
     exec just _ci-impl
 
 # The gate's implementation; run it through `ci` so the lock holds.
-_ci-impl: cog-check allow-register decision-ids fmt clippy clippy-wasm build-frontend test gitleaks deny lint-prose e2e
+_ci-impl: cog-check allow-register decision-ids fmt clippy clippy-wasm build-frontend test test-wasm gitleaks deny lint-prose e2e
 
 # Check formatting.
 fmt:
@@ -374,6 +374,86 @@ clippy-wasm:
 # Run all tests.
 test:
     cargo test --workspace
+
+# Component-test tooling (D139): pinned wasm-bindgen CLI + Chrome for
+# Testing with the matching ChromeDriver, downloaded on first use into
+# the gitignored wasm-test-tools/ with the same sha256-gate pattern as
+# the daisyUI bundles. Not vendored (working agreement): pinned
+# releases, throwaway once extracted.
+wasm_bindgen_version := "0.2.130"
+wasm_bindgen_sha_aarch64 := "cc8dd8e90aa9111758168d30c63a14b7f0276997d9d60d3e160a1fb5e7d3b919"
+wasm_bindgen_sha_x86_64 := "0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5"
+cft_version := "158.0.8127.36"
+cft_sha_chrome_aarch64 := "f811b64a50cbc73f94fda7b3f3b3bf62be5d9409b3207e6ead9b61e6706afffe"
+cft_sha_chrome_x86_64 := "dba9cc838e1ce269c33ea68170881127bd15d078fc3ca5891c90802819a4d7c7"
+cft_sha_driver_aarch64 := "cbb268390b87b79ad8543364bbf5cc851b1403a2ce76c2636dfc2fbe8e196b7d"
+cft_sha_driver_x86_64 := "d20e70d69d68c5c983e2526452ed0779fd65dc4ade5d6741f1bb3d0d82754d3a"
+wasm_tools_dir := "wasm-test-tools"
+
+# Download and unpack the wasm-bindgen CLI + Chrome for Testing
+# (idempotent). Exits non-zero on any mismatch; the tag has no `v`
+# prefix (the `v`-prefixed URL 404s).
+wasm-tools:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "$(uname -m)" in
+        aarch64) arch="aarch64"; libc="gnu"; cft_arch="linux-arm64" ;;
+        x86_64)  arch="x86_64";  libc="gnu"; cft_arch="linux64" ;;
+        *) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+    esac
+    wb_dir="{{wasm_tools_dir}}/wasm-bindgen-{{wasm_bindgen_version}}-${arch}-unknown-linux-${libc}"
+    if [ ! -x "$wb_dir/wasm-bindgen-test-runner" ]; then
+        case "$arch" in
+            aarch64) wb_sha="{{wasm_bindgen_sha_aarch64}}" ;;
+            x86_64)  wb_sha="{{wasm_bindgen_sha_x86_64}}" ;;
+        esac
+        mkdir -p "{{wasm_tools_dir}}"
+        tgz="{{wasm_tools_dir}}/.wb.tar.gz"
+        curl -sL -o "$tgz" "https://github.com/rustwasm/wasm-bindgen/releases/download/{{wasm_bindgen_version}}/wasm-bindgen-{{wasm_bindgen_version}}-${arch}-unknown-linux-${libc}.tar.gz"
+        echo "$wb_sha  $tgz" | sha256sum -c -
+        rm -rf "$wb_dir"
+        tar -xzf "$tgz" -C "{{wasm_tools_dir}}"
+        rm -f "$tgz"
+    fi
+    for tool in chrome chromedriver; do
+        out_dir="{{wasm_tools_dir}}/dl/${tool}-${cft_arch}"
+        if [ ! -x "$out_dir/$tool" ]; then
+            case "$arch" in
+                aarch64) case "$tool" in
+                    chrome)       tool_sha="{{cft_sha_chrome_aarch64}}" ;;
+                    chromedriver) tool_sha="{{cft_sha_driver_aarch64}}" ;;
+                esac ;;
+                x86_64) case "$tool" in
+                    chrome)       tool_sha="{{cft_sha_chrome_x86_64}}" ;;
+                    chromedriver) tool_sha="{{cft_sha_driver_x86_64}}" ;;
+                esac ;;
+            esac
+            mkdir -p "{{wasm_tools_dir}}/dl/.${tool}.tmp"
+            zip_name="${tool}-${cft_arch}.zip"
+            zip_path="{{wasm_tools_dir}}/dl/.${tool}.tmp/${zip_name}"
+            curl -sL -o "$zip_path" "https://storage.googleapis.com/chrome-for-testing-public/{{cft_version}}/${cft_arch}/${zip_name}"
+            echo "$tool_sha  $zip_path" | sha256sum -c -
+            unzip -oq "$zip_path" -d "{{wasm_tools_dir}}/dl/.${tool}.tmp"
+            rm -rf "$out_dir"
+            mv "{{wasm_tools_dir}}/dl/.${tool}.tmp/${tool}-${cft_arch}" "$out_dir"
+            rm -rf "{{wasm_tools_dir}}/dl/.${tool}.tmp"
+        fi
+        ln -sfn "../dl/${tool}-${cft_arch}/$tool" "{{wasm_tools_dir}}/bin/$tool"
+    done
+    ln -sfn "../dl/chrome-${cft_arch}/chrome" "{{wasm_tools_dir}}/bin/google-chrome"
+
+# Browser-run component tests (D139): compile the frontend for
+# wasm32 and run src/component_tests in headless Chrome via the
+# wasm-bindgen test runner. Skips with a notice when the pinned
+# tools cannot be fetched; CI runs the recipe unconditionally so
+# the gate is enforced there.
+test-wasm: wasm-tools
+    #!/usr/bin/env bash
+    set -euo pipefail
+    runner=$(find "{{wasm_tools_dir}}" -name wasm-bindgen-test-runner -type f | head -1)
+    export PATH="$PWD/{{wasm_tools_dir}}/bin:$PATH"
+    export CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER="$PWD/$runner"
+    cargo test -p leaflog-frontend --target wasm32-unknown-unknown
 
 # Build the frontend bundle (relative public URL, never a baked base).
 build-frontend: tailwind-daisyui build-echarts

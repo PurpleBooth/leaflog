@@ -208,6 +208,34 @@ fn coach_tip_lines(
 }
 
 /// The combined env + lamp + coach dashboard for one grow.
+/// One environment-strip tile: the uppercase micro-label, the big
+/// value, and an optional quiet band footnote. The caller decides the
+/// tile recipe (plain [`ui::tile`] vs the live threshold colouring).
+#[component]
+#[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
+fn EnvTile(
+    /// Full class list for the tile div (recipe + colouring).
+    class: String,
+    /// The uppercase micro-label caption.
+    label: String,
+    /// The merged or snapshot value, already formatted.
+    value: String,
+    /// Optional corridor footnote under the value (D136).
+    #[prop(optional)]
+    band: Option<String>,
+) -> impl IntoView {
+    view! {
+        <div class=class>
+            <span class="text-xs uppercase tracking-wide text-base-content/60">{label}</span>
+            <span class="text-lg font-semibold">{value}</span>
+            {band.map_or_else(
+                || ().into_any(),
+                |band| view! { <span class="text-xs text-base-content/60">{band}</span> }.into_any(),
+            )}
+        </div>
+    }
+}
+
 #[component]
 #[allow(clippy::too_many_lines)]
 // declarative view code, not logic; see docs/DECISIONS.md
@@ -328,33 +356,55 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                     // the threshold recolours the tile on the spot.
                     let temp_class = crate::live::tile_class(v.temp_ok);
                     let vpd_class = crate::live::tile_class(v.vpd_ok);
+                    // The phase's RH window rides under the LF reading
+                    // the same way the VPD band rides under VPD (D136):
+                    // one tile per quantity, the corridor as a footnote.
+                    let rh_band = format!(
+                        "{}{}–{} %",
+                        t_string!(i18n, env.band_prefix),
+                        leaflog_core::format::format_decimal(v.rh_window.0, 0, style),
+                        leaflog_core::format::format_decimal(v.rh_window.1, 0, style)
+                    );
+                    let vpd_band = format!(
+                        "{}{}–{}",
+                        t_string!(i18n, env.band_prefix),
+                        leaflog_core::format::format_decimal(e.vpd_band.0, 1, style),
+                        leaflog_core::format::format_decimal(e.vpd_band.1, 1, style)
+                    );
                     vec![
-                        view! { <div class=temp_class>
-                            <span class="text-xs uppercase tracking-wide text-base-content/60">{t!(i18n, env.temp)}</span>
-                            <span class="text-lg font-semibold">{temp_display}</span>
-                        </div> }.into_any(),
-                        view! { <div class={format!("{} grid gap-0.5", ui::tile())}>
-                            <span class="text-xs uppercase tracking-wide text-base-content/60">{t!(i18n, env.rh)}</span>
-                            <span class="text-lg font-semibold">{rh_display}</span>
-                            // The phase's RH window rides under the LF
-                            // reading the same way the VPD band rides
-                            // under VPD (D136): one tile per quantity,
-                            // the corridor as a quiet footnote.
-                            <span class="text-xs text-base-content/60">{t!(i18n, env.band_prefix)}{leaflog_core::format::format_decimal(v.rh_window.0, 0, style)}{"–"}{leaflog_core::format::format_decimal(v.rh_window.1, 0, style)}{" %"}</span>
-                        </div> }.into_any(),
-                        view! { <div class=vpd_class>
-                            <span class="text-xs uppercase tracking-wide text-base-content/60">{t!(i18n, env.vpd_tile)}</span>
-                            <span class="text-lg font-semibold">{vpd_display}</span>
-                            <span class="text-xs text-base-content/60">{t!(i18n, env.band_prefix)}{leaflog_core::format::format_decimal(e.vpd_band.0, 1, style)}{"–"}{leaflog_core::format::format_decimal(e.vpd_band.1, 1, style)}</span>
-                        </div> }.into_any(),
-                        view! { <div class={format!("{} grid gap-0.5", ui::tile())}>
-                            <span class="text-xs uppercase tracking-wide text-base-content/60">{t!(i18n, env.co2_tile)}</span>
-                            <span class="text-lg font-semibold">{co2_display}</span>
-                        </div> }.into_any(),
-                        view! { <div class={format!("{} grid gap-0.5", ui::tile())}>
-                            <span class="text-xs uppercase tracking-wide text-base-content/60">{t!(i18n, env.soil_tile)}</span>
-                            <span class="text-lg font-semibold">{soil_display}</span>
-                        </div> }.into_any(),
+                        view! {
+                            <EnvTile class=temp_class.to_string() label=t_string!(i18n, env.temp).into_owned() value=temp_display />
+                        }
+                            .into_any(),
+                        view! {
+                            <EnvTile
+                                class=format!("{} grid gap-0.5", ui::tile())
+                                label=t_string!(i18n, env.rh).into_owned()
+                                value=rh_display
+                                band=rh_band
+                            />
+                        }
+                            .into_any(),
+                        view! {
+                            <EnvTile class=vpd_class.to_string() label=t_string!(i18n, env.vpd_tile).into_owned() value=vpd_display band=vpd_band />
+                        }
+                            .into_any(),
+                        view! {
+                            <EnvTile
+                                class=format!("{} grid gap-0.5", ui::tile())
+                                label=t_string!(i18n, env.co2_tile).into_owned()
+                                value=co2_display
+                            />
+                        }
+                            .into_any(),
+                        view! {
+                            <EnvTile
+                                class=format!("{} grid gap-0.5", ui::tile())
+                                label=t_string!(i18n, env.soil_tile).into_owned()
+                                value=soil_display
+                            />
+                        }
+                            .into_any(),
                     ]
                 }}
             </div>
