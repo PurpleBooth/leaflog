@@ -2180,7 +2180,26 @@ async fn grow_history_shades_nights_from_the_bound_light_history() {
         .json()
         .await
         .unwrap();
-    assert_eq!(co2["nights"], body["nights"], "Air roles share the shading");
+    // Same timeline, but each request stamps its own `now`, so the
+    // bounds can differ by a second between the two calls. Compare
+    // with the same slack the bounds checks above use rather than
+    // demanding byte equality (which made this test fail whenever the
+    // two requests straddled a second boundary).
+    let co2_nights = co2["nights"].as_array().expect("co2 nights present");
+    assert_eq!(
+        co2_nights.len(),
+        nights.len(),
+        "Air roles share the shading"
+    );
+    for (air, co2_night) in nights.iter().zip(co2_nights) {
+        assert_eq!(air["on"], co2_night["on"], "Air roles share the shading");
+        let (air_start, air_end) = night_bounds(air);
+        let (co2_start, co2_end) = night_bounds(co2_night);
+        assert!(
+            (air_start - co2_start).abs() <= slack && (air_end - co2_end).abs() <= slack,
+            "Air roles share the shading: temperature [{air_start}, {air_end}) vs co2 [{co2_start}, {co2_end})"
+        );
+    }
 }
 
 // --- Locale endpoint (D112) ----------------------------------------------
