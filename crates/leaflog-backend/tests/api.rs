@@ -136,27 +136,27 @@ async fn settings_round_trip() {
 
     let saved: Value = client
         .put(format!("{base}/api/settings"))
-        .json(&json!({ "tds_scale": "0.5", "log_level": "info" }))
+        .json(&json!({ "soil_moisture_band": [21, 46], "photo_warn_bytes": 1000 }))
         .send()
         .await
         .unwrap()
         .json()
         .await
         .unwrap();
-    assert_eq!(saved["tds_scale"], "0.5");
+    assert_eq!(saved["soil_moisture_band"], json!([21, 46]));
 
     // Upsert one key, keep the other.
     let saved: Value = client
         .put(format!("{base}/api/settings"))
-        .json(&json!({ "tds_scale": "0.7" }))
+        .json(&json!({ "soil_moisture_band": null }))
         .send()
         .await
         .unwrap()
         .json()
         .await
         .unwrap();
-    assert_eq!(saved["tds_scale"], "0.7");
-    assert_eq!(saved["log_level"], "info");
+    assert_eq!(saved["soil_moisture_band"], serde_json::Value::Null);
+    assert_eq!(saved["photo_warn_bytes"], 1000);
 
     let non_object = client
         .put(format!("{base}/api/settings"))
@@ -165,6 +165,26 @@ async fn settings_round_trip() {
         .await
         .unwrap();
     assert_eq!(non_object.status(), reqwest::StatusCode::BAD_REQUEST);
+
+    // The allow-list (audit D145): unknown keys are rejected outright
+    // and nothing from the rejected write is stored.
+    let unknown = client
+        .put(format!("{base}/api/settings"))
+        .json(&json!({ "onboarding_dismissed": true, "tds_scale": "0.5" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unknown.status(), reqwest::StatusCode::BAD_REQUEST);
+    let after: Value = client
+        .get(format!("{base}/api/settings"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(after.get("onboarding_dismissed"), None);
+    assert_eq!(after.get("tds_scale"), None);
 }
 
 #[tokio::test]

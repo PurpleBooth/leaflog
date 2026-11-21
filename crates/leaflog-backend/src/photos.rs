@@ -15,6 +15,12 @@ use image::{DynamicImage, ImageEncoder as _, ImageFormat};
 /// Thumbnail edge length in pixels (aspect preserved).
 const THUMBNAIL_EDGE: u32 = 512;
 
+/// The longest accepted edge on either axis of an uploaded photo
+/// (audit D145 / threat-model R1): anything larger is rejected before
+/// decoding, so a crafted file cannot make the decoder reserve
+/// hundreds of megabytes from a small download.
+const MAX_PHOTO_EDGE: u32 = 8000;
+
 /// JPEG re-encode quality for stripped originals.
 const ORIGINAL_QUALITY: u8 = 95;
 
@@ -264,6 +270,17 @@ fn decode(bytes: &[u8]) -> Result<DynamicImage, PhotoError> {
     ) {
         return Err(PhotoError::Decode(format!(
             "unsupported format {format:?}; use JPEG, PNG or WebP"
+        )));
+    }
+    // Decode-bomb guard (threat-model R1): check the header-declared
+    // dimensions before the decoder allocates anything.
+    let (width, height) = image::ImageReader::with_format(Cursor::new(bytes), format)
+        .into_dimensions()
+        .map_err(|error| PhotoError::Decode(error.to_string()))?;
+    if width > MAX_PHOTO_EDGE || height > MAX_PHOTO_EDGE {
+        return Err(PhotoError::Decode(format!(
+            "image too large ({width}x{height}); the longest edge must be \
+             {MAX_PHOTO_EDGE} pixels or less"
         )));
     }
     image::load_from_memory_with_format(bytes, format)

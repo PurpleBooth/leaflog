@@ -101,6 +101,21 @@ async fn get_settings(State(state): State<AppState>) -> Result<Json<Value>, ApiE
     Ok(Json(settings))
 }
 
+/// The settings keys this app reads (see `docs/SPEC.md` §4 and the
+/// audit D145 allow-list): every other key is rejected with a 400 so
+/// junk values cannot accumulate or change behaviour later.
+const KNOWN_SETTINGS: &[&str] = &[
+    "auto_log_ha_events",
+    "display_timezone",
+    "env_alert_notifications",
+    "language",
+    "onboarding_dismissed",
+    "photo_warn_bytes",
+    "quiet_hours",
+    "snapshot_retention_months",
+    "soil_moisture_band",
+];
+
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn put_settings(
@@ -112,6 +127,15 @@ async fn put_settings(
             "settings body must be a JSON object".to_owned(),
         ));
     };
+    if let Some(unknown) = map
+        .keys()
+        .find(|key| !KNOWN_SETTINGS.contains(&key.as_str()))
+    {
+        return Err(ApiError::BadRequest(format!(
+            "unknown setting {unknown:?}; known keys: {}",
+            KNOWN_SETTINGS.join(", ")
+        )));
+    }
     let settings = state
         .db
         .with(move |conn| {

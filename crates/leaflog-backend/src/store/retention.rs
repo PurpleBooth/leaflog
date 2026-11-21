@@ -16,7 +16,13 @@ pub const RETENTION_SETTING: &str = "snapshot_retention_months";
 /// The default retention window (spec §4.2).
 pub const DEFAULT_RETENTION_MONTHS: u32 = 24;
 
-/// Reads the configured retention window in months.
+/// The smallest retention window the API accepts (audit D145): `0`
+/// would make the prune cutoff "now" and wipe all history.
+pub const MIN_RETENTION_MONTHS: u32 = 1;
+
+/// Reads the configured retention window in months, floored at
+/// [`MIN_RETENTION_MONTHS`] — a zero window would prune everything
+/// outside the keep-sets the moment it is saved.
 ///
 /// # Errors
 ///
@@ -26,7 +32,9 @@ pub fn retention_months(conn: &Connection) -> Result<u32, StoreError> {
         .ok()
         .and_then(|value| value.as_u64())
         .and_then(|months| u32::try_from(months).ok())
-        .unwrap_or(DEFAULT_RETENTION_MONTHS))
+        .map_or(DEFAULT_RETENTION_MONTHS, |months| {
+            months.max(MIN_RETENTION_MONTHS)
+        }))
 }
 
 /// Prunes snapshots captured strictly before `cutoff` (RFC 3339).

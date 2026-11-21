@@ -167,6 +167,28 @@ async fn bindings_auto_capture_and_entities_endpoints() {
         .unwrap();
     assert_eq!(bindings["temperature"], "sensor.grow_temperature");
 
+    // Entity-id grammar (audit D145): anything outside HA's
+    // `domain.object_id` lowercase shape is rejected at the boundary.
+    for bad in [
+        "Sensor.Grow_Temp",
+        "sensor",
+        "sensor.",
+        "sensor.GROW",
+        "a.b.c",
+    ] {
+        let response = client
+            .put(format!("{base}/api/grows/{grow_id}/bindings"))
+            .json(&json!({ "bindings": { "temperature": bad } }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            reqwest::StatusCode::BAD_REQUEST,
+            "entity id {bad:?} must be rejected"
+        );
+    }
+
     // Entity picker works through the API (Supervisor reachable).
     let entities: Value = client
         .get(format!("{base}/api/ha/entities"))
@@ -2245,6 +2267,35 @@ async fn locale_endpoint_defaults_to_english() {
     let (base, _db, bridge) = spawn_api(&mock_url).await;
     wait_connected(&bridge).await;
     wait_language(&base, "en").await;
+}
+
+/// The settings `language` override (SPEC §5.3, wired by D145) wins
+/// over the Home Assistant user language: a manual override must
+/// survive whatever language HA reports.
+#[tokio::test]
+async fn locale_endpoint_prefers_the_settings_override() {
+    let (mock_url, mock_state) = spawn_mock().await;
+    *mock_state.language.lock().await = "de-DE".to_owned();
+    let (base, _db, bridge) = spawn_api(&mock_url).await;
+    let client = reqwest::Client::new();
+    client
+        .put(format!("{base}/api/settings"))
+        .json(&json!({ "language": "fr" }))
+        .send()
+        .await
+        .unwrap();
+    wait_connected(&bridge).await;
+    // The override beats the mock's de-DE.
+    wait_language(&base, "fr").await;
+
+    // Clearing the override falls back to the HA user language.
+    client
+        .put(format!("{base}/api/settings"))
+        .json(&json!({ "language": null }))
+        .send()
+        .await
+        .unwrap();
+    wait_language(&base, "de-DE").await;
 }
 
 // --- Alert catalog (D113) -------------------------------------------------

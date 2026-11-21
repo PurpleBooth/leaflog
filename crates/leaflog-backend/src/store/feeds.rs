@@ -356,6 +356,27 @@ pub fn fit_and_store(
     Ok(plan)
 }
 
+/// Drops a grow's stored plan (header + day rows).
+///
+/// Used when the timeline moves in a way the fit can no longer
+/// represent (D145): without a flip the forecast is open-ended, so no
+/// plan exists, and a deleted flip must not leave a stale
+/// flower-shaped plan.
+///
+/// # Errors
+///
+/// Returns a [`StoreError`] on SQLite failures.
+pub fn clear_plan(conn: &Connection, grow_id: &str) -> Result<(), StoreError> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute("DELETE FROM feed_plan WHERE grow_id = ?1", params![grow_id])?;
+    tx.execute(
+        "DELETE FROM feed_plan_day WHERE grow_id = ?1",
+        params![grow_id],
+    )?;
+    tx.commit()?;
+    Ok(())
+}
+
 /// Reads a grow's stored plan, or `None` when the grow has none.
 ///
 /// # Errors

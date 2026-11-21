@@ -114,6 +114,22 @@ async fn prune_thins_to_one_per_hour_keeping_day_edges_and_excursions() {
     .expect("retention assertions");
 }
 
+/// A zero retention window must not turn the prune into "everything
+/// older than now": the read floors the setting (audit D145).
+#[tokio::test]
+async fn retention_window_is_floored_at_one_month() {
+    let db = Db::open_in_memory().expect("migrated db");
+    db.with(|conn| -> Result<(), StoreError> {
+        put_setting(conn, "snapshot_retention_months", 0);
+        assert_eq!(retention::retention_months(conn)?, 1);
+        put_setting(conn, "snapshot_retention_months", 99_999);
+        assert_eq!(retention::retention_months(conn)?, 99_999);
+        Ok(())
+    })
+    .await
+    .expect("floor assertions");
+}
+
 /// Writes one settings key (plain JSON number, the settings-store
 /// format).
 fn put_setting(conn: &rusqlite::Connection, key: &str, value: u32) {

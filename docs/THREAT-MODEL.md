@@ -123,7 +123,7 @@ rated for disclosure impact **high** or above unless noted.
 | 1.3 | HA backups and off-box copies | Open | The biggest realistic vector. `backup: hot` includes the DB and photo originals in every HA backup; wherever those archives go (NAS, cloud sync, a drawer), the disclosure follows. Thumbnails are excluded (`backup_exclude`) purely to save space. Recommendation R5: document, and steer users to HA's passphrase-encrypted backups (see TM6) |
 | 1.4 | HA support bundles and diagnostics | Accepted | App logs are sparse (error lines, seed counts); a support bundle still reveals that a cannabis diary is installed (app list, panel title). Inherent to asking for support |
 | 1.5 | LAN eavesdropping | Accepted (out of app control) | HA terminates TLS. On installs reached over plain HTTP on the LAN, photos and JSON are sniffable. Nothing Leaflog can do beyond not adding its own plaintext surface (there is none: no host port, no direct UI) |
-| 1.6 | Browser artifacts on shared machines | Open | No `localStorage`/`sessionStorage` use anywhere in the frontend (verified), and history entries show only the opaque ingress URL. But photo responses carry no `Cache-Control` (`api_grows.rs:498`), so originals and thumbnails land in the browser disk cache of any machine the panel was used on. Recommendation R2: `private, no-store` on originals |
+| 1.6 | Browser artifacts on shared machines | Mitigated | No `localStorage`/`sessionStorage` use anywhere in the frontend (verified), and history entries show only the opaque ingress URL. Photo responses carry `Cache-Control` since D145: `private, no-store` on originals, `private, max-age=86400` on thumbnails (`api_grows.rs`, tested) — a shared machine's disk cache keeps no grow photos |
 | 1.7 | The HA sidebar itself | Accepted | `panel_admin: true` limits the panel (icon `mdi:cannabis`, title "Leaflog") to administrator accounts (`leaflog/config.yaml:16`). Anyone who can see an admin's HA UI sees the panel. Per-user sidebar hiding exists in HA if the owner wants it |
 | 1.8 | Telemetry or cloud calls | Mitigated | Local-first by construction: the only outbound connection the app makes is to the Supervisor (`lib.rs:171`). No analytics, no fonts, no CDN, no update pings (verified: the frontend fetches only relative API paths; the former user-authored external links went with the strain catalogue, D075) |
 | 1.9 | Dev-mode exposure | Mitigated by configuration | Dev mode accepts any peer (`app.rs:273`). It exists for `just dev` only; production is auto-selected when `SUPERVISOR_TOKEN` is present (D005), and the container publishes no ports. Never set `LEAFLOG_ENV=dev` in a real install |
@@ -173,7 +173,7 @@ places, `/data` and HA backups.
 | 4.3 | Ransomware or host compromise encrypting `/data` and the backups | Open (user side) | Nothing app-level resists root. The mitigations are encrypted, geographically separate backups (TM6, R5) |
 | 4.4 | Disk exhaustion | Open | Each upload is capped at 25 MiB (body limit 32 MiB, `api_grows.rs:22`) but total photo growth is unbounded; the 2 GiB `photo_warn_bytes` threshold is advisory only. A full disk risks failed writes and WAL corruption. Recommendation R6 |
 | 4.5 | Upgrade or migration bug | Mitigated | Migrations are embedded, applied in order, each in its own transaction (D012). No rollback exists; the safety net is the pre-upgrade backup HA takes automatically on app updates |
-| 4.6 | Decompression bomb crashing the process | Open | The 25 MiB byte cap does not bound decoded size: a small PNG claiming extreme dimensions allocates width × height × 3 bytes in RAM (`photos.rs:108`), which can abort the process (s6 restarts it; no persistent damage, no row written). Authenticated-only, hence Medium overall, but cheap to fix. Recommendation R1 |
+| 4.6 | Decompression bomb crashing the process | Mitigated | The declared dimensions are checked against the header before the decoder allocates (`photos.rs::decode`, D145): a file claiming an edge above 8000 px is rejected with a 400 without allocating for it. Tested with a 57-byte header-only PNG declaring 100000×100000 |
 | 4.7 | Physical media failure (SD-card-class hosts are the HA norm) | Open (user side) | WAL mode improves crash safety, not durability. Backups are the answer (R5) |
 
 ## 9. TM5: Access by minors and other household members
@@ -190,7 +190,7 @@ are informational only and default off outside DE, per the spec.
 | 5.1 | A non-admin HA account opening the panel | Mitigated | `panel_admin: true` hides the sidebar entry and ingress access from non-administrator users (`leaflog/config.yaml:16`) |
 | 5.2 | A shared or kiosk device holding an admin session (family tablet, borrowed phone with the companion app, an unlocked laptop) | Accepted (app side), Open (guidance) | To the app, that session *is* the owner. No in-app PIN, passcode or lock exists. Mitigation is HA hygiene: per-person accounts, MFA on admin accounts, signing out of shared devices. Recommendation R5 covers documenting this |
 | 5.3 | A minor learning or guessing the admin password (autofill, written-down credentials) | Accepted for v1 | A second factor inside the app (optional PIN gate) was considered and deferred: it protects against a subset of 5.2/5.3 at the cost of daily friction in a single-user app. Revisit if multi-user ever lands (§14) |
-| 5.4 | Photos of the grow left in a shared computer's browser cache | Open | Same finding as 1.6; `Cache-Control: private, no-store` on photo responses (R2) closes it |
+| 5.4 | Photos of the grow left in a shared computer's browser cache | Mitigated | Same finding as 1.6; the D145 `Cache-Control` headers close it |
 | 5.5 | HA exposed to the internet with weak credentials | Out of app control | If HA falls, Leaflog falls with it; nothing in the app adds resistance below HA auth. Guidance-level (R5) |
 
 ## 10. TM6: Encryption at rest
@@ -251,7 +251,7 @@ the categories above.
 | Disclosure | Token never in logs or responses | Mitigated | D021, `tests/ha.rs` |
 | Disclosure | Error bodies: API errors are JSON (structure-safe); Supervisor error text is truncated to 300 chars and echoed only to the already-authenticated caller | Accepted | `ha.rs:205` |
 | DoS | Body limit 32 MiB; photo cap 25 MiB; history clamp; cheap SSE; capped reconnect backoff | Mitigated | §6.6, `app.rs:24` |
-| DoS | Image decompression bomb (unbounded decode) | Open | R1, see 4.6 |
+| DoS | Image decompression bomb (unbounded decode) | Mitigated | dimension cap before decode, D145 (was R1) |
 | DoS | Disk exhaustion | Open | R6, see 4.4 |
 | Elevation of privilege | No app accounts, no cookies, no secrets in the browser; the WASM bundle holds nothing but UI | Mitigated (nothing to elevate) | frontend verified |
 | XSS | Framework escaping, zero `inner_html`, escaped base injection | Mitigated | see 2.2 (the former `source_url` gap closed with D075) |
@@ -259,7 +259,7 @@ the categories above.
 | SSRF | Fixed Supervisor URL from env only | Mitigated | see 2.4 |
 | Clickjacking / framing | Not applicable: HA ingress panels render in HA's own iframe by design | n/a | §2 |
 | Open redirects | None: the app issues no redirects | Mitigated | verified |
-| Supply chain: crates | `Cargo.lock` committed; no `cargo audit`/`cargo deny` in CI yet | Open | R7 |
+| Supply chain: crates | `Cargo.lock` committed; `cargo deny --workspace check` runs in `just ci` and the CI workflow | Mitigated | `justfile`, `.github/workflows/ci.yml` (R7 closed) |
 | Supply chain: base image | Pinned `ghcr.io/home-assistant/base:3.24-2026.11.0`, never `latest` (D007) | Mitigated | `leaflog/Dockerfile` |
 | Supply chain: build tools | Trunk, wasm-bindgen (Dockerfile) and cocogitto (release workflow) downloaded by version over HTTPS without hash verification | Open | R4 |
 | Supply chain: CI | Only the built-in `GITHUB_TOKEN` (no custom secrets in workflows); PR title validation; no `pull_request_target` flows | Mitigated | `.github/workflows/` |
@@ -274,16 +274,16 @@ mitigated is omitted from the table.
 | ID | Risk | L | I | Rating | Status |
 |---|---|---|---|---|---|
 | TM1.3 | Diary and photos disclosed via unencrypted backups | likely | high | **High** | Open (R5) |
-| TM1.6 / TM5.4 | Photos persist in shared machines' browser cache | possible | medium | Medium | Open (R2) |
+| TM1.6 / TM5.4 | Photos persist in shared machines' browser cache | possible | medium | Medium | Mitigated (D145) |
 | TM2.2b | `javascript:` URL in strain `source_url` (vector via future import) | rare today | high | Low today, High with import | Closed (D075: strains removed) |
 | TM2.7 | Un-hash-pinned build-tool downloads | rare | critical | Medium | Open (R4) |
 | TM3.1 | Sensor poisoning steers advice | possible | medium | Medium | Accepted |
 | TM4.1 | One-click destructive delete, no undo | possible | high | **High** | Open (R8) |
 | TM4.4 | Disk exhaustion from unbounded photo growth | possible | medium | Medium | Open (R6) |
-| TM4.6 | Decompression bomb crashes the app | rare | medium | Low-Medium | Open (R1) |
+| TM4.6 | Decompression bomb crashes the app | rare | medium | Low-Medium | Mitigated (D145) |
 | TM5.2 | Shared admin session exposes the diary to household members | possible | medium | Medium | Accepted (app), Open (guidance, R5) |
 | TM6 | No encryption at rest on host or (by default) in backups | possible | high | **High** | Deferred (D036), guidance (R5) |
-| TM7 | No dependency-audit gate in CI | rare | medium | Low-Medium | Open (R7) |
+| TM7 | No dependency-audit gate in CI | rare | medium | Low-Medium | Closed (cargo-deny in CI) |
 | TM7 | Unsigned images | rare | high | Medium | Open (R9) |
 
 ## 13. Open items
@@ -292,13 +292,13 @@ Prioritised; none blocks v0.1.0.
 
 | ID | Item | Addresses |
 |---|---|---|
-| R1 | Cap decoded image dimensions (reject above ~40 MP) before decode, or use the `image` crate's `Limits` | TM4.6, TM7 DoS |
-| R2 | `Cache-Control: private, no-store` on photo originals (and `private, max-age=…` for thumbnails, which are small and low-detail) | TM1.6, TM5.4 |
+| R1 | **Resolved** (D145): the decoder rejects any declared edge above 8000 px from the header before allocating | TM4.6, TM7 DoS |
+| R2 | **Resolved** (D145): `Cache-Control: private, no-store` on photo originals, `private, max-age=86400` on thumbnails | TM1.6, TM5.4 |
 | R3 | **Resolved** in the feature strip (D075, ticket 05): the strain catalogue — and with it every `source_url` — is gone, so the scheme validation is moot. Re-open only if a data-import feature returns and renders user URLs | TM2.2b |
 | R4 | SHA256-pin the Trunk, wasm-bindgen and cocogitto downloads in Dockerfile and release workflow | TM2.7 |
 | R5 | User-facing hardening notes (a `leaflog/DOCS.md` section or `docs/HARDENING.md`): encrypted HA backups, per-person HA accounts with MFA on admins, sign out of shared devices, FDE on x86 hosts, restraint with host-path add-ons, beware browser caches | TM1.3, TM4.3, TM4.7, TM5.2, TM6 |
 | R6 | Optional photo storage quota setting (default off) with a clear UI state when hit | TM4.4 |
-| R7 | Add `cargo audit` (or `cargo deny`) to `just ci` and the CI workflow | TM7 |
+| R7 | **Resolved**: `cargo deny --workspace check` runs in `just ci` and the CI workflow installs `cargo-deny` | TM7 |
 | R8 | Product decision: confirmation dialog for cascade deletes, and/or a soft-delete "recently deleted" window with purge on backup | TM4.1 |
 | R9 | Cosign-sign published images (nice-to-have) | TM7 |
 

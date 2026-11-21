@@ -152,13 +152,23 @@ async fn put_bindings(
     Path(id): Path<String>,
     Json(input): Json<store::sensors::BindingsInput>,
 ) -> Result<Json<BTreeMap<String, String>>, ApiError> {
-    if input
-        .bindings
-        .values()
-        .any(|entity| entity.trim().is_empty())
-    {
+    // HA entity ids have a fixed grammar (`domain.object_id`, all
+    // lowercase); rejecting anything else at the boundary (audit
+    // D145) keeps malformed ids out of subscriptions and history
+    // queries.
+    if input.bindings.values().any(|entity| {
+        entity.trim().is_empty()
+            || !entity.split_once('.').is_some_and(|(domain, object)| {
+                !domain.is_empty()
+                    && !object.is_empty()
+                    && domain.chars().all(|c| c.is_ascii_lowercase() || c == '_')
+                    && object
+                        .chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+            })
+    }) {
         return Err(ApiError::BadRequest(
-            "entity ids must not be empty".to_owned(),
+            "entity ids must be `domain.object_id` (lowercase)".to_owned(),
         ));
     }
     let bridge = state.ha.clone();

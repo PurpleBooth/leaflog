@@ -87,6 +87,85 @@ fn action_payload(kind: &str, occurred: &str) -> Value {
     })
 }
 
+/// Today's date, `YYYY-MM-DD` (tests/api.rs's `started_today`), for
+/// grows whose forecast must start now.
+fn started_today() -> String {
+    let today = time::OffsetDateTime::now_utc().date();
+    format!(
+        "{:04}-{:02}-{:02}",
+        today.year(),
+        u8::from(today.month()),
+        today.day()
+    )
+}
+
+/// An eight-week flowering schedule with one product, the shape the
+/// schedules API accepts.
+fn schedule_payload(name: &str) -> Value {
+    json!({
+        "name": name,
+        "source": null,
+        "flower_weeks": 8,
+        "products": [{
+            "id": "",
+            "name": "Bloom",
+            "unit": "ml_per_l",
+            "group": "Feeds",
+            "note": null,
+            "doses": {
+                "propagation": null,
+                "veg": { "min": 1000, "max": 2000 },
+                "flower": [{ "min": 2000, "max": 4000 }, null, null, null, null, null, null, null],
+                "water": null,
+            }
+        }],
+        "created_at": "",
+        "updated_at": "",
+    })
+}
+
+/// A photoperiod grow with no planned veg weeks and the schedule
+/// attached: without a logged flip the veg phase is open-ended, so
+/// the fit refuses and no plan exists — the shape the edit/delete
+/// refit tests need.
+fn grow_with_schedule_payload(name: &str, schedule_id: &str) -> Value {
+    json!({
+        "name": name,
+        "photoperiod": "photoperiod",
+        "feed_schedule_id": schedule_id,
+        "substrate": "soil",
+        "started_on": started_today(),
+        "status": "active",
+        "notes": null,
+    })
+}
+
+/// Spawns the API like [`spawn`] but with the feed presets seeded, so
+/// feeding-schedule tests can create schedules and fit plans.
+async fn spawn_seeded() -> (String, PathBuf) {
+    let db = Db::open_in_memory().unwrap();
+    leaflog_backend::seed::seed_feed_presets(&db).await.unwrap();
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dist");
+    let photo_root =
+        std::env::temp_dir().join(format!("leaflog-m3-{}", leaflog_backend::db::new_id()));
+    let state = AppState::new(
+        Assets::Disk(fixture),
+        Mode::Dev,
+        None,
+        db,
+        PhotoStore::new(photo_root.clone()),
+        offline_bridge(),
+    );
+    let service = app::service(state);
+    let make = service.into_make_service_with_connect_info::<SocketAddr>();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, make).await.unwrap();
+    });
+    (format!("http://{addr}"), photo_root)
+}
+
 /// A small JPEG with a well-formed EXIF APP1 segment
 /// (DateTimeOriginal), built with the exif crate's writer.
 fn jpeg_with_exif() -> Vec<u8> {
@@ -542,6 +621,188 @@ async fn update_retyping_to_flip_rederives_phase() {
     );
 }
 
+/// Editing an entry into a flip must also re-fit the feeding plan
+/// (audit D145): the plan is fit against the phase timeline, so a
+/// late-recorded flip that arrives through an edit may not leave the
+/// plan on the all-vegetative boundaries.
+#[tokio::test]
+async fn update_retyping_to_flip_refits_the_feed_plan() {
+    let (base, _root) = spawn_seeded().await;
+    let client = reqwest::Client::new();
+
+    let schedule: Value = client
+        .post(format!("{base}/api/schedules"))
+        .json(&schedule_payload("Edit-refit run"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&grow_with_schedule_payload(
+            "Edit-refit grow",
+            schedule["id"].as_str().unwrap(),
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let id = grow["id"].as_str().unwrap().to_owned();
+
+    // A day-39 note: no flip in the log and no planned veg weeks, so
+    // the veg phase is open-ended and the fit refuses — no plan.
+    let note: Value = client
+        .post(format!("{base}/api/grows/{id}/actions"))
+        .json(&action_payload("note", "2026-11-09T10:00:00Z"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let action_id = note["id"].as_str().unwrap().to_owned();
+    let plan_before: Value = client
+        .get(format!("{base}/api/grows/{id}/feed/plan"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        plan_before.get("days"),
+        None,
+        "no flip and no planned veg weeks: open-ended veg fits nothing"
+    );
+
+    // Re-type the note into a flip through the edit path.
+    let response = client
+        .put(format!("{base}/api/actions/{action_id}"))
+        .json(&action_payload("flip", "2026-11-09T10:00:00Z"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+
+    let plan_after: Value = client
+        .get(format!("{base}/api/grows/{id}/feed/plan"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(
+        plan_after["days"]
+            .as_array()
+            .is_some_and(|days| !days.is_empty()),
+        "the edit re-fit the plan now that a flip bounds the veg phase"
+    );
+
+    // Deleting the flip again moves the timeline back to open-ended:
+    // the plan must be gone, not left over from the edit (D145).
+    let response = client
+        .delete(format!("{base}/api/actions/{action_id}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::NO_CONTENT);
+    let plan_cleared: Value = client
+        .get(format!("{base}/api/grows/{id}/feed/plan"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        plan_cleared.get("days"),
+        None,
+        "removing the flip must clear the plan, not keep the fitted one"
+    );
+}
+
+/// Deleting the flip again must re-fit too: the plan drops back to
+/// the open-ended state (no stored plan), not a stale flower-shaped
+/// plan (audit D145).
+#[tokio::test]
+async fn delete_flip_refits_the_feed_plan() {
+    let (base, _root) = spawn_seeded().await;
+    let client = reqwest::Client::new();
+
+    let schedule: Value = client
+        .post(format!("{base}/api/schedules"))
+        .json(&schedule_payload("Delete-refit run"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&grow_with_schedule_payload(
+            "Delete-refit grow",
+            schedule["id"].as_str().unwrap(),
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let id = grow["id"].as_str().unwrap().to_owned();
+
+    // Creating the flip through the create path fits a plan.
+    let flip: Value = client
+        .post(format!("{base}/api/grows/{id}/actions"))
+        .json(&action_payload("flip", "2026-11-09T10:00:00Z"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let flip_id = flip["id"].as_str().unwrap().to_owned();
+    let plan: Value = client
+        .get(format!("{base}/api/grows/{id}/feed/plan"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(
+        plan["days"].as_array().is_some_and(|days| !days.is_empty()),
+        "the create path fit a plan for the flip-bounded timeline"
+    );
+
+    let response = client
+        .delete(format!("{base}/api/actions/{flip_id}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::NO_CONTENT);
+
+    let plan_after: Value = client
+        .get(format!("{base}/api/grows/{id}/feed/plan"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        plan_after.get("days"),
+        None,
+        "without the flip the fit refuses again and the stale plan is gone"
+    );
+}
+
 #[tokio::test]
 async fn photo_upload_strips_exif_and_serves() {
     let (base, root) = spawn().await;
@@ -690,6 +951,136 @@ async fn photo_upload_rejects_garbage() {
         .await
         .unwrap();
     assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+}
+
+/// A small file whose header declares gigantic dimensions must be
+/// rejected before the decoder allocates for it (audit D145 /
+/// threat-model R1). The dimensions live in a real PNG header, so a
+/// 57-byte input would otherwise ask for a ~90 GB allocation.
+#[tokio::test]
+async fn photo_upload_rejects_huge_declared_dimensions() {
+    let (base, _root) = spawn().await;
+    let client = reqwest::Client::new();
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&grow_payload("Bomb run"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let id = grow["id"].as_str().unwrap().to_owned();
+
+    // A hand-built PNG: signature + one IHDR chunk declaring
+    // 100000x100000, RGB8, no interlace. No pixel data — the guard
+    // must fire on the header alone.
+    let mut ihdr = Vec::new();
+    ihdr.extend_from_slice(&100_000_u32.to_be_bytes());
+    ihdr.extend_from_slice(&100_000_u32.to_be_bytes());
+    ihdr.extend_from_slice(&[8, 2, 0, 0, 0]);
+    let mut bomb = Vec::new();
+    bomb.extend_from_slice(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]);
+    bomb.extend_from_slice(&(ihdr.len() as u32).to_be_bytes());
+    bomb.extend_from_slice(b"IHDR");
+    bomb.extend_from_slice(&ihdr);
+    bomb.extend_from_slice(&png_crc32(b"IHDR", &ihdr).to_be_bytes());
+    assert_eq!(
+        bomb.len(),
+        8 + 4 + 4 + 13 + 4,
+        "sanity: the PNG is header-only"
+    );
+
+    let form = reqwest::multipart::Form::new().part(
+        "file",
+        reqwest::multipart::Part::bytes(bomb)
+            .file_name("bomb.png")
+            .mime_str("image/png")
+            .unwrap(),
+    );
+    let response = client
+        .post(format!("{base}/api/grows/{id}/photos"))
+        .multipart(form)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+}
+
+/// The PNG chunk CRC (ISO 3309 / ITU-T V.42): a table-less bitwise
+/// CRC-32 over type + data, enough for the hand-built header fixture.
+fn png_crc32(chunk_type: &[u8], data: &[u8]) -> u32 {
+    let mut crc = 0xFFFF_FFFF_u32;
+    for byte in chunk_type.iter().chain(data.iter()) {
+        crc ^= u32::from(*byte);
+        for _ in 0..8 {
+            let mask = (crc & 1).wrapping_neg();
+            crc = (crc >> 1) ^ (0xEDB8_8320 & mask);
+        }
+    }
+    !crc
+}
+
+/// Photo responses carry private cache rules (threat-model R2):
+/// originals never touch a shared disk cache, thumbnails may live in
+/// one for a day.
+#[tokio::test]
+async fn photo_responses_carry_private_cache_control() {
+    let (base, _root) = spawn().await;
+    let client = reqwest::Client::new();
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&grow_payload("Cache run"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let id = grow["id"].as_str().unwrap().to_owned();
+
+    let form = reqwest::multipart::Form::new().part(
+        "file",
+        reqwest::multipart::Part::bytes(plain_jpeg(8, 8, [10, 20, 30]))
+            .file_name("plant.jpg")
+            .mime_str("image/jpeg")
+            .unwrap(),
+    );
+    let photo: Value = client
+        .post(format!("{base}/api/grows/{id}/photos"))
+        .multipart(form)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let photo_id = photo["id"].as_str().unwrap().to_owned();
+
+    let original = client
+        .get(format!("{base}/api/photos/{photo_id}/original"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        original.headers().get(reqwest::header::CACHE_CONTROL),
+        Some(&reqwest::header::HeaderValue::from_static(
+            "private, no-store"
+        )),
+        "originals must not be cached by shared browsers"
+    );
+    let thumbnail = client
+        .get(format!("{base}/api/photos/{photo_id}/thumbnail"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        thumbnail.headers().get(reqwest::header::CACHE_CONTROL),
+        Some(&reqwest::header::HeaderValue::from_static(
+            "private, max-age=86400"
+        )),
+        "thumbnails may be cached privately for a day"
+    );
 }
 
 /// A plain minimal JPEG (no EXIF) filled with one colour; size and fill

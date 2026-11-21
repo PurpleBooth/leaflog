@@ -6,6 +6,67 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-21 — audit-driven hardening batch (D145)
+
+### D145: the eleven audit findings — retention floor, refit on edit/delete, settings allow-list, photo bomb + cache headers, language override, and the nice-to-haves
+
+A code audit reported eleven findings; all are fixed in one batch.
+
+**Retention floor (must-fix).** `snapshot_retention_months = 0` was
+stored verbatim and turned "keep 0 months" into "delete everything
+older than now": the weekly prune would have wiped all history except
+the protected keep-sets. `retention_months` now floors at
+`MIN_RETENTION_MONTHS = 1`; the setting stays user-editable above
+that.
+
+**Refit on edit/delete (must-fix).** `create_action` re-fits the
+feeding plan when the timeline moves (flip, phase pin, harvest,
+ADR 0004), but `update_action` and `delete_action` did not: a note
+re-typed into a flip, or a flip deleted, left the plan fitted to the
+old boundaries. Both paths now call a new `refit_after_edit`, which
+mirrors `fit_grow` but **clears** the plan (new
+`store::feeds::clear_plan`) when the forecast no longer completes —
+deleting the last flip makes the veg phase open-ended, and a stale
+flower-shaped plan must not survive that. Tests pin the edit→refit,
+and the delete→clear round trips.
+
+**Settings allow-list.** `PUT /api/settings` accepted any JSON keys;
+unknown keys (like the legacy `tds_scale`) landed in the store as
+dead data. It now rejects unknown keys with a 400 listing the known
+keys; the test's legacy keys were replaced with live ones.
+
+**Photo decode bomb (R1).** A small PNG whose header declares huge
+dimensions asked the decoder for `width × height × 3` bytes before
+any size check. `decode()` now reads the header-declared dimensions
+first (`ImageReader::into_dimensions`) and rejects an edge above
+8000 px with a 400 before the decoder allocates. Tested with a
+57-byte header-only PNG declaring 100000×100000.
+
+**Photo cache headers (R2).** Originals carried no `Cache-Control`,
+so grow photos could land in a shared machine's browser disk cache.
+Originals now send `private, no-store`, thumbnails
+`private, max-age=86400` (small, low-detail, but still private).
+Threat-model rows TM1.6, TM5.4 and the R2 open item are closed.
+
+**Language override wired.** `settings.language` was stored but read
+by nobody; the UI followed only the HA user language (SPEC §5.3
+promises a manual override). `GET /api/locale` now prefers the
+settings override, falling back to the HA user language as before;
+the override can be cleared with `null`.
+
+**Nice-to-haves.** The bridge reuses one `reqwest::Client` (the
+socket task's REST config is bundled into a `SocketRest` struct to
+stay within clippy's argument budget). Light auto-log entries debounce
+per entity+state for 60 s — an on→off→on still logs each transition
+once, but a flapping relay no longer writes a line per event. Entity
+bindings are validated against HA's `domain.object_id` grammar at the
+boundary. A `sensor_snapshot(captured_at)` index (migration V20)
+saves every chart view from a table scan. The stale R7 threat-model
+row ("no cargo-deny in CI") was corrected — it has been in `just ci`
+and the workflow for some time.
+
+---
+
 ## 2026-11-21 — attribution sentence and photo upload placement (D144)
 
 ### D144: the fitted-plan attribution is a short label:date line and photo uploads ride the quick-add Foto form

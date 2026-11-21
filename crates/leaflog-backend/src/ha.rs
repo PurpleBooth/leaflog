@@ -108,6 +108,9 @@ struct BridgeInner {
     live_rx: watch::Receiver<LiveData>,
     timezone_rx: watch::Receiver<Option<String>>,
     language_rx: watch::Receiver<Option<String>>,
+    /// Shared REST client (audit D145): one connection pool for all
+    /// Supervisor calls instead of a fresh client per call.
+    http: reqwest::Client,
 }
 
 /// Commands from the API layer to the socket task.
@@ -129,13 +132,21 @@ impl HaBridge {
         let ws_base = base_url.trim_end_matches('/').replacen("http", "ws", 1);
         let rest_base = base_url.trim_end_matches('/').to_owned();
         let handle_token = token.clone();
+        // One shared client for every REST call to the Supervisor:
+        // connection reuse instead of a fresh dial per request
+        // (D145 audit fix).
+        let http = reqwest::Client::new();
         tokio::spawn(socket_task(
             ws_base,
-            token,
+            token.clone(),
             live_tx,
             updates_rx,
             db,
-            rest_base,
+            SocketRest {
+                rest_base,
+                token,
+                http: http.clone(),
+            },
             ConfigWatches {
                 timezone_tx,
                 language_tx,
@@ -148,6 +159,7 @@ impl HaBridge {
                 live_rx,
                 timezone_rx,
                 language_rx,
+                http,
             }),
             updates_tx,
         }
@@ -197,7 +209,9 @@ impl HaBridge {
             "{}/core/api/services/notify/persistent_notification",
             self.rest_base()
         );
-        let response = reqwest::Client::new()
+        let response = self
+            .inner
+            .http
             .post(&url)
             .bearer_auth(self.inner.token.0.as_ref())
             .json(&serde_json::json!({ "title": title, "message": message }))
@@ -232,7 +246,9 @@ impl HaBridge {
     /// refuses the call.
     pub async fn list_entities(&self) -> Result<Vec<Value>, HaError> {
         let url = format!("{}/core/api/states", self.rest_base());
-        let response = reqwest::Client::new()
+        let response = self
+            .inner
+            .http
             .get(&url)
             .bearer_auth(self.inner.token.0.as_ref())
             .send()
@@ -259,7 +275,9 @@ impl HaBridge {
         // extend the request sent with the admin Bearer token —
         // `.query()` percent-encodes instead.
         let url = format!("{}/core/api/history/period/{from}", self.rest_base());
-        let response = reqwest::Client::new()
+        let response = self
+            .inner
+            .http
             .get(&url)
             .query(&[
                 ("filter_entity_id", entity_id),
@@ -319,6 +337,18 @@ struct ConfigWatches {
     language_tx: watch::Sender<Option<String>>,
 }
 
+/// The REST-facing config of the socket task, bundled so it stays
+/// within its argument budget (same pattern as [`ConfigWatches`]).
+#[derive(Debug)]
+struct SocketRest {
+    /// `http://supervisor`-style base for the REST calls.
+    rest_base: String,
+    /// The Supervisor token for those calls.
+    token: SupervisorToken,
+    /// The bridge's shared HTTP client (connection reuse, D145).
+    http: reqwest::Client,
+}
+
 /// The socket task: connect, auth, subscribe, stream; reconnect
 /// forever. `db` writes auto-log entries when a bound light entity
 /// changes state and auto-logging is on.
@@ -328,7 +358,7 @@ async fn socket_task(
     live_tx: watch::Sender<LiveData>,
     mut updates: mpsc::UnboundedReceiver<Update>,
     db: Db,
-    rest_base: String,
+    rest: SocketRest,
     watches: ConfigWatches,
 ) {
     let url = format!("{ws_base}/core/websocket");
@@ -342,7 +372,7 @@ async fn socket_task(
         // Refresh the canonical timezone (spec §2) and the user
         // language (D112) on every (re)connect; unreachable HA keeps
         // the last known values.
-        refresh_config(&rest_base, &token, &watches).await;
+        refresh_config(&rest.rest_base, &rest.token, &rest.http, &watches).await;
         let timezone = watches.timezone_tx.borrow().clone();
         match run_socket(
             &url,
@@ -375,9 +405,14 @@ async fn socket_task(
 /// D112) to the bridge's watch channels. Failures leave the previous
 /// values untouched — unreachable HA keeps the last known zone and
 /// language.
-async fn refresh_config(rest_base: &str, token: &SupervisorToken, watches: &ConfigWatches) {
+async fn refresh_config(
+    rest_base: &str,
+    token: &SupervisorToken,
+    http: &reqwest::Client,
+    watches: &ConfigWatches,
+) {
     let url = format!("{rest_base}/core/api/config");
-    let fetched = reqwest::Client::new()
+    let fetched = http
         .get(&url)
         .bearer_auth(token.0.as_ref())
         .send()
@@ -449,6 +484,13 @@ async fn run_socket(
     // is a connection failure and retries with backoff.
     let mut outcome = SocketOutcome::Retry(tracked.clone());
 
+    // Process-local debounce for light auto-logs (audit D145): a
+    // flickering or looping automation must not flood the timeline.
+    // Keyed by (entity, state), so a genuine on→off→on within the
+    // window still logs each distinct transition once.
+    let mut last_light_log: std::collections::HashMap<(String, String), std::time::Instant> =
+        std::collections::HashMap::new();
+
     let mut heartbeat = tokio::time::interval(Duration::from_secs(30));
     heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     heartbeat.tick().await; // first tick is immediate
@@ -489,12 +531,24 @@ async fn run_socket(
                         let changed = apply_event(text.as_str(), live_tx);
                         for (entity_id, new_state) in changed {
                             if entity_id.starts_with("light.") {
-                                tokio::spawn(auto_log_light_change(
-                                    db.clone(),
-                                    entity_id,
-                                    new_state,
-                                    timezone.clone(),
-                                ));
+                                let key = (entity_id.clone(), new_state.clone());
+                                let now = std::time::Instant::now();
+                                // Fresh transition (never seen, or the
+                                // window has passed): log it and start
+                                // a new window. A repeat inside the
+                                // window is dropped.
+                                let log_it = !last_light_log.get(&key).is_some_and(|seen| {
+                                    now.duration_since(*seen) < LIGHT_LOG_DEBOUNCE
+                                });
+                                if log_it {
+                                    last_light_log.insert(key, now);
+                                    tokio::spawn(auto_log_light_change(
+                                        db.clone(),
+                                        entity_id,
+                                        new_state,
+                                        timezone.clone(),
+                                    ));
+                                }
                             }
                         }
                     }
@@ -688,9 +742,16 @@ fn merge_attrs(target: &mut BTreeMap<String, Value>, update: &Value) {
     }
 }
 
+/// How long the same light state on the same entity stays suppressed
+/// after being logged (audit D145): a flickering or looping
+/// automation must not flood the timeline. Normal operation is two
+/// transitions a day, so a one-minute window costs nothing.
+const LIGHT_LOG_DEBOUNCE: std::time::Duration = std::time::Duration::from_secs(60);
+
 /// The auto-log path: given a state diff for a light entity, write a
-/// `lights` log entry for each grow bound to it (spec §4.2), unless the
-/// `auto_log_ha_events` setting is off.
+/// `lights` log entry for each grow bound to it (spec §4.2), unless
+/// the `auto_log_ha_events` setting is off or the same transition was
+/// just logged ([`LIGHT_LOG_DEBOUNCE`] window).
 async fn auto_log_light_change(
     db: Db,
     entity_id: String,

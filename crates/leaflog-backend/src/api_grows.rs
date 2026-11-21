@@ -414,6 +414,21 @@ async fn update_action(
 ) -> Result<Json<leaflog_core::grows::ActionEntry>, ApiError> {
     validate_action(&mut input)?;
     let tz = canonical_timezone(&state).await;
+    // Like create_action: a flip/phase-pin/harvest written through an
+    // edit moves the timeline the plan is fit against (ADR 0004), so
+    // the edit re-fits too (D145 audit fix).
+    let timeline_moved = matches!(
+        input.action_type,
+        ActionType::Flip | ActionType::PhaseChange | ActionType::Harvest
+    );
+    let grow_id_for_refit = {
+        let id = id.clone();
+        state
+            .db
+            .with(move |conn| store::actions::get(conn, &id).map(|entry| entry.grow_id))
+            .await
+            .map_err(ApiError::from)?
+    };
     let entry = state
         .db
         .with(move |conn| -> Result<_, ApiError> {
@@ -449,7 +464,39 @@ async fn update_action(
             store::actions::update(conn, &id, &input, phase, day).map_err(ApiError::from)
         })
         .await?;
+    if timeline_moved {
+        // Best-effort re-fit, as in create_action. An incomplete
+        // forecast (no flip left in the log, say) clears the plan:
+        // a stale flower-shaped plan must not survive the edit that
+        // removed its basis (D145 audit fix).
+        state
+            .db
+            .with(move |conn| refit_after_edit(conn, &grow_id_for_refit))
+            .await?;
+    }
     Ok(Json(entry))
+}
+
+/// Re-fits the plan after a timeline-moving edit or delete, and
+/// clears it when the forecast no longer completes: without a flip
+/// the timeline is open-ended and no fitted plan can exist (D145
+/// audit fix). Mirrors `fit_grow`'s inputs without duplicating its
+/// store write.
+fn refit_after_edit(conn: &rusqlite::Connection, grow_id: &str) -> Result<(), ApiError> {
+    let grow = crate::store::grows::get(conn, grow_id)?;
+    if grow.feed_schedule_id.is_none() {
+        return Ok(());
+    }
+    let actuals =
+        crate::api_phase::forecast_actuals(conn, grow_id).map_err(crate::api::ApiError::from)?;
+    let input =
+        leaflog_core::forecast::input_for(grow.photoperiod, grow.planned_veg_weeks, actuals);
+    let windows = leaflog_core::forecast::forecast(&input);
+    if crate::store::feeds::actual_from_forecast(&windows).is_none() {
+        crate::store::feeds::clear_plan(conn, grow_id)?;
+        return Ok(());
+    }
+    crate::api_feeds::fit_grow(conn, grow_id).map(|_| ())
 }
 
 // Extractors are taken by value because Axum requires it.
@@ -459,10 +506,31 @@ async fn delete_action(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    state
+    // Removing a flip/phase-pin/harvest moves the timeline just like
+    // creating one; re-fit when the deleted entry was such a write
+    // (D145 audit fix).
+    let grow_id = state
         .db
-        .with(move |conn| store::actions::delete(conn, &id))
-        .await?;
+        .with({
+            let id = id.clone();
+            move |conn| {
+                let entry = store::actions::get(conn, &id)?;
+                let timeline_moved = matches!(
+                    entry.action_type,
+                    ActionType::Flip | ActionType::PhaseChange | ActionType::Harvest
+                );
+                store::actions::delete(conn, &id)?;
+                Ok::<_, StoreOrNotFound>((entry.grow_id, timeline_moved))
+            }
+        })
+        .await
+        .map_err(ApiError::from)?;
+    if grow_id.1 {
+        state
+            .db
+            .with(move |conn| refit_after_edit(conn, &grow_id.0))
+            .await?;
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -790,7 +858,16 @@ async fn photo_original(
                 .map_err(|error| ApiError::Internal(error.to_string()))
         })
         .await?;
-    Ok(([(header::CONTENT_TYPE, "image/jpeg")], bytes).into_response())
+    Ok((
+        [
+            (header::CONTENT_TYPE, "image/jpeg"),
+            // Grow photos are private (threat-model R2): never let a
+            // shared browser keep the original on disk.
+            (header::CACHE_CONTROL, "private, no-store"),
+        ],
+        bytes,
+    )
+        .into_response())
 }
 
 // Extractors are taken by value because Axum requires it.
@@ -818,7 +895,17 @@ async fn photo_thumbnail(
             Ok(bytes)
         })
         .await?;
-    Ok(([(header::CONTENT_TYPE, "image/webp")], bytes).into_response())
+    Ok((
+        [
+            (header::CONTENT_TYPE, "image/webp"),
+            // Thumbnails are content-addressed by photo id; a day of
+            // private caching keeps gallery loads cheap without
+            // persisting them beyond it (threat-model R2).
+            (header::CACHE_CONTROL, "private, max-age=86400"),
+        ],
+        bytes,
+    )
+        .into_response())
 }
 
 /// Usage summary for the storage-size warning (spec §4.3).
