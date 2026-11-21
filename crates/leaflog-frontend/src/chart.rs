@@ -673,8 +673,8 @@ fn theme_look() -> chart_option::ChartLook {
 /// mounting a throwaway probe span; `None` outside a browser context
 /// or while the stylesheet has not applied yet (the unstyled initial
 /// black is never a leaflog theme colour, so it means "styles not
-/// ready" — the chart then draws with the light-palette fallbacks
-/// instead of baking black chrome into the option).
+/// ready"). The chart then draws with the light-palette fallbacks
+/// instead of baking black chrome into the option.
 fn probe_color(class: &str) -> Option<String> {
     let window = web_sys::window()?;
     let document = window.document()?;

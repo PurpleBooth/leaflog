@@ -1,6 +1,6 @@
 //! Grows UI (spec §4.2, §4.3): grow list/creation and the grow detail
 //! page with quick-add action chips, the timeline, plant management and
-//! the photo gallery with uploads.
+//! the photo gallery (uploads ride the quick-add Foto form, D144).
 
 use crate::phase_pick::{self, phase_from_label, picker_phases};
 use crate::quick_add::QuickAddMenu;
@@ -406,7 +406,8 @@ fn pick_landing_grow(grows: &[Grow]) -> String {
 
 /// The grow overview page: logging loop, environment (live tiles and
 /// history charts under one shared window control, env-section
-/// ticket 01), forecast, feed schedule, timeline, plants and photos.
+/// ticket 01), forecast, feed schedule, timeline, plants and the photo
+/// gallery (upload through the quick-add Foto form, D144).
 /// Configuration lives on the edit page (grow-page rework ticket 01),
 /// reached through the header's Edit control.
 #[component]
@@ -437,6 +438,9 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
 
     let chip = RwSignal::<Option<ActionType>>::new(None);
     let draft = RwSignal::<ActionInput>::new(empty_action());
+    // Photo files staged by the quick-add Foto form; cleared after
+    // every save, so a later non-photo entry uploads nothing.
+    let photo_files = RwSignal::<Vec<leptos::web_sys::File>>::new(Vec::new());
     let upload_note = RwSignal::<Option<String>>::new(None);
     // Set once a quick-add entry saves; cleared the moment the next
     // entry is picked, so the note always names the latest save.
@@ -445,6 +449,10 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
         if chip.get().is_some() {
             just_logged.set(false);
         }
+        // Staged files belong to the Foto form; picking another chip
+        // (or closing the picker) drops them, so a later Water entry
+        // can never upload a stale selection.
+        photo_files.set(Vec::new());
     });
 
     // The phase picker (D073): the grow's photoperiod toggle decides
@@ -593,6 +601,14 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
     };
 
     // prevent_default first — see docs/DECISIONS.md D061.
+    //
+    // A Foto entry with staged files posts the entry first and the
+    // files second: the entry's id arrives in the response and rides
+    // the multipart as `action_log_id`, so the gallery photo links
+    // back to the timeline entry that logged it. The upload runs
+    // after the entry saved. A failed upload leaves the entry (with
+    // its error surfaced) — the photo can be re-uploaded from the
+    // gallery, not silently lost with the entry.
     let save_action = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
         let id = grow_id.get();
@@ -601,9 +617,44 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             match api::post::<ActionInput, ActionEntry>(&format!("api/grows/{id}/actions"), &input)
                 .await
             {
-                Ok(_) => {
+                Ok(entry) => {
                     chip.set(None);
-                    error.set(None);
+                    let files = if input.action_type == ActionType::Photo {
+                        photo_files.get_untracked()
+                    } else {
+                        Vec::new()
+                    };
+                    photo_files.set(Vec::new());
+                    let mut upload_failed = false;
+                    if !files.is_empty() {
+                        let form = FormData::new().expect("FormData constructs");
+                        for file in &files {
+                            form.append_with_blob("file", file)
+                                .expect("appending a blob cannot fail");
+                        }
+                        form.append_with_str("action_log_id", &entry.id)
+                            .expect("appending a string cannot fail");
+                        let url = format!("api/grows/{id}/photos");
+                        match api::post_form(&url, &form).await {
+                            Ok(()) => {
+                                upload_note
+                                    .set(Some(t_string!(i18n, grow.photos_uploaded).into_owned()));
+                            }
+                            Err(failure) => {
+                                upload_failed = true;
+                                error.set(Some(api::failure_text(
+                                    &failure,
+                                    i18n.get_locale_untracked(),
+                                )));
+                            }
+                        }
+                    }
+                    // The entry itself saved: the chip closes and the
+                    // timeline refreshes even when the upload failed —
+                    // the error above names the upload, not the entry.
+                    if !upload_failed {
+                        error.set(None);
+                    }
                     just_logged.set(true);
                     refresh();
                 }
@@ -672,35 +723,6 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             {
                 Ok(_) => refresh(),
                 Err(failure) => error.set(Some(api::failure_text(
-                    &failure,
-                    i18n.get_locale_untracked(),
-                ))),
-            }
-        });
-    };
-
-    let upload = move |ev: leptos::ev::Event| {
-        let id = grow_id.get();
-        let input = event_target::<leptos::web_sys::HtmlInputElement>(&ev);
-        let Some(files) = input.files() else {
-            return;
-        };
-        let form = FormData::new().expect("FormData constructs");
-        for index in 0..files.length() {
-            if let Some(file) = files.get(index) {
-                form.append_with_blob("file", &file)
-                    .expect("appending a blob cannot fail");
-            }
-        }
-        spawn_local(async move {
-            let url = format!("api/grows/{id}/photos");
-            let result = api::post_form(&url, &form).await;
-            match result {
-                Ok(()) => {
-                    upload_note.set(Some(t_string!(i18n, grow.photos_uploaded).into_owned()));
-                    refresh();
-                }
-                Err(failure) => upload_note.set(Some(api::failure_text(
                     &failure,
                     i18n.get_locale_untracked(),
                 ))),
@@ -796,7 +818,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                     class={format!("{} mt-4", ui::card())}
                     on:submit=save_action
                 >
-                    <ActionForm draft kind=chip />
+                    <ActionForm draft kind=chip photo_files />
                     <div class="flex flex-wrap gap-2 mt-4">
                         <button class="btn btn-primary btn-sm" type="submit">{t!(i18n, grow.quick_add_log)}</button>
                         <button class="btn btn-sm" type="button" on:click=move |_| chip.set(None)>{t!(i18n, grows.cancel)}</button>
@@ -922,11 +944,6 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                     <button class="btn btn-sm" on:click=add_plant>{t!(i18n, grow.add_plant)}</button>
 
                     <h3>{t!(i18n, grow.photos)}</h3>
-                    <label class="fieldset">
-                        <input type="file" class="file-input file-input-sm" accept="image/jpeg,image/png,image/webp" multiple
-                            on:change=upload
-                        />
-                    </label>
                     {move || upload_note.get().map(|note| view! { <p class="text-base-content/70 text-sm">{note}</p> })}
                     <div class="grid gap-2 mt-4 grid-cols-[repeat(auto-fill,minmax(7rem,1fr))]">
                         {move || {
@@ -1165,7 +1182,11 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
 /// action type.
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
-fn ActionForm(draft: RwSignal<ActionInput>, kind: RwSignal<Option<ActionType>>) -> impl IntoView {
+fn ActionForm(
+    draft: RwSignal<ActionInput>,
+    kind: RwSignal<Option<ActionType>>,
+    photo_files: RwSignal<Vec<leptos::web_sys::File>>,
+) -> impl IntoView {
     let i18n = use_i18n();
     view! {
         <div class="grid gap-2 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
@@ -1216,6 +1237,41 @@ fn ActionForm(draft: RwSignal<ActionInput>, kind: RwSignal<Option<ActionType>>) 
                     on:input=move |ev| draft.update(|d| d.notes = non_empty(event_target_value(&ev)))
                 />
             </ui::Field>
+
+            {move || {
+                let kind = kind.get()?;
+                (kind == ActionType::Photo).then(|| {
+                    view! {
+                        <ui::Field
+                            label=Signal::derive(move || {
+                                t_string!(i18n, form.photo_files).into_owned()
+                            })
+                            class="col-span-full"
+                        >
+                            <input
+                                type="file"
+                                class="file-input file-input-sm"
+                                accept="image/jpeg,image/png,image/webp"
+                                multiple
+                                on:change=move |ev| {
+                                    let input =
+                                        event_target::<leptos::web_sys::HtmlInputElement>(&ev);
+                                    let files = input
+                                        .files()
+                                        .map(|list| {
+                                            (0..list.length())
+                                                .filter_map(|index| list.get(index))
+                                                .collect::<Vec<_>>()
+                                        })
+                                        .unwrap_or_default();
+                                    photo_files.set(files);
+                                }
+                            />
+                        </ui::Field>
+                    }
+                        .into_any()
+                })
+            }}
         </div>
         <fieldset class="fieldset mt-3">
             <legend class="fieldset-legend">{t!(i18n, form.appearance)}</legend>
@@ -1430,7 +1486,7 @@ pub fn empty_grow() -> GrowInput {
 
 /// Strips the backend-filled fields (id, grow, phase, grow day,
 /// timestamps) from a timeline entry, leaving exactly the
-/// [`ActionInput`] a fresh create would carry — every input field is
+/// [`ActionInput`] a fresh create would carry. Every input field is
 /// carried over verbatim, so an undo replay re-POSTs the same payload
 /// and the backend re-derives phase and grow day from the same
 /// `occurred_at` (docs/DECISIONS.md D126).

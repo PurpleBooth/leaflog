@@ -245,11 +245,6 @@ pub fn FeedSection(grow_id: String) -> impl IntoView {
                     .iter()
                     .find(|day| day.grow_day == today.get())
                     .and_then(|day| grid.slot_of(day.phase, day.week));
-                let attribution = fitted
-                    .fitted_at
-                    .get(..10)
-                    .unwrap_or(&fitted.fitted_at)
-                    .to_owned();
                 Some(view! {
                     // The explicit minmax(0,1fr) track keeps the grid
                     // column at the container width; an implicit auto
@@ -372,11 +367,9 @@ pub fn FeedSection(grow_id: String) -> impl IntoView {
                                 </table>
                             </div>
                             <p class="mt-2 mb-0 text-base-content/70 text-sm">
-                                {td_string!(locale, schedules.fitted_from,
-                                    name = fitted.schedule_name,
-                                    date = attribution).into_owned()}
-                                " "
-                                {t_string!(i18n, schedules.refit_auto)}
+                                {td_string!(locale, schedules.fitted_on,
+                                    date = fitted.fitted_at.get(..10)
+                                        .unwrap_or(&fitted.fitted_at)).into_owned()}
                             </p>
                         </div>
                     </div>

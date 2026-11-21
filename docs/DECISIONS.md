@@ -6,6 +6,39 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-21 — attribution sentence and photo upload placement (D144)
+
+### D144: the fitted-plan attribution is a short label:date line and photo uploads ride the quick-add Foto form
+
+Two follow-up trims to the feeding/photo surfaces.
+
+The fitted-plan attribution rendered a full sentence — "Fitted from
+„Standard" on 2026-11-21. Re-fits automatically when phases change." —
+whose second half restated what the schedule header already says.
+Replaced by a single short line "Fitted: 2026-11-21"
+(`schedules.fitted_on`); `fitted_from` and `refit_auto` are gone from
+both catalogs. The date stays the fitted_at prefix, so the line is
+locale-neutral in shape: only the label translates.
+
+The grow page carried a standalone photo-upload fieldset next to the
+gallery while the quick-add Foto chip logged an entry without it —
+two photo surfaces, one of them invisible in the logging loop. The
+fieldset is gone; the Foto quick-add form gains the file input.
+Saving posts the timeline entry first and the staged files second,
+linking them via the upload API's existing `action_log_id` field so a
+gallery photo names the entry that logged it. Staged files are cleared
+when another chip is picked — a later Water entry can never upload a
+stale selection — and after every save. A failed upload leaves the
+entry saved with the error surfaced (the photo can be re-uploaded)
+and only clears the form error when the upload did not fail. The
+gallery itself stays on the grow page.
+
+Guardrails: component test asserts the short attribution; e2e spec
+`04-photos.spec.ts` pins the Foto-chip round-trip (entry + gallery +
+survives reload) and the absence of a standalone upload fieldset.
+
+---
+
 ## 2026-11-21 — feeding-section layout containment (D143)
 
 ### D143: the feeding section caps its track, shrinks its cards, scrolls its table and keeps the prototype's dose-list metrics
@@ -15,17 +48,17 @@ section's single grid track was implicit, so it sized itself to the
 max-content of its widest child — the fitted plan table, ~945 px —
 and the whole page panned sideways on a phone. And the This-Week list
 ported the approved prototype's `gap: 0.375rem 1.5rem` as `gap-1`,
-losing the 1.5 rem column gap and the dashed rule per product row, so
-at several products per row a dose sat 4 px from the next product's
-name and read as that product's dose.
+losing the 1.5 rem column gap and the dashed rule per product row;
+with multiple products per row a dose sat 4 px from the next
+product's name and read as that product's dose.
 
 Fix, all in `feed.rs`: the section root uses an explicit
-`grid-cols-[minmax(0,1fr)]` track capped at the container width; both
+`grid-cols-[minmax(0,1fr)]` track capped at the container width. Both
 cards carry `min-w-0` (a daisyUI card is a flex column, so its items
-need the zeroed minimum to shrink below the table's content width);
-the table scrolls inside the card via `min-w-0 overflow-x-auto` with
+need the zeroed minimum to shrink below the table's content width).
+The table scrolls inside the card via `min-w-0 overflow-x-auto` with
 the product column `sticky left-0` on `bg-base-100` so rows stay
-identifiable; the This-Week list restores the prototype metrics
+identifiable. The This-Week list restores the prototype metrics
 (`gap-x-6 gap-y-1.5`, dashed `border-b` per row, `text-sm`). The
 column minimums of the schedule editor (`min-w-40`/`min-w-[4.5rem]`)
 apply here too, so numbers stay readable while scrolling. The schedule
@@ -166,7 +199,7 @@ role loops already share `Field`).
 
 **Completion pass (same decision, 2026-11-21):** the initial commit
 adopted `Field` at only four call sites; the migration now runs to
-saturation — every labelled input, select and textarea in
+saturation. Every labelled input, select and textarea in
 `grows.rs`, `history.rs`, `onboarding.rs`, `schedules.rs`,
 `chart.rs` and `light_cycle.rs` renders through `Field` (25 more
 sites; the remaining raw `fieldset`s are the bare file input, the
@@ -510,8 +543,8 @@ the series-name absence on the plain (non-ingress) path.
   the edit page answers for itself while its form is dirty. A
   document-level capture-phase click listener runs before the router's
   global anchor handler (bubble phase), which honours
-  `default_prevented`: preventing the event suppresses the SPA
-  navigation, the page asks `window.confirm` with the localized
+  `default_prevented`. Preventing the event suppresses the SPA
+  navigation; the page asks `window.confirm` with the localized
   `grow_edit.unsaved_confirm` once, and a confirmed leave re-navigates
   through the router with the plain route path (the runtime ingress
   base is stripped back off the anchor's `href` — a base-prefixed path
@@ -723,9 +756,9 @@ spec is the truth, so the code moved to it:
   `EmptyState` (the `py-6 text-center text-base-content/60` idiom, six
   call sites; the message stays with the caller as children so it keeps
   its reactive translation), and `SectionHeader` (generalized from the
-  Air/Root zone group labels; title and hint arrive as `Signal<String>`
-  props so a locale swap re-translates the label, same contract as the
-  history `Aggregate` title).
+  Air/Root zone group labels). Title and hint arrive as `Signal<String>`
+  props, so a locale swap re-translates the label, same contract as the
+  history `Aggregate` title.
 
 **Gap consolidation rule**: rhythm-level gaps use only `gap-2` (content
 clusters) and `gap-4` (section splits); `gap-0.5`/`1`/`1.5` stay legal
@@ -741,9 +774,9 @@ danger button, the photo fieldset).
 with `overflow-wrap: anywhere`, which trades layout overflow for
 collapsed min-content inside the daisyUI alert grid. The fix is
 controlled truncation: `.entity-id` is an `inline-grid` whose single
-`minmax(0, 1fr)` track pins the chip's min-content to zero (grid and
-flex ancestors can shrink it — no overflow by construction), and the
-text ellipsizes on one line while the DOM text stays complete for
+`minmax(0, 1fr)` track pins the chip's min-content to zero. Grid and
+flex ancestors can shrink it — no overflow by construction. The text
+ellipsizes on one line while the DOM text stays complete for
 screen readers and tests; the full id rides on the `title` tooltip.
 The dead-binding banner renders the chips in one `flex flex-wrap gap-2`
 row via `EntityIdChip`.
@@ -896,7 +929,7 @@ selection) buys nothing and adds code.
 The backend and `leaflog-core` compose English coaching prose from
 interpolated numbers (`"Keep VPD 0.75–0.95 kPa …"`, lamp-why sentences).
 Matching rendered English against a catalog to translate it is brittle,
-so the generators now emit a stable **code alongside the English text**:
+so the generators now emit a stable **code alongside the English text**.
 `CoachTip` gains `code: &'static str` (ten tip codes, `vpd_band` …
 `curing_jars`), `LampAdvice` gains `why_codes: Vec<&'static str>` (eight
 sentence codes plus `default_starting_points` for the empty-why case),
@@ -958,9 +991,9 @@ keys). Nothing is fetched at runtime.
 
 **Locale chain (frontend)**: `en`/`de` catalogs negotiate from the browser
 at first paint (leptos_i18n's navigator matching, cookie disabled — no
-persistence), then the backend half applies: the bridge captures the HA
+persistence), then the backend half applies. The bridge captures the HA
 config `language` on every reconnect alongside the timezone
-(`GET /core/api/config`, documented surface), `GET /api/locale` carries it
+(`GET /core/api/config`, documented surface); `GET /api/locale` carries it
 to the frontend, and `LocaleChain` sets the locale only when the tag maps
 (`de*` → de, `en*` → en — an explicit English from HA must beat a German
 browser). Any other tag (or HA unreachable, or before the first fetch —
@@ -988,7 +1021,7 @@ trips the crate's pedantic/nursery denies and omits item docs). The
 `needless_pass_by_value` pattern to the `locale` handler (register below).
 
 **Addendum 2026-11-18**: the owner removed the spec § citations from UI
-strings during keying — the `" (spec §5.2)"`-style suffixes several
+strings during keying — the `" (spec §5.2)"`-style suffixes that
 seeded entries carried are gone from the English catalog and were never
 carried into the German one (citations live in the docs, not the UI).
 
@@ -1159,14 +1192,15 @@ preference, the tick glance is not. No new `#[allow]` exceptions.
 
 ### D105: the not-measured card chips only the five charted sensor roles
 
-The Environment section closes with one quiet "not measured" card:
-for every sensor role whose chart card the section renders but whose
+The Environment section closes with one quiet "not measured" card.
+For every sensor role whose chart card the section renders but whose
 binding row is missing, a chip names the role and is itself the bind
 affordance — an in-app `<A>` to the grow edit page's Entity bindings
 flow (the existing flow; nothing new is invented). The card appears
 only once the bindings response names at least one unbound role:
 while the fetch is in flight, or after it failed, it renders nothing,
-so it never flashes and never claims a gap it cannot see.
+so it never flashes and never claims a gap it cannot see. The chip
+row is the bind affordance itself, not decoration.
 
 Which roles chip: `temperature`, `humidity`, `co2`, `light`,
 `soil_moisture` — exactly the roles a missing binding can hide here,
@@ -1265,8 +1299,8 @@ unresolvable zone name falls back to UTC, mirroring the chart code.
 The wire change is additive: the existing light-cycle GET now may
 carry an `observed` block (bound entity id, learned on-time, learned
 hours-on), flattened beside the stored fields and omitted when the
-grow is unbound, the history is dataless, or HA is unreachable —
-fail closed, the editor shows only the editable defaults.
+grow is unbound, the history is dataless, or HA is unreachable.
+Fail closed: the editor shows only the editable defaults.
 
 Derivation is lazy: computed on page loads and binding changes, never
 a background job. A 60 s per-grow cache absorbs repeated loads; a
@@ -1343,25 +1377,27 @@ chart legend probe) and stays unmapped — leftover built-ins are accepted.
 The overrides are written as inline custom properties on the app's own
 root element (`body` sits outside the mount div, so the root is the
 only override point that covers it) plus a `color-scheme` derived from
-the page background's lightness; dark/light follows the parent
-implicitly, and there is no theme picker or toggle anywhere. (D135
+the page background's lightness. Dark/light follows the parent
+implicitly, and there is no theme picker or toggle anywhere. D135
 amends the original serialization: the overrides were first written as
-`oklch(...)` — chart-invisible, see D135 — and are now comma-syntax
-`rgb()`/`rgba()` values.) A `MutationObserver` on the parent root's
+`oklch(...)` (chart-invisible, see D135) and are now comma-syntax
+`rgb()`/`rgba()` values. A `MutationObserver` on the parent root's
 `style` attribute re-runs the read+map, so a theme or dark-mode flip in
 HA re-dresses the app live without a reload. Colour math
 (hex/rgb/rgba parsing, alpha flattening, WCAG contrast, Ottosson
 rgb→oklch) lives in `leaflog-core::theme` as pure unit-tested
 functions; the frontend only bridges DOM and applies.
 
-The fallback to the built-in theme is mandatory and silent: no parent
+The fallback to the built-in theme is mandatory and silent. No parent
 (standalone), a cross-origin or sandboxed parent, or any missing or
 unparsable member of the six core variables (primary, accent, primary
 background, card background, divider, primary text) leaves the built-in
 palette untouched — including clearing previously applied overrides when
-a re-read degrades. Fixing that fallback surfaced a latent wiring gap
-from D064: the built-in light theme had never actually applied, because
-the `--default` flag sat on the daisyUI `themes:` line where custom
+a re-read degrades.
+
+Fixing that fallback surfaced a latent wiring gap
+from D064: the built-in light theme had never actually applied. The
+`--default` flag sat on the daisyUI `themes:` line where custom
 themes ignore it — the light palette only existed under
 `[data-theme="leaflog"]`, which nothing sets, so light-preference
 browsers rendered with no theme variables at all (dark worked via its
@@ -1374,12 +1410,12 @@ the `prefersdark` dark block still wins for dark-preference browsers
 
 Everything D100 reads is undocumented surface. The HA frontend docs
 describe theming (variables, `applyThemesOnElement`) but nothing
-promises that the ingress iframe's parent stays same-origin-readable:
-the current `ha-panel-app.ts` (re-checked 2026-11-18 at
+promises that the ingress iframe's parent stays same-origin-readable.
+The current `ha-panel-app.ts` (re-checked 2026-11-18 at
 https://contributors.home-assistant.io/frontend/architecture/theming/ and
 the panel source) mounts ingress apps in a plain same-origin iframe with
 no sandbox attribute — the ticket's "sandboxed allow-same-origin" claim
-is already outdated — while an in-source comment notes "CSS variables
+is already outdated. An in-source comment notes "CSS variables
 don't cross the iframe boundary", which is why a JS computed-style read
 is needed at all. Any future HA release could add `sandbox` without
 `allow-same-origin`, split origins, or reshuffle the `--*-color` names,
@@ -1612,7 +1648,7 @@ its e2e regression) moved there from the equipment card.
 Ticket 05 (the catalogue drop) settles three small shapes. First, the
 V17 backfill is a *fill*, not an overwrite: a grow linked to a strain
 adopts the strain's name and photoperiod only for the fields it has
-not set itself — between V14 and V17 the grower could already edit
+not set itself. Between V14 and V17 the grower could already edit
 `strain_label` and the toggle directly, and D075's "the migration does
 not rewrite my history" applies to those edits too. Second, the
 history aggregate's key for grows without a label changes from the old
@@ -2339,7 +2375,7 @@ commits.
 
 Spec §4.1 says a space's temperature + humidity sensor items "are
 offered as the default env bindings for grows in it (per-grow overrides
-stay)" — but nothing implemented the bridge, so a sensor added on the
+stay)". Nothing implemented the bridge, so a sensor added on the
 equipment page was write-only inventory while the live tiles read the
 per-grow `sensor_binding` rows only the grow page set. Growers could
 not discover the split (reported: "can't work out how to add a sensor
@@ -2347,7 +2383,7 @@ to equipment").
 
 `store::sensors::seed_from_space` maps a sensor item's device class to
 its binding role and inserts bindings **only for roles the grow has not
-bound** — an explicit pick is never overwritten, and with several items
+bound** — an explicit pick is never overwritten, and with multiple items
 of one class in a space the first in list order wins. It runs from
 three hooks: grow create, grow update (a grow moved into a space picks
 its defaults) and sensor-item-added-to-space (existing grows catch up),
@@ -2365,8 +2401,8 @@ page now share one `GrowForm` component (name, strain, space,
 substrate, started-on, plus the previously UI-less `status` and `notes`
 fields); `GrowInput::from_grow` in leaflog-core mirrors
 `EquipmentInput::from_item` for the pre-fill. The detail page also
-gains "Delete grow" — destructive (plants, log entries and photos go
-with it), so it asks for a `confirm()` first and redirects via
+gains "Delete grow". Destructive (plants, log entries and photos go
+with it), it asks for a `confirm()` first and redirects via
 `<Redirect>` rather than `use_navigate`, whose non-`Copy` closure
 cannot be captured from a reactive header render (the E0525 lesson:
 handlers must stay `FnMut`; payloads are cloned per render like the

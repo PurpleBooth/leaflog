@@ -111,10 +111,7 @@ async fn feed_section_fitted_grid_with_data() {
     let text = mount.text();
     assert!(text.contains("Flower · week 3 of 3"), "week chip: {text:?}");
     assert!(text.contains("Bio Bloom"), "today's dose: {text:?}");
-    assert!(
-        text.contains("Fitted from “BioBizz” on 2026-11-01."),
-        "attribution: {text:?}"
-    );
+    assert!(text.contains("Fitted: 2026-11-01"), "attribution: {text:?}");
     assert!(mount.has("table"), "fitted grid table");
     let table = mount
         .q("table[aria-label='Fitted feeding schedule chart']")
