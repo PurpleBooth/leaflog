@@ -127,6 +127,83 @@ async fn feed_section_fitted_grid_with_data() {
     assert_eq!(marked, 1, "exactly one marked column");
 }
 
+// The feeding section must not size its grid track to the fitted
+// table's max-content: an implicit auto track pans the whole page on
+// a phone. The cards shrink (daisyUI card is a flex column, so its
+// items need min-w-0) and the table scrolls inside the card with the
+// product column pinned (D143).
+#[wasm_bindgen_test]
+async fn feed_section_layout_containment_and_this_week_metrics() {
+    fresh_environment();
+    let _stub = FetchStub::new(|method, url, _body| {
+        if method == "GET" && url.ends_with("/api/grows/g1/feed/plan") {
+            return (200, plan_json());
+        }
+        if method == "GET" && url.ends_with("/api/grows/g1/forecast") {
+            return (200, forecast_json(19));
+        }
+        (404, String::new())
+    });
+    let mount = section("g1");
+    wait_text(&mount, "This week").await;
+    // Explicit single track capped at the container width.
+    let section_grid = mount
+        .q("div.grid.grid-cols-\\[minmax\\(0\\,1fr\\)\\]")
+        .expect("section grid with capped track");
+    assert!(
+        classes(&section_grid).contains("minmax(0,1fr)"),
+        "track classes: {:?}",
+        classes(&section_grid)
+    );
+    // Both cards are shrinkable flex items.
+    let cards = mount.q_all("div.card.min-w-0");
+    assert_eq!(cards.len(), 2, "both feed cards shrinkable");
+    // The table wrapper scrolls instead of stretching the card.
+    let wrapper = mount
+        .q("div.min-w-0.overflow-x-auto")
+        .expect("scroll wrapper");
+    assert!(classes(&wrapper).contains("min-w-0"), "wrapper classes");
+    // Product column pinned while dose columns scroll.
+    let sticky = mount.q_all("th.sticky.left-0");
+    assert!(
+        sticky.len() >= 2,
+        "header and body product columns sticky: {}",
+        sticky.len()
+    );
+    // Prototype This-Week metrics: column gap and a dashed rule per
+    // product row, so a dose reads inside its own cell (D143).
+    let list = mount
+        .q("ul.grid.gap-x-6")
+        .expect("this-week list with prototype gap");
+    assert!(
+        classes(&list).contains("gap-y-1.5"),
+        "list classes: {:?}",
+        classes(&list)
+    );
+    let rows = mount.q_all("li.border-b.border-dashed");
+    assert!(!rows.is_empty(), "dashed rules on dose rows");
+    let row = &rows[0];
+    let row_classes = classes(row);
+    assert!(
+        row_classes.contains("pb-1"),
+        "rule spacing: {row_classes:?}"
+    );
+    assert!(
+        row_classes.contains("text-sm"),
+        "prototype size: {row_classes:?}"
+    );
+    let amount = row
+        .query_selector("span.whitespace-nowrap")
+        .ok()
+        .flatten()
+        .expect("dose kept on one line");
+    assert!(
+        classes(&amount).contains("tabular-nums"),
+        "dose classes: {:?}",
+        classes(&amount)
+    );
+}
+
 #[wasm_bindgen_test]
 async fn feed_section_error_banner_on_plan_failure() {
     fresh_environment();

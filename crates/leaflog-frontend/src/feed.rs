@@ -251,32 +251,40 @@ pub fn FeedSection(grow_id: String) -> impl IntoView {
                     .unwrap_or(&fitted.fitted_at)
                     .to_owned();
                 Some(view! {
-                    <div class="my-4 grid gap-4">
+                    // The explicit minmax(0,1fr) track keeps the grid
+                    // column at the container width; an implicit auto
+                    // track would size to the fitted table's max-content
+                    // and pan the whole page on a phone (D143).
+                    <div class="my-4 grid grid-cols-[minmax(0,1fr)] gap-4">
                         <h3 class="m-0">{t_string!(i18n, grow.feed_schedule)}</h3>
                         {this_week.map(|week| {
                             let doses = week.doses.clone();
                             let chip = week_chip(locale, &week);
                             view! {
-                                <div class="card bg-base-100 shadow-sm px-5 py-4">
+                                <div class="card min-w-0 bg-base-100 shadow-sm px-5 py-4">
                                     <div class="flex flex-wrap items-baseline gap-2">
                                         <h4 class="m-0">{t_string!(i18n, schedules.this_week)}</h4>
                                         <Chip>{chip}</Chip>
                                     </div>
-                                    <ul class="list-none m-0 mt-2 p-0 grid gap-1 sm:grid-cols-[repeat(auto-fill,minmax(13rem,1fr))]">
+                                    // Prototype metrics (.scratch/feed-schedules
+                                    // styles.css .thisweek): 1.5rem column gap
+                                    // and a dashed rule per product row, so a
+                                    // dose reads inside its own cell (D143).
+                                    <ul class="list-none m-0 mt-2 p-0 grid gap-x-6 gap-y-1.5 sm:grid-cols-[repeat(auto-fill,minmax(13rem,1fr))]">
                                         {doses.iter().map(|dose| {
                                             let name = dose.name.clone();
                                             let note = dose.note.clone();
                                             let unit = dose.unit.display();
                                             let dose = dose.dose;
                                             view! {
-                                                <li class="flex flex-wrap items-baseline gap-x-2">
+                                                <li class="flex flex-wrap items-baseline gap-x-2 border-b border-base-300 border-dashed pb-1 text-sm">
                                                     <strong>{name}</strong>
-                                                    <span class="ml-auto tabular-nums">
+                                                    <span class="ml-auto tabular-nums whitespace-nowrap">
                                                         {dose_label(Some(dose), style)}
                                                         <span class="text-base-content/70">" "{unit}</span>
                                                     </span>
                                                     {note.map(|note| view! {
-                                                        <span class="w-full text-base-content/70 text-sm">{note}</span>
+                                                        <span class="w-full text-base-content/70">{note}</span>
                                                     })}
                                                 </li>
                                             }
@@ -286,7 +294,7 @@ pub fn FeedSection(grow_id: String) -> impl IntoView {
                                 </div>
                             }
                         })}
-                        <div class="card bg-base-100 shadow-sm px-5 py-4">
+                        <div class="card min-w-0 bg-base-100 shadow-sm px-5 py-4">
                             <div class="flex flex-wrap items-baseline gap-2">
                                 <h4 class="m-0">{t_string!(i18n, schedules.fitted_heading)}</h4>
                                 <Chip>
@@ -294,13 +302,20 @@ pub fn FeedSection(grow_id: String) -> impl IntoView {
                                         count = fitted.days.len()).into_owned()}
                                 </Chip>
                             </div>
-                            <div class="mt-2 overflow-x-auto">
+                            // min-w-0: as a flex item of the daisyUI
+                            // card column the wrapper's automatic minimum
+                            // would floor at the table's content width and
+                            // defeat the scroll (D143).
+                            <div class="mt-2 min-w-0 overflow-x-auto">
                                 <table class="table table-sm"
                                     aria-label={t_string!(i18n, schedules.grid_aria).into_owned()}
                                 >
                                     <thead>
                                         <tr>
-                                            <th class="min-w-40">{t_string!(i18n, schedules.col_product)}</th>
+                                            // Sticky product column: the row
+                                            // stays identifiable while the
+                                            // dose columns scroll (D143).
+                                            <th class="sticky left-0 min-w-40 bg-base-100">{t_string!(i18n, schedules.col_product)}</th>
                                             <th class="text-center">{t_string!(i18n, schedules.col_propagation)}</th>
                                             <th class="text-center">{t_string!(i18n, schedules.col_veg)}</th>
                                             {(1..=grid.flower_weeks).map(|week| {
@@ -329,7 +344,7 @@ pub fn FeedSection(grow_id: String) -> impl IntoView {
                                             let cells = row.cells.clone();
                                             view! {
                                                 <tr>
-                                                    <th class="min-w-40">
+                                                    <th class="sticky left-0 min-w-40 bg-base-100">
                                                         <div class="font-medium">{name}</div>
                                                         <div class="text-base-content/70 text-sm">{unit}</div>
                                                         {note.map(|note| view! {

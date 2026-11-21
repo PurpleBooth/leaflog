@@ -6,6 +6,40 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-21 — feeding-section layout containment (D143)
+
+### D143: the feeding section caps its track, shrinks its cards, scrolls its table and keeps the prototype's dose-list metrics
+
+The feeding section rendered two defects on small screens. The
+section's single grid track was implicit, so it sized itself to the
+max-content of its widest child — the fitted plan table, ~945 px —
+and the whole page panned sideways on a phone. And the This-Week list
+ported the approved prototype's `gap: 0.375rem 1.5rem` as `gap-1`,
+losing the 1.5 rem column gap and the dashed rule per product row, so
+at several products per row a dose sat 4 px from the next product's
+name and read as that product's dose.
+
+Fix, all in `feed.rs`: the section root uses an explicit
+`grid-cols-[minmax(0,1fr)]` track capped at the container width; both
+cards carry `min-w-0` (a daisyUI card is a flex column, so its items
+need the zeroed minimum to shrink below the table's content width);
+the table scrolls inside the card via `min-w-0 overflow-x-auto` with
+the product column `sticky left-0` on `bg-base-100` so rows stay
+identifiable; the This-Week list restores the prototype metrics
+(`gap-x-6 gap-y-1.5`, dashed `border-b` per row, `text-sm`). The
+column minimums of the schedule editor (`min-w-40`/`min-w-[4.5rem]`)
+apply here too, so numbers stay readable while scrolling. The schedule
+editor's identical table already scrolled correctly, which located the
+mechanism in the section wrapper, not the table.
+
+Guardrails: component test `feed_section_layout_containment_and_this_week_metrics`
+pins the classes; e2e spec `29-feed-plan.spec.ts` pins no page-level
+overflow at phone and tablet widths, in-card scrolling with the sticky
+product column, and the computed prototype metrics (dashed rule, 14 px
+rows, 24 px/6 px gaps).
+
+---
+
 ## 2026-11-21 — asset cache policy (D142)
 
 ### D142: content-hashed bundle files cache forever, every other static file revalidates
