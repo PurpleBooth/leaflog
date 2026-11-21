@@ -81,21 +81,6 @@ pub fn now_ms() -> u64 {
     js_sys::Date::now() as u64
 }
 
-/// A bound entity id chip: the id is data, not copy — it renders
-/// verbatim as one ellipsized line (`.entity-id` truncates in CSS,
-/// so the DOM text stays complete for screen readers and tests) and
-/// carries the full id on the title tooltip.
-#[component]
-#[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
-pub fn EntityIdChip(entity_id: String) -> impl IntoView {
-    let title = entity_id.clone();
-    view! {
-        <span class="badge badge-ghost entity-id" title=title>
-            <span class="entity-id-text">{entity_id}</span>
-        </span>
-    }
-}
-
 /// A tag chip: the `badge badge-ghost` recipe (DESIGN.md chips) around
 /// one short label. Callers that need the small data-row variant add
 /// their own `badge-sm` through `class`.

@@ -2,10 +2,11 @@
 
 use crate::ErrorIf;
 use crate::api;
+use crate::bindings::{ROLE_CO2, ROLE_HUMIDITY, ROLE_SOIL_MOISTURE, ROLE_TEMPERATURE};
 use crate::i18n::{Locale, t, t_string, td_string, use_i18n};
 use crate::labels;
+use crate::live::{dead_entity, tile_class};
 use crate::ui;
-use crate::ui::EntityIdChip;
 use leaflog_core::Phase;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -211,6 +212,11 @@ fn coach_tip_lines(
 /// One environment-strip tile: the uppercase micro-label, the big
 /// value, and an optional quiet band footnote. The caller decides the
 /// tile recipe (plain [`ui::tile`] vs the live threshold colouring).
+/// A dead binding renders a small warning mark beside the label
+/// (spec §4.1's "no data, never in range", surfaced per tile since
+/// D146): the mark is a link to the grow edit page — where the
+/// binding flow lives — and its tooltip names the dead entity id,
+/// so the data the tile is missing stays one hover away.
 #[component]
 #[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
 fn EnvTile(
@@ -223,10 +229,38 @@ fn EnvTile(
     /// Optional corridor footnote under the value (D136).
     #[prop(optional)]
     band: Option<String>,
+    /// The dead binding's entity id, when this tile's role is bound
+    /// but its entity currently reports no data. `None` renders no
+    /// mark — always passed (the strip computes it per role).
+    dead_entity: Option<String>,
+    /// Where the warning mark leads: the grow edit page, where the
+    /// binding flow lives.
+    edit_href: String,
 ) -> impl IntoView {
+    let i18n = use_i18n();
+    // The mark builds before the view: its accessible name needs the
+    // localised hint with the entity id baked in, and the closure
+    // clones what it captures so the outer render stays `FnMut`.
+    let mark = dead_entity.map(|entity_id| {
+        let edit_href = edit_href.clone();
+        // The hint closes over its own clone of the id: two attribute
+        // closures (title + aria-label) share one moved String.
+        let hint_entity = entity_id.clone();
+        view! {
+            <a
+                class="link link-warning text-xs font-bold ml-1"
+                title={move || t_string!(i18n, env.dead_binding_hint, entity = hint_entity.clone())}
+                aria-label={move || t_string!(i18n, env.dead_binding_hint, entity = entity_id.clone())}
+                href=edit_href
+            >
+                "⚠"
+            </a>
+        }
+    });
     view! {
         <div class=class>
             <span class="text-xs uppercase tracking-wide text-base-content/60">{label}</span>
+            {mark}
             <span class="text-lg font-semibold">{value}</span>
             {band.map_or_else(
                 || ().into_any(),
@@ -250,8 +284,9 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
     // One EventSource per page: the env strip renders the streamed
     // values on top of the fetched snapshot (live values, ticket 02).
     let live = crate::live::subscribe_live();
-    // The Effect below owns `grow_id`; the banner link targets the
-    // edit page (route_href: path-absolute hrefs break under ingress).
+    // The Effect below owns `grow_id`; the dead-binding tile marks
+    // link to the edit page (route_href: path-absolute hrefs break
+    // under ingress).
     let edit_href = crate::route_href(&format!("/grows/{grow_id}/edit"));
 
     Effect::new(move |_| {
@@ -285,53 +320,6 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
         <div class="my-4 grid gap-4">
             <ErrorIf error />
 
-            // Entity drift (spec §4.1): a dead binding shows a chip
-            // and points at the grow edit page — never a silent "in
-            // range". The banner tells the truth: it renders only once
-            // the snapshot is loaded AND a binding is actually dead —
-            // no flash while the fetch is in flight, and a healthy
-            // grow stays quiet.
-            {move || {
-                // `?` on the Option signal: no snapshot, no banner —
-                // nothing flashes while the fetch is in flight.
-                let snapshot = env.get()?;
-                let dead = snapshot
-                    .bindings
-                    .into_iter()
-                    .filter(|binding| !binding.available)
-                    .collect::<Vec<_>>();
-                // The link href is cloned into the render closure so
-                // this outer closure stays `FnMut` (Leptos may rerun it).
-                let edit_href = edit_href.clone();
-                (!dead.is_empty()).then(move || {
-                    view! {
-                        <p class="alert alert-warning py-2 px-4 text-sm" role="status">
-                            {t!(i18n, env.no_data_prefix)}
-                            // The chips sit in one wrapping row so a
-                            // dead id truncates against its own slot
-                            // instead of stretching the alert's grid
-                            // track (the long-id regression, ticket
-                            // 10 — root cause in .entity-id, D120).
-                            <span class="flex flex-wrap gap-2">
-                                {dead
-                                    .into_iter()
-                                    .map(|binding| {
-                                        // The id itself is data, not
-                                        // copy — the chip renders it
-                                        // verbatim, one ellipsized
-                                        // line, full id on hover.
-                                        view! { <EntityIdChip entity_id=binding.entity_id /> }
-                                    })
-                                    .collect::<Vec<_>>()}
-                            </span>
-                            {t!(i18n, env.rebind_intro)}
-                            <a class="link" href=edit_href>{t!(i18n, env.rebind_link)}</a>
-                            "."
-                        </p>
-                    }
-                })
-            }}
-
             <div id="env-strip" class="grid gap-2 grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-5">
                 {move || {
                     let Some(e) = env.get() else { return Vec::<_>::new() };
@@ -354,8 +342,18 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                     // The colours come from the merged StripValues, not
                     // the page-load snapshot: a live push that crosses
                     // the threshold recolours the tile on the spot.
-                    let temp_class = crate::live::tile_class(v.temp_ok);
-                    let vpd_class = crate::live::tile_class(v.vpd_ok);
+                    let temp_class = tile_class(v.temp_ok);
+                    let vpd_class = tile_class(v.vpd_ok);
+                    // Entity drift, per tile (spec §4.1, D146): a role
+                    // whose bound entity is dead marks its own tile
+                    // instead of a page-wide banner. VPD derives from
+                    // temperature + humidity, so either of those marks
+                    // explains its missing value; unbound roles are
+                    // the not-measured card's word, not dead data.
+                    let dead_temp = dead_entity(&e.bindings, ROLE_TEMPERATURE);
+                    let dead_humidity = dead_entity(&e.bindings, ROLE_HUMIDITY);
+                    let dead_co2 = dead_entity(&e.bindings, ROLE_CO2);
+                    let dead_soil = dead_entity(&e.bindings, ROLE_SOIL_MOISTURE);
                     // The phase's RH window rides under the LF reading
                     // the same way the VPD band rides under VPD (D136):
                     // one tile per quantity, the corridor as a footnote.
@@ -373,7 +371,13 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                     );
                     vec![
                         view! {
-                            <EnvTile class=temp_class.to_string() label=t_string!(i18n, env.temp).into_owned() value=temp_display />
+                            <EnvTile
+                                class=temp_class.to_string()
+                                label=t_string!(i18n, env.temp).into_owned()
+                                value=temp_display
+                                dead_entity=dead_temp
+                                edit_href=edit_href.clone()
+                            />
                         }
                             .into_any(),
                         view! {
@@ -382,11 +386,20 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                                 label=t_string!(i18n, env.rh).into_owned()
                                 value=rh_display
                                 band=rh_band
+                                dead_entity=dead_humidity
+                                edit_href=edit_href.clone()
                             />
                         }
                             .into_any(),
                         view! {
-                            <EnvTile class=vpd_class.to_string() label=t_string!(i18n, env.vpd_tile).into_owned() value=vpd_display band=vpd_band />
+                            <EnvTile
+                                class=vpd_class.to_string()
+                                label=t_string!(i18n, env.vpd_tile).into_owned()
+                                value=vpd_display
+                                band=vpd_band
+                                dead_entity=None
+                                edit_href=edit_href.clone()
+                            />
                         }
                             .into_any(),
                         view! {
@@ -394,6 +407,8 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                                 class=format!("{} grid gap-0.5", ui::tile())
                                 label=t_string!(i18n, env.co2_tile).into_owned()
                                 value=co2_display
+                                dead_entity=dead_co2
+                                edit_href=edit_href.clone()
                             />
                         }
                             .into_any(),
@@ -402,6 +417,8 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                                 class=format!("{} grid gap-0.5", ui::tile())
                                 label=t_string!(i18n, env.soil_tile).into_owned()
                                 value=soil_display
+                                dead_entity=dead_soil
+                                edit_href=edit_href.clone()
                             />
                         }
                             .into_any(),

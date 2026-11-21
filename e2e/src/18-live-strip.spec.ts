@@ -238,7 +238,7 @@ test('a dead SSE stream degrades quietly, without an alarm banner', async ({
   await expect(page.getByText('unreachable')).toHaveCount(0);
 });
 
-test('the dead-binding banner points at the grow edit page', async ({
+test('a dead binding marks its tile and points at the grow edit page', async ({
   page,
   request,
 }) => {
@@ -271,23 +271,29 @@ test('the dead-binding banner points at the grow edit page', async ({
     );
 
   await page.goto(url(`/grows/${growId}`));
-  const banner = page.locator('p[role="status"]', { hasText: 'No data:' });
-  await expect(banner).toBeVisible();
-  await expect(banner).toContainText(
-    'rebind it on the grow edit page',
-  );
 
   // The dead tile reads "—", not a stale or invented number.
   await expect(tileValue(page, 'Temp')).toHaveText('—');
 
-  // The named fix-it place is a working link: it navigates to the
-  // grow edit page, where the Entity bindings now live (ticket 01).
-  const editLink = banner.getByRole('link', { name: 'grow edit page' });
-  await expect(editLink).toHaveAttribute(
+  // One quiet warning mark rides on the dead tile's caption — the
+  // healthy RH tile stays unmarked (one mark per dead binding, not a
+  // page-wide alarm).
+  const mark = tile(page, 'Temp').locator('xpath=following-sibling::a[1]');
+  await expect(mark).toHaveText('⚠');
+  await expect(tile(page, 'RH').locator('xpath=following-sibling::a[1]')).toHaveCount(0);
+
+  // The mark's accessible name carries the "no data" truth (spec
+  // §4.1) and names the fix-it place: a working link to the grow
+  // edit page, where the Entity bindings now live (ticket 01).
+  await expect(mark).toHaveAttribute(
+    'aria-label',
+    'No data: sensor.ghost — rebind it on the grow edit page',
+  );
+  await expect(mark).toHaveAttribute(
     'href',
     new RegExp(`/grows/${growId}/edit$`),
   );
-  await editLink.click();
+  await mark.click();
   await expect(
     page.getByRole('heading', { name: 'Edit grow' }),
   ).toBeVisible();

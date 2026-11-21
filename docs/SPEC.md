@@ -66,10 +66,11 @@ All checks in §13 must pass, with evidence.
 > only (§4.10).
 >
 > **Entity drift survives the strip:** HA entity IDs change (renames,
-> re-added devices). A binding whose entity is unavailable shows a
-> status chip and a **rebind** affordance instead of silently reading
-> stale or missing data. Alerts that depend on a dead binding degrade
-> to an explicit "no data" state — never "in range" (§4.9).
+> re-added devices). A binding whose entity is unavailable marks its
+> tile with a warning mark whose accessible name is the "no data"
+> state and doubles as the **rebind** affordance, instead of silently
+> reading stale or missing data. Alerts that depend on a dead binding
+> degrade to an explicit "no data" state — never "in range" (§4.9).
 
 ### 4.2 Action log
 - Quick-add chips: Lights on/off or schedule change, Water, Feed (volume, input pH/EC/TDS, runoff pH/EC/TDS, recipe), Trim/defoliate, Train (LST/top), Transplant, Flip to 12/12, Pest/IPM, Env change, Light height/dimmer change, Measurement, Photo, Note, Trichome check, Harvest, Dry/Cure check.

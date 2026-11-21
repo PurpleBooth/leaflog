@@ -28,8 +28,8 @@ pub fn router() -> Router<AppState> {
 #[derive(Debug, Clone, Serialize)]
 pub struct EnvSnapshot {
     /// Per-binding drift status (spec §4.1): a binding whose entity is
-    /// unavailable is reported here so the UI shows a chip and the
-    /// rebind affordance instead of silently missing data.
+    /// unavailable is reported here so the UI marks the dead tile and
+    /// offers the rebind affordance instead of silently missing data.
     pub bindings: Vec<BindingStatus>,
     /// Air temperature, °C (from bound sensor; None when offline).
     pub temperature_c: Option<f64>,

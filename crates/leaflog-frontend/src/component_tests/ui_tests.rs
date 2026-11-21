@@ -6,30 +6,7 @@ use super::support::*;
 use leptos::prelude::*;
 use wasm_bindgen_test::*;
 
-use crate::ui::{EmptyState, EntityIdChip, SectionHeader, UndoBanner};
-
-#[wasm_bindgen_test(async)]
-async fn entity_id_chip_renders_the_id() {
-    fresh_environment();
-    let mount = Mounted::new(move || {
-        with_i18n(move || {
-            view! {
-                <EntityIdChip entity_id="sensor.temp_1".to_string() />
-            }
-        })
-    });
-    let chip = mount.q(".entity-id").expect("chip element rendered");
-    assert_eq!(
-        chip.get_attribute("title").as_deref(),
-        Some("sensor.temp_1"),
-        "title attribute carries the full id for hover"
-    );
-    assert!(
-        chip.text_content()
-            .unwrap_or_default()
-            .contains("sensor.temp_1")
-    );
-}
+use crate::ui::{EmptyState, SectionHeader, UndoBanner};
 
 #[wasm_bindgen_test(async)]
 async fn empty_state_renders_children_centered() {

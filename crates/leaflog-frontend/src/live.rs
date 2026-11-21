@@ -113,6 +113,20 @@ pub const fn tile_class(ok: Option<bool>) -> &'static str {
     }
 }
 
+/// The dead bound entity for one tile role, if any: the entity id
+/// behind a binding that exists but currently reports no data (spec
+/// §4.1, surfaced per tile since D146). An unbound role or a healthy
+/// binding yields `None` — unbound is the not-measured card's word,
+/// not dead data.
+#[must_use]
+pub fn dead_entity(bindings: &[BindingStatus], role: &str) -> Option<String> {
+    bindings
+        .iter()
+        .find(|binding| binding.role == role)
+        .filter(|binding| !binding.available)
+        .map(|binding| binding.entity_id.clone())
+}
+
 /// Merges the env snapshot with the live-data snapshot into the
 /// strip's tile values (see [`StripValues`]). Derived readings (VPD,
 /// RH window, both ok flags) recompute from the merged inputs so the
@@ -339,6 +353,37 @@ mod tests {
         assert_eq!(
             tile_class(None),
             "rounded-box border border-base-300 bg-base-100 px-4 py-3 grid gap-0.5",
+        );
+    }
+
+    #[test]
+    fn dead_entity_only_names_dead_bound_roles() {
+        let bindings = vec![
+            BindingStatus {
+                role: "temperature".to_owned(),
+                entity_id: "sensor.ghost".to_owned(),
+                available: false,
+            },
+            BindingStatus {
+                role: "humidity".to_owned(),
+                entity_id: "sensor.grow_humidity".to_owned(),
+                available: true,
+            },
+        ];
+        assert_eq!(
+            super::dead_entity(&bindings, "temperature").as_deref(),
+            Some("sensor.ghost"),
+            "a dead bound role names its entity"
+        );
+        assert_eq!(
+            super::dead_entity(&bindings, "humidity"),
+            None,
+            "a healthy binding never marks its tile"
+        );
+        assert_eq!(
+            super::dead_entity(&bindings, "co2"),
+            None,
+            "an unbound role is not dead data"
         );
     }
 }

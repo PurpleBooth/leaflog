@@ -6,6 +6,37 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-21 — per-tile dead-binding marks (D146)
+
+### D146: the drift banner becomes a per-tile warning mark
+
+The grow page's "No data: … — rebind it on the grow edit page"
+banner (D058's rebind affordance, spec §4.1's drift truth) was a
+page-wide alarm for what is usually one dead sensor. The banner is
+gone; a dead bound role now marks **its own tile**: a small ⚠ link
+after the caption, `title`/`aria-label` carrying the full localised
+hint "No data: {{entity}} — rebind it on the grow edit page"
+(catalog key `env.dead_binding_hint`, EN + DE), `href` the grow edit
+page. The value still reads "—"; the chart card keeps its degraded
+banner; the backend wire (`BindingStatus.available`) is unchanged.
+
+One mark per dead tile replaces one banner for all of them: with
+two dead bindings the page now shows two quiet marks instead of one
+loud strip. The VPD tile takes no mark — it derives from
+temperature + humidity, and those two carry the explanation.
+Unbound roles stay the not-measured card's word ("Not measured"),
+not dead data. Healthy grows render no marks at all, at load or
+after load (spec 07's inversion regression, reworded).
+
+Cleanup riding along: `EntityIdChip`, its `.entity-id` CSS and the
+locale keys `no_data_prefix`/`rebind_intro`/`rebind_link` existed
+only for the banner and are deleted; the long-id truncation story
+(D058's chip rows, ticket 10's e2e spec 09) goes with them — the
+mark's accessible name holds the full id, no chip renders it. The
+lookup lives as a pure fn `live::dead_entity(&bindings, role)` with
+a native unit test; e2e spec 18 pins mark text, aria-label, href and
+the edit-page navigation.
+
 ## 2026-11-21 — audit-driven hardening batch (D145)
 
 ### D145: the eleven audit findings — retention floor, refit on edit/delete, settings allow-list, photo bomb + cache headers, language override, and the nice-to-haves
@@ -1004,7 +1035,8 @@ English title, and falls back to the wire text for unknown codes.
 Deliberately **not** localised: the chart SVG `aria-label` suffix
 (`"{role} history"` — the e2e suite and the connect-group contract
 match on it), the `"No data: "` banner prefix and the
-`" — rebind it on the grow edit page"` link phrasing (same e2e anchors),
+`" — rebind it on the grow edit page"` link phrasing (same e2e anchors;
+both localised later as one `env.dead_binding_hint` string — D146),
 the ECharts debug/tooltip series token `"Events"` (never displayed),
 and appearance-tag `meaning` prose (core documentation text shown as a
 hover title).
@@ -3741,7 +3773,7 @@ once per crate.
 | leaflog-frontend | component `App` | `clippy::must_use_candidate` | The Leptos `#[component]` macro drops a hand-written `#[must_use]`, so the lint fires on the generated function |
 | leaflog-frontend | components `Home`, `LocaleChain`, `AppShell` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` (`Home` predates the register row; `LocaleChain`/`AppShell` arrive with D112) |
 | leaflog-frontend | component `ErrorIf` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` |
-| leaflog-frontend | components `EntityIdChip`, `EmptyState`, `SectionHeader`, `UndoBanner` in `ui.rs` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` (arrive with D120; `UndoBanner` with D126) |
+| leaflog-frontend | components `EmptyState`, `SectionHeader`, `UndoBanner` in `ui.rs` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` (arrive with D120; `UndoBanner` with D126; `EntityIdChip` removed with D146) |
 | leaflog-frontend | components `Field`, `NumberField`, `ArmConfirmButton`, `Chip`, `Fact`, `FactGrid`, `CardTitle` in `ui.rs`; `EnvTile` in `dashboard.rs` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` (arrive with D140, D141) |
 | leaflog-frontend | component `LightCycleEditor` in `light_cycle.rs` | `clippy::too_many_lines` | Declarative view code, not logic; splitting would obscure the form (same pattern as the M2 register row) |
 | leaflog-frontend | components `FeedSection` in `feed.rs`, `ScheduleEditorPage`/`EditorGrid` in `schedules.rs` | `clippy::needless_pass_by_value` | Leptos component props are taken by value by the `#[component]` macro contract |
