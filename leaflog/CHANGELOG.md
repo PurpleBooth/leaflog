@@ -2,6 +2,19 @@
 All notable changes to the Leaflog Home Assistant app. Version headings are exactly `## <version>` — Home Assistant slices release notes on them. Generated file; never edit by hand.
 
 - - -
+## 0.15.3
+
+_Released 2026-11-21._
+
+#### Bug Fixes
+- **(frontend)** short attribution line and Foto uploads through quick add (D144) - (341c22d) - billie.codes
+- close the audit findings (D145) - (27a5a47) - billie.codes
+#### Miscellaneous
+- **(release)** bump version to 0.15.2 - (6ac3768) - github-actions[bot]
+- **(version)** 0.15.3 - (dd97ee4) - billie.codes
+
+- - -
+
 ## 0.15.2
 
 _Released 2026-11-21._

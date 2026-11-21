@@ -2,6 +2,16 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.15.3 - 2026-11-21
+#### Bug Fixes
+- **(frontend)** short attribution line and Foto uploads through quick add (D144) - (341c22d) - billie.codes
+- close the audit findings (D145) - (27a5a47) - billie.codes
+#### Miscellaneous
+- **(release)** bump version to 0.15.2 - (6ac3768) - github-actions[bot]
+- **(version)** 0.15.3 - (dd97ee4) - billie.codes
+
+- - -
+
 ## v0.15.2 - 2026-11-21
 #### Bug Fixes
 - contain the feeding section and restore the prototype dose-list metrics (D143) - (e4f19c3) - billie.codes
