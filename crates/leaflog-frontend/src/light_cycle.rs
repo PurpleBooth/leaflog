@@ -19,7 +19,9 @@ use leaflog_core::light_cycle::{
 use crate::api;
 use crate::i18n::{Locale, t, t_string, use_i18n};
 use crate::labels::phase_label;
-use crate::ui::{Field, PendingUndo, UNDO_WINDOW_MS, UndoBanner, card, live_undo, now_ms};
+use crate::ui::{
+    CardTitle, Field, PendingUndo, UNDO_WINDOW_MS, UndoBanner, card, live_undo, now_ms,
+};
 use leptos_i18n::td_string;
 
 /// The four phase hour fields as raw input text, keyed like
@@ -296,7 +298,7 @@ pub fn LightCycleEditor(
 
     view! {
         <div class={format!("{} my-4", card())}>
-            <h3 class="mt-0">{t!(i18n, light_cycle.heading)}</h3>
+            <CardTitle title=Signal::derive(move || t_string!(i18n, light_cycle.heading).into_owned()) />
             <p class="text-base-content/70 text-sm">
                 {t!(i18n, light_cycle.intro)}
             </p>

@@ -18,6 +18,7 @@ use crate::feed::decimal_style;
 use crate::i18n::{Locale, t_string, use_i18n};
 use crate::route_href;
 use crate::ui;
+use crate::ui::Chip;
 
 /// One library row: the schedule plus the counts the backend
 /// aggregates in one pass.
@@ -274,9 +275,7 @@ pub fn SchedulesPage() -> impl IntoView {
                                         <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                                             <h3 class="m-0">{name}</h3>
                                             {source.map(|source| {
-                                                view! {
-                                                    <span class="badge badge-ghost">{source}</span>
-                                                }
+                                                view! { <Chip>{source}</Chip> }
                                             })}
                                             <span class=badge_class>
                                                 {if used_by > 0 {

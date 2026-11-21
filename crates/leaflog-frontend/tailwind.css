@@ -196,6 +196,13 @@ pre {
   min-width: 0;
 }
 
+/* A card that reports one fact, not a set: the auto-fill columns
+ * would hold the value in a 10rem gutter and wrap it while the rest
+ * of the card sits empty. One full-width cell instead. */
+.facts--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .facts dt {
   font-size: 0.75rem;
   text-transform: uppercase;

@@ -6,6 +6,44 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-21 — history-page bands and the data primitives (D141)
+
+### D141: the history page's stacked bands share one width, and the chip/fact/card-title recipes become components
+
+The history page stacked three different column grids: a
+full-width stat band, a two-column accuracy list and a three-column
+aggregate row. The bands' left and right edges therefore did not
+line up, and because the accuracy list and the aggregate row were
+both flush to the same baseline, two rounded card corners met with
+zero gap — the dark funnel Billie screenshotted.
+
+The accuracy list is now one column (a grow's accuracy card carries
+one fact until a flip or a harvest is logged, so a half-width card
+left the row empty) and the aggregate row sits `mt-4` below it, which
+restores the 16px rhythm the other bands already had. One card that
+reports one fact also needs `FactGrid single` — `.facts` is
+`repeat(auto-fill, minmax(10rem, 1fr))`, which is right for a set of
+measurements and wrong for a single one: the caption and value were
+crammed into a 10rem gutter and wrapped to three lines while the
+rest of a 1112px card sat empty. `.facts--single` is
+`minmax(0, 1fr)`.
+
+The repeated data markup is now four components in `ui.rs`: `Chip`
+(`badge badge-ghost`, plus an optional extra class such as
+`badge-sm` and an optional `id`), `Fact` (caption over value, with
+an optional `testid` so the e2e and component tests keep their
+hooks), `FactGrid` (`dl.facts`, or `facts facts--single` for the
+one-fact case) and `CardTitle` (the `h3.mt-0` opt-out D138
+requires). They replace 15 badge spans, 14 `dt`/`dd` pairs and 8
+`mt-0` headings across `history.rs`, `grows.rs`, `feed.rs`,
+`schedules.rs`, `bindings.rs`, `onboarding.rs` and
+`light_cycle.rs`.
+
+Left raw on purpose: the `badge-primary badge-outline` variant
+(a ternary, not a recipe), the env-strip's `badge` on an `<A>`
+(a link, not a chip span), and the `overflow-x-auto` table wrapper
+(three sites, but each table differs). 75 component tests total.
+
 ## 2026-11-21 — component tests and the shared field/button components (D139–D140)
 
 ### D139: the frontend gets browser-run component tests via wasm-bindgen-test, downloaded with pinned SHA-256 gates
@@ -3541,7 +3579,7 @@ once per crate.
 | leaflog-frontend | components `Home`, `LocaleChain`, `AppShell` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` (`Home` predates the register row; `LocaleChain`/`AppShell` arrive with D112) |
 | leaflog-frontend | component `ErrorIf` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` |
 | leaflog-frontend | components `EntityIdChip`, `EmptyState`, `SectionHeader`, `UndoBanner` in `ui.rs` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` (arrive with D120; `UndoBanner` with D126) |
-| leaflog-frontend | components `Field`, `NumberField`, `ArmConfirmButton` in `ui.rs`; `EnvTile` in `dashboard.rs` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` (arrive with D140) |
+| leaflog-frontend | components `Field`, `NumberField`, `ArmConfirmButton`, `Chip`, `Fact`, `FactGrid`, `CardTitle` in `ui.rs`; `EnvTile` in `dashboard.rs` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` (arrive with D140, D141) |
 | leaflog-frontend | component `LightCycleEditor` in `light_cycle.rs` | `clippy::too_many_lines` | Declarative view code, not logic; splitting would obscure the form (same pattern as the M2 register row) |
 | leaflog-frontend | components `FeedSection` in `feed.rs`, `ScheduleEditorPage`/`EditorGrid` in `schedules.rs` | `clippy::needless_pass_by_value` | Leptos component props are taken by value by the `#[component]` macro contract |
 | leaflog-frontend | components `FeedSection` in `feed.rs`, `SchedulesPage`/`ScheduleEditorPage`/`EditorGrid` in `schedules.rs` | `clippy::too_many_lines` | Declarative view code, not logic; splitting would obscure the form (same pattern as `LightCycleEditor`) |

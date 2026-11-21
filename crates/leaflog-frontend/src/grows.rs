@@ -32,7 +32,10 @@ use crate::labels;
 use crate::route_href;
 use crate::schedules::ScheduleSummary;
 use crate::ui;
-use crate::ui::{EmptyState, PendingUndo, UNDO_WINDOW_MS, UndoBanner, live_undo, now_ms};
+use crate::ui::{
+    CardTitle, Chip, EmptyState, Fact, FactGrid, PendingUndo, UNDO_WINDOW_MS, UndoBanner,
+    live_undo, now_ms,
+};
 
 /// The grows overview page.
 #[component]
@@ -121,7 +124,7 @@ pub fn GrowsPage() -> impl IntoView {
 
             <Show when=move || form_open.get()>
                 <form class={format!("{} my-4", ui::card())} on:submit=save>
-                    <h3 class="mt-0">{t!(i18n, grows.new_grow)}</h3>
+                    <CardTitle title=Signal::derive(move || t_string!(i18n, grows.new_grow).into_owned()) />
                     <GrowForm draft />
                     <div class="flex flex-wrap gap-2 mt-4">
                         <button class="btn btn-primary btn-sm" type="submit">{t!(i18n, grows.save)}</button>
@@ -158,10 +161,7 @@ pub fn GrowsPage() -> impl IntoView {
                                         <A href=route_href(&format!("/grows/{}", grow.id))>
                                             <strong>{grow.name.clone()}</strong>
                                         </A>
-                                        <span class="badge badge-ghost">{labels::status_label(
-                                            locale,
-                                            grow.status,
-                                        )}</span>
+                                        <Chip>{labels::status_label(locale, grow.status)}</Chip>
                                     </div>
                                     <div class="mt-1 text-sm text-base-content/70 flex flex-wrap gap-x-3">
                                         {(!grow.strain_label.is_empty()).then(|| view! {
@@ -218,13 +218,13 @@ pub fn timeline_entry(
         <li class=ui::card()>
             <div class="flex flex-wrap items-baseline gap-2">
                 <strong>{labels::action_label(locale, entry.action_type)}</strong>
-                <span class="badge badge-ghost">{td_string!(
+                <Chip>{td_string!(
                     locale,
                     grow.day,
                     day = entry.grow_day.to_string(),
-                )}</span>
+                )}</Chip>
                 {entry.phase.map(|phase| view! {
-                    <span class="badge badge-ghost">{labels::phase_label(locale, phase)}</span>
+                    <Chip>{labels::phase_label(locale, phase)}</Chip>
                 })}
                 <button
                     class="btn btn-ghost btn-sm min-h-11 min-w-11 ml-auto self-center"
@@ -237,26 +237,38 @@ pub fn timeline_entry(
             </div>
             {has_facts(&facts).then(move || {
                 view! {
-                    <dl class="facts">
+                    <FactGrid>
                         {facts.volume_ml.map(|volume| view! {
-                            <div><dt>{td_string!(locale, grow.volume)}</dt><dd>{leaflog_core::units::small_volume_both(volume, crate::decimal_style(locale))}</dd></div>
+                            <Fact label=Signal::derive(move || td_string!(locale, grow.volume).into_owned())>
+                                {leaflog_core::units::small_volume_both(volume, crate::decimal_style(locale))}
+                            </Fact>
                         })}
                         {facts.input_ph.map(|ph| view! {
-                            <div><dt>{td_string!(locale, grow.ph_in)}</dt><dd>{crate::chart::format_ph(ph, crate::decimal_style(locale))}</dd></div>
+                            <Fact label=Signal::derive(move || td_string!(locale, grow.ph_in).into_owned())>
+                                {crate::chart::format_ph(ph, crate::decimal_style(locale))}
+                            </Fact>
                         })}
                         {facts.runoff_ph.map(|ph| view! {
-                            <div><dt>{td_string!(locale, grow.ph_out)}</dt><dd>{crate::chart::format_ph(ph, crate::decimal_style(locale))}</dd></div>
+                            <Fact label=Signal::derive(move || td_string!(locale, grow.ph_out).into_owned())>
+                                {crate::chart::format_ph(ph, crate::decimal_style(locale))}
+                            </Fact>
                         })}
                         {facts.input_ec_us.map(|ec| view! {
-                            <div><dt>{td_string!(locale, grow.ec_in)}</dt><dd>{format!("{ec} µS/cm")}</dd></div>
+                            <Fact label=Signal::derive(move || td_string!(locale, grow.ec_in).into_owned())>
+                                {format!("{ec} µS/cm")}
+                            </Fact>
                         })}
                         {facts.runoff_ec_us.map(|ec| view! {
-                            <div><dt>{td_string!(locale, grow.ec_out)}</dt><dd>{format!("{ec} µS/cm")}</dd></div>
+                            <Fact label=Signal::derive(move || td_string!(locale, grow.ec_out).into_owned())>
+                                {format!("{ec} µS/cm")}
+                            </Fact>
                         })}
                         {facts.plant_height_cm.map(|height| view! {
-                            <div><dt>{td_string!(locale, grow.height)}</dt><dd>{leaflog_core::units::length_both(height, crate::decimal_style(locale))}</dd></div>
+                            <Fact label=Signal::derive(move || td_string!(locale, grow.height).into_owned())>
+                                {leaflog_core::units::length_both(height, crate::decimal_style(locale))}
+                            </Fact>
                         })}
-                    </dl>
+                    </FactGrid>
                 }
             })}
             {notes.map(|notes| view! {
@@ -716,28 +728,24 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                 <div class="flex flex-wrap items-center gap-x-2 gap-y-2">
                                     <div class="flex flex-wrap items-center gap-2">
                                         <h2>{current.name.clone()}</h2>
-                                        <span class="badge badge-ghost">
+                                        <Chip>
                                             {substrate_glyph(&current.substrate).map(|glyph| view! {
                                                 <span aria-hidden="true">{glyph}</span>
                                             })}
                                             {labels::substrate_label(i18n.get_locale(), &current.substrate)}
-                                        </span>
+                                        </Chip>
                                         {(!strain_label.is_empty()).then(|| {
                                             let label = strain_label.clone();
-                                            view! {
-                                                <span class="badge badge-ghost">
-                                                    {label}
-                                                </span>
-                                            }
+                                            view! { <Chip>{label}</Chip> }
                                         })}
                                         {move || {
                                             forecast.get().and_then(|data| {
                                                 phase_from_label(&data.phase).map(|phase| view! {
-                                                    <span id="phase-day" class="badge badge-ghost">
+                                                    <Chip id="phase-day">
                                                         {labels::phase_label(i18n.get_locale(), phase)}
                                                         {" · "}
                                                         {td_string!(i18n.get_locale(), grow.day, day = data.phase_day.to_string())}
-                                                    </span>
+                                                    </Chip>
                                                 })
                                             })
                                         }}
@@ -747,11 +755,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                                     i18n.get_locale(),
                                                     current.status,
                                                 );
-                                                view! {
-                                                    <span class="badge badge-ghost">
-                                                        {status}
-                                                    </span>
-                                                }
+                                                view! { <Chip>{status}</Chip> }
                                             })}
                                     </div>
                                     // The logging picker lives in the header
@@ -875,7 +879,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                                     day = day.to_string(),
                                                 )}</h4>
                                                 {heading_phase.map(|phase| view! {
-                                                    <span class="badge badge-ghost badge-sm">{labels::phase_label(locale, phase)}</span>
+                                                    <Chip class="badge-sm">{labels::phase_label(locale, phase)}</Chip>
                                                 })}
                                             </div>
                                             <ul class="list-none m-0 p-0 grid gap-2 mt-2">

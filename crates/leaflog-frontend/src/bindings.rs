@@ -9,9 +9,10 @@ use std::collections::BTreeMap;
 
 use crate::ErrorIf;
 use crate::api;
-use crate::i18n::{t, use_i18n};
+use crate::i18n::{t, t_string, use_i18n};
 use crate::labels::binding_role_label;
 use crate::ui;
+use crate::ui::CardTitle;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
@@ -124,7 +125,7 @@ pub fn EntityBindings(grow_id: String, bindings_epoch: RwSignal<u64>) -> impl In
     view! {
         <div class={format!("{} my-4", ui::card())}>
             <ErrorIf error />
-            <h3 class="mt-0">{t!(i18n, binding.heading)}</h3>
+            <CardTitle title=Signal::derive(move || t_string!(i18n, binding.heading).into_owned()) />
             <p class="text-base-content/70 text-sm">
                 {t!(i18n, binding.intro)}
             </p>

@@ -24,6 +24,7 @@ use crate::i18n::{t, t_string, use_i18n};
 use crate::labels::binding_role_label;
 use crate::non_empty;
 use crate::ui;
+use crate::ui::CardTitle;
 
 /// The `GET /api/onboarding` state.
 // The endpoint reports a snapshot of booleans by design; the flags are
@@ -250,7 +251,7 @@ pub fn OnboardingWizard() -> impl IntoView {
 
                 <Show when=move || step.get() == 1>
                     <div>
-                        <h3 class="mt-0">{t!(i18n, onboarding.sensors_heading)}</h3>
+                        <CardTitle title=Signal::derive(move || t_string!(i18n, onboarding.sensors_heading).into_owned()) />
                         <p class="text-base-content/70">
                             {t!(i18n, onboarding.sensors_intro)}
                         </p>
@@ -315,7 +316,7 @@ pub fn OnboardingWizard() -> impl IntoView {
 
                 <Show when=move || step.get() == 2>
                     <form on:submit=finish>
-                        <h3 class="mt-0">{t!(i18n, onboarding.plants_heading)}</h3>
+                        <CardTitle title=Signal::derive(move || t_string!(i18n, onboarding.plants_heading).into_owned()) />
                         <p class="text-base-content/70">
                             {t!(i18n, onboarding.plants_intro)}
                         </p>
@@ -385,7 +386,7 @@ pub fn OnboardingWizard() -> impl IntoView {
         // grown — one tap restarts the wizard (spec §4.12).
         <Show when=restartable>
             <section class={format!("{} my-4", ui::card())}>
-                <h3 class="mt-0">{t!(i18n, onboarding.restart_heading)}</h3>
+                <CardTitle title=Signal::derive(move || t_string!(i18n, onboarding.restart_heading).into_owned()) />
                 <p class="text-base-content/70">{t!(i18n, onboarding.restart_text)}</p>
                 <button class="btn btn-primary btn-sm" on:click=move |_| set_dismissed(false)>
                     {t!(i18n, onboarding.restart_button)}

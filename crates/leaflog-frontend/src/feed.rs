@@ -17,6 +17,7 @@ use crate::ErrorIf;
 use crate::api;
 use crate::i18n::{Locale, t_string, use_i18n};
 use crate::labels;
+use crate::ui::Chip;
 
 /// The forecast slice the section reads for the today marker.
 #[derive(Debug, Deserialize)]
@@ -254,11 +255,12 @@ pub fn FeedSection(grow_id: String) -> impl IntoView {
                         <h3 class="m-0">{t_string!(i18n, grow.feed_schedule)}</h3>
                         {this_week.map(|week| {
                             let doses = week.doses.clone();
+                            let chip = week_chip(locale, &week);
                             view! {
                                 <div class="card bg-base-100 shadow-sm px-5 py-4">
                                     <div class="flex flex-wrap items-baseline gap-2">
                                         <h4 class="m-0">{t_string!(i18n, schedules.this_week)}</h4>
-                                        <span class="badge badge-ghost">{week_chip(locale, &week)}</span>
+                                        <Chip>{chip}</Chip>
                                     </div>
                                     <ul class="list-none m-0 mt-2 p-0 grid gap-1 sm:grid-cols-[repeat(auto-fill,minmax(13rem,1fr))]">
                                         {doses.iter().map(|dose| {
@@ -287,10 +289,10 @@ pub fn FeedSection(grow_id: String) -> impl IntoView {
                         <div class="card bg-base-100 shadow-sm px-5 py-4">
                             <div class="flex flex-wrap items-baseline gap-2">
                                 <h4 class="m-0">{t_string!(i18n, schedules.fitted_heading)}</h4>
-                                <span class="badge badge-ghost">
+                                <Chip>
                                     {td_string!(locale, schedules.fitted_days,
                                         count = fitted.days.len()).into_owned()}
-                                </span>
+                                </Chip>
                             </div>
                             <div class="mt-2 overflow-x-auto">
                                 <table class="table table-sm"

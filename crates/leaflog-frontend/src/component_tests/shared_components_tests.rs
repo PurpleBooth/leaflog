@@ -10,7 +10,7 @@ use std::sync::Arc as StdArc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_test::*;
 
-use crate::ui::{ArmConfirmButton, Field, NumberField};
+use crate::ui::{ArmConfirmButton, CardTitle, Chip, Fact, FactGrid, Field, NumberField};
 
 #[wasm_bindgen_test(async)]
 async fn field_wraps_the_control_in_a_fieldset_label() {
@@ -340,4 +340,110 @@ async fn arm_confirm_button_stays_quiet_while_unarmed() {
 #[derive(Clone, Debug, Default)]
 struct Draft {
     width_cm: Option<f64>,
+}
+
+#[wasm_bindgen_test(async)]
+async fn chip_renders_the_ghost_recipe_and_keeps_extra_classes() {
+    fresh_environment();
+    let mount = Mounted::new(move || {
+        with_i18n(move || {
+            view! {
+                <div>
+                    <Chip>"Soil"</Chip>
+                    <Chip class="badge-sm">"Flower"</Chip>
+                    <Chip id="phase-day">"Flower · day 3"</Chip>
+                </div>
+            }
+        })
+    });
+    let chips = mount.q_all("span.badge");
+    assert_eq!(chips.len(), 3, "three chips render");
+    assert_eq!(
+        chips[0].class_name(),
+        "badge badge-ghost",
+        "the plain chip is exactly the ghost recipe"
+    );
+    assert_eq!(
+        chips[1].class_name(),
+        "badge badge-ghost badge-sm",
+        "an extra class appends to the recipe"
+    );
+    assert_eq!(chips[2].id(), "phase-day", "the id lands on the chip");
+}
+
+#[wasm_bindgen_test(async)]
+async fn fact_renders_caption_over_value_inside_the_grid() {
+    fresh_environment();
+    let mount = Mounted::new(move || {
+        with_i18n(move || {
+            view! {
+                <FactGrid>
+                    <Fact label=Signal::derive(|| "Volume".to_owned())>"1.5 L"</Fact>
+                    <Fact label=Signal::derive(|| "pH in".to_owned())>"6.2"</Fact>
+                </FactGrid>
+            }
+        })
+    });
+    let grid = mount.q("dl").expect("definition grid");
+    assert_eq!(
+        grid.class_name(),
+        "facts",
+        "the multi-fact grid is the plain recipe"
+    );
+    let captions = mount.q_all("dt");
+    assert_eq!(captions.len(), 2, "one caption per fact");
+    let values = mount.q_all("dd");
+    assert_eq!(values.len(), 2, "one value per fact");
+    assert!(
+        values[0]
+            .text_content()
+            .unwrap_or_default()
+            .contains("1.5 L"),
+        "the value renders under its caption"
+    );
+}
+
+#[wasm_bindgen_test(async)]
+async fn fact_grid_single_spans_the_row_for_one_fact_cards() {
+    fresh_environment();
+    let mount = Mounted::new(move || {
+        with_i18n(move || {
+            view! {
+                <FactGrid single=true>
+                    <Fact label=Signal::derive(|| "Plan accuracy".to_owned())>
+                        "no flip logged yet"
+                    </Fact>
+                </FactGrid>
+            }
+        })
+    });
+    let grid = mount.q("dl").expect("definition grid");
+    assert_eq!(
+        grid.class_name(),
+        "facts facts--single",
+        "a one-fact card opts out of the auto-fill columns"
+    );
+}
+
+#[wasm_bindgen_test(async)]
+async fn card_title_opts_out_of_the_heading_rhythm() {
+    fresh_environment();
+    let mount = Mounted::new(move || {
+        with_i18n(move || {
+            view! { <CardTitle title=Signal::derive(|| "Yield by label".to_owned()) /> }
+        })
+    });
+    let heading = mount.q("h3").expect("card title renders");
+    assert_eq!(
+        heading.class_name(),
+        "mt-0",
+        "the card's padding holds the title off the block above"
+    );
+    assert!(
+        heading
+            .text_content()
+            .unwrap_or_default()
+            .contains("Yield by label"),
+        "the title text renders"
+    );
 }

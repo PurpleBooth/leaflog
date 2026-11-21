@@ -96,6 +96,71 @@ pub fn EntityIdChip(entity_id: String) -> impl IntoView {
     }
 }
 
+/// A tag chip: the `badge badge-ghost` recipe (DESIGN.md chips) around
+/// one short label. Callers that need the small data-row variant add
+/// their own `badge-sm` through `class`.
+#[component]
+#[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
+pub fn Chip(
+    children: Children,
+    #[prop(optional)] class: &'static str,
+    #[prop(optional)] id: Option<&'static str>,
+) -> impl IntoView {
+    let class = if class.is_empty() {
+        "badge badge-ghost".to_owned()
+    } else {
+        format!("badge badge-ghost {class}")
+    };
+    view! { <span class=class id=id>{children()}</span> }
+}
+
+/// One labelled figure in a [`FactGrid`]: the uppercase micro-caption
+/// over its value, the app's signature data register (DESIGN.md).
+#[component]
+#[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
+pub fn Fact(
+    label: Signal<String>,
+    children: Children,
+    #[prop(optional)] class: &'static str,
+    #[prop(optional)] testid: Option<&'static str>,
+) -> impl IntoView {
+    let class = if class.is_empty() {
+        String::new()
+    } else {
+        format!(" {class}")
+    };
+    view! {
+        <div class=class data-testid=testid>
+            <dt>{move || label.get()}</dt>
+            <dd>{children()}</dd>
+        </div>
+    }
+}
+
+/// The definition grid that holds [`Fact`]s. `single` is for cards
+/// that report one fact: the auto-fill columns would otherwise hold
+/// the value in a 10rem gutter and wrap it while the rest of the card
+/// sits empty.
+#[component]
+#[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
+pub fn FactGrid(children: Children, #[prop(optional)] single: bool) -> impl IntoView {
+    let class = if single {
+        "facts facts--single"
+    } else {
+        "facts"
+    };
+    view! { <dl class=class>{children()}</dl> }
+}
+
+/// A card's own title: the `h3` that opens a card opts out of the
+/// document heading rhythm, because the card's padding already holds
+/// it off the block above.
+#[component]
+#[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
+pub fn CardTitle(title: Signal<String>) -> impl IntoView {
+    view! { <h3 class="mt-0">{move || title.get()}</h3> }
+}
+
 /// The quiet empty state: one centered, muted line where a list or
 /// table has nothing to show. The message stays with the caller as
 /// children so it keeps its reactive translation.

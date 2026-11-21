@@ -14,7 +14,7 @@ use crate::i18n::{t, t_string, use_i18n};
 use crate::labels::action_label_for_kind;
 use crate::route_href;
 use crate::ui;
-use crate::ui::EmptyState;
+use crate::ui::{CardTitle, Chip, EmptyState, Fact, FactGrid};
 use leaflog_core::grows::{Plant, PlantInput};
 
 /// One logged-boundary comparison from the backend.
@@ -210,33 +210,44 @@ pub fn HistoryPage() -> impl IntoView {
                 view! {
                     <div class={format!("{} my-4", ui::card())} data-testid="history-summary">
                         <dl class="statband">
-                            <div data-testid="history-stat-runs">
-                                <dt>{t!(i18n, history.stat_runs)}</dt>
-                                <dd>{stats.runs}</dd>
-                            </div>
-                            <div data-testid="history-stat-deviation">
-                                <dt>{t!(i18n, history.stat_deviation)}</dt>
-                                <dd>{deviation}</dd>
-                            </div>
-                            <div data-testid="history-stat-yield">
-                                <dt>{t!(i18n, history.stat_yield_dry)}</dt>
-                                <dd>
-                                    {if stats.weighed { format!("{dry} g") } else { "—".to_owned() }}
-                                    <small>{td_string!(
-                                        locale,
-                                        history.stat_yield_sub,
-                                        wet = wet,
-                                        trim = trim,
-                                    )}</small>
-                                </dd>
-                            </div>
+                            <Fact
+                                label=Signal::derive(move || t_string!(i18n, history.stat_runs).into_owned())
+                                testid="history-stat-runs"
+                            >
+                                {stats.runs}
+                            </Fact>
+                            <Fact
+                                label=Signal::derive(move || {
+                                    t_string!(i18n, history.stat_deviation).into_owned()
+                                })
+                                testid="history-stat-deviation"
+                            >
+                                {deviation}
+                            </Fact>
+                            <Fact
+                                label=Signal::derive(move || {
+                                    t_string!(i18n, history.stat_yield_dry).into_owned()
+                                })
+                                testid="history-stat-yield"
+                            >
+                                {if stats.weighed { format!("{dry} g") } else { "—".to_owned() }}
+                                <small>{td_string!(
+                                    locale,
+                                    history.stat_yield_sub,
+                                    wet = wet,
+                                    trim = trim,
+                                )}</small>
+                            </Fact>
                         </dl>
                     </div>
                 }
             }}
 
             <h3>{t!(i18n, history.predicted_heading)}</h3>
-            <ul class="grid gap-4 lg:grid-cols-2">
+            // One column: the accuracy cards are wide rows of labelled
+            // figures, and a half-width card under the full-width stat
+            // band left the band edges ragged.
+            <ul class="grid grid-cols-1 gap-4">
                 {move || {
                     report
                         .get()
@@ -252,17 +263,17 @@ pub fn HistoryPage() -> impl IntoView {
                                                 {row.name.clone()}
                                             </A>
                                         </strong>
-                                        {row.strain.clone().map(|strain| {
-                                            view! { <span class="badge badge-ghost">{strain}</span> }
-                                        })}
+                                        {row.strain.clone().map(|strain| view! { <Chip>{strain}</Chip> })}
                                     </div>
-                                    <dl class="facts">
+                                    // One fact per card until a flip or
+                                    // harvest lands: the auto-fill grid
+                                    // would cram it into a 10rem column.
+                                    <FactGrid single=row.boundaries.is_empty()>
                                         {row.boundaries.is_empty().then(|| {
                                             view! {
-                                                <div>
-                                                    <dt>{t!(i18n, history.plan_accuracy)}</dt>
-                                                    <dd>{t!(i18n, history.no_boundaries)}</dd>
-                                                </div>
+                                                <Fact label=Signal::derive(move || {
+                                                    t_string!(i18n, history.plan_accuracy).into_owned()
+                                                })>{t!(i18n, history.no_boundaries)}</Fact>
                                             }
                                         })}
                                         {row
@@ -270,22 +281,24 @@ pub fn HistoryPage() -> impl IntoView {
                                             .into_iter()
                                             .map(|boundary| {
                                                 view! {
-                                                    <div>
-                                                        <dt>{action_label_for_kind(i18n.get_locale(), &boundary.boundary)}</dt>
-                                                        <dd>
-                                                            {t_string!(
-                                                                i18n,
-                                                                history.day_line,
-                                                                actual = boundary.actual_day.to_string(),
-                                                                planned = boundary.predicted_day.to_string(),
-                                                                delta = format!("{:+}", boundary.delta_days),
-                                                            )}
-                                                        </dd>
-                                                    </div>
+                                                    <Fact label=Signal::derive(move || {
+                                                        action_label_for_kind(
+                                                            i18n.get_locale(),
+                                                            &boundary.boundary,
+                                                        )
+                                                    })>
+                                                        {t_string!(
+                                                            i18n,
+                                                            history.day_line,
+                                                            actual = boundary.actual_day.to_string(),
+                                                            planned = boundary.predicted_day.to_string(),
+                                                            delta = format!("{:+}", boundary.delta_days),
+                                                        )}
+                                                    </Fact>
                                                 }
                                             })
                                             .collect::<Vec<_>>()}
-                                    </dl>
+                                    </FactGrid>
                                     <div class="flex flex-wrap gap-2 mt-4">
                                         <button class="btn btn-sm" on:click=move |_| next_run(&grow_id)>
                                             {t!(i18n, history.start_next_run)}
@@ -301,7 +314,10 @@ pub fn HistoryPage() -> impl IntoView {
                 <EmptyState>{t!(i18n, history.empty)}</EmptyState>
             </Show>
 
-            <div class="grid gap-4 lg:grid-cols-3">
+            // mt-4 keeps the 1rem band rhythm; flush cards put two
+            // rounded corners against each other, which reads as a
+            // dark notch between the bands.
+            <div class="grid gap-4 lg:grid-cols-3 mt-4">
                 <Aggregate
                     title=Signal::derive(move || t_string!(i18n, history.yield_by_label).into_owned())
                     rows=Signal::derive(move || report.get().yield_by_label)
@@ -329,7 +345,7 @@ fn Aggregate(title: Signal<String>, rows: Signal<Vec<YieldAggregate>>) -> impl I
     let i18n = use_i18n();
     view! {
         <div class=ui::card()>
-            <h3 class="mt-0">{move || title.get()}</h3>
+            <CardTitle title=title />
             <Show
                 when=move || !rows.get().is_empty()
                 fallback=move || view! {
@@ -464,17 +480,23 @@ pub fn PlantViewPage() -> impl IntoView {
                                     {t!(i18n, plant.edit)}
                                 </button>
                             </div>
-                            <dl class="facts">
+                            <FactGrid>
                                 {data.plant.wet_g.map(|grams| view! {
-                                    <div><dt>{t!(i18n, plant.wet)}</dt><dd>{format!("{grams:.0} g")}</dd></div>
+                                    <Fact label=Signal::derive(move || {
+                                        t_string!(i18n, plant.wet).into_owned()
+                                    })>{format!("{grams:.0} g")}</Fact>
                                 })}
                                 {data.plant.dry_g.map(|grams| view! {
-                                    <div><dt>{t!(i18n, plant.dry)}</dt><dd>{format!("{grams:.0} g")}</dd></div>
+                                    <Fact label=Signal::derive(move || {
+                                        t_string!(i18n, plant.dry).into_owned()
+                                    })>{format!("{grams:.0} g")}</Fact>
                                 })}
                                 {data.plant.trimmed_g.map(|grams| view! {
-                                    <div><dt>{t!(i18n, plant.trimmed)}</dt><dd>{format!("{grams:.0} g")}</dd></div>
+                                    <Fact label=Signal::derive(move || {
+                                        t_string!(i18n, plant.trimmed).into_owned()
+                                    })>{format!("{grams:.0} g")}</Fact>
                                 })}
-                            </dl>
+                            </FactGrid>
                             <h3>{t!(i18n, plant.log_heading)}</h3>
                             <Show
                                 when=move || has_actions
@@ -508,7 +530,7 @@ pub fn PlantViewPage() -> impl IntoView {
 
             <Show when=move || edit_open.get()>
                 <form class={format!("{} my-4", ui::card())} on:submit=save>
-                    <h3 class="mt-0">{t!(i18n, plant.edit)}</h3>
+                    <CardTitle title=Signal::derive(move || t_string!(i18n, plant.edit).into_owned()) />
                     <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
                         <ui::Field label=Signal::derive(move || t_string!(i18n, form.name).into_owned())>
                             <input class="input" type="text" required
