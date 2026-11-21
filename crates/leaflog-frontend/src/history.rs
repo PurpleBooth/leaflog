@@ -510,13 +510,12 @@ pub fn PlantViewPage() -> impl IntoView {
                 <form class={format!("{} my-4", ui::card())} on:submit=save>
                     <h3 class="mt-0">{t!(i18n, plant.edit)}</h3>
                     <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
-                        <label class="fieldset">
-                            <span class="fieldset-label">{t!(i18n, form.name)}</span>
+                        <ui::Field label=t_string!(i18n, form.name).into_owned()>
                             <input class="input" type="text" required
                                 prop:value=move || draft.get().name
                                 on:input=move |ev| draft.update(|d| d.name = event_target_value(&ev))
                             />
-                        </label>
+                        </ui::Field>
                         {weight_field(
                             td_string!(locale, form.wet_weight_g).into_owned(),
                             draft,

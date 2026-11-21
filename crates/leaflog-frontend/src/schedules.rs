@@ -629,8 +629,7 @@ pub fn ScheduleEditorPage(
             } else {
                 view! {
                     <div class="grid gap-3 sm:grid-cols-[repeat(auto-fill,minmax(16rem,1fr))]">
-                        <label class="fieldset">
-                            <span class="fieldset-label">{t_string!(i18n, schedules.name_label)}</span>
+                        <ui::Field label=t_string!(i18n, schedules.name_label).into_owned()>
                             <input
                                 class="input"
                                 type="text"
@@ -638,11 +637,8 @@ pub fn ScheduleEditorPage(
                                 prop:value=move || name.get()
                                 on:input=move |ev| name.set(event_target_value(&ev))
                             />
-                        </label>
-                        <label class="fieldset">
-                            <span class="fieldset-label">
-                                {t_string!(i18n, schedules.source_label)}
-                            </span>
+                        </ui::Field>
+                        <ui::Field label=t_string!(i18n, schedules.source_label).into_owned()>
                             <input
                                 class="input"
                                 type="text"
@@ -650,11 +646,8 @@ pub fn ScheduleEditorPage(
                                 prop:value=move || source.get()
                                 on:input=move |ev| source.set(event_target_value(&ev))
                             />
-                        </label>
-                        <label class="fieldset">
-                            <span class="fieldset-label">
-                                {t_string!(i18n, schedules.weeks_label)}
-                            </span>
+                        </ui::Field>
+                        <ui::Field label=t_string!(i18n, schedules.weeks_label).into_owned()>
                             <div class="flex items-center gap-2">
                                 <button class="btn btn-outline btn-sm" on:click=remove_week>
                                     "−"
@@ -664,7 +657,7 @@ pub fn ScheduleEditorPage(
                                     +
                                 </button>
                             </div>
-                        </label>
+                        </ui::Field>
                     </div>
                     <p class="text-base-content/60 text-sm mt-1 mb-3">
                         {t_string!(i18n, schedules.range_hint)}

@@ -109,20 +109,18 @@ pub fn BandEditor() -> impl IntoView {
 
     view! {
         <div class="flex flex-wrap items-end gap-2 my-1">
-            <label class="fieldset">
-                <span class="fieldset-label">{t!(i18n, env.band_min)}</span>
+            <ui::Field label=t_string!(i18n, env.band_min).into_owned()>
                 <input class="input input-sm w-24" type="number" min="0" max="100"
                     prop:value=move || min.get()
                     on:input=move |ev| min.set(event_target_value(&ev))
                 />
-            </label>
-            <label class="fieldset">
-                <span class="fieldset-label">{t!(i18n, env.band_max)}</span>
+            </ui::Field>
+            <ui::Field label=t_string!(i18n, env.band_max).into_owned()>
                 <input class="input input-sm w-24" type="number" min="0" max="100"
                     prop:value=move || max.get()
                     on:input=move |ev| max.set(event_target_value(&ev))
                 />
-            </label>
+            </ui::Field>
             <button class="btn btn-sm self-end" on:click=move |_| save(false)>
                 {t!(i18n, env.apply_band)}
             </button>

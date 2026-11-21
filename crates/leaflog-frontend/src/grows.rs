@@ -813,8 +813,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
 
             <h3>{t!(i18n, grow.forecast)}</h3>
             <form id="phase-picker" class="flex flex-wrap gap-2 items-end my-2" on:submit=save_pick>
-                <label class="fieldset">
-                    <span class="fieldset-label">{t!(i18n, grow.set_phase)}</span>
+                <ui::Field label=t_string!(i18n, grow.set_phase).into_owned()>
                     <select class="select" required
                         prop:value=move || pick_phase
                             .get()
@@ -833,14 +832,13 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                             })
                             .collect::<Vec<_>>()}
                     </select>
-                </label>
-                <label class="fieldset">
-                    <span class="fieldset-label">{t!(i18n, grow.when)}</span>
+                </ui::Field>
+                <ui::Field label=t_string!(i18n, grow.when).into_owned()>
                     <input class="input" type="date"
                         prop:value=move || pick_date.get()
                         on:input=move |ev| pick_date.set(event_target_value(&ev))
                     />
-                </label>
+                </ui::Field>
                 <button class="btn btn-sm btn-primary self-end" type="submit"
                     disabled=move || pick_phase.get().is_none()
                 >
@@ -975,24 +973,21 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
     });
     view! {
         <div class="grid gap-2 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
-            <label class="fieldset">
-                <span class="fieldset-label">{t!(i18n, form.name)}</span>
+            <ui::Field label=t_string!(i18n, form.name).into_owned()>
                 <input class="input" type="text" required placeholder={t_string!(i18n, form.name_placeholder)}
                     prop:value=move || draft.get().name
                     on:input=move |ev| draft.update(|d| d.name = event_target_value(&ev))
                 />
-            </label>
-            <label class="fieldset">
-                <span class="fieldset-label">{t!(i18n, form.strain_label)}</span>
+            </ui::Field>
+            <ui::Field label=t_string!(i18n, form.strain_label).into_owned()>
                 <input class="input" type="text" placeholder="Northern Lights #5"
                     prop:value=move || draft.get().strain_label
                     on:input=move |ev| {
                         draft.update(|d| d.strain_label = event_target_value(&ev));
                     }
                 />
-            </label>
-            <label class="fieldset">
-                <span class="fieldset-label">{t!(i18n, form.photoperiod)}</span>
+            </ui::Field>
+            <ui::Field label=t_string!(i18n, form.photoperiod).into_owned()>
                 <select class="select"
                     prop:value=move || draft.get().photoperiod.label().to_owned()
                     on:change=move |ev| {
@@ -1005,9 +1000,8 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
                 >
                     {photoperiod_options(i18n.get_locale())}
                 </select>
-            </label>
-            <label class="fieldset">
-                <span class="fieldset-label">{t!(i18n, form.substrate)}</span>
+            </ui::Field>
+            <ui::Field label=t_string!(i18n, form.substrate).into_owned()>
                 <select class="select"
                     prop:value=move || draft.get().substrate
                     on:change=move |ev| draft.update(|d| d.substrate = event_target_value(&ev))
@@ -1022,9 +1016,8 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
                         })
                         .collect::<Vec<_>>()}
                 </select>
-            </label>
-            <label class="fieldset">
-                <span class="fieldset-label">{t_string!(i18n, schedules.assign_label)}</span>
+            </ui::Field>
+            <ui::Field label=t_string!(i18n, schedules.assign_label).into_owned()>
                 <select class="select"
                     prop:value=move || draft.get().feed_schedule_id.unwrap_or_default()
                     on:change=move |ev| {
@@ -1046,33 +1039,25 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
                             .collect::<Vec<_>>()
                     }}
                 </select>
-            </label>
-            <label class="fieldset">
-                <span class="fieldset-label">{t!(i18n, form.started_seed_clone)}</span>
+            </ui::Field>
+            <ui::Field label=t_string!(i18n, form.started_seed_clone).into_owned()>
                 <input class="input" type="date" required
                     prop:value=move || draft.get().started_on
                     on:input=move |ev| draft.update(|d| d.started_on = event_target_value(&ev))
                 />
-            </label>
-            <label class="fieldset">
-                <span class="fieldset-label">{t!(i18n, form.veg_weeks)}</span>
-                <input class="input" type="number" min="1" max="52"
-                    placeholder="—"
-                    prop:value=move || draft
-                        .get()
-                        .planned_veg_weeks
-                        .map_or(String::new(), |weeks| weeks.to_string())
-                    on:input=move |ev| {
-                        let text = event_target_value(&ev);
-                        draft.update(|d| {
-                            d.planned_veg_weeks =
-                                text.parse::<u8>().ok().filter(|weeks| *weeks > 0);
-                        });
-                    }
-                />
-            </label>
-            <label class="fieldset">
-                <span class="fieldset-label">{t!(i18n, form.status)}</span>
+            </ui::Field>
+            {grow_num_field(
+                t_string!(i18n, form.veg_weeks).into_owned(),
+                "1",
+                draft,
+                Some("1"),
+                Some("52"),
+                |d| d.planned_veg_weeks.map(f64::from),
+                |d, value: Option<f64>| {
+                    d.planned_veg_weeks = clamp_int(value.filter(|weeks| (1.0..=52.0).contains(weeks)));
+                },
+            )}
+            <ui::Field label=t_string!(i18n, form.status).into_owned()>
                 <select class="select"
                     prop:value=move || draft.get().status.label().to_owned()
                     on:change=move |ev| {
@@ -1089,14 +1074,13 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
                     <option value=GrowStatus::Active.label()>{labels::status_label(i18n.get_locale(), GrowStatus::Active)}</option>
                     <option value=GrowStatus::Archived.label()>{labels::status_label(i18n.get_locale(), GrowStatus::Archived)}</option>
                 </select>
-            </label>
-            <label class="fieldset col-span-full">
-                <span class="fieldset-label">{t!(i18n, form.notes)}</span>
+            </ui::Field>
+            <ui::Field label=t_string!(i18n, form.notes).into_owned() class="col-span-full">
                 <textarea class="textarea" rows="2"
                     prop:value=move || draft.get().notes.unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.notes = non_empty(event_target_value(&ev)))
                 />
-            </label>
+            </ui::Field>
             // The tuning knobs (D075) live collapsed under Advanced
             // settings so the daily flow stays simple; every default
             // is sensible, so expanding this is always optional.
@@ -1105,8 +1089,7 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
                     {t!(i18n, form.advanced)}
                 </summary>
                 <div class="grid gap-3 mt-2 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
-                    <label class="fieldset">
-                        <span class="fieldset-label">{t!(i18n, form.heat_tolerance)}</span>
+                    <ui::Field label=t_string!(i18n, form.heat_tolerance).into_owned()>
                         <select class="select"
                             prop:value=move || draft.get().heat_tolerance.label().to_owned()
                             on:change=move |ev| {
@@ -1119,9 +1102,8 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
                         >
                             {tolerance_options(i18n.get_locale())}
                         </select>
-                    </label>
-                    <label class="fieldset">
-                        <span class="fieldset-label">{t!(i18n, form.cold_tolerance)}</span>
+                    </ui::Field>
+                    <ui::Field label=t_string!(i18n, form.cold_tolerance).into_owned()>
                         <select class="select"
                             prop:value=move || draft.get().cold_tolerance.label().to_owned()
                             on:change=move |ev| {
@@ -1134,9 +1116,8 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
                         >
                             {tolerance_options(i18n.get_locale())}
                         </select>
-                    </label>
-                    <label class="fieldset">
-                        <span class="fieldset-label">{t!(i18n, form.light_tolerance)}</span>
+                    </ui::Field>
+                    <ui::Field label=t_string!(i18n, form.light_tolerance).into_owned()>
                         <select class="select"
                             prop:value=move || draft.get().light_tolerance.label().to_owned()
                             on:change=move |ev| {
@@ -1149,26 +1130,18 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
                         >
                             {tolerance_options(i18n.get_locale())}
                         </select>
-                    </label>
-                    <label class="fieldset">
-                        <span class="fieldset-label">{t!(i18n, form.real_watts)}</span>
-                        <input class="input" type="number" min="0" step="0.1"
-                            placeholder="—"
-                            prop:value=move || draft
-                                .get()
-                                .real_watts
-                                .map_or(String::new(), |watts| watts.to_string())
-                            on:input=move |ev| {
-                                let text = event_target_value(&ev);
-                                draft.update(|d| {
-                                    d.real_watts = text
-                                        .parse::<f64>()
-                                        .ok()
-                                        .filter(|watts| *watts >= 0.0 && watts.is_finite());
-                                });
-                            }
-                        />
-                    </label>
+                    </ui::Field>
+                    {grow_num_field(
+                        t_string!(i18n, form.real_watts).into_owned(),
+                        "0.1",
+                        draft,
+                        Some("0"),
+                        None,
+                        |d| d.real_watts,
+                        |d, value: Option<f64>| {
+                            d.real_watts = value.filter(|watts| *watts >= 0.0 && watts.is_finite());
+                        },
+                    )}
                     <label class="fieldset flex flex-row items-center gap-2 self-center">
                         <input class="checkbox" type="checkbox"
                             prop:checked=move || draft.get().dimmable
@@ -1192,13 +1165,12 @@ fn ActionForm(draft: RwSignal<ActionInput>, kind: RwSignal<Option<ActionType>>) 
     let i18n = use_i18n();
     view! {
         <div class="grid gap-2 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
-            <label class="fieldset">
-                <span class="fieldset-label">{t!(i18n, form.when_utc)}</span>
+            <ui::Field label=t_string!(i18n, form.when_utc).into_owned()>
                 <input class="input" type="datetime-local" required
                     prop:value=move || draft.get().occurred_at
                     on:input=move |ev| draft.update(|d| d.occurred_at = event_target_value(&ev))
                 />
-            </label>
+            </ui::Field>
 
             {move || {
                 let d = draft;
@@ -1234,13 +1206,12 @@ fn ActionForm(draft: RwSignal<ActionInput>, kind: RwSignal<Option<ActionType>>) 
                 })
             }}
 
-            <label class="fieldset col-span-full">
-                <span class="fieldset-label">{t!(i18n, form.notes)}</span>
+            <ui::Field label=t_string!(i18n, form.notes).into_owned() class="col-span-full">
                 <textarea class="textarea" rows="2"
                     prop:value=move || draft.get().notes.unwrap_or_default()
                     on:input=move |ev| draft.update(|d| d.notes = non_empty(event_target_value(&ev)))
                 />
-            </label>
+            </ui::Field>
         </div>
         <fieldset class="fieldset mt-3">
             <legend class="fieldset-legend">{t!(i18n, form.appearance)}</legend>
@@ -1318,6 +1289,34 @@ fn num_field(
     write: impl Fn(&mut ActionInput, Option<f64>) + Clone + Send + 'static,
 ) -> impl IntoView {
     view! { <ui::NumberField label=label step=step draft=draft read=read write=write /> }
+}
+
+/// [`ui::NumberField`] for the [`GrowInput`] draft: type-annotated
+/// closure parameters cannot appear inside `view!` attributes, so
+/// the grow form's calls go through this shim (and the extra
+/// `min`/`max`/`placeholder` attributes the two tuning fields need).
+#[allow(clippy::too_many_arguments)] // one per attribute the wrapper forwards; see docs/DECISIONS.md
+fn grow_num_field(
+    label: String,
+    step: &'static str,
+    draft: RwSignal<GrowInput>,
+    minimum: Option<&'static str>,
+    maximum: Option<&'static str>,
+    read: impl Fn(&GrowInput) -> Option<f64> + Clone + Send + 'static,
+    write: impl Fn(&mut GrowInput, Option<f64>) + Clone + Send + 'static,
+) -> impl IntoView {
+    view! {
+        <ui::NumberField
+            label=label
+            step=step
+            draft=draft
+            read=read
+            write=write
+            minimum=minimum.unwrap_or("")
+            maximum=maximum.unwrap_or("")
+            placeholder="—"
+        />
+    }
 }
 
 /// Empty strings become `None`.

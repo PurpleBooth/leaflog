@@ -320,20 +320,20 @@ pub fn OnboardingWizard() -> impl IntoView {
                             {t!(i18n, onboarding.plants_intro)}
                         </p>
                         <div class="grid gap-2 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
-                            <label class="fieldset"><span class="fieldset-label">{t!(i18n, onboarding.grow_name)}</span>
+                            <ui::Field label=t_string!(i18n, onboarding.grow_name).into_owned()>
                                 <input class="input" type="text"
                                     placeholder={t_string!(i18n, onboarding.grow_name_placeholder).into_owned()}
                                     prop:value=move || grow_name.get()
                                     on:input=move |ev| grow_name.set(event_target_value(&ev))
                                 />
-                            </label>
-                            <label class="fieldset"><span class="fieldset-label">{t!(i18n, form.strain_label)}</span>
+                            </ui::Field>
+                            <ui::Field label=t_string!(i18n, form.strain_label).into_owned()>
                                 <input class="input" type="text" placeholder="Northern Lights #5"
                                     prop:value=move || strain_label.get()
                                     on:input=move |ev| strain_label.set(event_target_value(&ev))
                                 />
-                            </label>
-                            <label class="fieldset"><span class="fieldset-label">{t!(i18n, form.photoperiod)}</span>
+                            </ui::Field>
+                            <ui::Field label=t_string!(i18n, form.photoperiod).into_owned()>
                                 <select class="select"
                                     prop:value=move || photoperiod.get().label().to_owned()
                                     on:change=move |ev| {
@@ -345,27 +345,27 @@ pub fn OnboardingWizard() -> impl IntoView {
                                 >
                                     {photoperiod_options(i18n.get_locale())}
                                 </select>
-                            </label>
-                            <label class="fieldset"><span class="fieldset-label">{t!(i18n, onboarding.prefix_label)}</span>
+                            </ui::Field>
+                            <ui::Field label=t_string!(i18n, onboarding.prefix_label).into_owned()>
                                 <input class="input" type="text"
                                     prop:value=move || plant_prefix.get()
                                     on:input=move |ev| plant_prefix.set(event_target_value(&ev))
                                 />
-                            </label>
-                            <label class="fieldset"><span class="fieldset-label">{t!(i18n, onboarding.step_plants)}</span>
+                            </ui::Field>
+                            <ui::Field label=t_string!(i18n, onboarding.step_plants).into_owned()>
                                 <input class="input" type="number" min="1" max="99" step="1"
                                     prop:value=move || plant_count.get().to_string()
                                     on:input=move |ev| {
                                         plant_count.set(event_target_value(&ev).parse().unwrap_or(1).clamp(1, 99));
                                     }
                                 />
-                            </label>
-                            <label class="fieldset"><span class="fieldset-label">{t!(i18n, onboarding.germination_label)}</span>
+                            </ui::Field>
+                            <ui::Field label=t_string!(i18n, onboarding.germination_label).into_owned()>
                                 <input class="input" type="date"
                                     prop:value=move || started_on.get()
                                     on:input=move |ev| started_on.set(event_target_value(&ev))
                                 />
-                            </label>
+                            </ui::Field>
                         </div>
                         <div class="flex flex-wrap gap-2 mt-4">
                             <button class="btn btn-sm" type="button" on:click=move |_| step.set(1)>{t!(i18n, onboarding.back)}</button>

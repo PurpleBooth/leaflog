@@ -123,12 +123,29 @@ pub fn SectionHeader(title: Signal<String>) -> impl IntoView {
 /// The shared form-field wrapper: a daisyUI fieldset with the small
 /// fieldset-label above one control. Every labelled input, select and
 /// textarea in the app renders through this so the label register
-/// stays uniform; the control itself arrives as children.
+/// stays uniform; the control itself arrives as children. `title`
+/// carries an optional hover tooltip (e.g. the light-cycle default
+/// hours' provenance); `class` appends layout modifiers such as
+/// `col-span-full` without touching the base recipe.
 #[component]
 #[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
-pub fn Field(label: String, children: Children) -> impl IntoView {
+pub fn Field(
+    label: String,
+    #[prop(optional)] title: Option<Signal<String>>,
+    #[prop(optional)] class: &'static str,
+    children: Children,
+) -> impl IntoView {
     view! {
-        <label class="fieldset">
+        <label
+            class=move || {
+                if class.is_empty() {
+                    "fieldset".to_owned()
+                } else {
+                    format!("fieldset {class}")
+                }
+            }
+            title=title
+        >
             <span class="fieldset-label">{label}</span>
             {children()}
         </label>
@@ -138,8 +155,9 @@ pub fn Field(label: String, children: Children) -> impl IntoView {
 /// The shared numeric field: the [`Field`] wrapper around a number
 /// input bound to a draft struct. `read` renders the current value
 /// (`display` reformats when a field wants fixed decimals), `write`
-/// stores the parsed input, `None` clearing the value. `minimum`
-/// carries a static `min` attribute for non-negative fields.
+/// stores the parsed input, `None` clearing the value. `minimum`/
+/// `maximum`/`placeholder` carry static `min`/`max`/`placeholder`
+/// attributes; an empty string means the attribute is left off.
 #[component]
 #[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
 pub fn NumberField<T: Clone + Send + Sync + 'static>(
@@ -148,7 +166,9 @@ pub fn NumberField<T: Clone + Send + Sync + 'static>(
     draft: RwSignal<T>,
     read: impl Fn(&T) -> Option<f64> + Clone + Send + 'static,
     write: impl Fn(&mut T, Option<f64>) + Clone + Send + 'static,
-    #[prop(optional)] minimum: Option<&'static str>,
+    #[prop(optional)] minimum: &'static str,
+    #[prop(optional)] maximum: &'static str,
+    #[prop(optional)] placeholder: &'static str,
     /// Shared so the field can hold it without a second generic slot.
     #[prop(optional)]
     display: Option<std::sync::Arc<dyn Fn(f64) -> String + Send + Sync>>,
@@ -167,7 +187,9 @@ pub fn NumberField<T: Clone + Send + Sync + 'static>(
                 class="input"
                 type="number"
                 step=step
-                min=minimum
+                min=(!minimum.is_empty()).then_some(minimum)
+                max=(!maximum.is_empty()).then_some(maximum)
+                placeholder=(!placeholder.is_empty()).then_some(placeholder)
                 // Attribute, not `prop:`: the value attribute prefills
                 // the field at build time; user edits go through
                 // on:input and never touch the attribute again.

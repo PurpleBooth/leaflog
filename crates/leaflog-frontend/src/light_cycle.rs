@@ -19,7 +19,7 @@ use leaflog_core::light_cycle::{
 use crate::api;
 use crate::i18n::{Locale, t, t_string, use_i18n};
 use crate::labels::phase_label;
-use crate::ui::{PendingUndo, UNDO_WINDOW_MS, UndoBanner, card, live_undo, now_ms};
+use crate::ui::{Field, PendingUndo, UNDO_WINDOW_MS, UndoBanner, card, live_undo, now_ms};
 use leptos_i18n::td_string;
 
 /// The four phase hour fields as raw input text, keyed like
@@ -311,28 +311,24 @@ pub fn LightCycleEditor(
             }}
             <UndoBanner message=undo_message.into() on_undo=undo_reset on_dismiss=dismiss_undo />
             <form class="flex flex-wrap gap-2 items-end my-2" on:submit=save>
-            <label class="fieldset">
-                <span class="fieldset-label">{t!(i18n, light_cycle.lights_on)}</span>
+            <Field label=t_string!(i18n, light_cycle.lights_on).into_owned()>
                 <input class="input input-sm" type="time" placeholder="06:00"
                     prop:value=move || lights_on.get()
                     on:input=move |ev| lights_on.set(event_target_value(&ev))
                 />
-            </label>
+            </Field>
             {LIT_PHASES
                 .iter()
                 .map(|phase| {
                     let phase = *phase;
                     view! {
-                        <label
-                            class="fieldset"
-                            title=move || {
+                        <Field
+                            label=td_string!(locale, light_cycle.hours_on, phase = phase_label(locale, phase)).into_owned()
+                            title=Signal::derive(move || {
                                 default_hours_on(phase, photoperiod.get())
                                     .map_or_else(String::new, |default| default.source.to_owned())
-                            }
+                            })
                         >
-                            <span class="fieldset-label">
-                                {td_string!(locale, light_cycle.hours_on, phase = phase_label(locale, phase))}
-                            </span>
                             <input class="input input-sm w-24" type="number"
                                 prop:placeholder=move || {
                                     default_hours_on(phase, photoperiod.get())
@@ -346,7 +342,7 @@ pub fn LightCycleEditor(
                                     hours.update(|fields| fields.set(phase, text));
                                 }
                             />
-                        </label>
+                        </Field>
                     }
                 })
                 .collect::<Vec<_>>()}

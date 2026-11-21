@@ -42,6 +42,57 @@ async fn field_wraps_the_control_in_a_fieldset_label() {
 }
 
 #[wasm_bindgen_test(async)]
+async fn field_carries_title_and_layout_class_when_set() {
+    fresh_environment();
+    let mount = Mounted::new(move || {
+        with_i18n(move || {
+            view! {
+                <Field
+                    label="Lights on".to_owned()
+                    title=Signal::derive(|| "mock source".to_owned())
+                    class="col-span-full"
+                >
+                    <input class="input" type="time" />
+                </Field>
+            }
+        })
+    });
+    let fieldset = mount
+        .q("label.fieldset.col-span-full")
+        .expect("layout class lands on the fieldset");
+    assert_eq!(
+        fieldset.get_attribute("title"),
+        Some("mock source".into()),
+        "title signal renders as the tooltip"
+    );
+}
+
+#[wasm_bindgen_test(async)]
+async fn field_without_extras_renders_the_bare_recipe() {
+    fresh_environment();
+    let mount = Mounted::new(move || {
+        with_i18n(move || {
+            view! {
+                <Field label="Name".to_owned()>
+                    <input class="input" type="text" />
+                </Field>
+            }
+        })
+    });
+    let fieldset = mount.q("label.fieldset").expect("fieldset rendered");
+    assert_eq!(
+        fieldset.get_attribute("title"),
+        None,
+        "no title attribute without the prop"
+    );
+    assert_eq!(
+        fieldset.get_attribute("class"),
+        Some("fieldset".into()),
+        "class stays the bare recipe without extras"
+    );
+}
+
+#[wasm_bindgen_test(async)]
 async fn number_field_round_trips_typed_values_into_the_draft() {
     fresh_environment();
     let draft = RwSignal::new(Draft::default());
@@ -112,6 +163,66 @@ async fn number_field_formats_with_display_and_carries_min() {
     wait_for(|| !input.value().is_empty()).await;
     // Rust's `{:.0}` rounds half-to-even, so 120.5 formats as "120".
     assert_eq!(input.value(), "120", "display formats the stored value");
+}
+
+#[wasm_bindgen_test(async)]
+async fn number_field_carries_max_and_placeholder_but_omits_empty_ones() {
+    fresh_environment();
+    let draft = RwSignal::new(Draft::default());
+    let mount = Mounted::new(move || {
+        with_i18n(move || {
+            view! {
+                <NumberField
+                    label="Veg weeks".to_owned()
+                    step="1"
+                    draft=draft
+                    read={|d: &Draft| d.width_cm}
+                    write={|d: &mut Draft, v: Option<f64>| d.width_cm = v}
+                    minimum="1"
+                    maximum="52"
+                    placeholder="—"
+                />
+            }
+        })
+    });
+    let input = mount
+        .q("input[type=number]")
+        .expect("number input rendered")
+        .unchecked_into::<web_sys::HtmlInputElement>();
+    assert_eq!(input.min(), "1", "min attribute reaches the DOM");
+    assert_eq!(input.max(), "52", "max attribute reaches the DOM");
+    assert_eq!(
+        input.placeholder(),
+        "—",
+        "em-dash placeholder reaches the DOM"
+    );
+    let bare = Mounted::new(move || {
+        with_i18n(move || {
+            view! {
+                <NumberField
+                    label="Bare".to_owned()
+                    step="1"
+                    draft=draft
+                    read={|d: &Draft| d.width_cm}
+                    write={|d: &mut Draft, v: Option<f64>| d.width_cm = v}
+                />
+            }
+        })
+    });
+    let bare_input = bare
+        .q("input[type=number]")
+        .expect("bare input rendered")
+        .unchecked_into::<web_sys::HtmlInputElement>();
+    assert_eq!(
+        bare_input.get_attribute("min"),
+        None,
+        "empty min renders no attribute"
+    );
+    assert_eq!(
+        bare_input.get_attribute("placeholder"),
+        None,
+        "empty placeholder renders no attribute"
+    );
 }
 
 #[wasm_bindgen_test(async)]

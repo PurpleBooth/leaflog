@@ -60,6 +60,25 @@ extracted: badge chips (variants differ per context), the `dl.facts`
 blocks (three heterogeneous sites), and the entity selects (their
 role loops already share `Field`).
 
+**Completion pass (same decision, 2026-11-21):** the initial commit
+adopted `Field` at only four call sites; the migration now runs to
+saturation — every labelled input, select and textarea in
+`grows.rs`, `history.rs`, `onboarding.rs`, `schedules.rs`,
+`chart.rs` and `light_cycle.rs` renders through `Field` (25 more
+sites; the remaining raw `fieldset`s are the bare file input, the
+dimmable checkbox row and the appearance `legend` fieldset, which
+have different intent). `Field` gained optional `title` (the
+light-cycle per-phase provenance tooltip) and `class` (the
+`col-span-full` notes textareas) props; `NumberField` gained
+`maximum` and `placeholder` (veg weeks 1–52 "—", real watts min 0
+"—"). Optional props are plain `&'static str` with empty-means-off
+rendering, because typed-builder strips an `Option` prop and a
+`view!` shim cannot forward `None` through it. Grow-form number
+fields go through a local `grow_num_field` shim: type-annotated
+closure parameters cannot appear inside `view!` attributes. New
+tests cover `Field`'s title/class rendering and `NumberField`'s
+max/placeholder attributes (70 component tests total).
+
 ## 2026-11-20 — overview spacing rhythm (D138)
 
 ### D138: section rhythm lives in the document stylesheet, not in per-call margin utilities
