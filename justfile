@@ -403,6 +403,9 @@ wasm-tools:
         x86_64)  arch="x86_64";  libc="musl"; cft_arch="linux64" ;;
         *) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;;
     esac
+    # Fresh checkouts have no tools dir at all; the symlinks below
+    # need `bin` to exist even when every download is skipped.
+    mkdir -p "{{wasm_tools_dir}}/bin"
     wb_dir="{{wasm_tools_dir}}/wasm-bindgen-{{wasm_bindgen_version}}-${arch}-unknown-linux-${libc}"
     if [ ! -x "$wb_dir/wasm-bindgen-test-runner" ]; then
         case "$arch" in
