@@ -286,13 +286,43 @@ async fn fallback(
     }
     let rel = path.trim_start_matches('/');
     if let Some(bytes) = state.assets.get(rel).await {
-        return (
+        let mut response = (
             [(axum::http::header::CONTENT_TYPE, content_type(rel))],
             bytes,
         )
             .into_response();
+        response
+            .headers_mut()
+            .insert(axum::http::header::CACHE_CONTROL, asset_cache_control(rel));
+        return response;
     }
     serve_index(&state, &headers).await
+}
+
+/// Cache policy for a static asset.
+///
+/// Trunk names the bundle files after a content hash, so a given name
+/// can never change meaning: those may be cached forever. Everything
+/// else — `index.html`, `echarts.js`, and any unhashed file — keeps
+/// its name across releases, so it must be revalidated on every load.
+/// Without this the browser keeps serving the previous release's shell
+/// and its old hashed bundle, and a new app version looks like it
+/// never arrived (the v0.15.0 "all grows page did not change" report).
+fn asset_cache_control(path: &str) -> HeaderValue {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    let stem = name.split('.').next().unwrap_or(name);
+    // Trunk puts the hash in its own segment, sometimes with a `_bg`
+    // suffix (`leaflog-frontend-393f9ea0eff0d312_bg.wasm`), so any
+    // long hex segment marks the name as content-addressed.
+    let hashed = stem
+        .split(['-', '_'])
+        .any(|segment| segment.len() >= 16 && segment.chars().all(|c| c.is_ascii_hexdigit()));
+    let value = if hashed {
+        "public, max-age=31536000, immutable"
+    } else {
+        "no-cache"
+    };
+    HeaderValue::from_static(value)
 }
 
 /// Serves `index.html` with the ingress base injected, or a helpful 503
@@ -317,6 +347,12 @@ async fn serve_index(state: &AppState, headers: &HeaderMap) -> Response {
             response
                 .headers_mut()
                 .insert(axum::http::header::CONTENT_SECURITY_POLICY, csp);
+            // The shell names the hashed bundle; a cached copy would
+            // keep pointing at the previous release's assets.
+            response.headers_mut().insert(
+                axum::http::header::CACHE_CONTROL,
+                HeaderValue::from_static("no-cache"),
+            );
             response
         },
     )
@@ -428,8 +464,41 @@ mod tests {
     use axum::http::Request;
 
     use super::{
-        Mode, SUPERVISOR_INGRESS_IP, day_number_utc, local_date_utc, peer_allowed, strip_dev_prefix,
+        Mode, SUPERVISOR_INGRESS_IP, asset_cache_control, day_number_utc, local_date_utc,
+        peer_allowed, strip_dev_prefix,
     };
+
+    #[test]
+    fn hashed_bundles_are_immutable_and_everything_else_revalidates() {
+        // Trunk's content-hashed names: safe to cache forever.
+        for hashed in [
+            "tailwind-92ceaeb80d912784.css",
+            "leaflog-frontend-393f9ea0eff0d312.js",
+            "leaflog-frontend-393f9ea0eff0d312_bg.wasm",
+            "pkg/app-0123456789abcdef.js",
+        ] {
+            assert_eq!(
+                asset_cache_control(hashed),
+                "public, max-age=31536000, immutable",
+                "{hashed} carries a content hash"
+            );
+        }
+        // Stable names: a new release reuses them, so they must be
+        // revalidated or the browser keeps the previous release.
+        for stable in [
+            "index.html",
+            "echarts.js",
+            "favicon.ico",
+            "short-abc.js",
+            "no-extension",
+        ] {
+            assert_eq!(
+                asset_cache_control(stable),
+                "no-cache",
+                "{stable} is stable"
+            );
+        }
+    }
 
     #[test]
     fn production_allows_exactly_the_ingress_proxy() {

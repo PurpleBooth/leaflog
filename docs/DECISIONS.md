@@ -6,6 +6,38 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-21 — asset cache policy (D142)
+
+### D142: content-hashed bundle files cache forever, every other static file revalidates
+
+The backend served every static file with no `Cache-Control` at all.
+A browser then applies its own heuristic freshness to `index.html`,
+which names the content-hashed bundle. After an app update the shell
+could stay cached and keep loading the previous release's hashed JS,
+CSS and wasm — so the app looked like it had not been updated. The
+v0.15.0 history-page de-jank was verified present in the published
+image (the binary inside `ghcr.io/purplebooth/leaflog:0.15.0`
+contains `.facts--single` and the single-column accuracy list) and
+still rendered as the old layout on a real Home Assistant box.
+
+The policy is a property of the filename, not of the directory:
+
+- A name carrying a long hex segment (`tailwind-92ceaeb8….css`,
+  `leaflog-frontend-393f9ea0…_bg.wasm`) is content-addressed: Trunk
+  derives it from the bytes, so that name can never mean anything
+  else. `public, max-age=31536000, immutable`.
+- Every other name (`index.html`, `echarts.js`, `favicon.ico`) is
+  reused across releases. `no-cache`, which means "revalidate before
+  use" — the browser still gets a 304 when nothing changed, so the
+  cost is one conditional request, not a re-download.
+
+The shell is set explicitly rather than left to the fallback, because
+it is the file that names the bundle: a stale shell is the whole bug.
+`e2e/src/28-asset-caching.spec.ts` pins both halves, and
+`app::tests::hashed_bundles_are_immutable_and_everything_else_revalidates`
+covers the classifier including the `_bg` suffix Trunk puts after the
+wasm hash.
+
 ## 2026-11-21 — history-page bands and the data primitives (D141)
 
 ### D141: the history page's stacked bands share one width, and the chip/fact/card-title recipes become components
