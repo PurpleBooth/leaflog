@@ -381,8 +381,10 @@ test:
 # the daisyUI bundles. Not vendored (working agreement): pinned
 # releases, throwaway once extracted.
 wasm_bindgen_version := "0.2.130"
+# Upstream ships aarch64 for glibc but x86_64 only for musl (0.2.130
+# has no x86_64-unknown-linux-gnu asset; the release page 404s).
 wasm_bindgen_sha_aarch64 := "cc8dd8e90aa9111758168d30c63a14b7f0276997d9d60d3e160a1fb5e7d3b919"
-wasm_bindgen_sha_x86_64 := "0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5"
+wasm_bindgen_sha_x86_64 := "9687f3bb551b9f66f37ed32a40d7913a00f7962db653054e56857bc306c3227f"
 cft_version := "158.0.8127.36"
 cft_sha_chrome_aarch64 := "f811b64a50cbc73f94fda7b3f3b3bf62be5d9409b3207e6ead9b61e6706afffe"
 cft_sha_chrome_x86_64 := "dba9cc838e1ce269c33ea68170881127bd15d078fc3ca5891c90802819a4d7c7"
@@ -398,7 +400,7 @@ wasm-tools:
     set -euo pipefail
     case "$(uname -m)" in
         aarch64) arch="aarch64"; libc="gnu"; cft_arch="linux-arm64" ;;
-        x86_64)  arch="x86_64";  libc="gnu"; cft_arch="linux64" ;;
+        x86_64)  arch="x86_64";  libc="musl"; cft_arch="linux64" ;;
         *) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;;
     esac
     wb_dir="{{wasm_tools_dir}}/wasm-bindgen-{{wasm_bindgen_version}}-${arch}-unknown-linux-${libc}"
@@ -409,7 +411,9 @@ wasm-tools:
         esac
         mkdir -p "{{wasm_tools_dir}}"
         tgz="{{wasm_tools_dir}}/.wb.tar.gz"
-        curl -sL -o "$tgz" "https://github.com/rustwasm/wasm-bindgen/releases/download/{{wasm_bindgen_version}}/wasm-bindgen-{{wasm_bindgen_version}}-${arch}-unknown-linux-${libc}.tar.gz"
+        # `-f` fails on an HTTP error instead of saving the 404 body;
+        # without it a missing asset hashes "Not Found" and passes.
+        curl -sfL -o "$tgz" "https://github.com/rustwasm/wasm-bindgen/releases/download/{{wasm_bindgen_version}}/wasm-bindgen-{{wasm_bindgen_version}}-${arch}-unknown-linux-${libc}.tar.gz"
         echo "$wb_sha  $tgz" | sha256sum -c -
         rm -rf "$wb_dir"
         tar -xzf "$tgz" -C "{{wasm_tools_dir}}"
@@ -431,7 +435,7 @@ wasm-tools:
             mkdir -p "{{wasm_tools_dir}}/dl/.${tool}.tmp"
             zip_name="${tool}-${cft_arch}.zip"
             zip_path="{{wasm_tools_dir}}/dl/.${tool}.tmp/${zip_name}"
-            curl -sL -o "$zip_path" "https://storage.googleapis.com/chrome-for-testing-public/{{cft_version}}/${cft_arch}/${zip_name}"
+            curl -sfL -o "$zip_path" "https://storage.googleapis.com/chrome-for-testing-public/{{cft_version}}/${cft_arch}/${zip_name}"
             echo "$tool_sha  $zip_path" | sha256sum -c -
             unzip -oq "$zip_path" -d "{{wasm_tools_dir}}/dl/.${tool}.tmp"
             rm -rf "$out_dir"
