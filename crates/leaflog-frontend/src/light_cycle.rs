@@ -311,7 +311,7 @@ pub fn LightCycleEditor(
             }}
             <UndoBanner message=undo_message.into() on_undo=undo_reset on_dismiss=dismiss_undo />
             <form class="flex flex-wrap gap-2 items-end my-2" on:submit=save>
-            <Field label=t_string!(i18n, light_cycle.lights_on).into_owned()>
+            <Field label=Signal::derive(move || t_string!(i18n, light_cycle.lights_on).into_owned())>
                 <input class="input input-sm" type="time" placeholder="06:00"
                     prop:value=move || lights_on.get()
                     on:input=move |ev| lights_on.set(event_target_value(&ev))
@@ -323,7 +323,14 @@ pub fn LightCycleEditor(
                     let phase = *phase;
                     view! {
                         <Field
-                            label=td_string!(locale, light_cycle.hours_on, phase = phase_label(locale, phase)).into_owned()
+                            label=Signal::derive(move || {
+                                td_string!(
+                                    i18n.get_locale(),
+                                    light_cycle.hours_on,
+                                    phase = phase_label(i18n.get_locale(), phase),
+                                )
+                                .into_owned()
+                            })
                             title=Signal::derive(move || {
                                 default_hours_on(phase, photoperiod.get())
                                     .map_or_else(String::new, |default| default.source.to_owned())

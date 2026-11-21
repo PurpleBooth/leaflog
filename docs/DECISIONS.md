@@ -79,6 +79,31 @@ closure parameters cannot appear inside `view!` attributes. New
 tests cover `Field`'s title/class rendering and `NumberField`'s
 max/placeholder attributes (70 component tests total).
 
+**Review fixes (same decision, 2026-11-21):** the senior-dev review
+of the saturation commit caught two real regressions, both now
+fixed. First, `NumberField` bound its value with the `value`
+*attribute*: once the user types into an input, the browser stops
+following the value attribute (the dirty-value flag), so a rejected
+entry (out-of-range, comma decimal) cleared the draft silently
+while the box kept showing the rejected number. It binds via
+`prop:value` — the property write repaints the box — and the D140
+rationale that led to the attribute ("`prop:` never prefilled in
+the component-test harness") was a harness limitation, not a
+browser fact; the component test
+`number_field_repaints_a_rejected_entry_as_cleared` pins the
+behaviour (types `53` into a 0–52-guarded field and asserts the
+box repaints empty). Second, the components took `label: String`,
+captured once at build: `LocaleChain` resolves the locale
+asynchronously after mount, so first-painted pages (onboarding)
+could freeze pre-translation labels. All three components now take
+`Signal<String>` and every call site derives with the tracked
+`i18n.get_locale()` inside the closure — a snapshot `let locale =
+i18n.get_locale()` does not re-run, and `td_string!` takes a locale
+value and tracks nothing (only `t_string!` tracks the context).
+`grow_num_field`'s min/max props switched from `Option<&'static
+str>` to the plain empty-means-off `&'static str` the components
+already used. 71 component tests total.
+
 ## 2026-11-20 — overview spacing rhythm (D138)
 
 ### D138: section rhythm lives in the document stylesheet, not in per-call margin utilities

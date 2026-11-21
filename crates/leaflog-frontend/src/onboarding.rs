@@ -258,7 +258,7 @@ pub fn OnboardingWizard() -> impl IntoView {
                             {BINDING_ROLES
                                 .iter()
                                 .map(|&role| {
-                                    let label = binding_role_label(i18n.get_locale(), role);
+                                    let label = Signal::derive(move || binding_role_label(i18n.get_locale(), role));
                                     let current = picks;
                                     let options = entities;
                                     view! {
@@ -320,20 +320,20 @@ pub fn OnboardingWizard() -> impl IntoView {
                             {t!(i18n, onboarding.plants_intro)}
                         </p>
                         <div class="grid gap-2 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
-                            <ui::Field label=t_string!(i18n, onboarding.grow_name).into_owned()>
+                            <ui::Field label=Signal::derive(move || t_string!(i18n, onboarding.grow_name).into_owned())>
                                 <input class="input" type="text"
                                     placeholder={t_string!(i18n, onboarding.grow_name_placeholder).into_owned()}
                                     prop:value=move || grow_name.get()
                                     on:input=move |ev| grow_name.set(event_target_value(&ev))
                                 />
                             </ui::Field>
-                            <ui::Field label=t_string!(i18n, form.strain_label).into_owned()>
+                            <ui::Field label=Signal::derive(move || t_string!(i18n, form.strain_label).into_owned())>
                                 <input class="input" type="text" placeholder="Northern Lights #5"
                                     prop:value=move || strain_label.get()
                                     on:input=move |ev| strain_label.set(event_target_value(&ev))
                                 />
                             </ui::Field>
-                            <ui::Field label=t_string!(i18n, form.photoperiod).into_owned()>
+                            <ui::Field label=Signal::derive(move || t_string!(i18n, form.photoperiod).into_owned())>
                                 <select class="select"
                                     prop:value=move || photoperiod.get().label().to_owned()
                                     on:change=move |ev| {
@@ -346,13 +346,13 @@ pub fn OnboardingWizard() -> impl IntoView {
                                     {photoperiod_options(i18n.get_locale())}
                                 </select>
                             </ui::Field>
-                            <ui::Field label=t_string!(i18n, onboarding.prefix_label).into_owned()>
+                            <ui::Field label=Signal::derive(move || t_string!(i18n, onboarding.prefix_label).into_owned())>
                                 <input class="input" type="text"
                                     prop:value=move || plant_prefix.get()
                                     on:input=move |ev| plant_prefix.set(event_target_value(&ev))
                                 />
                             </ui::Field>
-                            <ui::Field label=t_string!(i18n, onboarding.step_plants).into_owned()>
+                            <ui::Field label=Signal::derive(move || t_string!(i18n, onboarding.step_plants).into_owned())>
                                 <input class="input" type="number" min="1" max="99" step="1"
                                     prop:value=move || plant_count.get().to_string()
                                     on:input=move |ev| {
@@ -360,7 +360,7 @@ pub fn OnboardingWizard() -> impl IntoView {
                                     }
                                 />
                             </ui::Field>
-                            <ui::Field label=t_string!(i18n, onboarding.germination_label).into_owned()>
+                            <ui::Field label=Signal::derive(move || t_string!(i18n, onboarding.germination_label).into_owned())>
                                 <input class="input" type="date"
                                     prop:value=move || started_on.get()
                                     on:input=move |ev| started_on.set(event_target_value(&ev))

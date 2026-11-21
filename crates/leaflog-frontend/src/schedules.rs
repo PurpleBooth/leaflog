@@ -328,9 +328,10 @@ pub fn SchedulesPage() -> impl IntoView {
                                                         armed=Signal::derive(move || {
                                                             armed.get().as_deref() == Some(id_for_armed.as_str())
                                                         })
-                                                        label=t_string!(i18n, schedules.delete).into_owned()
-                                                        confirm_label=t_string!(i18n, schedules.confirm_delete)
-                                                            .into_owned()
+                                                        label=Signal::derive(move || t_string!(i18n, schedules.delete).into_owned())
+                                                        confirm_label=Signal::derive(move || {
+                                                            t_string!(i18n, schedules.confirm_delete).into_owned()
+                                                        })
                                                         on_arm=move |_| {
                                                             armed.set(Some(id_for_arm.clone()));
                                                         }
@@ -629,7 +630,7 @@ pub fn ScheduleEditorPage(
             } else {
                 view! {
                     <div class="grid gap-3 sm:grid-cols-[repeat(auto-fill,minmax(16rem,1fr))]">
-                        <ui::Field label=t_string!(i18n, schedules.name_label).into_owned()>
+                        <ui::Field label=Signal::derive(move || t_string!(i18n, schedules.name_label).into_owned())>
                             <input
                                 class="input"
                                 type="text"
@@ -638,7 +639,7 @@ pub fn ScheduleEditorPage(
                                 on:input=move |ev| name.set(event_target_value(&ev))
                             />
                         </ui::Field>
-                        <ui::Field label=t_string!(i18n, schedules.source_label).into_owned()>
+                        <ui::Field label=Signal::derive(move || t_string!(i18n, schedules.source_label).into_owned())>
                             <input
                                 class="input"
                                 type="text"
@@ -647,7 +648,7 @@ pub fn ScheduleEditorPage(
                                 on:input=move |ev| source.set(event_target_value(&ev))
                             />
                         </ui::Field>
-                        <ui::Field label=t_string!(i18n, schedules.weeks_label).into_owned()>
+                        <ui::Field label=Signal::derive(move || t_string!(i18n, schedules.weeks_label).into_owned())>
                             <div class="flex items-center gap-2">
                                 <button class="btn btn-outline btn-sm" on:click=remove_week>
                                     "−"
@@ -673,8 +674,10 @@ pub fn ScheduleEditorPage(
                         <Show when=move || id.get_value().is_some()>
                             <ui::ArmConfirmButton
                                 armed=Signal::derive(move || armed.get())
-                                label=t_string!(i18n, schedules.delete_schedule).into_owned()
-                                confirm_label=t_string!(i18n, schedules.confirm_delete).into_owned()
+                                label=Signal::derive(move || t_string!(i18n, schedules.delete_schedule).into_owned())
+                                confirm_label=Signal::derive(move || {
+                                    t_string!(i18n, schedules.confirm_delete).into_owned()
+                                })
                                 on_arm=move |_| armed.set(true)
                                 on_confirm=delete_schedule
                             />

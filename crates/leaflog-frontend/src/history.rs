@@ -510,26 +510,26 @@ pub fn PlantViewPage() -> impl IntoView {
                 <form class={format!("{} my-4", ui::card())} on:submit=save>
                     <h3 class="mt-0">{t!(i18n, plant.edit)}</h3>
                     <div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
-                        <ui::Field label=t_string!(i18n, form.name).into_owned()>
+                        <ui::Field label=Signal::derive(move || t_string!(i18n, form.name).into_owned())>
                             <input class="input" type="text" required
                                 prop:value=move || draft.get().name
                                 on:input=move |ev| draft.update(|d| d.name = event_target_value(&ev))
                             />
                         </ui::Field>
                         {weight_field(
-                            td_string!(locale, form.wet_weight_g).into_owned(),
+                            Signal::derive(move || td_string!(i18n.get_locale(), form.wet_weight_g).into_owned()),
                             draft,
                             |d| d.wet_g,
                             |d, v| d.wet_g = v,
                         )}
                         {weight_field(
-                            td_string!(locale, form.dry_weight_g).into_owned(),
+                            Signal::derive(move || td_string!(i18n.get_locale(), form.dry_weight_g).into_owned()),
                             draft,
                             |d| d.dry_g,
                             |d, v| d.dry_g = v,
                         )}
                         {weight_field(
-                            td_string!(locale, form.trimmed_weight_g).into_owned(),
+                            Signal::derive(move || td_string!(i18n.get_locale(), form.trimmed_weight_g).into_owned()),
                             draft,
                             |d| d.trimmed_g,
                             |d, v| d.trimmed_g = v,
@@ -549,7 +549,7 @@ pub fn PlantViewPage() -> impl IntoView {
 
 /// One harvest-weight input bound to a spot in the plant draft.
 fn weight_field(
-    label: String,
+    label: Signal<String>,
     draft: RwSignal<PlantInput>,
     read: impl Fn(&PlantInput) -> Option<f64> + Clone + Send + 'static,
     write: impl Fn(&mut PlantInput, Option<f64>) + Clone + Send + 'static,

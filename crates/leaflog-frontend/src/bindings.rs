@@ -62,7 +62,6 @@ pub fn EntityBindings(grow_id: String, bindings_epoch: RwSignal<u64>) -> impl In
     let entities = RwSignal::<Vec<serde_json::Value>>::new(Vec::new());
     let error = RwSignal::<Option<String>>::new(None);
     let i18n = use_i18n();
-    let locale = i18n.get_locale();
 
     let refresh = {
         let grow_id = grow_id.clone();
@@ -133,7 +132,7 @@ pub fn EntityBindings(grow_id: String, bindings_epoch: RwSignal<u64>) -> impl In
                 {BINDING_ROLES
                     .iter()
                     .map(|&role| {
-                        let label = binding_role_label(locale, role);
+                        let label = Signal::derive(move || binding_role_label(i18n.get_locale(), role));
                         let current = bindings;
                         let options = entities;
                         let save = save_binding.clone();

@@ -18,7 +18,7 @@ async fn field_wraps_the_control_in_a_fieldset_label() {
     let mount = Mounted::new(move || {
         with_i18n(move || {
             view! {
-                <Field label="Plant width".to_owned()>
+                <Field label=Signal::derive(|| "Plant width".to_owned())>
                     <input class="input" type="text" />
                 </Field>
             }
@@ -48,7 +48,7 @@ async fn field_carries_title_and_layout_class_when_set() {
         with_i18n(move || {
             view! {
                 <Field
-                    label="Lights on".to_owned()
+                    label=Signal::derive(|| "Lights on".to_owned())
                     title=Signal::derive(|| "mock source".to_owned())
                     class="col-span-full"
                 >
@@ -73,7 +73,7 @@ async fn field_without_extras_renders_the_bare_recipe() {
     let mount = Mounted::new(move || {
         with_i18n(move || {
             view! {
-                <Field label="Name".to_owned()>
+                <Field label=Signal::derive(|| "Name".to_owned())>
                     <input class="input" type="text" />
                 </Field>
             }
@@ -100,7 +100,7 @@ async fn number_field_round_trips_typed_values_into_the_draft() {
         with_i18n(move || {
             view! {
                 <NumberField
-                    label="Plant width".to_owned()
+                    label=Signal::derive(|| "Plant width".to_owned())
                     step="0.1"
                     draft=draft
                     read={|d: &Draft| d.width_cm}
@@ -135,6 +135,48 @@ async fn number_field_round_trips_typed_values_into_the_draft() {
 }
 
 #[wasm_bindgen_test(async)]
+async fn number_field_repaints_a_rejected_entry_as_cleared() {
+    fresh_environment();
+    let draft = RwSignal::new(Draft::default());
+    let mount = Mounted::new(move || {
+        with_i18n(move || {
+            view! {
+                <NumberField
+                    label=Signal::derive(|| "Plant width".to_owned())
+                    step="0.1"
+                    draft=draft
+                    read={|d: &Draft| d.width_cm}
+                    // A range guard: anything outside 0–52 is rejected.
+                    write={|d: &mut Draft, v: Option<f64>| {
+                        d.width_cm = v.filter(|width| (0.0..=52.0).contains(width));
+                    }}
+                />
+            }
+        })
+    });
+    let input = mount
+        .q("input[type=number]")
+        .expect("number input rendered")
+        .unchecked_into::<web_sys::HtmlInputElement>();
+    type_input(&input, "53");
+    assert_eq!(
+        draft.get().width_cm,
+        None,
+        "the out-of-range value never reaches the draft"
+    );
+    wait_for(|| input.value().is_empty()).await;
+    assert_eq!(
+        input.value(),
+        "",
+        "the box repaints empty so the rejection is visible"
+    );
+    // Accepting afterwards writes both sides again.
+    type_input(&input, "30");
+    assert_eq!(draft.get().width_cm, Some(30.0));
+    wait_for(|| input.value() == "30").await;
+}
+
+#[wasm_bindgen_test(async)]
 async fn number_field_formats_with_display_and_carries_min() {
     fresh_environment();
     let draft = RwSignal::new(Draft {
@@ -144,7 +186,7 @@ async fn number_field_formats_with_display_and_carries_min() {
         with_i18n(move || {
             view! {
                 <NumberField
-                    label="Weight".to_owned()
+                    label=Signal::derive(|| "Weight".to_owned())
                     step="1"
                     draft=draft
                     read={|d: &Draft| d.width_cm}
@@ -173,7 +215,7 @@ async fn number_field_carries_max_and_placeholder_but_omits_empty_ones() {
         with_i18n(move || {
             view! {
                 <NumberField
-                    label="Veg weeks".to_owned()
+                    label=Signal::derive(|| "Veg weeks".to_owned())
                     step="1"
                     draft=draft
                     read={|d: &Draft| d.width_cm}
@@ -200,7 +242,7 @@ async fn number_field_carries_max_and_placeholder_but_omits_empty_ones() {
         with_i18n(move || {
             view! {
                 <NumberField
-                    label="Bare".to_owned()
+                    label=Signal::derive(|| "Bare".to_owned())
                     step="1"
                     draft=draft
                     read={|d: &Draft| d.width_cm}
@@ -235,8 +277,8 @@ async fn arm_confirm_button_walks_arm_then_confirm() {
             view! {
                 <ArmConfirmButton
                     armed=Signal::derive(move || armed.get())
-                    label="Delete".to_owned()
-                    confirm_label="Confirm delete".to_owned()
+                    label=Signal::derive(|| "Delete".to_owned())
+                    confirm_label=Signal::derive(|| "Confirm delete".to_owned())
                     on_arm=move |_| armed.set(true)
                     on_confirm=move |_| confirmed.set(true)
                 />
@@ -274,8 +316,8 @@ async fn arm_confirm_button_stays_quiet_while_unarmed() {
             view! {
                 <ArmConfirmButton
                     armed=Signal::derive(move || armed.get())
-                    label="Delete".to_owned()
-                    confirm_label="Confirm delete".to_owned()
+                    label=Signal::derive(|| "Delete".to_owned())
+                    confirm_label=Signal::derive(|| "Confirm delete".to_owned())
                     on_arm={|_| ()}
                     on_confirm={|_| ()}
                 />

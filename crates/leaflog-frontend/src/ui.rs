@@ -123,14 +123,16 @@ pub fn SectionHeader(title: Signal<String>) -> impl IntoView {
 /// The shared form-field wrapper: a daisyUI fieldset with the small
 /// fieldset-label above one control. Every labelled input, select and
 /// textarea in the app renders through this so the label register
-/// stays uniform; the control itself arrives as children. `title`
-/// carries an optional hover tooltip (e.g. the light-cycle default
-/// hours' provenance); `class` appends layout modifiers such as
+/// stays uniform; the control itself arrives as children. The label
+/// arrives as a signal so a locale swap re-translates it (the i18n
+/// context resolves asynchronously — `LocaleChain`). `title` carries
+/// an optional hover tooltip (e.g. the light-cycle default hours'
+/// provenance); `class` appends layout modifiers such as
 /// `col-span-full` without touching the base recipe.
 #[component]
 #[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
 pub fn Field(
-    label: String,
+    label: Signal<String>,
     #[prop(optional)] title: Option<Signal<String>>,
     #[prop(optional)] class: &'static str,
     children: Children,
@@ -146,7 +148,7 @@ pub fn Field(
             }
             title=title
         >
-            <span class="fieldset-label">{label}</span>
+            <span class="fieldset-label">{move || label.get()}</span>
             {children()}
         </label>
     }
@@ -158,10 +160,17 @@ pub fn Field(
 /// stores the parsed input, `None` clearing the value. `minimum`/
 /// `maximum`/`placeholder` carry static `min`/`max`/`placeholder`
 /// attributes; an empty string means the attribute is left off.
+///
+/// The value binds via `prop:`, the property write: once the user
+/// types into an input, the browser stops following the value
+/// *attribute* (the dirty-value flag), so an attribute write can no
+/// longer repaint the box. When `write` rejects an entry, the
+/// property write is what actually clears the field.
 #[component]
 #[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
 pub fn NumberField<T: Clone + Send + Sync + 'static>(
-    label: String,
+    /// A signal so a locale swap re-translates the label.
+    label: Signal<String>,
     step: &'static str,
     draft: RwSignal<T>,
     read: impl Fn(&T) -> Option<f64> + Clone + Send + 'static,
@@ -182,7 +191,7 @@ pub fn NumberField<T: Clone + Send + Sync + 'static>(
     };
     view! {
         <label class="fieldset">
-            <span class="fieldset-label">{label}</span>
+            <span class="fieldset-label">{move || label.get()}</span>
             <input
                 class="input"
                 type="number"
@@ -190,10 +199,11 @@ pub fn NumberField<T: Clone + Send + Sync + 'static>(
                 min=(!minimum.is_empty()).then_some(minimum)
                 max=(!maximum.is_empty()).then_some(maximum)
                 placeholder=(!placeholder.is_empty()).then_some(placeholder)
-                // Attribute, not `prop:`: the value attribute prefills
-                // the field at build time; user edits go through
-                // on:input and never touch the attribute again.
-                value=render
+                // Property, not attribute: the property write repaints
+                // the box even after the user typed into it (the
+                // attribute path stops applying once the dirty-value
+                // flag is set), so a rejected entry clears visibly.
+                prop:value=render
                 on:input=move |ev| {
                     let parsed = event_target_value(&ev).parse::<f64>().ok();
                     draft.update(|current| write(current, parsed));
@@ -213,10 +223,11 @@ pub fn NumberField<T: Clone + Send + Sync + 'static>(
 pub fn ArmConfirmButton(
     /// Whether this instance currently shows the confirm button.
     armed: Signal<bool>,
-    /// The quiet button's caption ("Delete").
-    label: String,
-    /// The armed button's caption ("Confirm delete").
-    confirm_label: String,
+    /// The quiet button's caption ("Delete"), as a signal so a
+    /// locale swap re-translates it.
+    label: Signal<String>,
+    /// The armed button's caption ("Confirm delete"), likewise a signal.
+    confirm_label: Signal<String>,
     on_arm: impl Fn(leptos::ev::MouseEvent) + Clone + Send + 'static,
     on_confirm: impl Fn(leptos::ev::MouseEvent) + Clone + Send + 'static,
 ) -> impl IntoView {
@@ -226,10 +237,12 @@ pub fn ArmConfirmButton(
     view! {
         {move || {
             if armed.get() {
+                // Signals are `Copy`; only the callbacks need cloning
+                // for the closure to stay `Send`.
                 let on_confirm = on_confirm.clone();
                 view! {
                     <button class="btn btn-error btn-sm" on:click=on_confirm>
-                        {confirm_label.clone()}
+                        {move || confirm_label.get()}
                     </button>
                 }
                     .into_any()
@@ -237,7 +250,7 @@ pub fn ArmConfirmButton(
                 let on_arm = on_arm.clone();
                 view! {
                     <button class="btn btn-ghost btn-sm text-error" on:click=on_arm>
-                        {label.clone()}
+                        {move || label.get()}
                     </button>
                 }
                     .into_any()
