@@ -2,6 +2,19 @@
 All notable changes to the Leaflog Home Assistant app. Version headings are exactly `## <version>` — Home Assistant slices release notes on them. Generated file; never edit by hand.
 
 - - -
+## 0.15.1
+
+_Released 2026-11-21._
+
+#### Bug Fixes
+- **(test)** compare the Air shading with slack instead of byte equality - (5fd9360) - billie.codes
+- revalidate the app shell so a new release actually reaches the browser (D142) - (8fc3a22) - billie.codes
+#### Miscellaneous
+- **(release)** bump version to 0.15.0 - (66cf658) - github-actions[bot]
+- **(version)** 0.15.1 - (1b3a0f9) - billie.codes
+
+- - -
+
 ## 0.15.0
 
 _Released 2026-11-21._

@@ -2,6 +2,16 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.15.1 - 2026-11-21
+#### Bug Fixes
+- **(test)** compare the Air shading with slack instead of byte equality - (5fd9360) - billie.codes
+- revalidate the app shell so a new release actually reaches the browser (D142) - (8fc3a22) - billie.codes
+#### Miscellaneous
+- **(release)** bump version to 0.15.0 - (66cf658) - github-actions[bot]
+- **(version)** 0.15.1 - (1b3a0f9) - billie.codes
+
+- - -
+
 ## v0.15.0 - 2026-11-21
 #### Bug Fixes
 - **(ci)** pin chromedriver to our Chrome build, not the runner image's - (4c54463) - billie.codes
