@@ -448,6 +448,12 @@ wasm-tools:
         ln -sfn "../dl/${tool}-${cft_arch}/$tool" "{{wasm_tools_dir}}/bin/$tool"
     done
     ln -sfn "../dl/chrome-${cft_arch}/chrome" "{{wasm_tools_dir}}/bin/google-chrome"
+    # chromedriver searches its own directory before PATH and before the
+    # hardcoded /opt/google/chrome/chrome that GitHub's runner image
+    # ships (a different version than our pin, so the session dies with
+    # "only supports Chrome version N"). A link beside the driver wins
+    # that search.
+    ln -sfn "../chrome-${cft_arch}/chrome" "{{wasm_tools_dir}}/dl/chromedriver-${cft_arch}/chrome"
 
 # Browser-run component tests (D139): compile the frontend for
 # wasm32 and run src/component_tests in headless Chrome via the
