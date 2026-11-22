@@ -238,9 +238,6 @@ pub fn SchedulesPage() -> impl IntoView {
                         <div class="flex flex-wrap items-baseline gap-3">
                             <div class="min-w-0 flex-1">
                                 <h2 class="m-0">{t_string!(i18n, schedules.page_title)}</h2>
-                                <p class="mt-1 mb-0 text-base-content/70 max-w-prose">
-                                    {t_string!(i18n, schedules.intro)}
-                                </p>
                             </div>
                             <a class="btn btn-primary" href=route_href("/schedules/new")>
                                 {t_string!(i18n, schedules.new_schedule)}
@@ -338,9 +335,6 @@ pub fn SchedulesPage() -> impl IntoView {
                                                     />
                                                 }
                                             }
-                                            <span class="text-base-content/60 text-xs ml-auto">
-                                                {t_string!(i18n, schedules.delete_note)}
-                                            </span>
                                         </div>
                                     </div>
                                 }
