@@ -210,13 +210,15 @@ fn coach_tip_lines(
 
 /// The combined env + lamp + coach dashboard for one grow.
 /// One environment-strip tile: the uppercase micro-label, the big
-/// value, and an optional quiet band footnote. The caller decides the
-/// tile recipe (plain [`ui::tile`] vs the live threshold colouring).
-/// A dead binding renders a small warning mark beside the label
-/// (spec §4.1's "no data, never in range", surfaced per tile since
-/// D146): the mark is a link to the grow edit page — where the
-/// binding flow lives — and its tooltip names the dead entity id,
-/// so the data the tile is missing stays one hover away.
+/// value, and an optional quiet band footnote. The tile is a wrapping
+/// flex row: the label and the warning mark share the first line, and
+/// the value/band spans carry `w-full` to force their own lines. The
+/// caller decides the tile recipe (plain [`ui::tile`] vs the live
+/// threshold colouring). A dead binding renders a small warning mark
+/// beside the label (spec §4.1's "no data, never in range", surfaced
+/// per tile since D146): the mark is a link to the grow edit page —
+/// where the binding flow lives — and its tooltip names the dead
+/// entity id, so the data the tile is missing stays one hover away.
 #[component]
 #[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
 fn EnvTile(
@@ -248,7 +250,7 @@ fn EnvTile(
         let hint_entity = entity_id.clone();
         view! {
             <a
-                class="link link-warning text-xs font-bold ml-1"
+                class="link link-warning text-xs font-bold"
                 title={move || t_string!(i18n, env.dead_binding_hint, entity = hint_entity.clone())}
                 aria-label={move || t_string!(i18n, env.dead_binding_hint, entity = entity_id.clone())}
                 href=edit_href
@@ -261,10 +263,13 @@ fn EnvTile(
         <div class=class>
             <span class="text-xs uppercase tracking-wide text-base-content/60">{label}</span>
             {mark}
-            <span class="text-lg font-semibold">{value}</span>
+            <span class="w-full text-lg font-semibold">{value}</span>
             {band.map_or_else(
                 || ().into_any(),
-                |band| view! { <span class="text-xs text-base-content/60">{band}</span> }.into_any(),
+                |band| {
+                    view! { <span class="w-full text-xs text-base-content/60">{band}</span> }
+                        .into_any()
+                },
             )}
         </div>
     }
@@ -382,7 +387,7 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                             .into_any(),
                         view! {
                             <EnvTile
-                                class=format!("{} grid gap-0.5", ui::tile())
+                                class=format!("{} flex flex-wrap gap-x-1 gap-y-0.5", ui::tile())
                                 label=t_string!(i18n, env.rh).into_owned()
                                 value=rh_display
                                 band=rh_band
@@ -404,7 +409,7 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                             .into_any(),
                         view! {
                             <EnvTile
-                                class=format!("{} grid gap-0.5", ui::tile())
+                                class=format!("{} flex flex-wrap gap-x-1 gap-y-0.5", ui::tile())
                                 label=t_string!(i18n, env.co2_tile).into_owned()
                                 value=co2_display
                                 dead_entity=dead_co2
@@ -414,7 +419,7 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                             .into_any(),
                         view! {
                             <EnvTile
-                                class=format!("{} grid gap-0.5", ui::tile())
+                                class=format!("{} flex flex-wrap gap-x-1 gap-y-0.5", ui::tile())
                                 label=t_string!(i18n, env.soil_tile).into_owned()
                                 value=soil_display
                                 dead_entity=dead_soil

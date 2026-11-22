@@ -6,6 +6,34 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-22 — the dead-binding mark rides the caption line (D149)
+
+### D149: tile labels and the ⚠ mark share one line
+
+The tile was a CSS grid, so every child took a row of its own: the
+caption, then the mark, then the value, then the band. The mark read
+as a stray glyph floating between two lines instead of an annotation
+on the caption. It now sits beside the caption, on the caption's
+line.
+
+The tile div becomes a wrapping flex row (`flex flex-wrap gap-x-1
+gap-y-0.5`) instead of `grid gap-0.5`. The caption keeps its content
+width and the mark follows it in the flow; the value and the band
+spans carry `w-full` to hold their own lines, which preserves the
+vertical rhythm. `gap-x-1` replaces the mark's own `ml-1`: one gap
+for the pair, not a margin on one of them.
+
+DOM order is untouched (caption, mark, value, band), so the `view!`
+tree, the `following-sibling::span[1]` / `following-sibling::a[1]`
+locators in e2e specs 07/08/18 and the dead-entity lookup all keep
+working unchanged. A narrow tile still wraps the mark to its own
+line, which is the old rendering, so the change degrades backwards.
+
+Known and not fixed here: the mark paints in the primary green, not
+the warning colour. The unlayered `a:not(.btn)` rule in
+`tailwind.css` beats daisyUI's layered `.link-warning`. That defect
+predates this layout change and stays separate from it.
+
 ## 2026-11-22 — set phase moves into the quick-add menu (D148)
 
 ### D148: the phase picker becomes a quick-add chip
