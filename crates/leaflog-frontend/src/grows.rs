@@ -95,7 +95,7 @@ pub fn GrowsPage() -> impl IntoView {
     };
 
     view! {
-        <section class="pb-12">
+        <section class="pt-4 pb-12">
             <div class="flex flex-wrap items-center justify-between gap-4">
                 <h2>{t!(i18n, page.grows_heading)}</h2>
                 <button class="btn btn-primary btn-sm" on:click=move |_| {
