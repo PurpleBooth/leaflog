@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.16.1 - 2026-11-22
+#### Bug Fixes
+- **(frontend)** unify page spacing and coach text - (71a9b8b) - billie.codes
+#### Miscellaneous
+- **(release)** bump version to 0.16.0 - (503fa4c) - github-actions[bot]
+- **(version)** 0.16.1 - (c764fb3) - billie.codes
+
+- - -
+
 ## v0.16.0 - 2026-11-22
 #### Bug Fixes
 - **(backend)** cache Trunk's bundles when the hash is shorter than 16 digits - (6553b8e) - billie.codes
