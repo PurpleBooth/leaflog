@@ -312,11 +312,15 @@ fn asset_cache_control(path: &str) -> HeaderValue {
     let name = path.rsplit('/').next().unwrap_or(path);
     let stem = name.split('.').next().unwrap_or(name);
     // Trunk puts the hash in its own segment, sometimes with a `_bg`
-    // suffix (`leaflog-frontend-393f9ea0eff0d312_bg.wasm`), so any
-    // long hex segment marks the name as content-addressed.
+    // suffix (`leaflog-frontend-393f9ea0eff0d312_bg.wasm`), so a long
+    // hex segment marks the name as content-addressed. The length is
+    // not fixed: Trunk formats a 64-bit seahash with `{:x}`, which
+    // drops leading zeros, so a real hash is 1-16 hex digits — this
+    // build's bundles came out at 15. A 16-digit gate silently sent
+    // those to `no-cache` and revalidated 3.4 MB on every load.
     let hashed = stem
         .split(['-', '_'])
-        .any(|segment| segment.len() >= 16 && segment.chars().all(|c| c.is_ascii_hexdigit()));
+        .any(|segment| segment.len() >= 10 && segment.chars().all(|c| c.is_ascii_hexdigit()));
     let value = if hashed {
         "public, max-age=31536000, immutable"
     } else {
@@ -476,6 +480,11 @@ mod tests {
             "leaflog-frontend-393f9ea0eff0d312.js",
             "leaflog-frontend-393f9ea0eff0d312_bg.wasm",
             "pkg/app-0123456789abcdef.js",
+            // Trunk's `{:x}` drops leading zeros, so real hashes can
+            // be shorter than 16 digits. These are the names this
+            // repo actually shipped.
+            "leaflog-frontend-9825778351509dd.js",
+            "leaflog-frontend-9825778351509dd_bg.wasm",
         ] {
             assert_eq!(
                 asset_cache_control(hashed),

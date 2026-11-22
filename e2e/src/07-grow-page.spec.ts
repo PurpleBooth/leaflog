@@ -12,7 +12,7 @@ import { api, createGrow, uniqueName, url } from './helpers';
 
 /** A dead-binding warning mark inside the env strip. */
 function deadMark(page: import('@playwright/test').Page) {
-  return page.locator('#env-strip').locator('a.link-warning');
+  return page.locator('#env-strip').locator('a.dead-mark');
 }
 
 test('healthy bindings show no dead-tile marks, at load or after load', async ({

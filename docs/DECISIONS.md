@@ -6,6 +6,84 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-22 — the hash-length gate accepts what Trunk emits (D151)
+
+### D151: the content-hash classifier stops assuming 16 hex digits
+
+D142 keys the cache policy off the filename, and both the backend
+classifier and the e2e spec asked for a 16-digit hex segment. Trunk
+does not produce one. It formats a 64-bit seahash with `{:x}`, which
+drops leading zeros, so the segment is 1 to 16 digits.
+
+This build's bundles came out at 15 digits:
+`leaflog-frontend-9825778351509dd.js` and its `_bg.wasm` sibling. The
+CSS landed at 16 and passed. A probe against the running backend
+showed the consequence: both bundles answered `cache-control:
+no-cache`, so every page load revalidated 3.4 MB of wasm and 72 KB of
+JS instead of reusing them.
+
+That is the opposite of the intent, and it is a live defect rather
+than a test artifact. Only the stylesheet was getting the year-long
+immutable policy.
+
+The gate is now `>= 10` hex digits. Anything shorter is a word, not
+a hash: real names in this repo and in Trunk's own docs run 15 to 16
+digits. The e2e regex matches `{10,16}` for the same reason, and both
+sides gained the 15-digit names this repo actually shipped so the
+regression is pinned by a real value.
+
+## 2026-11-22 — the ⚠ mark actually reads as a warning (D150)
+
+### D150: element defaults move into `base`, the mark gets a contrast-safe colour
+
+A bare `a:not(.btn) { color: var(--color-primary) }` in `tailwind.css`
+was unlayered. Unlayered CSS outranks every `@layer`, so it beat not
+only daisyUI's components but Tailwind's utilities on any non-button
+anchor. Two visible consequences, both reported from a screenshot
+rather than by a test:
+
+- `.link-warning` never painted. The ⚠ mark on a dead env tile
+  rendered in the primary green (`#2e7d4f`), not amber.
+- `.font-bold` never applied to it either. The mark had been
+  rendering at weight 500 the whole time.
+
+The three element defaults (`a:not(.btn)`, its hover, and the shared
+`:focus-visible` outline) now sit in `@layer base`, where an element
+default yields to both components and utilities. That is the layer's
+purpose; the old placement made a default act as a hard override.
+
+Fixing the layer exposed a second defect it had been masking.
+`--color-warning` is a **fill** colour: daisyUI pairs it with the
+near-black `--color-warning-content` so text sits *on* the amber,
+never *in* it. As text, `#ff9800` measures 2.16:1 on white, far under
+the 4.5:1 a 12px glyph needs. The mark therefore no longer uses
+`.link-warning` at all. It carries a repo-owned `.dead-mark` in
+`@layer components`, colouring itself with
+`color-mix(in oklab, var(--color-warning) 52%, var(--color-base-content))`.
+Mixing the amber toward the theme's ink keeps the warning hue and
+clears contrast in both shipped themes — measured in the browser at
+**5.32:1** light and **10.70:1** dark.
+
+The mix reads the semantic variables, not literals, so an adopted HA
+theme recolours the mark with everything else (theme.rs maps HA's
+warning/ink onto these slots). A fixed ratio cannot promise 4.5:1 for
+*any* third-party palette — a muted `#eab308` on `#f3f4f6` still lands
+near 3.9:1 — but it clears the shipped pair with room and stays on the
+warning hue everywhere. Falling back to plain `var(--color-warning)`
+under `@supports` covers engines without `color-mix`.
+
+Scope: the only other non-button anchor is a `span.link` inside the
+bind affordance, and no other `<a>` carries a daisyUI component class,
+so the re-layering reached this mark and nothing else. Roughly 36
+other unlayered rules remain in `tailwind.css` (`body`, `h1`-`h4`,
+`.facts`, `.statband`, `.gantt*`, `.feed*`); they are element and
+repo-owned class rules whose current precedence is deliberate, so they
+stay as they are.
+
+e2e spec 07 selected the mark by `a.link-warning`; it now selects
+`a.dead-mark`, which is the honest selector — it names what the mark
+is, not which daisyUI fill colour it borrows.
+
 ## 2026-11-22 — the dead-binding mark rides the caption line (D149)
 
 ### D149: tile labels and the ⚠ mark share one line

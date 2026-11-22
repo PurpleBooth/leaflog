@@ -250,7 +250,7 @@ fn EnvTile(
         let hint_entity = entity_id.clone();
         view! {
             <a
-                class="link link-warning text-xs font-bold"
+                class="link dead-mark text-xs font-bold"
                 title={move || t_string!(i18n, env.dead_binding_hint, entity = hint_entity.clone())}
                 aria-label={move || t_string!(i18n, env.dead_binding_hint, entity = entity_id.clone())}
                 href=edit_href

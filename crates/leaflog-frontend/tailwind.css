@@ -142,21 +142,56 @@ p {
 /* Scoped to non-button anchors: daisyUI paints .btn anchors
  * (primary CTAs like "Neuer Plan") from its own recipe, and an
  * unscoped primary-color rule here overrode it — dark theme rendered
- * green text on the identical green background, an invisible CTA. */
-a:not(.btn) {
-  color: var(--color-primary);
-  font-weight: 500;
+ * green text on the identical green background, an invisible CTA.
+ *
+ * These rules sit in `base` on purpose (D150). Unlayered CSS beats
+ * every @layer, so as bare rules they outranked daisyUI's components
+ * *and* Tailwind's utilities on any non-button anchor: `.link-warning`
+ * could never paint its colour and `.font-bold` never applied. In the
+ * base layer the element default yields to both, which is the point
+ * of an element default. */
+@layer base {
+  a:not(.btn) {
+    color: var(--color-primary);
+    font-weight: 500;
+  }
+
+  a:not(.btn):hover {
+    filter: brightness(1.1);
+  }
+
+  a:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 3px solid var(--color-primary);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
 }
 
-a:not(.btn):hover {
-  filter: brightness(1.1);
-}
-
-a:focus-visible,
-[tabindex]:focus-visible {
-  outline: 3px solid var(--color-primary);
-  outline-offset: 2px;
-  border-radius: 4px;
+/* Dead-binding warning mark (D146), the ⚠ beside a dead tile's
+ * caption. It references a missing sensor, so it must read as a
+ * caveat and stay legible at 12px (D150).
+ *
+ * `--color-warning` is a FILL colour: daisyUI pairs it with the
+ * near-black `--color-warning-content` so text sits *on* the amber,
+ * never *in* it. Painted as text it measures 2.16:1 on white — well
+ * under the 4.5:1 a 12px glyph needs. Mixing the amber 52% toward
+ * the theme's ink keeps the warning hue while clearing contrast in
+ * both shipped themes (light ≈5.3:1, dark ≈10.7:1).
+ *
+ * The mix reads the semantic variables rather than literals, so an
+ * HA-adopted theme (theme.rs maps its warning/ink onto these slots)
+ * recolours the mark with the rest of the UI. A fixed ratio cannot
+ * guarantee 4.5:1 for every third-party palette — a muted one can
+ * still land near 3.9:1 — but it clears the default pair with room
+ * and stays on the warning hue everywhere. */
+/* In `components`, not loose (D150): above the `base` element
+ * default so it wins the caption colour, below `utilities` so a
+ * `text-*` utility can still override it per instance. */
+@layer components {
+  .dead-mark {
+    color: color-mix(in oklab, var(--color-warning) 52%, var(--color-base-content));
+  }
 }
 
 /* Top-nav active marker (nav rework, 2026-11-22): the bench bar's

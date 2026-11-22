@@ -17,7 +17,9 @@ test('hashed bundles cache forever, stable names revalidate', async ({
   expect(index.headers()['cache-control']).toBe('no-cache');
 
   const html = await index.text();
-  const hashed = [...html.matchAll(/([\w.-]+-[0-9a-f]{16}(?:_bg)?\.\w+)/g)].map(
+  // Trunk formats a 64-bit seahash with `{:x}`, which drops leading
+  // zeros, so the hex segment is 1-16 digits rather than always 16.
+  const hashed = [...html.matchAll(/([\w.-]+-[0-9a-f]{10,16}(?:_bg)?\.\w+)/g)].map(
     (m) => m[1]!,
   );
   // The shell must reference at least the JS bundle and the stylesheet.
