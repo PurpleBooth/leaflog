@@ -2,6 +2,26 @@
 All notable changes to the Leaflog Home Assistant app. Version headings are exactly `## <version>` — Home Assistant slices release notes on them. Generated file; never edit by hand.
 
 - - -
+## 0.16.0
+
+_Released 2026-11-22._
+
+#### Bug Fixes
+- **(backend)** cache Trunk's bundles when the hash is shorter than 16 digits - (6553b8e) - billie.codes
+- **(frontend)** add space above the grows heading - (a019c9b) - billie.codes
+- **(frontend)** move the dead-binding mark onto the caption line (D149) - (b89b6a0) - billie.codes
+- **(test)** compare the humidity band's end with its own window edge - (4073d84) - billie.codes
+#### Features
+- **(frontend)** move the phase picker into the quick-add menu (D148) - (f7e2618) - billie.codes
+#### Miscellaneous
+- **(design)** refresh the design tool configuration - (041dc9e) - billie.codes
+- **(release)** bump version to 0.15.4 - (1039683) - github-actions[bot]
+- **(version)** 0.16.0 - (cb10e45) - billie.codes
+#### Refactoring
+- **(frontend)** drop the schedules intro and delete-note captions - (bc2004e) - billie.codes
+
+- - -
+
 ## 0.15.4
 
 _Released 2026-11-22._

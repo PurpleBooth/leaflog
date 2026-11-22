@@ -2,6 +2,23 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.16.0 - 2026-11-22
+#### Bug Fixes
+- **(backend)** cache Trunk's bundles when the hash is shorter than 16 digits - (6553b8e) - billie.codes
+- **(frontend)** add space above the grows heading - (a019c9b) - billie.codes
+- **(frontend)** move the dead-binding mark onto the caption line (D149) - (b89b6a0) - billie.codes
+- **(test)** compare the humidity band's end with its own window edge - (4073d84) - billie.codes
+#### Features
+- **(frontend)** move the phase picker into the quick-add menu (D148) - (f7e2618) - billie.codes
+#### Miscellaneous
+- **(design)** refresh the design tool configuration - (041dc9e) - billie.codes
+- **(release)** bump version to 0.15.4 - (1039683) - github-actions[bot]
+- **(version)** 0.16.0 - (cb10e45) - billie.codes
+#### Refactoring
+- **(frontend)** drop the schedules intro and delete-note captions - (bc2004e) - billie.codes
+
+- - -
+
 ## v0.15.4 - 2026-11-22
 #### Features
 - **(frontend)** bench-bar navigation, Grows-first landing and quiet footer (D147) - (92a0907) - billie.codes
