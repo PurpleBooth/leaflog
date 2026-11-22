@@ -2,7 +2,17 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
-## v0.15.3 - 2026-11-21
+## v0.15.4 - 2026-11-22
+#### Features
+- **(frontend)** bench-bar navigation, Grows-first landing and quiet footer (D147) - (92a0907) - billie.codes
+- **(frontend)** fold the drift banner into per-tile warning marks (D146) - (ba4e23c) - billie.codes
+#### Miscellaneous
+- **(release)** bump version to 0.15.3 - (efc538d) - github-actions[bot]
+- **(version)** 0.15.4 - (5766064) - billie.codes
+
+- - -
+
+## v0.15.3 - 2026-11-22
 #### Bug Fixes
 - **(frontend)** short attribution line and Foto uploads through quick add (D144) - (341c22d) - billie.codes
 - close the audit findings (D145) - (27a5a47) - billie.codes
@@ -12,7 +22,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.15.2 - 2026-11-21
+## v0.15.2 - 2026-11-22
 #### Bug Fixes
 - contain the feeding section and restore the prototype dose-list metrics (D143) - (e4f19c3) - billie.codes
 #### Miscellaneous
@@ -21,7 +31,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.15.1 - 2026-11-21
+## v0.15.1 - 2026-11-22
 #### Bug Fixes
 - **(test)** compare the Air shading with slack instead of byte equality - (5fd9360) - billie.codes
 - revalidate the app shell so a new release actually reaches the browser (D142) - (8fc3a22) - billie.codes
@@ -31,7 +41,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.15.0 - 2026-11-21
+## v0.15.0 - 2026-11-22
 #### Bug Fixes
 - **(ci)** pin chromedriver to our Chrome build, not the runner image's - (4c54463) - billie.codes
 - **(ci)** create the wasm tools bin directory before linking into it - (f45a179) - billie.codes
@@ -52,7 +62,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.14.0 - 2026-11-21
+## v0.14.0 - 2026-11-22
 #### Bug Fixes
 - **(frontend)** reserve root-zone space when the feed log has pH/EC - (0740721) - billie.codes
 - **(frontend)** align dimmable row and card the edit-page sections - (eb691aa) - billie.codes
@@ -76,7 +86,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.13.0 - 2026-11-21
+## v0.13.0 - 2026-11-22
 #### Documentation
 - **(release)** the v0.13.0 upgrade note - (a745746) - billie.codes
 #### Features
@@ -87,7 +97,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.12.0 - 2026-11-21
+## v0.12.0 - 2026-11-22
 #### Bug Fixes
 - **(backend)** land the subscribe_entities seed so steady entities report available - (1bd23b7) - billie.codes
 - **(frontend)** key the light-cycle reset rollback to its captured values - (74b0551) - billie.codes
@@ -109,7 +119,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.11.0 - 2026-11-21
+## v0.11.0 - 2026-11-22
 #### Bug Fixes
 - **(backend)** window-bound the marker scan before its limit - (3b3c646) - billie.codes
 - **(frontend)** bake icu plural data so plural keys render - (ddde21c) - billie.codes
@@ -177,7 +187,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.10.0 - 2026-11-21
+## v0.10.0 - 2026-11-22
 #### Features
 - **(frontend)** the logging loop opens in the grow header - (841c0fc) - billie.codes
 #### Miscellaneous
@@ -187,7 +197,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.9.0 - 2026-11-21
+## v0.9.0 - 2026-11-22
 #### Bug Fixes
 - **(frontend)** tile_class is const - (a474b03) - billie.codes
 - **(frontend)** env tile colours track the merged live readings - (bd5e463) - billie.codes
@@ -241,7 +251,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.8.0 - 2026-11-21
+## v0.8.0 - 2026-11-22
 #### Bug Fixes
 - **(frontend)** a bound chart card survives a failed history fetch - (e0f9f15) - billie.codes
 - **(mock-ha)** push a flipped light state on the next tick (bug c62200c) - (7b99597) - billie.codes
@@ -264,7 +274,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.7.0 - 2026-11-21
+## v0.7.0 - 2026-11-22
 #### Bug Fixes
 - **(frontend)** give ECharts the option as plain objects (bug 1b2b540) - (c27c7af) - billie.codes
 - **(frontend)** editor buttons submit the right thing - (1cede2d) - billie.codes
@@ -328,7 +338,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.6.0 - 2026-11-21
+## v0.6.0 - 2026-11-22
 #### Bug Fixes
 - **(frontend)** space and seed-batch selects keep their pick on refetch - (16b7b3e) - billie.codes
 #### CI
@@ -365,7 +375,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.5.1 - 2026-11-21
+## v0.5.1 - 2026-11-22
 #### Bug Fixes
 - **(dashboard)** show the No-data banner only for real dead bindings - (d788fe3) - billie.codes
 - **(e2e)** point the stack at its mock; honest env poll, strain locators - (f9ce5aa) - billie.codes
@@ -388,7 +398,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.5.0 - 2026-11-21
+## v0.5.0 - 2026-11-22
 #### Bug Fixes
 - **(ci)** UI prose extraction drops Tailwind class lists (D065) - (063b515) - billie.codes
 - **(image)** fetch the daisyUI bundles inside the container build - (ca3df1f) - billie.codes
@@ -410,7 +420,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.4.1 - 2026-11-21
+## v0.4.1 - 2026-11-22
 #### Bug Fixes
 - **(frontend)** submit handlers must prevent_default themselves (D061) - (f949965) - billie.codes
 #### Miscellaneous
@@ -419,7 +429,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.4.0 - 2026-11-21
+## v0.4.0 - 2026-11-22
 #### CI
 - **(changelog)** generate CHANGELOG.md with cocogitto in CI - (fed0dea) - billie.codes
 - **(deny)** cargo-deny gate for advisories and licences (D047) - (780f227) - billie.codes
@@ -448,7 +458,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.3.0 - 2026-11-21
+## v0.3.0 - 2026-11-22
 #### Bug Fixes
 - **(backend)** add nosniff and a hash-pinned CSP to served responses - (bae8103) - billie.codes
 - **(backend)** reject traversal and interior separators in photo path builders - (e139c7e) - billie.codes
@@ -467,7 +477,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.2.0 - 2026-11-21
+## v0.2.0 - 2026-11-22
 #### Bug Fixes
 - **(backend)** normalize photos to rgb8 so non-rgb inputs cannot panic - (ebcf88e) - billie.codes
 - **(ci)** cocogitto tarball extracts to x86_64-unknown-linux-musl/cog - (726b341) - billie.codes
@@ -493,7 +503,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
-## v0.1.0 - 2026-11-21
+## v0.1.0 - 2026-11-22
 #### Bug Fixes
 - **(ci)** reference arch-tagged images when merging the multi-arch manifest - (23a7e5a) - billie.codes
 - **(ha)** pin wasm-bindgen-cli in the image builder (trunk auto-fetch failed on aarch64 CI) - (d458f19) - billie.codes

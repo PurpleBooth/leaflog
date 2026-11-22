@@ -2,9 +2,22 @@
 All notable changes to the Leaflog Home Assistant app. Version headings are exactly `## <version>` — Home Assistant slices release notes on them. Generated file; never edit by hand.
 
 - - -
+## 0.15.4
+
+_Released 2026-11-22._
+
+#### Features
+- **(frontend)** bench-bar navigation, Grows-first landing and quiet footer (D147) - (92a0907) - billie.codes
+- **(frontend)** fold the drift banner into per-tile warning marks (D146) - (ba4e23c) - billie.codes
+#### Miscellaneous
+- **(release)** bump version to 0.15.3 - (efc538d) - github-actions[bot]
+- **(version)** 0.15.4 - (5766064) - billie.codes
+
+- - -
+
 ## 0.15.3
 
-_Released 2026-11-21._
+_Released 2026-11-22._
 
 #### Bug Fixes
 - **(frontend)** short attribution line and Foto uploads through quick add (D144) - (341c22d) - billie.codes
@@ -17,7 +30,7 @@ _Released 2026-11-21._
 
 ## 0.15.2
 
-_Released 2026-11-21._
+_Released 2026-11-22._
 
 #### Bug Fixes
 - contain the feeding section and restore the prototype dose-list metrics (D143) - (e4f19c3) - billie.codes
@@ -29,7 +42,7 @@ _Released 2026-11-21._
 
 ## 0.15.1
 
-_Released 2026-11-21._
+_Released 2026-11-22._
 
 #### Bug Fixes
 - **(test)** compare the Air shading with slack instead of byte equality - (5fd9360) - billie.codes
@@ -42,7 +55,7 @@ _Released 2026-11-21._
 
 ## 0.15.0
 
-_Released 2026-11-21._
+_Released 2026-11-22._
 
 #### Bug Fixes
 - **(ci)** pin chromedriver to our Chrome build, not the runner image's - (4c54463) - billie.codes
@@ -66,7 +79,7 @@ _Released 2026-11-21._
 
 ## 0.14.0
 
-_Released 2026-11-21._
+_Released 2026-11-22._
 
 #### Bug Fixes
 - **(frontend)** reserve root-zone space when the feed log has pH/EC - (0740721) - billie.codes
@@ -93,7 +106,7 @@ _Released 2026-11-21._
 
 ## 0.13.0
 
-_Released 2026-11-21._
+_Released 2026-11-22._
 
 #### Documentation
 - **(release)** the v0.13.0 upgrade note - (a745746) - billie.codes
@@ -107,7 +120,7 @@ _Released 2026-11-21._
 
 ## 0.12.0
 
-_Released 2026-11-21._
+_Released 2026-11-22._
 
 #### Bug Fixes
 - **(backend)** land the subscribe_entities seed so steady entities report available - (1bd23b7) - billie.codes
@@ -132,7 +145,7 @@ _Released 2026-11-21._
 
 ## 0.11.0
 
-_Released 2026-11-21._
+_Released 2026-11-22._
 
 #### Bug Fixes
 - **(backend)** window-bound the marker scan before its limit - (3b3c646) - billie.codes
@@ -203,7 +216,7 @@ _Released 2026-11-21._
 
 ## 0.10.0
 
-_Released 2026-11-21._
+_Released 2026-11-22._
 
 #### Features
 - **(frontend)** the logging loop opens in the grow header - (841c0fc) - billie.codes
@@ -216,7 +229,7 @@ _Released 2026-11-21._
 
 ## 0.9.0
 
-_Released 2026-11-21._
+_Released 2026-11-22._
 
 #### Bug Fixes
 - **(frontend)** tile_class is const - (a474b03) - billie.codes
@@ -273,7 +286,7 @@ _Released 2026-11-21._
 
 ## 0.8.0
 
-_Released 2026-11-21._
+_Released 2026-11-22._
 
 #### Bug Fixes
 - **(frontend)** a bound chart card survives a failed history fetch - (e0f9f15) - billie.codes
@@ -299,7 +312,7 @@ _Released 2026-11-21._
 
 ## 0.7.0
 
-_Released 2026-11-21._
+_Released 2026-11-22._
 
 #### Bug Fixes
 - **(frontend)** give ECharts the option as plain objects (bug 1b2b540) - (c27c7af) - billie.codes
@@ -366,7 +379,7 @@ _Released 2026-11-21._
 
 ## 0.6.0
 
-_Released 2026-11-21._
+_Released 2026-11-22._
 
 #### Bug Fixes
 - **(frontend)** space and seed-batch selects keep their pick on refetch - (16b7b3e) - billie.codes
@@ -406,7 +419,7 @@ _Released 2026-11-21._
 
 ## 0.5.1
 
-_Released 2026-11-21._
+_Released 2026-11-22._
 
 #### Bug Fixes
 - **(dashboard)** show the No-data banner only for real dead bindings - (d788fe3) - billie.codes
@@ -432,7 +445,7 @@ _Released 2026-11-21._
 
 ## 0.5.0
 
-_Released 2026-11-21._
+_Released 2026-11-22._
 
 #### Bug Fixes
 - **(ci)** UI prose extraction drops Tailwind class lists (D065) - (063b515) - billie.codes
@@ -457,7 +470,7 @@ _Released 2026-11-21._
 
 ## 0.4.1
 
-_Released 2026-11-21._
+_Released 2026-11-22._
 
 #### Bug Fixes
 - **(frontend)** submit handlers must prevent_default themselves (D061) - (f949965) - billie.codes
@@ -469,7 +482,7 @@ _Released 2026-11-21._
 
 ## 0.4.0
 
-_Released 2026-11-21._
+_Released 2026-11-22._
 
 #### CI
 - **(changelog)** generate CHANGELOG.md with cocogitto in CI - (fed0dea) - billie.codes
@@ -501,7 +514,7 @@ _Released 2026-11-21._
 
 ## 0.3.0
 
-_Released 2026-11-21._
+_Released 2026-11-22._
 
 #### Bug Fixes
 - **(backend)** add nosniff and a hash-pinned CSP to served responses - (bae8103) - billie.codes
@@ -523,7 +536,7 @@ _Released 2026-11-21._
 
 ## 0.2.0
 
-_Released 2026-11-21._
+_Released 2026-11-22._
 
 #### Bug Fixes
 - **(backend)** normalize photos to rgb8 so non-rgb inputs cannot panic - (ebcf88e) - billie.codes
@@ -552,7 +565,7 @@ _Released 2026-11-21._
 
 ## 0.1.0
 
-_Released 2026-11-21._
+_Released 2026-11-22._
 
 #### Bug Fixes
 - **(ci)** reference arch-tagged images when merging the multi-arch manifest - (23a7e5a) - billie.codes
