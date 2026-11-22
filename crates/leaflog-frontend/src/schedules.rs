@@ -217,7 +217,7 @@ pub fn SchedulesPage() -> impl IntoView {
                     .into_any()
             } else if rows.get().is_empty() {
                 view! {
-                    <div class="card bg-base-100 shadow-sm px-5 py-8 text-center my-4">
+                    <div class="card bg-base-100 shadow-sm px-5 py-8 text-center mb-4">
                         <h2 class="m-0">{t_string!(i18n, schedules.page_title)}</h2>
                         <h3 class="mt-3 mb-0 text-lg">
                             {t_string!(i18n, schedules.library_empty_title)}
@@ -225,7 +225,7 @@ pub fn SchedulesPage() -> impl IntoView {
                         <p class="text-base-content/70 max-w-prose mx-auto">
                             {t_string!(i18n, schedules.library_empty_body)}
                         </p>
-                        <a class="btn btn-primary mt-4" href=route_href("/schedules/new")>
+                        <a class="btn btn-primary btn-sm mt-4" href=route_href("/schedules/new")>
                             {t_string!(i18n, schedules.new_schedule)}
                         </a>
                     </div>
@@ -234,15 +234,13 @@ pub fn SchedulesPage() -> impl IntoView {
             } else {
                 let locale = i18n.get_locale();
                 view! {
-                    <div class="my-4 grid gap-3">
-                        <div class="flex flex-wrap items-baseline gap-3">
-                            <div class="min-w-0 flex-1">
-                                <h2 class="m-0">{t_string!(i18n, schedules.page_title)}</h2>
-                            </div>
-                            <a class="btn btn-primary" href=route_href("/schedules/new")>
+                    <div class="mb-4 grid gap-3">
+                        <ui::PageHeader>
+                            <h2>{t_string!(i18n, schedules.page_title)}</h2>
+                            <a class="btn btn-primary btn-sm" href=route_href("/schedules/new")>
                                 {t_string!(i18n, schedules.new_schedule)}
                             </a>
-                        </div>
+                        </ui::PageHeader>
                         {rows
                             .get()
                             .into_iter()
@@ -605,7 +603,7 @@ pub fn ScheduleEditorPage(
 
     view! {
         <ErrorIf error />
-        <h2 class="mt-2 mb-3">
+        <h2 class="mb-3">
             {move || if id.get_value().is_some() {
                 t_string!(i18n, schedules.editor_edit_title).into_owned()
             } else {

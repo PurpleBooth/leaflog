@@ -394,7 +394,7 @@ pub fn GrowEditPage(grow_id: Signal<String>) -> impl IntoView {
     }
 
     view! {
-        <section class="pb-12">
+        <section>
             <h2>{t!(i18n, page.edit_heading)}</h2>
             <Show when=move || deleted.get()>
                 // The plain route path: unlike an <A href>, Redirect

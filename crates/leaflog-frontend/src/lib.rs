@@ -245,7 +245,8 @@ pub fn App() -> impl IntoView {
 }
 
 /// Header and footer chrome with the route outlet between; lives
-/// under the i18n provider so the nav labels translate.
+/// under the i18n provider so the nav labels translate. The main
+/// landmark supplies the same top and bottom spacing for every route.
 ///
 /// Two-row bench bar (nav rework, 2026-11-22): the brand is itself the
 /// home link — `/` opens the current grow's dashboard — and the three
@@ -282,7 +283,7 @@ fn AppShell() -> impl IntoView {
                     <A href=route_href("/history")>{t!(i18n, nav.history)}</A>
                 </nav>
             </header>
-            <main id="main" class="min-w-0 flex-1">
+            <main id="main" class="min-w-0 flex-1 pt-6 pb-12">
                 {routes()}
             </main>
             <AppFooter />
@@ -395,7 +396,7 @@ fn routes() -> impl IntoView {
 fn Spike() -> impl IntoView {
     let i18n = use_i18n();
     view! {
-        <section class={format!("{} my-4", ui::card())}>
+        <section class={format!("{} mb-4", ui::card())}>
             <h2>{t!(i18n, page.spike_heading)}</h2>
             <p>{t!(i18n, page.spike_intro)}</p>
             <p><code>{ingress_base()}</code></p>

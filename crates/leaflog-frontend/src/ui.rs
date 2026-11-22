@@ -34,6 +34,14 @@ pub const CARD_GRID: &str = "grid grid-cols-1 gap-4 items-start lg:grid-cols-2";
 use crate::i18n::{t_string, use_i18n};
 use gloo_timers::callback::Timeout;
 
+/// A page title and its actions, aligned and wrapped the same way on
+/// every list page. Use small buttons for the page-level actions.
+#[component]
+#[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
+pub fn PageHeader(children: Children) -> impl IntoView {
+    view! { <div class="flex flex-wrap items-center justify-between gap-4">{children()}</div> }
+}
+
 /// The undo window: how long a pending undo stays live after its
 /// record was made (docs/DECISIONS.md D126).
 pub const UNDO_WINDOW_MS: u64 = 8_000;

@@ -485,7 +485,7 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                                         });
                                         view! {
                                             <li class="py-2 first:pt-0 last:pb-0">
-                                                <strong>{title}</strong>
+                                                <span>{title}</span>
                                                 {why_line}
                                             </li>
                                         }

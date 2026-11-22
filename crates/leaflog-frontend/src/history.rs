@@ -181,10 +181,10 @@ pub fn HistoryPage() -> impl IntoView {
     };
 
     view! {
-        <section class="pb-12">
-            <div class="flex flex-wrap items-center justify-between gap-4">
+        <section>
+            <ui::PageHeader>
                 <h2>{t!(i18n, page.history_heading)}</h2>
-            </div>
+            </ui::PageHeader>
             <ErrorIf error />
 
             // The dashboard band: runs, mean plan deviation, summed
@@ -457,7 +457,7 @@ pub fn PlantViewPage() -> impl IntoView {
     };
 
     view! {
-        <section class="pb-12">
+        <section>
             <ErrorIf error />
             {move || {
                 view.get().map(|data| {
@@ -472,7 +472,7 @@ pub fn PlantViewPage() -> impl IntoView {
                         trimmed_g: data.plant.trimmed_g,
                     };
                     view! {
-                        <div class={format!("{} my-4", ui::card())}>
+                        <div class={format!("{} mb-4", ui::card())}>
                             <div class="flex flex-wrap items-baseline gap-2">
                                 <strong>{data.plant.name.clone()}</strong>
                                 <A href=route_href(&format!("/grows/{grow_id}"))>{t!(i18n, plant.back_to_grow)}</A>

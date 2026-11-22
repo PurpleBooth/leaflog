@@ -95,14 +95,14 @@ pub fn GrowsPage() -> impl IntoView {
     };
 
     view! {
-        <section class="pt-4 pb-12">
-            <div class="flex flex-wrap items-center justify-between gap-4">
+        <section>
+            <ui::PageHeader>
                 <h2>{t!(i18n, page.grows_heading)}</h2>
                 <button class="btn btn-primary btn-sm" on:click=move |_| {
                     draft.set(empty_grow());
                     form_open.set(true);
                 }>{t!(i18n, grows.start_grow)}</button>
-            </div>
+            </ui::PageHeader>
 
             <ErrorIf error />
 
@@ -133,7 +133,7 @@ pub fn GrowsPage() -> impl IntoView {
                 </form>
             </Show>
 
-            <ul class="grid gap-4 lg:grid-cols-2">
+            <ul class="mt-4 grid gap-4 lg:grid-cols-2">
                 {move || {
                     grows
                         .get()
@@ -737,7 +737,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
     };
 
     view! {
-        <section class="pb-12">
+        <section>
             {move || {
                 grow.get().map_or_else(
                     || ().into_any(),
