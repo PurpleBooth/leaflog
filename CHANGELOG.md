@@ -2,6 +2,17 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.17.0 - 2026-11-22
+#### Features
+- **(backend)** serve paginated grow stories - (7ac333b) - billie.codes
+- **(core)** model local-day grow stories - (41aa107) - billie.codes
+- **(frontend)** unite the grow diary and photos - (32618b8) - billie.codes
+#### Miscellaneous
+- **(release)** bump version to 0.16.1 - (e24bfc7) - github-actions[bot]
+- **(version)** 0.17.0 - (e92923d) - billie.codes
+
+- - -
+
 ## v0.16.1 - 2026-11-22
 #### Bug Fixes
 - **(frontend)** unify page spacing and coach text - (71a9b8b) - billie.codes

@@ -2,6 +2,20 @@
 All notable changes to the Leaflog Home Assistant app. Version headings are exactly `## <version>` — Home Assistant slices release notes on them. Generated file; never edit by hand.
 
 - - -
+## 0.17.0
+
+_Released 2026-11-22._
+
+#### Features
+- **(backend)** serve paginated grow stories - (7ac333b) - billie.codes
+- **(core)** model local-day grow stories - (41aa107) - billie.codes
+- **(frontend)** unite the grow diary and photos - (32618b8) - billie.codes
+#### Miscellaneous
+- **(release)** bump version to 0.16.1 - (e24bfc7) - github-actions[bot]
+- **(version)** 0.17.0 - (e92923d) - billie.codes
+
+- - -
+
 ## 0.16.1
 
 _Released 2026-11-22._
