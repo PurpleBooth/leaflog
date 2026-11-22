@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-19T10:01:29Z",
+  "generatedAt": "2026-11-22T11:22:10.400Z",
   "title": "Design System: Leaflog",
   "extensions": {
     "colorMeta": {
@@ -273,14 +273,89 @@
           "oklch(88% 0.06 27)",
           "oklch(96% 0.02 27)"
         ]
+      },
+      "dusk-loop": {
+        "role": "info",
+        "displayName": "Dusk Loop",
+        "canonical": "#7ca9f7",
+        "tonalRamp": [
+          "oklch(20% 0.05 260)",
+          "oklch(30% 0.08 260)",
+          "oklch(42% 0.11 260)",
+          "oklch(54% 0.13 260)",
+          "oklch(66% 0.12 260)",
+          "oklch(78% 0.08 260)",
+          "oklch(88% 0.05 260)",
+          "oklch(95% 0.02 260)"
+        ]
+      },
+      "leaf-warn": {
+        "role": "success",
+        "displayName": "Leaf Warn",
+        "canonical": "#66bb6a",
+        "tonalRamp": [
+          "oklch(20% 0.05 145)",
+          "oklch(30% 0.08 145)",
+          "oklch(42% 0.11 145)",
+          "oklch(54% 0.13 145)",
+          "oklch(66% 0.12 145)",
+          "oklch(78% 0.09 145)",
+          "oklch(88% 0.06 145)",
+          "oklch(95% 0.03 145)"
+        ]
+      },
+      "amber-soft": {
+        "role": "warning",
+        "displayName": "Amber Soft",
+        "canonical": "#ffb74d",
+        "tonalRamp": [
+          "oklch(22% 0.06 60)",
+          "oklch(34% 0.09 60)",
+          "oklch(46% 0.12 60)",
+          "oklch(58% 0.14 60)",
+          "oklch(70% 0.14 60)",
+          "oklch(81% 0.11 60)",
+          "oklch(90% 0.07 60)",
+          "oklch(96% 0.03 60)"
+        ]
+      },
+      "dawn-alert": {
+        "role": "error",
+        "displayName": "Dawn Alert",
+        "canonical": "#ef5350",
+        "tonalRamp": [
+          "oklch(18% 0.05 25)",
+          "oklch(28% 0.08 25)",
+          "oklch(40% 0.11 25)",
+          "oklch(52% 0.13 25)",
+          "oklch(64% 0.13 25)",
+          "oklch(76% 0.10 25)",
+          "oklch(87% 0.06 25)",
+          "oklch(95% 0.02 25)"
+        ]
       }
     },
     "typographyMeta": {
-      "display": { "displayName": "Display", "purpose": "Brand word and page h1 — the largest type in the app, deliberately modest (1.35rem/700)." },
-      "headline": { "displayName": "Headline", "purpose": "Page h2 section titles (1.25rem/600)." },
-      "title": { "displayName": "Title", "purpose": "Card and group h3 titles (1.05rem/600); h4 nested subdivisions (0.95rem/600)." },
-      "body": { "displayName": "Body", "purpose": "Default text at 1rem/1.55; text-sm (0.875rem) is the standard density for data rows." },
-      "label": { "displayName": "Label", "purpose": "Uppercase letter-spaced micro-labels (0.75rem, 0.06em) at 65% opacity for fact captions and phase labels." }
+      "display": {
+        "displayName": "Display",
+        "purpose": "Brand word and page h1 — the largest type in the app, deliberately modest (1.35rem/700)."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Page h2 section titles (1.25rem/600)."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Card and group h3 titles (1.05rem/600); h4 nested subdivisions (0.95rem/600)."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default text at 1rem/1.55; text-sm (0.875rem) is the standard density for data rows."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Uppercase letter-spaced micro-labels (0.75rem, 0.06em) at 65% opacity for fact captions and phase labels."
+      }
     },
     "shadows": [
       {
@@ -297,9 +372,18 @@
       }
     ],
     "breakpoints": [
-      { "name": "sm", "value": "640px" },
-      { "name": "md", "value": "768px" },
-      { "name": "lg", "value": "1024px" }
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      }
     ]
   },
   "components": [
@@ -325,47 +409,15 @@
       "refersTo": "card",
       "description": "The resting surface: base-100 on the base-200 page, hairline-toned depth and one whisper of shadow; extracted as ui::card() (px-5 py-4) with my-4 rhythm margins at call sites.",
       "html": "<div class=\"ds-card\"><h3 class=\"ds-card-title\">Grow facts</h3><p>Card body sits at px-5 py-4 rhythm on base-100.</p></div>",
-      "css": ".ds-card { background: var(--color-base-100, #ffffff); color: var(--color-base-content, #1d2b1f); border-radius: 0.875rem; padding: 16px 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); font-size: 0.875rem; line-height: 1.55; } .ds-card-title { margin: 0 0 0.5rem; font-size: 1.05rem; font-weight: 600; }"
+      "css": ".ds-card { background: var(--color-base-100, #ffffff); color: var(--color-base-content, #1d2b1f); border-radius: 0.875rem; padding: 16px 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); line-height: 1.55; } .ds-card-title { margin: 0 0 0.5rem; font-size: 1.05rem; font-weight: 600; }"
     },
     {
       "name": "Tile",
       "kind": "custom",
-      "refersTo": "ui::tile",
+      "refersTo": "tile",
       "description": "The compact surface tier extracted to ui::tile(): hairline-bordered radius-boxed box at px-4 py-3 (env-strip tiles). The tinted live variants in live.rs keep full literals but share the tier padding.",
-      "html": "<div class=\"rounded-box border border-base-300 bg-base-100 px-4 py-3 grid gap-0.5\"><span class=\"text-xs uppercase tracking-wide text-base-content/60\">Air</span><span class=\"text-lg font-semibold\">24.1 °C</span></div>",
-      "css": ".ds-tile { border: 1px solid var(--color-base-300, #e3e7e0); border-radius: var(--radius-box, 0.75rem); background: var(--color-base-100, #ffffff); padding: 12px 16px; display: grid; gap: 0.125rem; }"
-    },
-    {
-      "name": "Entity Id Chip",
-      "kind": "custom",
-      "refersTo": "ui::EntityIdChip",
-      "description": "A bound HA entity id (data, not copy): ghost badge on one ellipsized line. A minmax(0,1fr) grid track pins the chip's min-content to zero so alert grids and flex rows can shrink it; the full id rides on the title tooltip.",
-      "html": "<span class=\"badge badge-ghost entity-id\" title=\"sensor.growhub_e42a_inside_humidity\"><span class=\"entity-id-text\">sensor.growhub_e42a_inside_humidity</span></span>",
-      "css": ".entity-id { display: inline-grid; grid-template-columns: minmax(0, 1fr); align-items: center; max-width: 100%; } .entity-id-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }"
-    },
-    {
-      "name": "Empty State",
-      "kind": "custom",
-      "refersTo": "ui::EmptyState",
-      "description": "The quiet placeholder extracted to ui::EmptyState(): one centered muted line where a list or table has nothing to show; the message stays with the caller as reactive children.",
-      "html": "<p class=\"py-6 text-center text-base-content/60\">Nothing logged yet.</p>",
-      "css": ".ds-empty { padding: 1.5rem 0; text-align: center; color: color-mix(in srgb, var(--color-base-content, #1d2b1f) 60%, transparent); font-size: 0.875rem; }"
-    },
-    {
-      "name": "Section Header",
-      "kind": "custom",
-      "refersTo": "ui::SectionHeader",
-      "description": "The uppercase micro-label above a content group, generalized from the Air/Root zone group labels: optional legend hint beside the title; title and hint arrive as locale-reactive signals.",
-      "html": "<div class=\"flex flex-wrap items-baseline gap-2 mt-4\"><h4 class=\"m-0 text-xs font-semibold uppercase tracking-wider text-base-content/60\">Air</h4><span class=\"text-xs text-base-content/50\">night shading shown</span></div>",
-      "css": ".ds-section-header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; margin-top: 1rem; } .ds-section-header h4 { margin: 0; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: color-mix(in srgb, var(--color-base-content, #1d2b1f) 60%, transparent); } .ds-section-header .hint { font-size: 0.75rem; color: color-mix(in srgb, var(--color-base-content, #1d2b1f) 50%, transparent); }"
-    },
-    {
-      "name": "Chart Card Grid",
-      "kind": "custom",
-      "refersTo": "ui::CARD_GRID",
-      "description": "The chart-card grid (ui::CARD_GRID): explicit grid-cols-1 at the base keeps every track minmax(0,1fr) so a not-yet-resized chart SVG cannot stretch its column; two-up from lg.",
-      "html": "<div class=\"grid grid-cols-1 gap-4 items-start lg:grid-cols-2\"><div>Card A</div><div>Card B</div></div>",
-      "css": ".ds-chart-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; align-items: start; } @media (min-width: 64rem) { .ds-chart-grid { grid-template-columns: 1fr 1fr; } }"
+      "html": "<div class=\"ds-tile\"><span class=\"ds-tile-label\">Air</span><span class=\"ds-tile-value\">24.1 °C</span></div>",
+      "css": ".ds-tile { border: 1px solid var(--color-base-300, #dbe5da); border-radius: var(--radius-box, 0.875rem); background: var(--color-base-100, #ffffff); color: var(--color-base-content, #1d2b1f); padding: 12px 16px; display: grid; gap: 0.125rem; } .ds-tile-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.025em; color: color-mix(in srgb, var(--color-base-content, #1d2b1f) 60%, transparent); } .ds-tile-value { font-size: 1.125rem; font-weight: 600; }"
     },
     {
       "name": "Fact Grid",
@@ -373,7 +425,7 @@
       "refersTo": "tile",
       "description": "Signature data pattern: uppercase micro-labelled values in an auto-fill grid (.facts).",
       "html": "<dl class=\"ds-facts\"><div><dt>Strain</dt><dd>Northern Light</dd></div><div><dt>Grow day</dt><dd>34</dd></div><div><dt>Phase</dt><dd>Vegetative</dd></div><div><dt>Photoperiod</dt><dd>Yes</dd></div></dl>",
-      "css": ".ds-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: 0.5rem 1rem; margin: 0.75rem 0; } .ds-facts dt { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: color-mix(in srgb, var(--color-base-content, #1d2b1f) 65%, transparent); } .ds-facts dd { margin: 0; font-size: 0.875rem; }"
+      "css": ".ds-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: 0.5rem 1rem; margin: 0.75rem 0; } .ds-facts dt { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: color-mix(in srgb, var(--color-base-content, #1d2b1f) 65%, transparent); } .ds-facts dd { margin: 0; }"
     },
     {
       "name": "Ghost Badge",
@@ -392,34 +444,33 @@
       "css": ".ds-input { height: 2rem; padding: 0 0.75rem; border: 1px solid var(--color-base-300, #dbe5da); border-radius: 0.5rem; background: var(--color-base-100, #ffffff); color: var(--color-base-content, #1d2b1f); font-size: 0.875rem; } .ds-input::placeholder { color: color-mix(in srgb, var(--color-base-content, #1d2b1f) 55%, transparent); } .ds-input:focus-visible { outline: 3px solid var(--color-primary, #2e7d4f); outline-offset: 2px; }"
     },
     {
-      "name": "Warning Alert",
-      "kind": "custom",
-      "refersTo": "tile",
-      "description": "Coaching/caution surface in the semantic warning role (Amber Caution on light).",
-      "html": "<div class=\"ds-alert-warning\">Humidity above range for 3 days — consider airflow.</div>",
-      "css": ".ds-alert-warning { display: block; border-radius: 0.875rem; padding: 12px 16px; background: color-mix(in srgb, var(--color-warning, #ff9800) 15%, var(--color-base-100, #ffffff)); border: 1px solid color-mix(in srgb, var(--color-warning, #ff9800) 40%, transparent); color: var(--color-base-content, #1d2b1f); font-size: 0.875rem; }"
+      "name": "Navigation",
+      "kind": "nav",
+      "description": "Two-row bench bar with a brand home link and 44px section links; the active page is underlined.",
+      "html": "<header class=\"ds-header\"><div class=\"ds-brand\"><a href=\"#home\">Leaflog</a></div><nav class=\"ds-nav\" aria-label=\"Main navigation\"><a href=\"#grows\" aria-current=\"page\">Grows</a><a href=\"#schedules\">Schedules</a><a href=\"#history\">History</a></nav></header>",
+      "css": ".ds-header { padding: 0.75rem 0.25rem 0; color: var(--color-base-content, #1d2b1f); } .ds-brand { padding: 0.75rem 0; font-size: 1.25rem; font-weight: 600; letter-spacing: 0.025em; } .ds-brand a { color: inherit; text-decoration: none; } .ds-nav { display: flex; width: 100%; align-items: center; gap: 1.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--color-base-300, #dbe5da); font-size: 0.875rem; } .ds-nav a { display: inline-flex; align-items: center; min-height: 2.75rem; color: var(--color-primary, #2e7d4f); font-weight: 500; text-decoration: none; } .ds-nav a[aria-current=\"page\"] { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; } .ds-header a:hover { filter: brightness(1.1); } .ds-header a:focus-visible { outline: 3px solid var(--color-primary, #2e7d4f); outline-offset: 2px; border-radius: 4px; }"
     }
   ],
   "narrative": {
     "northStar": "The Cultivation Bench",
-    "overview": "Leaflog looks like a tidy workbench in a professional growing operation: a flat, matte surface where evidence is laid out — dates, ranges, sensor readings, phase windows — and every tool sits within reach. Nothing glows, nothing floats, nothing performs. The system is quietly utilitarian: compact controls, plain labels, small unadorned cards that stack like index cards on the bench. Precision is the aesthetic; the personality lives in exact values, uppercase micro-labels and the phase-colour vocabulary of the charts.\n\nThe register is professional horticulture, never stoner cliché, neon-leaf branding or a dark \"grow-op\" mood. It is also not an ops dashboard: density stays low, cards breathe, and one concern occupies one card. Two complete themes — leaflog (light, default) and leaflogdark (dark, via prefers-color-scheme) — carry the same layout and the same component recipes; both must always work.",
+    "overview": "Leaflog looks like a tidy workbench in a professional growing operation: a flat, matte surface where evidence is laid out — dates, ranges, sensor readings, phase windows — and every tool sits within reach. Nothing glows, nothing floats, nothing performs. The system is quietly utilitarian: compact controls, plain labels, small unadorned cards that stack like index cards on the bench. Precision is the aesthetic; the personality lives in exact values, uppercase micro-labels and the phase-colour vocabulary of the charts.\n\nThe register is professional horticulture, never stoner cliché, neon-leaf branding or a dark \"grow-op\" mood. It is also not an ops dashboard: density stays low, cards breathe, and one concern occupies one card. Two complete themes — `leaflog` (light, default) and `leaflogdark` (dark, via `prefers-color-scheme`) — carry the same layout and the same component recipes; both must always work.",
     "keyCharacteristics": [
-      "Flat tonal depth: card surface (base-100) on page ground (base-200), separated by base-300 hairlines; shadow-sm is the only shadow.",
-      "Compact daisyUI component vocabulary (btn-sm, input-sm, badge-sm, text-sm) — sized for one-handed phone use.",
+      "Flat tonal depth: card surface (`base-100`) on page ground (`base-200`),",
+      "Compact daisyUI component vocabulary (`btn-sm`, `input-sm`, `badge-sm`,",
       "Two hand-tuned daisyUI themes carrying an incumbent botanical palette.",
-      "Uppercase letter-spaced micro-labels for data facts (the .facts dt pattern).",
-      "Phase accents reserved for charts: germination #8bc34a → seedling #66bb6a → vegetative #4caf50 → flower #ab47bc → drying #ff9800 → curing #a1887f, fallback #90a4ae.",
+      "Uppercase letter-spaced micro-labels for data facts (the `.facts dt`",
+      "Phase accents reserved for charts: germination `#8bc34a` → seedling",
       "System font stack; no downloaded or CDN fonts (local-first)."
     ],
     "rules": [
       {
         "name": "The Two-Theme Rule",
-        "body": "Every colour decision lands in both leaflog and leaflogdark at the same moment. A choice that only works in one theme is a bug, not a style.",
+        "body": "Every colour decision lands in both `leaflog` and `leaflogdark` at the same moment. A choice that only works in one theme is a bug, not a style.",
         "section": "colors"
       },
       {
         "name": "The Phase Accent Rule",
-        "body": "Strong hue is chart data, never chrome. The six phase colours and the today-marker Marker Red (#e53935) appear in Gantt/feed/chart contexts only; UI chrome stays green-and-neutral.",
+        "body": "Strong hue is chart data, never chrome. The six phase colours and the today-marker **Marker Red** (`#e53935`) appear in Gantt/feed/chart contexts only; UI chrome stays green-and-neutral.",
         "section": "colors"
       },
       {
@@ -429,23 +480,23 @@
       },
       {
         "name": "The Hairline Rule",
-        "body": "Separation is base-300 borders and tonal steps. If a layout needs more shadow to read, the tonal structure is wrong — fix the steps, don't add depth.",
+        "body": "Separation is `base-300` borders and tonal steps. If a layout needs more shadow to read, the tonal structure is wrong — fix the steps, don't add depth.",
         "section": "elevation"
       }
     ],
     "dos": [
-      "Do style everything through daisyUI semantic roles and theme variables (bg-base-100, text-base-content/60) — both themes come free; raw hex belongs only in chart geometry (phase colours, marker red).",
-      "Do check every visual choice in both themes before calling it done (The Two-Theme Rule).",
-      "Do use the .facts grid for state display and btn-sm / text-sm density for data-heavy surfaces.",
-      "Do keep phase colours for phase data; reuse the exact phase_color values when a new chart needs phase meaning.",
-      "Do mark the active nav state with the aria-current underline pattern and keep focus outlines at 3px/offset 2px."
+      "**Do** style everything through daisyUI semantic roles and theme",
+      "**Do** check every visual choice in both themes before calling it",
+      "**Do** use the `.facts` grid for state display and `btn-sm` /",
+      "**Do** keep phase colours for phase data; reuse the exact `phase_color`",
+      "**Do** mark the active nav state with the `aria-current` underline"
     ],
     "donts": [
-      "Don't add shadows beyond the card-rest shadow-sm; if depth doesn't read, fix the tonal steps (The Hairline Rule).",
-      "Don't load webfonts or any CDN asset at runtime — local-first is a product constraint, not a preference.",
-      "Don't let chrome borrow chart hues: no phase purple outside charts, no Marker Red outside the today-marker and destructive feedback.",
-      "Don't treat the incumbent palette as endorsed — it is documented fact the owner has not fallen in love with; propose a deliberate redesign instead of drifting hue-by-hue.",
-      "Don't build dark-only or light-only styling; a prefers-color-scheme media query is a smell — the daisyUI --prefersdark theme switch is the mechanism."
+      "**Don't** add shadows beyond the card-rest `shadow-sm`; if depth",
+      "**Don't** load webfonts or any CDN asset at runtime — local-first is",
+      "**Don't** let chrome borrow chart hues: no phase purple outside",
+      "**Don't** drift the palette hue-by-hue — it is owner-endorsed as-is",
+      "**Don't** build dark-only or light-only styling; a `prefers-color-scheme`"
     ]
   }
 }
