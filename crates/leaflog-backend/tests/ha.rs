@@ -1428,11 +1428,25 @@ async fn grow_history_steps_day_and_night_by_the_light_cycle() {
         (min, max),
         "humidity band must solve at 22.0 °C (offset {offset}), light on: {on_at_snapshot}"
     );
-    // The humidity band segments with the temperature band at the
-    // snapshot: same stretch, so the step boundaries come from the
-    // same light timeline.
+    // The humidity band segments with the VPD band at the snapshot:
+    // same stretch, so the step boundaries come from the same light
+    // timeline. Each response reads its own wall clock, so the two
+    // window ends differ by the requests' skew — the interior
+    // boundary is shared and exact, while each band's terminal edge
+    // is its own response's window end.
     assert_eq!(humid_band["start"], covering["start"]);
-    assert_eq!(humid_band["end"], covering["end"]);
+    let humid_to =
+        leaflog_core::chart::parse_epoch(humidity["series"]["to"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        leaflog_core::chart::parse_epoch(humid_band["end"].as_str().unwrap()),
+        Some(humid_to),
+        "the humidity band runs to its own window end"
+    );
+    assert_eq!(
+        leaflog_core::chart::parse_epoch(covering["end"].as_str().unwrap()),
+        Some(to_epoch),
+        "the covering VPD band runs to its own window end"
+    );
 }
 
 #[tokio::test]
