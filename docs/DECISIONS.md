@@ -6,6 +6,40 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-22 — navigation rework: bench bar, footer, no Home page (D147)
+
+### D147: the menu, page order, navigation and footer rework
+
+The four-item nav (Home · History · Grows · Schedules) is replaced by a
+**two-row bench bar**: the brand wordmark — leaf mark plus "Leaflog" —
+becomes the home link inside the document's `h1`, and a full-width link
+bar beneath it carries the three sections in use-frequency order
+(**Grows · Schedules · History**). The `Home` component is deleted:
+`/` remains the landing (newest active grow's dashboard), and the
+no-grow fallback now renders `GrowsPage` directly, which carries the
+onboarding wizard in its empty state (the wizard's own restart card
+still covers the dismissed-but-no-grows case, spec §4.12). The
+declared rationale: users land in their grow, not on a brochure page;
+first-run onboarding belongs where first-run users act — the Grows
+list; and the landing double-render of the wizard + marketing card
+made `/` the slowest page for the users who needed it least.
+
+A **quiet footer** is added to the app shell: hairline top rule, the
+wordmark, a version stamp parsed from the `GET api/health` payload
+(`health_version`, tolerant parse, native-tested in `api.rs`), the
+live backend status dot with `aria-live`, and the localised
+local-first privacy line (`page.footer_privacy`, EN + DE). The health
+card's `<details>` payload and the read/network error strings are
+gone with the card — diagnostics beyond the status dot belong to the
+HA add-on page. `grows.back_home` and the spike page's home link are
+dropped: the bench bar owns navigation. The stale
+`screenshot: M2` home copy keys (`home_heading`, `home_intro`,
+`home_privacy`, `health_heading`, `health_details`,
+`health_read_error`, `health_network_error`, `nav.home`) are deleted
+from both catalogs. DESIGN.md Navigation/Layout sections updated to
+describe the bench bar and footer. E2e specs 01, 03 and 25 updated;
+locale parity is enforced at build time as before.
+
 ## 2026-11-21 — per-tile dead-binding marks (D146)
 
 ### D146: the drift banner becomes a per-tile warning mark

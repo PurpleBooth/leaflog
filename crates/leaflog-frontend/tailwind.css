@@ -159,12 +159,28 @@ a:focus-visible,
   border-radius: 4px;
 }
 
-/* Top-nav active marker: leptos_router's <A> flags the current page
- * with aria-current, so style that instead of daisyUI's menu-active. */
+/* Top-nav active marker (nav rework, 2026-11-22): the bench bar's
+ * links span full width under the brand; leptos_router's <A> flags
+ * the current page with aria-current, so style that instead of
+ * daisyUI's menu-active. The 2px underline reads at the 44px touch
+ * height the links carry. */
+.mainnav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+}
+
 .mainnav a[aria-current="page"] {
   text-decoration: underline;
   text-decoration-thickness: 2px;
   text-underline-offset: 4px;
+}
+
+/* The footer's version stamp and status line share the muted ink;
+ * inside it links stay primary (the global rule), there are none
+ * today but the rule keeps the footer honest if one arrives. */
+footer p {
+  margin: 0;
 }
 
 code {

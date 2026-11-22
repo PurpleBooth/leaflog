@@ -66,8 +66,22 @@ pub(crate) fn classify_failure(failure: &ApiFailure) -> FailureKind {
 /// only when the body decodes to an object whose `status` reads
 /// `"ok"` — the backend's own contract (the `Health` struct in
 /// `crates/leaflog-backend/src/app.rs`). Any other status, a missing
-/// status, or a non-JSON body reads as unhealthy, so the health
-/// card's status line errs on the side of unreachable.
+/// status, or a non-JSON body reads as unhealthy, so the footer's
+/// status line errs on the side of unreachable. The version string,
+/// when present, feeds the footer's version stamp.
+#[must_use]
+pub(crate) fn health_version(payload: &str) -> Option<String> {
+    serde_json::from_str::<serde_json::Value>(payload)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("version")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+        })
+        .filter(|version| !version.is_empty())
+}
+
 #[must_use]
 pub(crate) fn health_ok(payload: &str) -> bool {
     serde_json::from_str::<serde_json::Value>(payload).is_ok_and(|value| {
@@ -400,7 +414,9 @@ pub struct LocaleReport {
 
 #[cfg(test)]
 mod tests {
-    use super::{ApiFailure, FailureKind, classify_failure, failure_text, health_ok};
+    use super::{
+        ApiFailure, FailureKind, classify_failure, failure_text, health_ok, health_version,
+    };
     use crate::i18n::Locale;
 
     fn failure(status: u16, message: Option<&str>) -> ApiFailure {
@@ -494,6 +510,21 @@ mod tests {
         assert!(!health_ok(r#"{"version":"0.12.0"}"#));
         assert!(!health_ok("<html>502 Bad Gateway</html>"));
         assert!(!health_ok(""));
+    }
+
+    /// The version stamp parses from the same body; missing or empty
+    /// versions read as None so the footer shows a bare dot-free
+    /// stamp rather than a half sentence.
+    #[test]
+    fn health_version_tolerates_the_real_payload_and_garbage() {
+        assert_eq!(
+            health_version(r#"{"status":"ok","version":"0.12.0","mode":"production"}"#),
+            Some("0.12.0".to_string())
+        );
+        assert_eq!(health_version(r#"{"status":"ok"}"#), None);
+        assert_eq!(health_version(r#"{"version":""}"#), None);
+        assert_eq!(health_version("<html>502 Bad Gateway</html>"), None);
+        assert_eq!(health_version(""), None);
     }
 
     /// Transport/parse noise is replaced by the calm interrupted

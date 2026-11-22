@@ -19,16 +19,22 @@ test.describe('german-forced browser', () => {
 
     await page.goto(url('/grows'));
 
-    // Navigation labels (catalog nav.*).
+    // Navigation labels (catalog nav.*): the bench bar carries the
+    // three sections — no Home link since the nav rework (the brand
+    // wordmark is the home link).
+    const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
     await expect(
-      page.getByRole('link', { name: 'Startseite', exact: true }),
+      nav.getByRole('link', { name: 'Anbauten', exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole('link', { name: 'Verlauf', exact: true }),
+      nav.getByRole('link', { name: 'Düngepläne', exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole('link', { name: 'Anbauten', exact: true }),
+      nav.getByRole('link', { name: 'Verlauf', exact: true }),
     ).toBeVisible();
+    await expect(
+      nav.getByRole('link', { name: 'Startseite', exact: true }),
+    ).toHaveCount(0);
 
     // Page heading (catalog page.grows_heading).
     await expect(page.getByRole('heading', { name: 'Anbauten' })).toBeVisible();
@@ -114,13 +120,14 @@ test.describe('german-forced browser', () => {
   });
 
   test('sweep surfaces render german', async ({ page }) => {
-    // Ticket 04 sweep: the nav landmark label, Home and the history
-    // report join the keyed surfaces. The ingress spike is a debug-
-    // only page since D124, so it has no release surface to sweep.
+    // Ticket 04 sweep: the nav landmark label and the history report
+    // join the keyed surfaces. The ingress spike is a debug-only page
+    // since D124, so it has no release surface to sweep.
 
-    // Home is the landing fallback for a grow-less instance (D073);
-    // sibling specs create grows in the shared throwaway DB, so pin
-    // the empty list for this page alone to reach it.
+    // The Grows page is the landing fallback for a grow-less instance
+    // (nav rework 2026-11-22); sibling specs create grows in the
+    // shared throwaway DB, so pin the empty list for this page alone
+    // to reach it.
     await page.route('**/api/grows', (route) =>
       route.fulfill({
         status: 200,
@@ -135,21 +142,19 @@ test.describe('german-forced browser', () => {
       page.getByRole('navigation', { name: 'Hauptnavigation' }),
     ).toBeVisible();
 
-    // Home marketing copy and backend-health block (catalog page.*).
-    await expect(page.getByText(/Verfolge deine Anbauten/)).toBeVisible();
-    await expect(page.getByText(/Alles hängt jetzt am Anbau/)).toBeVisible();
-    await expect(
-      page.getByRole('heading', { name: 'Backend-Zustand' }),
-    ).toBeVisible();
-    // Status-first health card (D124): the live status line.
-    await expect(page.getByText('Funktioniert')).toBeVisible();
-
-    // The grow-less empty banner (catalog grows.empty) — the spec's
-    // "a banner" assertion, on /grows with the pinned empty list.
+    // The Grows page's empty banner (catalog grows.empty) and the
+    // footer (catalog page.*): privacy line, version stamp and the
+    // live backend status line.
     await page.goto(url('/grows'));
     await expect(
       page.getByText('Noch keine Anbauten — starte deinen ersten.'),
     ).toBeVisible();
+    const footer = page.getByRole('contentinfo');
+    await expect(
+      footer.getByText(/Läuft lokal in deiner Home Assistant/),
+    ).toBeVisible();
+    await expect(footer.getByText(/\bv[0-9]/)).toBeVisible();
+    await expect(footer.getByText('Funktioniert')).toBeVisible();
 
     // The history report: predicted-vs-actual heading plus, since
     // earlier specs leave grows behind, the per-row accuracy terms
@@ -194,9 +199,11 @@ test.describe('german-forced browser', () => {
     // band, and the header nav owns navigation now.
 
     // And none of the freshly keyed English surfaces renders.
-    await expect(page.getByText(/Track your grows/)).toHaveCount(0);
     await expect(
-      page.getByRole('heading', { name: 'Backend health' }),
+      page.getByText(/Runs locally on your Home Assistant/),
+    ).toHaveCount(0);
+    await expect(
+      page.getByText(/no cloud, no telemetry/),
     ).toHaveCount(0);
     await expect(
       page.getByRole('heading', { name: 'Predicted vs actual' }),
@@ -251,15 +258,16 @@ test.describe('default locale', () => {
 
     await page.goto(url('/grows'));
 
-    await expect(
-      page.getByRole('link', { name: 'Home', exact: true }),
-    ).toBeVisible();
+    // The bench-bar nav (nav rework 2026-11-22) has no Home link;
+    // assert the three section links, one localised to de by the
+    // forced-german spec above.
     await expect(
       page.getByRole('link', { name: 'History', exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole('heading', { name: 'Grows', exact: true }),
+      page.getByRole('link', { name: 'Grows', exact: true }),
     ).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Grows', exact: true })).toBeVisible();
     await expect(
       page.getByRole('button', { name: 'Start a grow' }),
     ).toBeVisible();
@@ -272,10 +280,11 @@ test.describe('default locale', () => {
 
   test('sweep surfaces stay english', async ({ page }) => {
     // Ticket 04 sweep on the default (English) locale: nav label,
-    // home copy and history report keep their English strings. The
-    // ingress spike is a debug-only page since D124.
-    // Home is the landing fallback for a grow-less instance (D073);
-    // pin the empty list for this page alone to reach it.
+    // grows empty copy and history report keep their English strings.
+    // The ingress spike is a debug-only page since D124.
+    // The Grows page is the landing fallback for a grow-less instance
+    // (nav rework 2026-11-22); pin the empty list for this page alone
+    // to reach it.
     await page.route('**/api/grows', (route) =>
       route.fulfill({
         status: 200,
@@ -285,19 +294,19 @@ test.describe('default locale', () => {
     );
     await page.goto(url('/'));
     await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
-    await expect(page.getByText(/Track your grows/)).toBeVisible();
-    await expect(
-      page.getByRole('heading', { name: 'Backend health' }),
-    ).toBeVisible();
-    // Status-first health card (D124): the live status line.
-    await expect(page.getByText('Healthy')).toBeVisible();
 
-    // The grow-less empty banner in the default locale (catalog
-    // grows.empty), mirroring the German sweep's banner assertion.
+    // The Grows page's empty banner and the footer (catalog page.*):
+    // privacy line, version stamp and the live backend status line.
     await page.goto(url('/grows'));
     await expect(
       page.getByText('No grows yet — start your first one.'),
     ).toBeVisible();
+    const footer = page.getByRole('contentinfo');
+    await expect(
+      footer.getByText(/Runs locally on your Home Assistant/),
+    ).toBeVisible();
+    await expect(footer.getByText(/\bv[0-9]/)).toBeVisible();
+    await expect(footer.getByText('Healthy')).toBeVisible();
 
     await page.goto(url('/history'));
     await expect(

@@ -1,6 +1,11 @@
 // First-run onboarding wizard (runs first: the fresh database shows it,
 // and finishing it dismisses the wizard for every later spec).
 //
+// The wizard lives on the Grows page's empty state (nav rework
+// 2026-11-22): `/` redirects to the newest grow's dashboard and falls
+// back to /grows with nothing grown, so both tests visit /grows
+// directly.
+//
 // The wizard shows exactly once per database — the first test that
 // creates a grow takes that run — so the skip path runs before the
 // happy path and resets the dismissal flag for it.
@@ -12,7 +17,7 @@ test('wizard skips clean: every step optional, nothing picked is nothing bound',
   page,
   request,
 }) => {
-  await page.goto(url('/'));
+  await page.goto(url('/grows'));
   const wizard = page.locator('section[aria-label="First-run setup"]');
   await expect(wizard).toBeVisible();
 
@@ -44,7 +49,7 @@ test('wizard happy path: sensors, grow and plants land on the dashboard', async 
 }) => {
   const grow = uniqueName('E2E Wizard Grow');
 
-  await page.goto(url('/'));
+  await page.goto(url('/grows'));
   const wizard = page.locator('section[aria-label="First-run setup"]');
   await expect(wizard).toBeVisible();
 
@@ -102,8 +107,9 @@ test('wizard happy path: sensors, grow and plants land on the dashboard', async 
   await expect(page.getByRole('heading', { name: grow, exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Wiz 1', exact: true })).toBeVisible();
 
-  // The wizard is dismissed for good.
-  await page.goto(url('/'));
+  // The wizard is dismissed for good (the Grows page shows the
+  // grown list, not the wizard).
+  await page.goto(url('/grows'));
   await expect(wizard).toHaveCount(0);
 });
 

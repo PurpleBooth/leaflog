@@ -229,10 +229,14 @@ inside cards, the `.facts` definition grid runs
 `repeat(auto-fill,minmax(10rem,1fr))` with `0.5rem 1rem` gaps. Spacing
 vocabulary is the Tailwind scale with `gap-2` (0.5rem) as the default
 gap, `px-5 py-4` (20px/16px) as the card recipe and `px-4 py-3` for
-smaller tiles. The header is a wrapping flex bar: brand left, nav links
-right (`ml-auto`), links wrap on narrow phones; the active page is
-marked by a 2px underline offset 4px (`aria-current="page"`), never by
-colour alone. Density is compact by default (`btn-sm`, `input-sm`,
+smaller tiles. The header is a two-row bench bar: the brand wordmark
+(the home link) sits above a full-width link bar of the three section
+links (Grows · Schedules · History) over a hairline rule; links carry
+44px touch height and never wrap mid-bar; the active page is marked by
+a 2px underline offset 4px (`aria-current="page"`), never by colour
+alone. A single quiet footer closes every page with the version stamp,
+backend status and the local-first privacy line above a hairline rule.
+Density is compact by default (`btn-sm`, `input-sm`,
 `text-sm`); nothing is taller than it needs to be.
 
 ## Elevation & Depth
@@ -308,11 +312,16 @@ themes; all styling flows through semantic roles (`bg-base-100`,
   beyond daisyUI defaults.
 
 ### Navigation
-- **Style:** wrapping flex header, no background of its own (page ground
-  shows through), text-sm links in primary colour, right-aligned.
+- **Style:** two-row bench bar — brand wordmark (the home link) on top,
+  a full-width link bar beneath it (Grows · Schedules · History), page
+  ground showing through, text-sm links in primary colour with 44px
+  touch height and a hairline rule under the bar.
 - **Active:** 2px underline, 4px offset, via `aria-current="page"` —
   never colour-only. No hover background; links brighten slightly
   (`brightness(1.1)`).
+- **Footer:** a single quiet footer — hairline top rule, version stamp
+  from the backend health payload, a live status dot, and the
+  local-first privacy line. No footer navigation.
 
 ### Fact Grid (`.facts`) — signature pattern
 The app's characteristic data presentation: a responsive definition grid

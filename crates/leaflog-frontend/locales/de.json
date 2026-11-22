@@ -1,27 +1,20 @@
 {
   "nav": {
-    "home": "Startseite",
     "history": "Verlauf",
     "grows": "Anbauten",
     "main": "Hauptnavigation",
     "schedules": "Düngepläne"
   },
   "page": {
-    "home_heading": "Grow-Tagebuch, zu Hause in Home Assistant",
-    "home_intro": "Verfolge deine Anbauten: Trage Aktionen und Fotos mit Sensordaten ein, folge einem auf deine Pflanzen angepassten Düngeplan und behalte jeden Grad, jeden pH-Punkt und jedes Watt an einem privaten Ort.",
-    "home_privacy": "Alles hängt jetzt am Anbau: Sensoren werden pro Anbau gebunden, und Sortenetikett und Fotoperiode sind Felder des Anbaus.",
-    "health_heading": "Backend-Zustand",
-    "health_ok": "Funktioniert",
-    "health_unreachable": "Nicht erreichbar",
-    "health_details": "Details",
-    "health_read_error": "Lesefehler: {{ error }}",
-    "health_network_error": "Netzwerkfehler: {{ error }}",
+    "footer_privacy": "Läuft lokal in deiner Home Assistant — keine Cloud, keine Telemetrie.",
     "history_heading": "Verlauf",
     "grows_heading": "Anbauten",
     "edit_heading": "Anbau bearbeiten",
     "loading": "Wird geladen …",
     "spike_heading": "Ingress-Spike",
-    "spike_intro": "Dieser Deep Link wurde von der SPA unter der Laufzeit-Basis ausgeliefert:"
+    "spike_intro": "Dieser Deep Link wurde von der SPA unter der Laufzeit-Basis ausgeliefert:",
+    "health_ok": "Funktioniert",
+    "health_unreachable": "Nicht erreichbar"
   },
   "errors": {
     "request_timeout": "Die Anfrage an {{ path }} hat immer wieder das Zeitlimit überschritten.",
@@ -85,8 +78,7 @@
     "cancel": "Abbrechen",
     "started": "Gestartet am {{ date }}",
     "loading": "Anbauten werden geladen …",
-    "empty": "Noch keine Anbauten — starte deinen ersten.",
-    "back_home": "Zurück zur Startseite"
+    "empty": "Noch keine Anbauten — starte deinen ersten."
   },
   "grow": {
     "auto_heading": "Automatisch (Home Assistant)",

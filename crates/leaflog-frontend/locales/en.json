@@ -1,27 +1,20 @@
 {
   "nav": {
-    "home": "Home",
     "history": "History",
     "grows": "Grows",
     "main": "Main",
     "schedules": "Schedules"
   },
   "page": {
-    "home_heading": "Grow diary, at home in Home Assistant",
-    "home_intro": "Track your grows: log actions and photos with sensor data, follow a feeding schedule fitted to your plants, and keep every degree, pH point and watt in one private place.",
-    "home_privacy": "Everything lives on the grow now: sensors bind per grow, and the strain label and photoperiod are grow fields.",
-    "health_heading": "Backend health",
-    "health_ok": "Healthy",
-    "health_unreachable": "Unreachable",
-    "health_details": "Details",
-    "health_read_error": "read error: {{ error }}",
-    "health_network_error": "network error: {{ error }}",
+    "footer_privacy": "Runs locally on your Home Assistant — no cloud, no telemetry.",
     "history_heading": "History",
     "grows_heading": "Grows",
     "edit_heading": "Edit grow",
     "loading": "Loading…",
     "spike_heading": "Ingress spike",
-    "spike_intro": "This deep link was served by the SPA under runtime base:"
+    "spike_intro": "This deep link was served by the SPA under runtime base:",
+    "health_ok": "Healthy",
+    "health_unreachable": "Unreachable"
   },
   "errors": {
     "request_timeout": "The request to {{ path }} kept timing out.",
@@ -85,8 +78,7 @@
     "cancel": "Cancel",
     "started": "Started {{ date }}",
     "loading": "Loading grows…",
-    "empty": "No grows yet — start your first one.",
-    "back_home": "Back to home"
+    "empty": "No grows yet — start your first one."
   },
   "grow": {
     "auto_heading": "Automatic (Home Assistant)",

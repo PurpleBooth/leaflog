@@ -22,13 +22,13 @@ use std::future::Future;
 use wasm_bindgen::JsCast;
 
 use crate::ErrorIf;
-use crate::Home;
 use crate::api::{self, ApiFailure};
 use crate::env_section::EnvironmentSection;
 use crate::feed::FeedSection;
 use crate::gantt::GanttTimeline;
 use crate::i18n::{Locale, t, t_string, td_string, use_i18n};
 use crate::labels;
+use crate::onboarding::OnboardingWizard;
 use crate::route_href;
 use crate::schedules::ScheduleSummary;
 use crate::ui;
@@ -191,9 +191,15 @@ pub fn GrowsPage() -> impl IntoView {
                         && error.get().is_none()
                 }
             >
+                // The no-grows page carries the onboarding wizard (nav
+                // rework 2026-11-22): first-run users land here, the
+                // wizard and the empty line tell the same story —
+                // nothing grown yet — and the wizard's restart card
+                // covers the dismissed case. The trailing home link
+                // is gone: the bench bar owns navigation now.
+                <OnboardingWizard />
                 <EmptyState>{t!(i18n, grows.empty)}</EmptyState>
             </Show>
-            <p><A href=route_href("/")>{t!(i18n, grows.back_home)}</A></p>
         </section>
     }
 }
@@ -358,8 +364,8 @@ pub fn GrowsRoute() -> impl IntoView {
 
 /// The app landing page (D073 follow-up): the most recently updated
 /// active grow's overview, falling back to the most recent grow
-/// overall, and to the existing home (onboarding) with no grows at
-/// all.
+/// overall, and to the Grows page (which carries the onboarding
+/// wizard, nav rework 2026-11-22) with no grows at all.
 #[component]
 pub fn Landing() -> impl IntoView {
     let picked = RwSignal::<Option<String>>::new(None);
@@ -367,7 +373,7 @@ pub fn Landing() -> impl IntoView {
         spawn_local(async move {
             match api::get::<Vec<Grow>>("api/grows").await {
                 Ok(grows) => picked.set(Some(pick_landing_grow(&grows))),
-                // A failed fetch is the home page's problem to show.
+                // A failed fetch is the Grows page's problem to show.
                 Err(_) => picked.set(None),
             }
         });
@@ -377,7 +383,7 @@ pub fn Landing() -> impl IntoView {
             when=move || {
                 picked.get().as_deref().is_some_and(|id| !id.is_empty())
             }
-            fallback=|| view! { <Home /> }
+            fallback=|| view! { <GrowsPage /> }
         >
             {move || {
                 let id = picked.get().unwrap_or_default();
@@ -390,7 +396,7 @@ pub fn Landing() -> impl IntoView {
 /// Picks the grow the app lands on: the most recently updated grow
 /// whose status is still active; with none active, the most recently
 /// updated grow overall. Empty when there are no grows (the landing
-/// then shows the onboarding home).
+/// then shows the Grows page with the onboarding wizard).
 #[must_use]
 fn pick_landing_grow(grows: &[Grow]) -> String {
     let newest = |grow: &Grow| grow.updated_at.clone();

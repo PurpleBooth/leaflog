@@ -80,12 +80,10 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::components::{A, Route, Router, Routes};
 use leptos_router::path;
-use onboarding::OnboardingWizard;
 use schedules::{ScheduleEditRoute, ScheduleNewRoute, SchedulesPage};
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 
 use i18n::{I18nContextProvider, Locale, t, t_string, use_i18n};
-use leptos_i18n::td_string;
 
 /// Reads `window.__LEAFLOG_BASE__`, injected at serve time by the
 /// backend from the `X-Ingress-Path` header. Empty string when the app
@@ -246,90 +244,90 @@ pub fn App() -> impl IntoView {
     }
 }
 
-/// Header, navigation and route outlet; lives under the i18n provider
-/// so the nav labels can translate.
+/// Header and footer chrome with the route outlet between; lives
+/// under the i18n provider so the nav labels translate.
+///
+/// Two-row bench bar (nav rework, 2026-11-22): the brand is itself the
+/// home link — `/` opens the current grow's dashboard — and the three
+/// section links (Grows · Schedules · History) run full-width beneath
+/// it, so the bar never wraps awkwardly on phones. The active page is
+/// marked by the aria-current underline (DESIGN.md Navigation), never
+/// by colour alone.
 #[component]
 #[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
 fn AppShell() -> impl IntoView {
     let i18n = use_i18n();
     view! {
-        <div class="mx-auto max-w-6xl px-5">
-            <header class="navbar min-h-0 w-full flex-wrap gap-x-2 px-1 py-3">
-                <span class="text-2xl" aria-hidden="true">"🌿"</span>
-                <h1 class="m-0 text-xl font-semibold tracking-wide">"Leaflog"</h1>
-                <nav class="mainnav ml-auto flex flex-wrap items-center gap-4 text-sm"
+        <div class="mx-auto flex min-h-dvh max-w-6xl flex-col px-5">
+            <header class="w-full px-1 pb-0 pt-3">
+                <div class="flex items-center gap-2 py-3">
+                    <h1 class="m-0 text-xl font-semibold tracking-wide">
+                        <A
+                            href=route_href("/")
+                            exact=true
+                            attr:aria-label="Leaflog"
+                            attr:class="flex items-center gap-2 no-underline"
+                        >
+                            <span class="text-2xl" aria-hidden="true">"🌿"</span>
+                            <span class="text-base-content">"Leaflog"</span>
+                        </A>
+                    </h1>
+                </div>
+                <nav
+                    class="mainnav flex w-full items-center gap-6 border-b border-base-300 pb-2 text-sm"
                     aria-label={t_string!(i18n, nav.main).into_owned()}
                 >
-                    <A href=route_href("/") exact=true>{t!(i18n, nav.home)}</A>
-                    <A href=route_href("/history")>{t!(i18n, nav.history)}</A>
                     <A href=route_href("/grows")>{t!(i18n, nav.grows)}</A>
                     <A href=route_href("/schedules")>{t!(i18n, nav.schedules)}</A>
+                    <A href=route_href("/history")>{t!(i18n, nav.history)}</A>
                 </nav>
             </header>
-            <main id="main">
+            <main id="main" class="min-w-0 flex-1">
                 {routes()}
             </main>
+            <AppFooter />
         </div>
     }
 }
 
-/// Home view: quick links and the backend health payload (fetched with
-/// a *relative* URL, resolved through the injected `<base href>`). Now
-/// the no-grows landing fallback too (ticket 11).
+/// The quiet footer (nav rework, 2026-11-22): version stamp from the
+/// backend health payload, the live backend status dot, and the
+/// local-first privacy line. One fetch, one status line — diagnostics
+/// beyond that belong to the Home Assistant add-on page, not the
+/// diary. `aria-live` keeps the status honest when it lands late.
 #[component]
 #[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
-pub fn Home() -> impl IntoView {
+fn AppFooter() -> impl IntoView {
     let i18n = use_i18n();
-    // Status-first health card (D124): the flag drives the status
-    // line; the raw payload — or the localised error line on a failed
-    // fetch — stays in the collapsible details for honest diagnosis.
     let healthy = RwSignal::new(false);
-    let details = RwSignal::new(String::from("…"));
+    let version = RwSignal::<Option<String>>::new(None);
     Effect::new(move |_| {
         spawn_local(async move {
-            let (ok, payload) = match gloo_net::http::Request::get("api/health").send().await {
+            match gloo_net::http::Request::get("api/health").send().await {
                 Ok(resp) => match resp.text().await {
-                    Ok(body) => (api::health_ok(&body), body),
-                    Err(err) => (
-                        false,
-                        td_string!(
-                            i18n.get_locale_untracked(),
-                            page.health_read_error,
-                            error = err.to_string()
-                        ),
-                    ),
+                    Ok(body) => {
+                        healthy.set(api::health_ok(&body));
+                        version.set(api::health_version(&body));
+                    }
+                    Err(_) => healthy.set(false),
                 },
-                Err(err) => (
-                    false,
-                    td_string!(
-                        i18n.get_locale_untracked(),
-                        page.health_network_error,
-                        error = err.to_string()
-                    ),
-                ),
-            };
-            healthy.set(ok);
-            details.set(payload);
+                Err(_) => healthy.set(false),
+            }
         });
     });
     view! {
-        <section class="pb-12">
-            <OnboardingWizard />
-            <div class={format!("{} my-4", ui::card())}>
-                <h2>{t!(i18n, page.home_heading)}</h2>
-                <p>
-                    {t!(i18n, page.home_intro)}
-                </p>
-                <p class="text-base-content/70 text-sm">
-                    {t!(i18n, page.home_privacy)}
-                </p>
-                <h3>{t!(i18n, page.health_heading)}</h3>
-                <p class="flex items-center gap-2 text-sm" aria-live="polite">
+        <footer class="mt-12 border-t border-base-300 py-4 pb-6 text-sm text-base-content/70">
+            <p class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span class="font-medium text-base-content">"Leaflog"</span>
+                {move || version.get().map(|version| view! {
+                    <span>"· v" {version}</span>
+                })}
+                <span class="flex items-center gap-2" aria-live="polite">
                     <span
                         class=move || if healthy.get() {
-                            "inline-block size-2.5 rounded-full bg-primary"
+                            "inline-block size-2 rounded-full bg-primary"
                         } else {
-                            "inline-block size-2.5 rounded-full bg-error"
+                            "inline-block size-2 rounded-full bg-error"
                         }
                         aria-hidden="true"
                     ></span>
@@ -338,15 +336,10 @@ pub fn Home() -> impl IntoView {
                     } else {
                         t_string!(i18n, page.health_unreachable).into_owned()
                     }}
-                </p>
-                <details class="mt-2">
-                    <summary class="cursor-pointer text-sm text-base-content/70">
-                        {t!(i18n, page.health_details)}
-                    </summary>
-                    <pre class="mt-2 text-xs"><code>{move || details.get()}</code></pre>
-                </details>
-            </div>
-        </section>
+                </span>
+            </p>
+            <p>{t!(i18n, page.footer_privacy)}</p>
+        </footer>
     }
 }
 
@@ -406,7 +399,6 @@ fn Spike() -> impl IntoView {
             <h2>{t!(i18n, page.spike_heading)}</h2>
             <p>{t!(i18n, page.spike_intro)}</p>
             <p><code>{ingress_base()}</code></p>
-            <p><A href=route_href("/")>{t!(i18n, grows.back_home)}</A></p>
         </section>
     }
 }

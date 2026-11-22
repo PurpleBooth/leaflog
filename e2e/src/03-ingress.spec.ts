@@ -19,6 +19,11 @@ test('nav links stay inside the ingress prefix', async ({ page }) => {
   const grows = nav.getByRole('link', { name: 'Grows' });
   await expect(grows).toHaveAttribute('href', url('/grows'));
 
+  // The brand wordmark itself is the home link (nav rework
+  // 2026-11-22); it must also carry the ingress prefix.
+  const brand = page.getByRole('link', { name: 'Leaflog' });
+  await expect(brand).toHaveAttribute('href', url('/'));
+
   await grows.click();
   await expect(page.getByRole('heading', { name: 'Grows', exact: true })).toBeVisible();
   // The address bar stayed inside the prefix (page.url() is absolute).
