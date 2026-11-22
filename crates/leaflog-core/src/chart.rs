@@ -155,6 +155,20 @@ pub fn parse_epoch(at: &str) -> Option<i64> {
         .map(jiff::Timestamp::as_second)
 }
 
+/// Parses the numeric Unix-seconds timestamp Home Assistant's
+/// `minimal_response` history puts in `lu`. Normalizing here keeps all
+/// history consumers consistent with RFC 3339 full-state timestamps.
+#[must_use]
+pub fn parse_ha_epoch(value: f64) -> Option<i64> {
+    if value.is_finite() && (0.0..=253_402_300_799.0).contains(&value) {
+        // The explicit bound makes the fractional-second truncation safe.
+        #[allow(clippy::cast_possible_truncation)]
+        Some(value.floor() as i64)
+    } else {
+        None
+    }
+}
+
 /// Formats Unix seconds back to an RFC 3339 UTC instant.
 fn format_epoch(seconds: i64) -> String {
     jiff::Timestamp::from_second(seconds)

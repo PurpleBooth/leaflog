@@ -32,7 +32,7 @@ sha2 = "0.10"
 base64 = "0.22"
 # Embedded IANA tz database: canonical-timezone day math (spec §2)
 # without system tzdata in the container image.
-jiff = "0.2"
+jiff = { version = "0.2", features = ["js"] }
 
 # Lean release artifacts for the HA image. Note: no `strip` here —
 # stripping removes the wasm `target_features` section, which makes

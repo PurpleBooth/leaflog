@@ -44,6 +44,21 @@ pub fn local_date(occurred_at_utc: &str, tz_name: &str) -> Option<String> {
     Some(occurred.date().to_string())
 }
 
+/// The current local date and minute in a `datetime-local` field's shape.
+///
+/// The backend interprets this wall-clock value in the same canonical zone.
+#[must_use]
+pub fn local_datetime_minutes_now(tz_name: &str) -> Option<String> {
+    let zone = jiff::tz::TimeZone::get(tz_name).ok()?;
+    let now = jiff::Timestamp::now().to_zoned(zone);
+    Some(format!(
+        "{}T{:02}:{:02}",
+        now.date(),
+        now.hour(),
+        now.minute()
+    ))
+}
+
 /// A quiet-hours window on the grower's wall clock (spec §4.9).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuietHours {

@@ -414,8 +414,11 @@ pub struct Photo {
     pub id: String,
     /// Owning grow ULID.
     pub grow_id: String,
-    /// Plant ULID, when known.
+    /// Legacy first plant ULID, when known.
     pub plant_id: Option<String>,
+    /// Plants in the photo; empty means the whole grow.
+    #[serde(default)]
+    pub plant_ids: Vec<String>,
     /// Linked log entry, when the photo was attached to one.
     pub action_log_id: Option<String>,
     /// Capture time (EXIF `DateTimeOriginal` when present, else upload
