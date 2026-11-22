@@ -3,7 +3,7 @@
 // photograph with its own capture date and plant associations.
 
 import { test, expect } from '@playwright/test';
-import { createGrow, uniqueName, url } from './helpers';
+import { createGrow, createPlant, uniqueName, url } from './helpers';
 
 // A 1×1 transparent PNG.
 const PNG = Buffer.from(
@@ -54,35 +54,49 @@ test('a day upload records its capture date and plant without an action entry', 
   page,
   request,
 }) => {
-  const growId = await createGrow(request, uniqueName('E2E Story Photo'));
-  const seeded = await request.post(`api/grows/${growId}/actions`, {
+  const now = Date.now();
+  const dateDaysAgo = (days: number) => new Date(now - days * 86_400_000).toISOString().slice(0, 10);
+  const noteDate = dateDaysAgo(2);
+  // Put the photo on the previous seven-day page, before the grow started.
+  const captureDate = dateDaysAgo(9);
+  const growId = await createGrow(request, uniqueName('E2E Story Photo'), { started_on: noteDate });
+  const plantName = uniqueName('E2E Photo Plant');
+  const plantId = await createPlant(request, growId, plantName);
+  const seeded = await request.post(url(`/api/grows/${growId}/actions`), {
     data: {
-      plant_ids: [], occurred_at: '2026-11-20T10:00:00Z', action_type: 'note',
-      details: {}, notes: 'Today in the story', appearance_tags: [],
+      plant_ids: [], occurred_at: `${noteDate}T12:00:00Z`, action_type: 'note',
+      details: {}, notes: 'Seed note for photo upload', appearance_tags: [],
     },
   });
   expect(seeded.ok()).toBeTruthy();
-  const seededStory = await request.get(`api/grows/${growId}/story`);
-  expect((await seededStory.json()).days).toHaveLength(1);
   await page.goto(url(`/grows/${growId}`));
 
-  const day = page.locator('[data-testid="story-day"]', { hasText: 'Nov 20, 2026' });
+  const days = page.getByTestId('story-day');
+  const day = days.filter({ hasText: 'Seed note for photo upload' });
   await day.locator('summary').click();
   await day.locator('input[type=file]').setInputFiles(PNG_FILE);
-  await day.locator('input[type=datetime-local]').fill('2020-01-02T03:04');
+  await day.locator('input[type=datetime-local]').fill(`${captureDate}T03:04`);
+  await day.getByRole('checkbox', { name: plantName }).check();
+  const uploaded = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === url(`/api/grows/${growId}/photos`) &&
+    response.request().method() === 'POST',
+  );
   await day.getByRole('button', { name: 'Upload photo', exact: true }).click();
-  // A capture date outside the current seven-day page is reachable by
-  // paginating, not by inserting a huge empty run of calendar days.
-  for (let pageNumber = 0; pageNumber < 450; pageNumber += 1) {
-    if (await page.locator('[data-testid="story-day"]', { hasText: 'Jan 2, 2020' }).count()) {
-      break;
-    }
-    await page.getByRole('button', { name: 'Load older days' }).click();
-    await expect(page.locator('[role="status"]', { hasText: 'Loading…' })).toHaveCount(0);
-  }
-  const photo = page.locator('[data-testid="story-day"]', { hasText: 'Jan 2, 2020' });
-  await expect(photo.locator('img[alt]')).toBeVisible();
-  await expect(photo.getByText(/Jan 2, 2020.*Whole grow/)).toBeVisible();
-  await expect(photo.locator('strong', { hasText: 'Photo' })).toHaveCount(0);
-  await expect(page.locator('input[type=file]:visible')).toHaveCount(0);
+  expect((await uploaded).ok()).toBeTruthy();
+  await expect(day.locator('input[type=file]')).toBeHidden();
+  await expect(days.locator('img[alt]')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Load older days' }).click();
+  const photo = days.filter({ has: page.locator('img[alt]') });
+  await expect(photo.getByRole('img', { name: plantName, exact: false })).toBeVisible();
+
+  const older = await request.get(url(`/api/grows/${growId}/story?before=${noteDate}`));
+  expect(older.ok()).toBeTruthy();
+  expect((await older.json()).days).toEqual([
+    expect.objectContaining({
+      date: captureDate,
+      actions: [],
+      photos: [expect.objectContaining({ plant_ids: [plantId], action_log_id: null })],
+    }),
+  ]);
 });
