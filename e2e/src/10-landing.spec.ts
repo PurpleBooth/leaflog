@@ -21,7 +21,7 @@ test('landing shows the newest active grow, not the home page', async ({
 
   await page.goto(url('/'));
   // The grow overview rendered, not the marketing home.
-  await expect(page.locator('#phase-picker')).toBeVisible();
+  await expect(page.locator('#phase-day')).toBeVisible();
   await expect(page.getByText(nameB)).toBeVisible();
   await expect(page.getByText(nameA)).toHaveCount(0);
 });
@@ -33,6 +33,6 @@ test('grows/:id deep links still render the overview', async ({
   const nameA = uniqueName('E2E Land Deep');
   const growId = await createGrow(request, nameA);
   await page.goto(url(`/grows/${growId}`));
-  await expect(page.locator('#phase-picker')).toBeVisible();
+  await expect(page.locator('#phase-day')).toBeVisible();
   await expect(page.getByText(nameA)).toBeVisible();
 });

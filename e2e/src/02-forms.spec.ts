@@ -214,15 +214,16 @@ test('quick add dialog: trigger, grouped actions, keyboard access', async ({
   await expect(trigger.locator('svg')).toHaveCount(1);
   await expect(dialog).toBeHidden();
 
-  // Click opens: five labelled groups and sixteen action buttons in
-  // the grouped order, each with exactly one SVG icon (D122).
+  // Click opens: five labelled groups and seventeen action buttons
+  // in the grouped order, each with exactly one SVG icon (D122,
+  // D148 added Set phase to Milestones).
   await trigger.click();
   await expect(trigger).toHaveAttribute('aria-expanded', 'true');
   await expect(dialog).toBeVisible();
   for (const group of ['Watering & feeding', 'Plant care', 'Environment', 'Observations', 'Milestones']) {
     await expect(dialog.getByRole('heading', { name: group })).toBeVisible();
   }
-  await expect(actions).toHaveCount(16);
+  await expect(actions).toHaveCount(17);
   await expect(actions).toHaveText([
     'Water',
     'Feed',
@@ -240,8 +241,9 @@ test('quick add dialog: trigger, grouped actions, keyboard access', async ({
     'Flip 12/12',
     'Harvest',
     'Dry/cure',
+    'Set phase',
   ]);
-  for (let i = 0; i < 16; i += 1) {
+  for (let i = 0; i < 17; i += 1) {
     await expect(actions.nth(i).locator('svg')).toHaveCount(1);
   }
   // Tent-first persona: every action is a 44px-min touch target.

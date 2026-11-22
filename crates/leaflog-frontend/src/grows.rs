@@ -788,9 +788,10 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                     </div>
                                     // The logging picker lives in the header
                                     // (the loop's first tap); the chosen
-                                    // form opens right below it.
+                                    // form opens right below it. Set phase
+                                    // rides the same dialog (D148).
                                     <div class="flex items-center gap-2 ml-auto">
-                                        <QuickAddMenu chip draft />
+                                        <QuickAddMenu chip draft pick_phase pick_date />
                                         <A href=route_href(&format!("/grows/{}/edit", current.id))
                                             attr:class="btn btn-sm"
                                         >
@@ -816,7 +817,10 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             // The chosen entry form opens directly under the header —
             // the loop is pick, fill, log, without a scroll (PRODUCT
             // principle 2). A quiet status line confirms the save; the
-            // entry itself lands in the timeline at the foot.
+            // entry itself lands in the timeline at the foot. The
+            // phase card (D148) is the Set-phase branch of the same
+            // loop: it reuses the picker's pick/save signals, which
+            // the quick-add dialog seeds.
             <Show when=move || chip.get().is_some()>
                 <form
                     id="quick-add-form"
@@ -829,6 +833,51 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                         <button class="btn btn-primary btn-sm" type="submit">{t!(i18n, grow.quick_add_log)}</button>
                         <button class="btn btn-sm" type="button" on:click=move |_| chip.set(None)>{t!(i18n, grows.cancel)}</button>
                     </div>
+                </form>
+            </Show>
+            <Show when=move || pick_phase.get().is_some()>
+                <form
+                    id="phase-picker"
+                    tabindex="-1"
+                    class={format!("{} mt-4", ui::card())}
+                    on:submit=save_pick
+                >
+                    <div class="flex flex-wrap gap-2 items-end">
+                        <ui::Field label=Signal::derive(move || t_string!(i18n, grow.set_phase).into_owned())>
+                            <select class="select" required
+                                prop:value=move || pick_phase
+                                    .get()
+                                    .map_or(String::new(), |phase| phase.label().to_owned())
+                                on:change=move |ev| {
+                                    let value = event_target_value(&ev);
+                                    pick_phase.set(phase_from_label(&value));
+                                }
+                            >
+                                {picker_phases()
+                                    .into_iter()
+                                    .map(|(phase, _)| {
+                                        let name = labels::phase_label(i18n.get_locale(), phase);
+                                        view! { <option value=phase.label()>{name}</option> }
+                                    })
+                                    .collect::<Vec<_>>()}
+                            </select>
+                        </ui::Field>
+                        <ui::Field label=Signal::derive(move || t_string!(i18n, grow.when).into_owned())>
+                            <input class="input" type="date"
+                                prop:value=move || pick_date.get()
+                                on:input=move |ev| pick_date.set(event_target_value(&ev))
+                            />
+                        </ui::Field>
+                        <button class="btn btn-sm btn-primary self-end" type="submit"
+                            disabled=move || pick_phase.get().is_none()
+                        >
+                            {t!(i18n, grow.record_phase)}
+                        </button>
+                        <button class="btn btn-sm" type="button" on:click=move |_| pick_phase.set(None)>{t!(i18n, grows.cancel)}</button>
+                    </div>
+                    <p class="m-0 mt-1 text-xs text-base-content/60">
+                        {t!(i18n, grow.set_phase_hint)}
+                    </p>
                 </form>
             </Show>
             {move || {
@@ -844,39 +893,6 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             <EnvironmentSection grow_id=grow_id.get() has_feed_log />
 
             <h3>{t!(i18n, grow.forecast)}</h3>
-            <form id="phase-picker" class="flex flex-wrap gap-2 items-end my-2" on:submit=save_pick>
-                <ui::Field label=Signal::derive(move || t_string!(i18n, grow.set_phase).into_owned())>
-                    <select class="select" required
-                        prop:value=move || pick_phase
-                            .get()
-                            .map_or(String::new(), |phase| phase.label().to_owned())
-                        on:change=move |ev| {
-                            let value = event_target_value(&ev);
-                            pick_phase.set(phase_from_label(&value));
-                        }
-                    >
-                        <option value="">{t!(i18n, grow.set_phase_placeholder)}</option>
-                        {picker_phases()
-                            .into_iter()
-                            .map(|(phase, _)| {
-                                let name = labels::phase_label(i18n.get_locale(), phase);
-                                view! { <option value=phase.label()>{name}</option> }
-                            })
-                            .collect::<Vec<_>>()}
-                    </select>
-                </ui::Field>
-                <ui::Field label=Signal::derive(move || t_string!(i18n, grow.when).into_owned())>
-                    <input class="input" type="date"
-                        prop:value=move || pick_date.get()
-                        on:input=move |ev| pick_date.set(event_target_value(&ev))
-                    />
-                </ui::Field>
-                <button class="btn btn-sm btn-primary self-end" type="submit"
-                    disabled=move || pick_phase.get().is_none()
-                >
-                    {t!(i18n, grow.record_phase)}
-                </button>
-            </form>
             <GanttTimeline grow_id=grow_id.get() />
 
             <FeedSection grow_id=grow_id.get() />

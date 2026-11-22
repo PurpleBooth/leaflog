@@ -70,6 +70,16 @@ test('phase day badge: a backdated pick re-anchors it without a reload', async (
   await page.goto(url(`/grows/${growId}`));
   await expect(page.locator('#phase-day')).toBeVisible();
 
+  // Set phase lives in the quick-add dialog now (D148); the card
+  // opens with today's date preseeded, which the backdate overwrites.
+  const trigger = page.getByRole('button', { name: 'Quick add', exact: true });
+  const dialog = page.getByRole('dialog', { name: 'Add an entry' });
+  await trigger.click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Set phase', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator('#phase-picker')).toBeFocused();
+
   await page.locator('#phase-picker input[type="date"]').fill(utcDateDaysAgo(3));
   await page.locator('#phase-picker select').selectOption({ label: 'Flowering' });
   await armNoReloadGuard(page);

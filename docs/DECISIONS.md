@@ -6,6 +6,37 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-22 — set phase moves into the quick-add menu (D148)
+
+### D148: the phase picker becomes a quick-add chip
+
+The grow page carried its own little "Phase festlegen / Wann" form
+under the forecast heading. It is gone; **Set phase** is now the last
+chip in the quick-add dialog's Milestones group, with the signpost
+glyph. Picking it does not open the action form: it closes the dialog
+and opens the phase card under the grow header — the same select
+(phase), date (when, pre-today) and Record-phase submit, sharing the
+picker's existing signals and `save_pick` path (D073 semantics
+untouched: Flowering → flip, Drying → harvest, others → phase-change
+entry, optional backdate, forecast re-anchor).
+
+Why: the phase pick is an entry like any other, and every other entry
+starts from the same dialog — one menu teaches one loop. D122 kept
+`PhaseChange` out of the picker because only the forecast/phase UIs
+created it; that rationale ended when the phase UI became a pick
+itself. The card keeps its own form id (`#phase-picker`) and
+`set_phase_hint` line; the timeline keeps the generic "Phase change"
+caption while the chip reads "Set phase" (`picker_label` override).
+Tests: the dialog taxonomy is 17 chips (component + e2e), the phase
+e2e flow goes through the dialog, and the landing check asserts
+`#phase-day` instead of the picker form.
+
+Lint exception logged: `icon_for` now always returns `Some` for every
+pickable action, and carries
+`#[allow(clippy::unnecessary_wraps)] // the Option keeps the call
+sites' map() shape stable; see docs/DECISIONS.md` to keep the call
+sites unchanged.
+
 ## 2026-11-22 — navigation rework: bench bar, footer, no Home page (D147)
 
 ### D147: the menu, page order, navigation and footer rework

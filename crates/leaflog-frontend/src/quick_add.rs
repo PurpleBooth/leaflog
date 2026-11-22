@@ -1,10 +1,11 @@
-//! Quick add picker: the sixteen logging actions behind one trigger,
-//! opened as a native modal dialog grouped by grow work (D122) with
+//! Quick add picker: the logging actions behind one trigger, opened
+//! as a native modal dialog grouped by grow work (D122, D148) with
 //! Lucide SVG icons (ticket 06, spec 95b2e66).
 
 use crate::grows::empty_action;
 use crate::i18n::{Locale, t, t_string, use_i18n};
 use crate::labels;
+use leaflog_core::Phase;
 use leaflog_core::actions::ActionType;
 use leaflog_core::grows::ActionInput;
 use leptos::prelude::*;
@@ -43,9 +44,10 @@ impl GroupKey {
     }
 }
 
-/// The picker's action groups: every [`ActionType`] except
-/// `PhaseChange` (which only the forecast/phase UIs create), each
-/// kept in the chip order the pre-picker row had (spec §4.2).
+/// The picker's action groups: every [`ActionType`], each kept in
+/// the chip order the pre-picker row had (spec §4.2). `PhaseChange`
+/// sits in Milestones as "Set phase" — the grow page's phase-picker
+/// form moved here (D148).
 fn action_groups() -> Vec<(GroupKey, Vec<ActionType>)> {
     vec![
         (
@@ -84,15 +86,16 @@ fn action_groups() -> Vec<(GroupKey, Vec<ActionType>)> {
                 ActionType::Flip,
                 ActionType::Harvest,
                 ActionType::DryCureCheck,
+                ActionType::PhaseChange,
             ],
         ),
     ]
 }
 
-/// The Lucide icon for a quick-add action. Actions without a fitting
-/// glyph in the family render no icon rather than a wrong one
-/// (ticket 06); `PhaseChange` never reaches the picker and maps to
-/// `None` for the same reason.
+/// The Lucide icon for a quick-add action. Every picker action has
+/// one (D148 gave `PhaseChange` the signpost); the caller renders it
+/// unconditionally.
+#[allow(clippy::unnecessary_wraps)] // the Option keeps the call sites' map() shape stable; see docs/DECISIONS.md
 fn icon_for(kind: ActionType) -> Option<icondata_core::Icon> {
     let icon = match kind {
         ActionType::Lights => icondata_lu::LuLightbulb,
@@ -111,7 +114,7 @@ fn icon_for(kind: ActionType) -> Option<icondata_core::Icon> {
         ActionType::TrichomeCheck => icondata_lu::LuZoomIn,
         ActionType::Harvest => icondata_lu::LuWheat,
         ActionType::DryCureCheck => icondata_lu::LuHourglass,
-        ActionType::PhaseChange => return None,
+        ActionType::PhaseChange => icondata_lu::LuSignpost,
     };
     Some(icon)
 }
@@ -175,14 +178,26 @@ fn save_recents(keys: &[String]) {
     }
 }
 
+/// The button label for a picker action: `PhaseChange` reads "Set
+/// phase" here — the boundary pick's own verb (D148) — while the
+/// timeline keeps the event's generic "Phase change" caption.
+fn picker_label(locale: Locale, kind: ActionType) -> String {
+    if kind == ActionType::PhaseChange {
+        return td_string!(locale, grow.set_phase).to_owned();
+    }
+    labels::action_label(locale, kind)
+}
+
 /// One labelled group of picker buttons: the recents row (D127) and
 /// the taxonomy groups share this rendering, so a recent behaves and
-/// looks exactly like its taxonomy chip.
+/// looks exactly like its taxonomy chip. The Set-phase entry (D148)
+/// rides along as a `pick_phase` click instead of a draft pick.
 fn action_group(
     locale: Locale,
     heading: String,
     actions: Vec<ActionType>,
     pick: impl Fn(ActionType) + Copy + 'static,
+    pick_phase: impl Fn(Phase) + Copy + 'static,
 ) -> impl IntoView {
     view! {
         <section class="mt-3">
@@ -193,14 +208,24 @@ fn action_group(
                 {actions
                     .into_iter()
                     .map(|kind| {
+                        // Set phase (D148): the boundary pick opens the
+                        // inline phase form, not the generic action
+                        // draft — the semantic event_for_pick composes
+                        // at save time from the grow's photoperiod.
+                        let on_click: Box<dyn Fn(leptos::ev::MouseEvent) + 'static> =
+                            if kind == ActionType::PhaseChange {
+                                Box::new(move |_| pick_phase(Phase::Flower))
+                            } else {
+                                Box::new(move |_| pick(kind))
+                            };
                         view! {
                             <button
                                 type="button"
                                 class="btn min-h-11"
-                                on:click=move |_| pick(kind)
+                                on:click=on_click
                             >
                                 {icon_for(kind).map(|icon| view! { <Icon icon=icon /> })}
-                                {labels::action_label(locale, kind)}
+                                {picker_label(locale, kind)}
                             </button>
                         }
                     })
@@ -218,16 +243,48 @@ fn action_group(
 /// opens the inline logging form card with the same draft semantics
 /// the chip row had (D069). The last three picks resurface in a
 /// "Recent" group at the top of the dialog (D127).
+///
+/// The Milestones group's **Set phase** entry (D148) bypasses the
+/// action draft: it sets `pick_phase` to the flower boundary and the
+/// grow page renders its own phase/when form card — the same loop,
+/// a phase-shaped card. `pick_date` is cleared so the form always
+/// opens on "today"; the user backdates inside the form.
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
 pub(crate) fn QuickAddMenu(
     chip: RwSignal<Option<ActionType>>,
     draft: RwSignal<ActionInput>,
+    /// The phase-pick target the grow page's phase form reads.
+    pick_phase: RwSignal<Option<Phase>>,
+    /// The phase form's backdating field, cleared on every open.
+    pick_date: RwSignal<String>,
 ) -> impl IntoView {
     let open = RwSignal::new(false);
     let i18n = use_i18n();
     let dialog = NodeRef::<leptos::html::Dialog>::new();
     let recents = RwSignal::new(Vec::<ActionType>::new());
+
+    // The Set-phase branch (D148): seed the phase form (flower is
+    // the common boundary; the select changes it), clear the
+    // backdate field and open the same inline card loop.
+    let pick_phase_action = move |phase: Phase| {
+        pick_phase.set(Some(phase));
+        pick_date.set(String::new());
+        chip.set(None);
+        // Natively close the dialog before reopening the form card;
+        // the on:close handler keeps aria-expanded honest.
+        if let Some(el) = dialog.get_untracked() {
+            el.unchecked_into::<web_sys::HtmlDialogElement>().close();
+        }
+        open.set(false);
+        request_animation_frame(move || {
+            if let Some(card) = document().get_element_by_id("phase-picker")
+                && let Some(el) = card.dyn_ref::<web_sys::HtmlElement>()
+            {
+                let _ = el.focus();
+            }
+        });
+    };
 
     // Picking sets the entry's type on a fresh draft and opens the
     // form card — a plain reset left the draft as `note`, so every
@@ -321,7 +378,15 @@ pub(crate) fn QuickAddMenu(
                     let locale = i18n.get_locale();
                     let groups = action_groups()
                         .into_iter()
-                        .map(|(key, actions)| action_group(locale, key.label(locale), actions, pick))
+                        .map(|(key, actions)| {
+                            action_group(
+                                locale,
+                                key.label(locale),
+                                actions,
+                                pick,
+                                pick_phase_action,
+                            )
+                        })
                         .collect::<Vec<_>>();
                     // The recents group leads only when there is
                     // something remembered (D127).
@@ -332,6 +397,7 @@ pub(crate) fn QuickAddMenu(
                             td_string!(locale, quick_add.recents_heading).to_owned(),
                             recent,
                             pick,
+                            pick_phase_action,
                         )
                     });
                     view! {
@@ -408,39 +474,34 @@ mod tests {
             assert!(!seen.contains(&icon), "duplicate icon for {}", kind.label());
             seen.push(icon);
         }
-        assert_eq!(seen.len(), 16);
+        assert_eq!(seen.len(), 17);
     }
 
     #[test]
-    fn unmapped_actions_render_no_icon_rather_than_a_wrong_one() {
-        assert_eq!(icon_for(ActionType::PhaseChange), None);
-    }
-
-    #[test]
-    fn action_groups_carry_every_action_exactly_once_without_phase_change() {
+    fn action_groups_carry_every_action_exactly_once() {
         let grouped: Vec<ActionType> = action_groups()
             .into_iter()
             .flat_map(|(_, actions)| actions)
             .collect();
         for kind in ActionType::all() {
             let count = grouped.iter().filter(|g| **g == kind).count();
-            let expected = usize::from(kind != ActionType::PhaseChange);
-            assert_eq!(
-                count,
-                expected,
-                "action {} appears {} times",
-                kind.label(),
-                count
-            );
+            assert_eq!(count, 1, "action {} appears {} times", kind.label(), count);
         }
     }
 
     #[test]
-    fn groups_preserve_the_chip_order_within_each_group() {
-        let chip_order: Vec<ActionType> = ActionType::all()
+    fn phase_change_sits_last_in_milestones() {
+        let milestones = action_groups()
             .into_iter()
-            .filter(|kind| *kind != ActionType::PhaseChange)
-            .collect();
+            .find(|(key, _)| *key == GroupKey::Milestones)
+            .map(|(_, actions)| actions)
+            .unwrap_or_default();
+        assert_eq!(milestones.last(), Some(&ActionType::PhaseChange));
+    }
+
+    #[test]
+    fn groups_preserve_the_chip_order_within_each_group() {
+        let chip_order: Vec<ActionType> = ActionType::all().into();
         for (key, actions) in action_groups() {
             let expected: Vec<ActionType> = chip_order
                 .iter()
@@ -452,12 +513,12 @@ mod tests {
     }
 
     #[test]
-    fn the_picker_groups_sixteen_actions_in_total() {
+    fn the_picker_groups_seventeen_actions_in_total() {
         let total: usize = action_groups()
             .into_iter()
             .map(|(_, actions)| actions.len())
             .sum();
-        assert_eq!(total, 16);
+        assert_eq!(total, 17);
     }
 
     #[test]
