@@ -2,6 +2,19 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.18.0 - 2026-11-22
+#### Bug Fixes
+- **(frontend)** tighten feeding schedule card headers - (fc39cdb) - billie.codes
+#### Features
+- follow Home Assistant measurement units - (97e0343) - billie.codes
+#### Miscellaneous
+- **(release)** bump version to 0.17.0 - (276dcb9) - github-actions[bot]
+- **(version)** 0.18.0 - (c0b30c9) - billie.codes
+#### Tests
+- **(e2e)** bound backdated photo pagination - (3c7798f) - billie.codes
+
+- - -
+
 ## v0.17.0 - 2026-11-22
 #### Features
 - **(backend)** serve paginated grow stories - (7ac333b) - billie.codes

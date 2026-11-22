@@ -2,6 +2,22 @@
 All notable changes to the Leaflog Home Assistant app. Version headings are exactly `## <version>` — Home Assistant slices release notes on them. Generated file; never edit by hand.
 
 - - -
+## 0.18.0
+
+_Released 2026-11-22._
+
+#### Bug Fixes
+- **(frontend)** tighten feeding schedule card headers - (fc39cdb) - billie.codes
+#### Features
+- follow Home Assistant measurement units - (97e0343) - billie.codes
+#### Miscellaneous
+- **(release)** bump version to 0.17.0 - (276dcb9) - github-actions[bot]
+- **(version)** 0.18.0 - (c0b30c9) - billie.codes
+#### Tests
+- **(e2e)** bound backdated photo pagination - (3c7798f) - billie.codes
+
+- - -
+
 ## 0.17.0
 
 _Released 2026-11-22._
