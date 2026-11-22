@@ -1,7 +1,7 @@
 //! Unit-aware display helpers (spec §2, "unit-aware" rule).
 //!
-//! SI is canonical internally; these helpers format for display with
-//! the other system alongside. °C/°F, cm/in, L/gal, ml/fl oz.
+//! Storage uses canonical metric units. Convert at the HA sensor and
+//! presentation boundaries.
 
 use crate::format::{DecimalStyle, format_decimal};
 use serde::{Deserialize, Serialize};
@@ -33,6 +33,101 @@ const CM_PER_IN: f64 = 2.54;
 const ML_PER_FLOZ: f64 = 29.5735;
 const ML_PER_GAL: f64 = 3785.41;
 const C_OFFSET: f64 = 32.0;
+const GRAMS_PER_OZ: f64 = 28.349_523_125;
+
+/// A measurement stored in cm, ml or g, respectively.
+#[derive(Debug, Clone, Copy)]
+pub enum Measure {
+    /// Length (cm or in).
+    Length,
+    /// Small liquid volume (ml or US fl oz).
+    Volume,
+    /// Weight (g or oz).
+    Weight,
+}
+
+impl Measure {
+    /// Suffix for the selected system.
+    #[must_use]
+    pub const fn symbol(self, system: UnitSystem) -> &'static str {
+        match (self, system) {
+            (Self::Length, UnitSystem::Metric) => "cm",
+            (Self::Length, UnitSystem::Imperial) => "in",
+            (Self::Volume, UnitSystem::Metric) => "ml",
+            (Self::Volume, UnitSystem::Imperial) => "fl oz",
+            (Self::Weight, UnitSystem::Metric) => "g",
+            (Self::Weight, UnitSystem::Imperial) => "oz",
+        }
+    }
+
+    const fn scale(self, system: UnitSystem) -> f64 {
+        match (self, system) {
+            (_, UnitSystem::Metric) => 1.0,
+            (Self::Length, UnitSystem::Imperial) => CM_PER_IN,
+            (Self::Volume, UnitSystem::Imperial) => ML_PER_FLOZ,
+            (Self::Weight, UnitSystem::Imperial) => GRAMS_PER_OZ,
+        }
+    }
+
+    /// Converts a stored value to the selected unit.
+    #[must_use]
+    pub fn display_value(self, value: f64, system: UnitSystem) -> f64 {
+        value / self.scale(system)
+    }
+
+    /// Converts a value in the selected unit to the stored unit.
+    #[must_use]
+    pub fn canonical(self, value: f64, system: UnitSystem) -> f64 {
+        value * self.scale(system)
+    }
+
+    /// Formats a stored value in the selected unit and locale.
+    #[must_use]
+    pub fn format(self, value: f64, system: UnitSystem, style: DecimalStyle) -> String {
+        let digits = match system {
+            UnitSystem::Metric => 0,
+            UnitSystem::Imperial => 2,
+        };
+        format!(
+            "{} {}",
+            format_decimal(self.display_value(value, system), digits, style),
+            self.symbol(system)
+        )
+    }
+}
+
+/// Reads a sensor temperature into Celsius. A missing unit uses the
+/// caller's Celsius default. Skip historical snapshots whose unit is unknown.
+#[must_use]
+pub fn sensor_celsius(value: f64, unit: Option<&str>) -> Option<f64> {
+    if !value.is_finite() {
+        return None;
+    }
+    match unit {
+        Some("°F") => Some((value - C_OFFSET) * 5.0 / 9.0),
+        Some("K") => Some(value - 273.15),
+        None | Some("°C") => Some(value),
+        Some(_) => None,
+    }
+}
+
+/// Temperature symbol for the chosen system.
+#[must_use]
+pub const fn temperature_symbol(system: UnitSystem) -> &'static str {
+    match system {
+        UnitSystem::Metric => "°C",
+        UnitSystem::Imperial => "°F",
+    }
+}
+
+/// Converts canonical Celsius for presentation.
+#[must_use]
+pub fn temperature_value(celsius: f64, system: UnitSystem) -> f64 {
+    match system {
+        UnitSystem::Metric => celsius,
+        UnitSystem::Imperial => celsius * 9.0 / 5.0 + C_OFFSET,
+    }
+}
 
 /// Formats a temperature with both units, separated per `style`.
 #[must_use]
@@ -49,15 +144,11 @@ pub fn temp_both(celsius: f64, style: DecimalStyle) -> String {
 /// `style`.
 #[must_use]
 pub fn temp_preferred(celsius: f64, system: UnitSystem, style: DecimalStyle) -> String {
-    match system {
-        UnitSystem::Metric => format!("{} °C", format_decimal(celsius, 1, style)),
-        UnitSystem::Imperial => {
-            format!(
-                "{} °F",
-                format_decimal(celsius * 9.0 / 5.0 + C_OFFSET, 1, style)
-            )
-        }
-    }
+    format!(
+        "{} {}",
+        format_decimal(temperature_value(celsius, system), 1, style),
+        temperature_symbol(system)
+    )
 }
 
 /// Formats a length with both units, separated per `style`.

@@ -282,10 +282,13 @@ fn DayCard(
 fn PeriodLine(locale: Locale, period: Period, on: bool) -> impl IntoView {
     let i18n = use_i18n();
     let style = crate::decimal_style(locale);
-    let temperature = period.temperature.map_or_else(
-        || "—".to_owned(),
-        |value| leaflog_core::units::temp_both(value, style),
-    );
+    let units = crate::presentation_units();
+    let temperature = move || {
+        period.temperature.map_or_else(
+            || "—".to_owned(),
+            |value| leaflog_core::units::temp_preferred(value, units.get(), style),
+        )
+    };
     let humidity = period.humidity.map_or_else(
         || "—".to_owned(),
         |value| crate::chart::format_pct(value, style),

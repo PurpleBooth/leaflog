@@ -370,6 +370,7 @@ fn EChartsHistory(
     let container = NodeRef::<leptos::html::Div>::new();
     let i18n = use_i18n();
     let instance = StoredValue::new_local(None::<JsValue>);
+    let units = crate::presentation_units();
 
     Effect::new(move |_| {
         let Some(mut chart) = data.get() else { return };
@@ -385,7 +386,19 @@ fn EChartsHistory(
         let locale = i18n.get_locale();
         let decimal_style = crate::decimal_style(locale);
         let Some(el) = container.get() else { return };
-        let style = chart_option::role_style(&chart.role);
+        let system = units.get();
+        let mut style = chart_option::role_style(&chart.role);
+        let temperature = chart.role == "temperature";
+        if temperature {
+            style.axis_name = leaflog_core::units::temperature_symbol(system);
+        }
+        let format_reading = move |value, style| {
+            if temperature {
+                leaflog_core::units::temp_preferred(value, system, style)
+            } else {
+                format_value(value, style)
+            }
+        };
         let option = chart_option::history_option(&chart, &theme_look(), &style, locale);
         // serde_wasm_bindgen's default maps `serde_json::Value::Object`
         // through `serialize_map`, which produces a JS `Map` — and
@@ -399,8 +412,8 @@ fn EChartsHistory(
         // Fresh closures per option build: setOption replaces the
         // previous references, and `into_js_value` lets the JS GC
         // reclaim each one once nothing points at it any more.
-        let axis_labels = axis_label_closure(format_value, decimal_style).into_js_value();
-        let tooltip_html = tooltip_closure(format_value, decimal_style).into_js_value();
+        let axis_labels = axis_label_closure(format_reading, decimal_style).into_js_value();
+        let tooltip_html = tooltip_closure(format_reading, decimal_style).into_js_value();
         attach_formatters(&option_js, &axis_labels, &tooltip_html);
         if let Some(existing) = instance.get_value() {
             call_chart_method(
@@ -551,12 +564,12 @@ fn label_svg_root(container: &JsValue, label: &str) {
     }
 }
 
-/// The value-axis label closure: raw tick value in, dual-unit string
+/// The value-axis label closure: raw tick value in, localized string
 /// out (`format_value` is the HA-unit-system formatter the card gets
 /// as a prop; `style` is the locale's decimal style, captured at the
 /// option build).
 fn axis_label_closure(
-    format_value: fn(f64, DecimalStyle) -> String,
+    format_value: impl Fn(f64, DecimalStyle) -> String + Copy + 'static,
     style: DecimalStyle,
 ) -> Closure<dyn Fn(JsValue, JsValue) -> JsValue> {
     Closure::new(move |value: JsValue, _index: JsValue| {
@@ -571,7 +584,7 @@ fn axis_label_closure(
 /// and runoff) get a `name:` prefix; unnamed single-series charts keep
 /// the plain `value — time` line they always showed.
 fn tooltip_closure(
-    format_value: fn(f64, DecimalStyle) -> String,
+    format_value: impl Fn(f64, DecimalStyle) -> String + Copy + 'static,
     style: DecimalStyle,
 ) -> Closure<dyn Fn(JsValue, JsValue, JsValue) -> JsValue> {
     Closure::new(
@@ -599,7 +612,7 @@ fn tooltip_closure(
 /// out.
 fn tooltip_line(
     entry: &JsValue,
-    format_value: fn(f64, DecimalStyle) -> String,
+    format_value: impl Fn(f64, DecimalStyle) -> String,
     style: DecimalStyle,
 ) -> Option<String> {
     let value = Reflect::get(entry, &JsValue::from_str("value")).ok()?;

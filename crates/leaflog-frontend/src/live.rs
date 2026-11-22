@@ -97,7 +97,17 @@ fn live_number(
         .find(|binding| binding.role == role)?
         .entity_id
         .as_str();
-    live?.entities.get(entity_id)?.state.parse::<f64>().ok()
+    let entity = live?.entities.get(entity_id)?;
+    let value = entity.state.parse::<f64>().ok()?;
+    if role == ROLE_TEMPERATURE {
+        let unit = entity
+            .attributes
+            .get("unit_of_measurement")
+            .and_then(serde_json::Value::as_str);
+        leaflog_core::units::sensor_celsius(value, unit)
+    } else {
+        Some(value)
+    }
 }
 
 /// The frame classes a tile wears for an ok flag: in-band (success

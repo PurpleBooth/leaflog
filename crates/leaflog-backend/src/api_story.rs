@@ -245,7 +245,6 @@ async fn fetch_window(
     };
     let (temperature, humidity, light) =
         tokio::join!(fetch(ROLES[0]), fetch(ROLES[1]), fetch(ROLES[2]));
-    let live = state.ha.live_now();
     let snapshots = std::array::from_fn(|i| {
         local.snapshots[i]
             .iter()
@@ -254,13 +253,9 @@ async fn fetch_window(
                 (from.as_second()..to.as_second())
                     .contains(&at)
                     .then_some(())?;
-                // Snapshots have no stored unit; an unknown historical unit must not be guessed.
-                let unit = live
-                    .entities
-                    .get(&snap.entity_id)
-                    .and_then(|entity| entity.attributes.get("unit_of_measurement"))
-                    .and_then(Value::as_str);
-                if matches!(ROLES[i], "temperature" | "humidity") && unit.is_none() {
+                // A sensor's current unit may differ from its unit at capture time.
+                let unit = snap.unit.as_deref();
+                if ROLES[i] == "temperature" && unit.is_none() {
                     return None;
                 }
                 Some(Reading {
@@ -326,9 +321,7 @@ fn reading_value(role: &str, text: &str, unit: Option<&str>) -> Option<f64> {
     }
     let value = text.parse::<f64>().ok().filter(|value| value.is_finite())?;
     match (role, unit) {
-        ("temperature", Some("°F")) => Some((value - 32.0) * 5.0 / 9.0),
-        ("temperature", Some("K")) => Some(value - 273.15),
-        ("temperature", None | Some("°C")) => Some(value),
+        ("temperature", _) => leaflog_core::units::sensor_celsius(value, unit),
         ("humidity", _) if (0.0..=100.0).contains(&value) => Some(value),
         _ => None,
     }

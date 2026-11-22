@@ -207,6 +207,14 @@ pub(crate) const fn decimal_style(locale: Locale) -> leaflog_core::format::Decim
     }
 }
 
+/// Presentation units from the app configuration, with a metric fallback.
+pub(crate) fn presentation_units() -> Signal<leaflog_core::units::UnitSystem> {
+    use_context::<RwSignal<leaflog_core::units::UnitSystem>>().map_or_else(
+        || Signal::derive(leaflog_core::units::UnitSystem::default),
+        Signal::from,
+    )
+}
+
 /// Applies the backend half of the locale chain (D112): the Home
 /// Assistant user language (`GET api/locale`) wins over the browser
 /// locale, which the i18n context has already resolved from the
@@ -216,17 +224,28 @@ pub(crate) const fn decimal_style(locale: Locale) -> leaflog_core::format::Decim
 #[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
 fn LocaleChain() -> impl IntoView {
     let i18n = use_i18n();
-    Effect::new(move |_| {
+    let units = expect_context::<RwSignal<leaflog_core::units::UnitSystem>>();
+    let refresh = move |initial| {
         spawn_local(async move {
-            let reported = api::get::<api::LocaleReport>("api/locale")
-                .await
-                .ok()
-                .and_then(|r| r.language);
-            if let Some(locale) = reported.as_deref().and_then(locale_from_tag) {
-                i18n.set_locale(locale);
+            if let Ok(report) = api::get::<api::LocaleReport>("api/locale").await {
+                if units.get_untracked() != report.unit_system {
+                    units.set(report.unit_system);
+                }
+                if initial
+                    && let Some(locale) = report.language.as_deref().and_then(locale_from_tag)
+                {
+                    i18n.set_locale(locale);
+                }
             }
         });
-    });
+    };
+    Effect::new(move |_| refresh(true));
+    if let Ok(handle) = leptos::leptos_dom::helpers::set_interval_with_handle(
+        move || refresh(false),
+        std::time::Duration::from_secs(30),
+    ) {
+        on_cleanup(move || handle.clear());
+    }
 }
 
 /// Root component: the i18n context (no cookie persistence) and the
@@ -235,6 +254,7 @@ fn LocaleChain() -> impl IntoView {
 #[component]
 #[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
 pub fn App() -> impl IntoView {
+    provide_context(RwSignal::new(leaflog_core::units::UnitSystem::default()));
     view! {
         <I18nContextProvider enable_cookie=false>
             <LocaleChain />

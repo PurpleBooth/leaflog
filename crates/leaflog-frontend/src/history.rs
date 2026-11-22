@@ -16,6 +16,7 @@ use crate::route_href;
 use crate::ui;
 use crate::ui::{CardTitle, Chip, EmptyState, Fact, FactGrid};
 use leaflog_core::grows::{Plant, PlantInput};
+use leaflog_core::units::Measure;
 
 /// One logged-boundary comparison from the backend.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -145,6 +146,7 @@ fn summary(report: &HistoryReport) -> SummaryStats {
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
 pub fn HistoryPage() -> impl IntoView {
+    let units = crate::presentation_units();
     let i18n = use_i18n();
     let report = RwSignal::<HistoryReport>::new(HistoryReport::default());
     let error = RwSignal::<Option<String>>::new(None);
@@ -204,9 +206,10 @@ pub fn HistoryPage() -> impl IntoView {
                         .into_owned()
                     },
                 );
-                let dry = leaflog_core::format::format_decimal(stats.dry_g, 0, style);
-                let wet = leaflog_core::format::format_decimal(stats.wet_g, 0, style);
-                let trim = leaflog_core::format::format_decimal(stats.trimmed_g, 0, style);
+                let system = units.get();
+                let dry = Measure::Weight.format(stats.dry_g, system, style);
+                let wet = Measure::Weight.format(stats.wet_g, system, style);
+                let trim = Measure::Weight.format(stats.trimmed_g, system, style);
                 view! {
                     <div class={format!("{} my-4", ui::card())} data-testid="history-summary">
                         <dl class="statband">
@@ -230,7 +233,7 @@ pub fn HistoryPage() -> impl IntoView {
                                 })
                                 testid="history-stat-yield"
                             >
-                                {if stats.weighed { format!("{dry} g") } else { "—".to_owned() }}
+                                {if stats.weighed { dry } else { "—".to_owned() }}
                                 <small>{td_string!(
                                     locale,
                                     history.stat_yield_sub,
@@ -342,6 +345,7 @@ pub fn HistoryPage() -> impl IntoView {
 /// re-translates it alongside the rows.
 #[component]
 fn Aggregate(title: Signal<String>, rows: Signal<Vec<YieldAggregate>>) -> impl IntoView {
+    let units = crate::presentation_units();
     let i18n = use_i18n();
     view! {
         <div class=ui::card()>
@@ -357,9 +361,9 @@ fn Aggregate(title: Signal<String>, rows: Signal<Vec<YieldAggregate>>) -> impl I
                         <thead>
                             <tr>
                                 <th>" "</th>
-                                <th>{t!(i18n, history.wet_g)}</th>
-                                <th>{t!(i18n, history.dry_g)}</th>
-                                <th>{t!(i18n, history.trimmed_g)}</th>
+                                <th>{t!(i18n, history.wet_g, unit = move || Measure::Weight.symbol(units.get()))}</th>
+                                <th>{t!(i18n, history.dry_g, unit = move || Measure::Weight.symbol(units.get()))}</th>
+                                <th>{t!(i18n, history.trimmed_g, unit = move || Measure::Weight.symbol(units.get()))}</th>
                                 <th>{t!(i18n, history.grows_col)}</th>
                             </tr>
                         </thead>
@@ -371,9 +375,9 @@ fn Aggregate(title: Signal<String>, rows: Signal<Vec<YieldAggregate>>) -> impl I
                                         view! {
                                             <tr>
                                                 <td>{row.label.clone()}</td>
-                                                <td>{leaflog_core::format::format_decimal(row.total_wet_g, 0, crate::decimal_style(i18n.get_locale()))}</td>
-                                                <td>{leaflog_core::format::format_decimal(row.total_dry_g, 0, crate::decimal_style(i18n.get_locale()))}</td>
-                                                <td>{leaflog_core::format::format_decimal(row.total_trimmed_g, 0, crate::decimal_style(i18n.get_locale()))}</td>
+                                                <td>{Measure::Weight.format(row.total_wet_g, units.get(), crate::decimal_style(i18n.get_locale()))}</td>
+                                                <td>{Measure::Weight.format(row.total_dry_g, units.get(), crate::decimal_style(i18n.get_locale()))}</td>
+                                                <td>{Measure::Weight.format(row.total_trimmed_g, units.get(), crate::decimal_style(i18n.get_locale()))}</td>
                                                 <td>{row.grows}</td>
                                             </tr>
                                         }
@@ -404,6 +408,7 @@ struct PlantView {
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
 pub fn PlantViewPage() -> impl IntoView {
+    let units = crate::presentation_units();
     let i18n = use_i18n();
     let locale = i18n.get_locale();
     let params = leptos_router::hooks::use_params_map();
@@ -484,17 +489,17 @@ pub fn PlantViewPage() -> impl IntoView {
                                 {data.plant.wet_g.map(|grams| view! {
                                     <Fact label=Signal::derive(move || {
                                         t_string!(i18n, plant.wet).into_owned()
-                                    })>{format!("{grams:.0} g")}</Fact>
+                                    })>{move || Measure::Weight.format(grams, units.get(), crate::decimal_style(i18n.get_locale()))}</Fact>
                                 })}
                                 {data.plant.dry_g.map(|grams| view! {
                                     <Fact label=Signal::derive(move || {
                                         t_string!(i18n, plant.dry).into_owned()
-                                    })>{format!("{grams:.0} g")}</Fact>
+                                    })>{move || Measure::Weight.format(grams, units.get(), crate::decimal_style(i18n.get_locale()))}</Fact>
                                 })}
                                 {data.plant.trimmed_g.map(|grams| view! {
                                     <Fact label=Signal::derive(move || {
                                         t_string!(i18n, plant.trimmed).into_owned()
-                                    })>{format!("{grams:.0} g")}</Fact>
+                                    })>{move || Measure::Weight.format(grams, units.get(), crate::decimal_style(i18n.get_locale()))}</Fact>
                                 })}
                             </FactGrid>
                             <h3>{t!(i18n, plant.log_heading)}</h3>
@@ -539,19 +544,19 @@ pub fn PlantViewPage() -> impl IntoView {
                             />
                         </ui::Field>
                         {weight_field(
-                            Signal::derive(move || td_string!(i18n.get_locale(), form.wet_weight_g).into_owned()),
+                            Signal::derive(move || td_string!(i18n.get_locale(), form.wet_weight_g, unit = Measure::Weight.symbol(units.get())).into_owned()),
                             draft,
                             |d| d.wet_g,
                             |d, v| d.wet_g = v,
                         )}
                         {weight_field(
-                            Signal::derive(move || td_string!(i18n.get_locale(), form.dry_weight_g).into_owned()),
+                            Signal::derive(move || td_string!(i18n.get_locale(), form.dry_weight_g, unit = Measure::Weight.symbol(units.get())).into_owned()),
                             draft,
                             |d| d.dry_g,
                             |d, v| d.dry_g = v,
                         )}
                         {weight_field(
-                            Signal::derive(move || td_string!(i18n.get_locale(), form.trimmed_weight_g).into_owned()),
+                            Signal::derive(move || td_string!(i18n.get_locale(), form.trimmed_weight_g, unit = Measure::Weight.symbol(units.get())).into_owned()),
                             draft,
                             |d| d.trimmed_g,
                             |d, v| d.trimmed_g = v,
@@ -579,12 +584,12 @@ fn weight_field(
     view! {
         <ui::NumberField
             label=label
-            step="1"
+            step="any"
             draft=draft
             read=read
             write=write
             minimum="0"
-            display=std::sync::Arc::new(move |value| format!("{value:.0}"))
+            measure=Measure::Weight
         />
     }
 }

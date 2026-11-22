@@ -111,16 +111,34 @@ pub struct CoachTipData {
 
 /// The lamp advice why-sentence, reassembled from the wire codes; an
 /// unknown code falls back to the English assembly.
-fn lamp_why(locale: Locale, advice: &LampAdvice) -> String {
+fn lamp_why(
+    locale: Locale,
+    advice: &LampAdvice,
+    system: leaflog_core::units::UnitSystem,
+) -> String {
+    let rise = length_range(locale, system, 2.0, 4.0);
+    let step = leaflog_core::units::length_preferred(
+        leaflog_core::units::inches_to_cm(2.0),
+        system,
+        crate::decimal_style(locale),
+    );
     let mut out = String::new();
     for code in &advice.why_codes {
         let line = match code.as_str() {
             "dimmed_closer" => td_string!(locale, env.lamp_dimmed_closer).to_owned(),
-            "canopy_hot_dim" => td_string!(locale, env.lamp_canopy_hot_dim).to_owned(),
-            "canopy_hot_raise" => td_string!(locale, env.lamp_canopy_hot_raise).to_owned(),
-            "stretch_raise" => td_string!(locale, env.lamp_stretch_raise).to_owned(),
+            "canopy_hot_dim" => {
+                td_string!(locale, env.lamp_canopy_hot_dim, distance = step.as_str()).into_owned()
+            }
+            "canopy_hot_raise" => {
+                td_string!(locale, env.lamp_canopy_hot_raise, distance = step.as_str()).into_owned()
+            }
+            "stretch_raise" => {
+                td_string!(locale, env.lamp_stretch_raise, distance = rise.as_str()).into_owned()
+            }
             "stress_dim" => td_string!(locale, env.lamp_stress_dim).to_owned(),
-            "stress_raise" => td_string!(locale, env.lamp_stress_raise).to_owned(),
+            "stress_raise" => {
+                td_string!(locale, env.lamp_stress_raise, distance = rise.as_str()).into_owned()
+            }
             "light_sensitive" => td_string!(locale, env.lamp_light_sensitive).to_owned(),
             "light_tolerant" => td_string!(locale, env.lamp_light_tolerant).to_owned(),
             // Unknown wire code: keep the backend's English assembly.
@@ -134,6 +152,28 @@ fn lamp_why(locale: Locale, advice: &LampAdvice) -> String {
     out
 }
 
+fn length_range(
+    locale: Locale,
+    system: leaflog_core::units::UnitSystem,
+    min_in: f64,
+    max_in: f64,
+) -> String {
+    let unit = leaflog_core::units::Measure::Length;
+    let rounded = |value| {
+        leaflog_core::format::format_decimal(
+            unit.display_value(leaflog_core::units::inches_to_cm(value), system),
+            0,
+            crate::decimal_style(locale),
+        )
+    };
+    format!(
+        "{}–{} {}",
+        rounded(min_in),
+        rounded(max_in),
+        unit.symbol(system)
+    )
+}
+
 /// One coach tip localized from its wire code; the VPD tip rebuilds
 /// its band numbers from the core table and takes its lights-on/off
 /// wording from the response. Unknown codes keep the English title/why.
@@ -142,6 +182,7 @@ fn coach_tip_lines(
     phase: Option<Phase>,
     tip: &CoachTipData,
     light_on: bool,
+    system: leaflog_core::units::UnitSystem,
 ) -> (String, String) {
     match tip.code.as_str() {
         "vpd_band" => {
@@ -181,7 +222,12 @@ fn coach_tip_lines(
             td_string!(locale, env.coach_hydro_reservoir_why).to_owned(),
         ),
         "soil_wet_dry" => (
-            td_string!(locale, env.coach_soil_wet_dry).to_owned(),
+            td_string!(
+                locale,
+                env.coach_soil_wet_dry,
+                distance = length_range(locale, system, 1.0, 2.0)
+            )
+            .into_owned(),
             String::new(),
         ),
         "flower_late_rh" => (
@@ -189,7 +235,12 @@ fn coach_tip_lines(
             td_string!(locale, env.coach_flower_late_rh_why).to_owned(),
         ),
         "flower_stretch" => (
-            td_string!(locale, env.coach_flower_stretch).to_owned(),
+            td_string!(
+                locale,
+                env.coach_flower_stretch,
+                distance = length_range(locale, system, 2.0, 4.0)
+            )
+            .into_owned(),
             td_string!(locale, env.coach_flower_stretch_why).to_owned(),
         ),
         "seedling_rh" => (
@@ -197,7 +248,16 @@ fn coach_tip_lines(
             td_string!(locale, env.coach_seedling_rh_why).to_owned(),
         ),
         "drying_conditions" => (
-            td_string!(locale, env.coach_drying_conditions).to_owned(),
+            td_string!(
+                locale,
+                env.coach_drying_conditions,
+                temperature = if system == leaflog_core::units::UnitSystem::Metric {
+                    "16–20 °C"
+                } else {
+                    "60–68 °F"
+                }
+            )
+            .into_owned(),
             td_string!(locale, env.coach_drying_conditions_why).to_owned(),
         ),
         "curing_jars" => (
@@ -281,6 +341,7 @@ fn EnvTile(
 // Component prop; Leptos takes owned props.
 #[allow(clippy::needless_pass_by_value)] // Leptos component prop contract; see docs/DECISIONS.md
 pub fn EnvDashboard(grow_id: String) -> impl IntoView {
+    let units = crate::presentation_units();
     let i18n = use_i18n();
     let env = RwSignal::<Option<EnvSnapshot>>::new(None);
     let lamp = RwSignal::<Option<LampAdvice>>::new(None);
@@ -335,7 +396,7 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                     let v = crate::live::strip_values(&e, live.get().as_ref());
                     let style = crate::decimal_style(i18n.get_locale());
                     let temp_display = v.temperature_c
-                        .map_or_else(|| "—".to_owned(), |value| leaflog_core::units::temp_both(value, style));
+                        .map_or_else(|| "—".to_owned(), |value| leaflog_core::units::temp_preferred(value, units.get(), style));
                     let rh_display = v.humidity_pct
                         .map_or_else(|| "—".to_owned(), |value| crate::chart::format_pct(value, style));
                     let vpd_display = v.vpd_kpa
@@ -445,13 +506,10 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                                 <p>{t_string!(
                                     i18n,
                                     env.lamp_range,
-                                    min = format!("{:.0}", advice.height.min_in),
-                                    max = format!("{:.0}", advice.height.max_in),
-                                    cm_min = format!("{:.0}", leaflog_core::units::inches_to_cm(advice.height.min_in)),
-                                    cm_max = format!("{:.0}", leaflog_core::units::inches_to_cm(advice.height.max_in)),
+                                    range = length_range(locale, units.get(), advice.height.min_in, advice.height.max_in),
                                 )}</p>
                                 {advice.dim_pct.map(|d| view! { <p class="text-base-content/70">{t_string!(i18n, env.dim_to, pct = d.to_string())}</p> })}
-                                <p class="text-base-content/70 text-sm">{lamp_why(locale, &advice)}</p>
+                                <p class="text-base-content/70 text-sm">{lamp_why(locale, &advice, units.get())}</p>
                             </div>
                         }
                     })
@@ -474,7 +532,7 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                                 <ul class="list-none m-0 p-0 divide-y divide-base-300">
                                     {c.tips.iter().map(|tip| {
                                         let (title, why) =
-                                            coach_tip_lines(locale, phase, tip, c.light_on);
+                                            coach_tip_lines(locale, phase, tip, c.light_on, units.get());
                                         // Tips whose why sentence is gone
                                         // (D137) render the title only —
                                         // no empty paragraph gap.

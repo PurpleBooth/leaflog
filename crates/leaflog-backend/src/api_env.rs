@@ -120,7 +120,7 @@ pub(crate) fn snapshot(
             .collect::<Vec<_>>();
         let temperature_c = temp_entity
             .and_then(|e| live.entities.get(e))
-            .and_then(|e| e.state.parse::<f64>().ok());
+            .and_then(crate::ha::LiveEntity::temperature_c);
         let humidity_pct = humidity_entity
             .and_then(|e| live.entities.get(e))
             .and_then(|e| e.state.parse::<f64>().ok());
@@ -186,7 +186,7 @@ async fn grow_lamp(
             let canopy_temp = bindings
                 .get("temperature")
                 .and_then(|e| live.entities.get(e))
-                .and_then(|e| e.state.parse::<f64>().ok());
+                .and_then(crate::ha::LiveEntity::temperature_c);
 
             // The grow's own lamp facts (D075) advise the wattage
             // class; unset watts fall back to the historical sensible

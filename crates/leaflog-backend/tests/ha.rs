@@ -978,15 +978,16 @@ async fn grow_history_degrades_to_snapshots_when_supervisor_unreachable() {
         .unwrap();
     let entry_id = entry["id"].as_str().unwrap().to_owned();
 
-    // Inject the snapshot the dead HA cannot provide: a log-time
-    // capture of the bound temperature sensor, taken now.
+    // A snapshot captured in Fahrenheit still feeds the Celsius chart
+    // API when HA is offline.
     db.with(move |conn| {
-        leaflog_backend::store::sensors::snapshot(
+        leaflog_backend::store::sensors::snapshot_with_unit(
             conn,
             &entry_id,
             "temperature",
             "sensor.grow_temperature",
-            "22.5",
+            "72.5",
+            Some("°F"),
         )
     })
     .await
@@ -1296,12 +1297,13 @@ async fn grow_history_steps_day_and_night_by_the_light_cycle() {
         .unwrap();
     let entry_id = entry["id"].as_str().unwrap().to_owned();
     db.with(move |conn| {
-        leaflog_backend::store::sensors::snapshot(
+        leaflog_backend::store::sensors::snapshot_with_unit(
             conn,
             &entry_id,
             "temperature",
             "sensor.grow_temperature",
             "22.0",
+            Some("°C"),
         )?;
         leaflog_backend::store::sensors::snapshot(
             conn,
@@ -1827,12 +1829,13 @@ async fn grow_history_carries_role_relevant_windowed_markers() {
     // Inject the snapshot captures the dead HA cannot provide: one
     // reading per bound role, taken now (inside both windows).
     db.with(move |conn| {
-        leaflog_backend::store::sensors::snapshot(
+        leaflog_backend::store::sensors::snapshot_with_unit(
             conn,
             &snapshot_entry_id,
             "temperature",
             "sensor.grow_temperature",
             "22.5",
+            Some("°C"),
         )?;
         leaflog_backend::store::sensors::snapshot(
             conn,
@@ -2239,6 +2242,29 @@ async fn grow_history_shades_nights_from_the_bound_light_history() {
 }
 
 // --- Locale endpoint (D112) ----------------------------------------------
+
+#[tokio::test]
+async fn locale_endpoint_reports_ha_units_or_defaults_to_metric() {
+    for (temperature, expected) in [(Some("°F"), "imperial"), (None, "metric")] {
+        let config = json!({"language": "en", "unit_system": {"temperature": temperature}});
+        let router = axum::Router::new().route(
+            "/core/api/config",
+            axum::routing::get(move || async move { axum::Json(config) }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let (base, _, _) = spawn_api(&format!("http://{addr}")).await;
+        wait_language(&base, "en").await;
+        let body: Value = reqwest::get(format!("{base}/api/locale"))
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(body["unit_system"], expected);
+    }
+}
 
 /// Polls `GET /api/locale` until the reported language matches `want`
 /// (the config fetch races the test start).

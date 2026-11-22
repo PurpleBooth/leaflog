@@ -361,6 +361,27 @@ test('quick add recents: last picks resurface at the top', async ({ page, reques
   await expect(recentsGroup.getByRole('button')).toHaveText(['Feed', 'Water']);
 });
 
+test('HA customary units display and save harvest weights in grams', async ({ page, request }) => {
+  const growId = await createGrow(request, uniqueName('E2E US Grow'));
+  const plantId = await createPlant(request, growId, uniqueName('E2E US Plant'));
+  await page.route('**/api/locale', (route) => route.fulfill({
+    json: { language: 'en', unit_system: 'imperial' },
+  }));
+  await page.goto(url(`/plants/${plantId}`));
+  await page.getByRole('button', { name: 'Edit plant' }).click();
+  const wet = page.getByLabel('Wet weight (oz)');
+  await wet.pressSequentially('2.5');
+  await expect(wet).toHaveValue('2.5');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('2.50 oz')).toBeVisible();
+  const response = await request.get(url(`/api/plants/${plantId}/view`));
+  expect(response.ok()).toBeTruthy();
+  expect((await response.json()).plant.wet_g).toBeCloseTo(70.8738, 3);
+  await page.unroute('**/api/locale');
+  await page.reload();
+  await expect(page.getByText('71 g')).toBeVisible();
+});
+
 test('plant: edit weights from the plant page', async ({ page, request }) => {
   const plantName = uniqueName('E2E Plant');
   const growId = await createGrow(request, uniqueName('E2E Plant Grow'));

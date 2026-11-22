@@ -12,6 +12,7 @@ use leaflog_core::grows::{
     ActionEntry, ActionInput, Grow, GrowInput, GrowStatus, PhotoperiodType, Plant, PlantInput,
     Tolerance,
 };
+use leaflog_core::units::Measure;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos::web_sys::FormData;
@@ -230,6 +231,7 @@ pub fn timeline_entry_in_zone(
     let row = entry.clone();
     let tags = entry.appearance_tags;
     let facts = entry.details;
+    let units = crate::presentation_units();
     let notes = entry.notes;
     let delete_label = td_string!(locale, entries.delete).into_owned();
     view! {
@@ -258,7 +260,7 @@ pub fn timeline_entry_in_zone(
                     <FactGrid>
                         {facts.volume_ml.map(|volume| view! {
                             <Fact label=Signal::derive(move || td_string!(locale, grow.volume).into_owned())>
-                                {leaflog_core::units::small_volume_both(volume, crate::decimal_style(locale))}
+                                {move || Measure::Volume.format(volume, units.get(), crate::decimal_style(locale))}
                             </Fact>
                         })}
                         {facts.input_ph.map(|ph| view! {
@@ -283,7 +285,7 @@ pub fn timeline_entry_in_zone(
                         })}
                         {facts.plant_height_cm.map(|height| view! {
                             <Fact label=Signal::derive(move || td_string!(locale, grow.height).into_owned())>
-                                {leaflog_core::units::length_both(height, crate::decimal_style(locale))}
+                                {move || Measure::Length.format(height, units.get(), crate::decimal_style(locale))}
                             </Fact>
                         })}
                     </FactGrid>
@@ -1099,6 +1101,7 @@ fn ActionForm(
     plants: RwSignal<Vec<Plant>>,
 ) -> impl IntoView {
     let i18n = use_i18n();
+    let units = crate::presentation_units();
     view! {
         <div class="grid gap-2 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
             <ui::Field label=Signal::derive(move || {
@@ -1119,7 +1122,7 @@ fn ActionForm(
                 let kind = kind.get()?;
                 Some(match kind {
                     ActionType::Water | ActionType::Feed => view! {
-                        {num_field(Signal::derive(move || td_string!(i18n.get_locale(), form.volume_ml).into_owned()), "1", d, |a| a.details.volume_ml, |a, v| a.details.volume_ml = v)}
+                        {measure_field(Signal::derive(move || td_string!(i18n.get_locale(), form.volume_ml, unit = Measure::Volume.symbol(units.get())).into_owned()), Measure::Volume, d, |a| a.details.volume_ml, |a, v| a.details.volume_ml = v)}
                         {num_field(Signal::derive(move || td_string!(i18n.get_locale(), grow.ph_in).into_owned()), "0.1", d, |a| a.details.input_ph, |a, v| a.details.input_ph = v)}
                         {num_field(Signal::derive(move || td_string!(i18n.get_locale(), grow.ph_out).into_owned()), "0.1", d, |a| a.details.runoff_ph, |a, v| a.details.runoff_ph = v)}
                         {num_field(Signal::derive(move || td_string!(i18n.get_locale(), form.ec_in_us).into_owned()), "10", d, |a| a.details.input_ec_us.map(f64::from), |a, v| a.details.input_ec_us = clamp_int(v))}
@@ -1127,11 +1130,11 @@ fn ActionForm(
                     }
                         .into_any(),
                     ActionType::Measurement => view! {
-                        {num_field(Signal::derive(move || td_string!(i18n.get_locale(), form.height_cm).into_owned()), "1", d, |a| a.details.plant_height_cm, |a, v| a.details.plant_height_cm = v)}
+                        {measure_field(Signal::derive(move || td_string!(i18n.get_locale(), form.height_cm, unit = Measure::Length.symbol(units.get())).into_owned()), Measure::Length, d, |a| a.details.plant_height_cm, |a, v| a.details.plant_height_cm = v)}
                     }
                         .into_any(),
                     ActionType::LightChange => view! {
-                        {num_field(Signal::derive(move || td_string!(i18n.get_locale(), form.canopy_cm).into_owned()), "1", d, |a| a.details.height_cm, |a, v| a.details.height_cm = v)}
+                        {measure_field(Signal::derive(move || td_string!(i18n.get_locale(), form.canopy_cm, unit = Measure::Length.symbol(units.get())).into_owned()), Measure::Length, d, |a| a.details.height_cm, |a, v| a.details.height_cm = v)}
                         {num_field(Signal::derive(move || td_string!(i18n.get_locale(), form.dim_pct).into_owned()), "5", d, |a| a.details.dim_pct.map(f64::from), |a, v| a.details.dim_pct = clamp_int(v))}
                     }
                         .into_any(),
@@ -1141,7 +1144,7 @@ fn ActionForm(
                     }
                         .into_any(),
                     ActionType::Harvest => view! {
-                        {num_field(Signal::derive(move || td_string!(i18n.get_locale(), form.wet_weight_g).into_owned()), "1", d, |a| a.details.weight_g, |a, v| a.details.weight_g = v)}
+                        {measure_field(Signal::derive(move || td_string!(i18n.get_locale(), form.wet_weight_g, unit = Measure::Weight.symbol(units.get())).into_owned()), Measure::Weight, d, |a| a.details.weight_g, |a, v| a.details.weight_g = v)}
                     }
                         .into_any(),
                     _ => ().into_any(),
@@ -1295,6 +1298,16 @@ fn num_field(
     write: impl Fn(&mut ActionInput, Option<f64>) + Clone + Send + 'static,
 ) -> impl IntoView {
     view! { <ui::NumberField label=label step=step draft=draft read=read write=write /> }
+}
+
+fn measure_field(
+    label: Signal<String>,
+    measure: Measure,
+    draft: RwSignal<ActionInput>,
+    read: impl Fn(&ActionInput) -> Option<f64> + Clone + Send + 'static,
+    write: impl Fn(&mut ActionInput, Option<f64>) + Clone + Send + 'static,
+) -> impl IntoView {
+    view! { <ui::NumberField label=label step="any" draft=draft read=read write=write minimum="0" measure=measure /> }
 }
 
 /// [`ui::NumberField`] for the [`GrowInput`] draft: type-annotated

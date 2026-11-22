@@ -37,6 +37,7 @@ async fn locale(State(state): State<AppState>) -> Json<Value> {
         .ok()
         .flatten();
     Json(json!({
-        "language": override_language.or_else(|| state.ha.cached_language())
+        "language": override_language.or_else(|| state.ha.cached_language()),
+        "unit_system": state.ha.cached_units()
     }))
 }

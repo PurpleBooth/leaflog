@@ -410,6 +410,9 @@ pub struct PhaseWindowData {
 pub struct LocaleReport {
     /// BCP-47 tag of the HA user language (e.g. `en`, `de`).
     pub language: Option<String>,
+    /// HA presentation units; older servers default to metric.
+    #[serde(default)]
+    pub unit_system: leaflog_core::units::UnitSystem,
 }
 
 #[cfg(test)]

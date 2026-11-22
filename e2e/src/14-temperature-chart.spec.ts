@@ -65,11 +65,9 @@ test('temperature chart renders axes and a hover tooltip', async ({
   const tempSvg = tempCard.locator('svg[aria-label="temperature history"]');
   await expect(tempSvg).toBeVisible();
 
-  // The option reached the renderer: the value axis carries its dual
-  // unit name, and tick labels exist for the value and time axes.
-  await expect(
-    tempSvg.locator('text').filter({ hasText: '°C / °F' }),
-  ).toHaveCount(1);
+  // The axis names the selected unit; tick labels also exist.
+  await expect(tempSvg.getByText('°C', { exact: true })).toHaveCount(1);
+  await expect(tempSvg.getByText('°F', { exact: false })).toHaveCount(0);
   expect(
     await tempSvg.locator('text').count(),
     'axis name plus tick labels rendered',

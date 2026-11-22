@@ -6,6 +6,21 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-22 — Home Assistant display units (D153)
+
+### D153: follow Home Assistant without changing stored values
+
+Leaflog takes its display units from Home Assistant, not the browser
+locale. Forms use the same units as displays. Use metric, including °C,
+until Home Assistant reports its preference. Keep the last known setting
+through a disconnect. Feed charts keep their per-litre dose units so
+entries match the source charts (spec §4.6). Measurement exports, when
+implemented, stay metric.
+
+Read a sensor’s own unit before converting its temperature to Celsius.
+New diary snapshots mark normalized temperatures as °C. Older temperature
+snapshots without a unit are omitted rather than guessed.
+
 ## 2026-11-22 — one local-day grow story (D152)
 
 ### D152: timeline, plants and photographs become one paginated diary

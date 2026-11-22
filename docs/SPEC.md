@@ -27,7 +27,7 @@ All checks in §13 must pass, with evidence.
   - Never send it to the browser, never log it, and use read-only calls by default.
   - Any `call_service` (e.g. dimming a light) is gated behind an explicit opt-in setting.
 - **Privacy.** No sharing, social features or public URLs. Strip EXIF/GPS from uploaded photos.
-- Respect HA unit system and locale (°C/°F, in/cm, gal/L). Store SI internally. Display in the user's units. The presets below are written in imperial because that's the owner's preference, but you must also show metric.
+- Follow Home Assistant’s unit system for measurement display and entry. Show one unit only. Use metric (including °C) if no HA preference is known. Keep storage and calculations in canonical metric units. Keep feed schedule rates in source units (ml/L or g/L). Respect the display locale independently.
 - **Timezone-aware.** Store UTC internally. The canonical timezone for display and grow-day numbering is Home Assistant's (read from the documented `GET /api/config`; manual override in settings), so day numbers match the grower's wall clock even when the panel is opened remotely. Grow-day numbers count **local calendar days** (DST-safe), never UTC day flips. Quiet hours and `.ics` phase milestones (all-day events) follow the same timezone.
 
 ## 3. Architecture (record decisions in `docs/ARCHITECTURE.md`)
@@ -45,7 +45,7 @@ All checks in §13 must pass, with evidence.
   - Reconnect with backoff and heartbeat. The diary must work fully with HA unreachable.
 - **Browser ↔ backend:** JSON REST plus one WebSocket/SSE channel for compact live updates. The browser never talks to HA directly.
 - Charts are rendered from Rust as SVG. Pick a crate (or hand-roll) and justify it in an ADR.
-- Whole-grow JSON export/import, plus CSV for logs and sensor history.
+- Whole-grow JSON export/import, plus CSV for logs and sensor history. Measurement exports use canonical metric units, regardless of HA settings.
 
 ## 4. Features
 

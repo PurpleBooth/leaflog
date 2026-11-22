@@ -44,7 +44,7 @@ pub enum SeriesKind {
 /// How one role draws: its value-axis unit label and series kind.
 #[derive(Debug, Clone, Copy)]
 pub struct ChartStyle {
-    /// The value-axis name: the role's unit (`°C / °F`, `%`, `kPa`,
+    /// The value-axis name: the role's unit (`°C`, `%`, `kPa`,
     /// `ppm`, `µS/cm`), the dimensionless scale (`pH`), or the state
     /// pair for binary roles.
     pub axis_name: &'static str,
@@ -57,7 +57,7 @@ pub struct ChartStyle {
 #[must_use]
 pub fn role_style(role: &str) -> ChartStyle {
     let axis_name = match role {
-        "temperature" => "°C / °F",
+        "temperature" => "°C",
         "vpd" => "kPa",
         "co2" => "ppm",
         "light" => "on / off",
@@ -83,9 +83,8 @@ pub fn role_style(role: &str) -> ChartStyle {
 /// timestamp chart-to-chart. The grid therefore reserves a fixed
 /// left gutter of this width plus the axis margin, instead of
 /// `containLabel`, which measures each role's own label text and
-/// drifts the plot origins apart. The width fits the widest role
-/// label: the temperature card's dual-unit "18.0 °C / 64.4 °F"
-/// measures ~89 px at the 12 px label font (negatives run ~93 px).
+/// drifts the plot origins apart. The fixed width also leaves room
+/// for longer readings such as conductivity in µS/cm.
 const CONNECT_LABEL_WIDTH: f64 = 96.0;
 
 /// The option for one history chart: a time axis spanning the whole
@@ -586,7 +585,7 @@ mod tests {
         assert_eq!(option["xAxis"]["type"], "time");
         assert_eq!(option["xAxis"]["axisLabel"]["hideOverlap"], true);
         assert_eq!(option["yAxis"]["type"], "value");
-        assert_eq!(option["yAxis"]["name"], "°C / °F");
+        assert_eq!(option["yAxis"]["name"], "°C");
         assert_eq!(option["yAxis"]["splitLine"]["show"], true);
         assert_eq!(option["tooltip"]["trigger"], "axis");
         assert_eq!(option["series"][0]["type"], "line");
@@ -883,7 +882,7 @@ mod tests {
 
     #[test]
     fn each_role_labels_its_value_axis_with_its_unit() {
-        assert_eq!(style("temperature").axis_name, "°C / °F");
+        assert_eq!(style("temperature").axis_name, "°C");
         assert_eq!(style("humidity").axis_name, "%");
         assert_eq!(style("vpd").axis_name, "kPa");
         assert_eq!(style("co2").axis_name, "ppm");

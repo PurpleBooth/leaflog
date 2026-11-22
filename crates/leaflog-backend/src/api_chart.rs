@@ -206,9 +206,15 @@ pub(crate) fn load_role(
     let snapshots = store::sensors::snapshots_for_role(conn, grow_id, role)?
         .into_iter()
         .filter_map(|snapshot| {
+            let value = parse_value(role, &snapshot.state)?;
+            let value = if role == "temperature" {
+                leaflog_core::units::sensor_celsius(value, Some(snapshot.unit.as_deref()?))?
+            } else {
+                value
+            };
             Some(RawPoint {
                 at: snapshot.captured_at,
-                value: parse_value(role, &snapshot.state)?,
+                value,
             })
         })
         .collect();
@@ -717,12 +723,24 @@ pub(crate) fn ha_history_points(role: &str, history: &Value) -> Vec<RawPoint> {
         let Some(states) = series.as_array() else {
             continue;
         };
+        let mut unit = None;
         for state in states {
+            unit = state
+                .pointer("/attributes/unit_of_measurement")
+                .and_then(Value::as_str)
+                .or(unit);
             let value = state
                 .get("state")
                 .or_else(|| state.get("s"))
                 .and_then(Value::as_str)
-                .and_then(|text| parse_value(role, text));
+                .and_then(|text| parse_value(role, text))
+                .and_then(|value| {
+                    if role == "temperature" {
+                        leaflog_core::units::sensor_celsius(value, unit)
+                    } else {
+                        Some(value)
+                    }
+                });
             let at = ["lu", "last_changed", "last_updated"]
                 .iter()
                 .find_map(|key| {
@@ -779,6 +797,21 @@ mod tests {
         assert_eq!(points[1].value, 24.2);
         assert_eq!(points[1].at, "2026-05-08T04:06:40Z");
         assert_eq!(points[2].value, 24.1);
+    }
+
+    #[test]
+    fn temperature_history_uses_the_reported_unit_for_short_records() {
+        let history = json!([[
+            {"state": "77", "attributes": {"unit_of_measurement": "°F"}, "lu": 1},
+            {"s": "86", "lu": 2},
+            {"s": "300.15", "attributes": {"unit_of_measurement": "K"}, "lu": 3},
+            {"s": "50", "attributes": {"unit_of_measurement": "%"}, "lu": 4}
+        ]]);
+        let points = ha_history_points("temperature", &history);
+        assert_eq!(points.len(), 3);
+        for (point, celsius) in points.iter().zip([25.0, 30.0, 27.0]) {
+            assert!((point.value - celsius).abs() < 1e-9);
+        }
     }
 
     #[test]

@@ -111,8 +111,10 @@ pub struct SensorSnapshot {
     pub role: String,
     /// The entity it came from.
     pub entity_id: String,
-    /// The raw state string.
+    /// The state at capture time, normalized to Celsius for temperature.
     pub state: String,
+    /// Unit of the stored value, absent for older snapshots.
+    pub unit: Option<String>,
     /// Capture time, RFC 3339 UTC.
     pub captured_at: String,
 }
@@ -129,16 +131,33 @@ pub fn snapshot(
     entity_id: &str,
     state: &str,
 ) -> Result<(), StoreError> {
+    snapshot_with_unit(conn, action_log_id, role, entity_id, state, None)
+}
+
+/// Writes a snapshot with the HA unit recorded at capture time.
+///
+/// # Errors
+///
+/// Returns a [`StoreError`] on SQLite failures.
+pub fn snapshot_with_unit(
+    conn: &Connection,
+    action_log_id: &str,
+    role: &str,
+    entity_id: &str,
+    state: &str,
+    unit: Option<&str>,
+) -> Result<(), StoreError> {
     conn.execute(
-        "INSERT INTO sensor_snapshot (id, action_log_id, role, entity_id, state, captured_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        "INSERT INTO sensor_snapshot (id, action_log_id, role, entity_id, state, captured_at, unit)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             new_id(),
             action_log_id,
             role,
             entity_id,
             state,
-            now_rfc3339()
+            now_rfc3339(),
+            unit,
         ],
     )?;
     Ok(())
@@ -154,7 +173,7 @@ pub fn snapshots_for(
     action_log_id: &str,
 ) -> Result<Vec<SensorSnapshot>, StoreError> {
     let mut stmt = conn.prepare(
-        "SELECT id, role, entity_id, state, captured_at
+        "SELECT id, role, entity_id, state, captured_at, unit
          FROM sensor_snapshot WHERE action_log_id = ?1 ORDER BY role",
     )?;
     let rows = stmt.query_map(params![action_log_id], |row| {
@@ -163,6 +182,7 @@ pub fn snapshots_for(
             role: row.get("role")?,
             entity_id: row.get("entity_id")?,
             state: row.get("state")?,
+            unit: row.get("unit")?,
             captured_at: row.get("captured_at")?,
         })
     })?;
@@ -186,7 +206,7 @@ pub fn snapshots_for_role(
     role: &str,
 ) -> Result<Vec<SensorSnapshot>, StoreError> {
     let mut stmt = conn.prepare(
-        "SELECT ss.id, ss.role, ss.entity_id, ss.state, ss.captured_at
+        "SELECT ss.id, ss.role, ss.entity_id, ss.state, ss.captured_at, ss.unit
          FROM sensor_snapshot AS ss
          JOIN action_log AS al ON al.id = ss.action_log_id
          WHERE al.grow_id = ?1 AND ss.role = ?2
@@ -198,6 +218,7 @@ pub fn snapshots_for_role(
             role: row.get("role")?,
             entity_id: row.get("entity_id")?,
             state: row.get("state")?,
+            unit: row.get("unit")?,
             captured_at: row.get("captured_at")?,
         })
     })?;

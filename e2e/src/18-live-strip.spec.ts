@@ -88,7 +88,7 @@ test('five env tiles update live over one SSE connection', async ({
   for (const label of LABELS) {
     await expect(tile(page, label)).toBeVisible();
   }
-  await expect(tileValue(page, 'Temp')).toContainText('°C /');
+  await expect(tileValue(page, 'Temp')).toContainText('°C');
   await expect(tileValue(page, 'RH')).toContainText('%');
   await expect(tileValue(page, 'VPD')).toContainText('kPa');
   await expect(tileValue(page, 'CO₂')).toContainText('ppm');
@@ -220,7 +220,7 @@ test('a dead SSE stream degrades quietly, without an alarm banner', async ({
 
   await page.goto(url(`/grows/${growId}`));
   await expect(page.locator('#env-strip').getByText(/band: \d+–\d+ %/)).toBeVisible();
-  await expect(tileValue(page, 'Temp')).toContainText('°C /');
+  await expect(tileValue(page, 'Temp')).toContainText('°C');
 
   // The page stays open across an outage of the live stream: from
   // here on every request to the SSE endpoint is cut. The tiles keep
@@ -230,7 +230,7 @@ test('a dead SSE stream degrades quietly, without an alarm banner', async ({
   await page.route('**/api/live*', (route) => route.abort());
   await page.waitForTimeout(4_000);
 
-  await expect(tileValue(page, 'Temp')).toContainText('°C /');
+  await expect(tileValue(page, 'Temp')).toContainText('°C');
   await expect(
     page.getByRole('alert'),
     'a cut stream never raises an alarm',

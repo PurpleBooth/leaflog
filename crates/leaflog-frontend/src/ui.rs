@@ -239,14 +239,35 @@ pub fn NumberField<T: Clone + Send + Sync + 'static>(
     /// Shared so the field can hold it without a second generic slot.
     #[prop(optional)]
     display: Option<std::sync::Arc<dyn Fn(f64) -> String + Send + Sync>>,
+    /// Convert between canonical draft values and HA presentation units.
+    #[prop(optional)]
+    measure: Option<leaflog_core::units::Measure>,
 ) -> impl IntoView {
-    let render = move || {
-        read(&draft.get()).map_or_else(String::new, |value| {
+    let units = crate::presentation_units();
+    let input = NodeRef::<leptos::html::Input>::new();
+    let editing = RwSignal::new(false);
+    Effect::new(move |previous| {
+        let system = units.get();
+        let value = read(&draft.get());
+        if measure.is_some() && editing.get() && previous == Some(system) {
+            return system;
+        }
+        let value = value.map_or_else(String::new, |value| {
+            if let Some(measure) = measure {
+                return format!("{:.3}", measure.display_value(value, system))
+                    .trim_end_matches('0')
+                    .trim_end_matches('.')
+                    .to_owned();
+            }
             display
                 .as_ref()
                 .map_or_else(|| value.to_string(), |format| format(value))
-        })
-    };
+        });
+        if let Some(input) = input.get() {
+            input.set_value(&value);
+        }
+        system
+    });
     view! {
         <label class="fieldset">
             <span class="fieldset-label">{move || label.get()}</span>
@@ -257,13 +278,13 @@ pub fn NumberField<T: Clone + Send + Sync + 'static>(
                 min=(!minimum.is_empty()).then_some(minimum)
                 max=(!maximum.is_empty()).then_some(maximum)
                 placeholder=(!placeholder.is_empty()).then_some(placeholder)
-                // Property, not attribute: the property write repaints
-                // the box even after the user typed into it (the
-                // attribute path stops applying once the dirty-value
-                // flag is set), so a rejected entry clears visibly.
-                prop:value=render
+                node_ref=input
+                on:focus=move |_| editing.set(true)
+                on:blur=move |_| editing.set(false)
                 on:input=move |ev| {
-                    let parsed = event_target_value(&ev).parse::<f64>().ok();
+                    let parsed = event_target_value(&ev).parse::<f64>().ok().map(|value| {
+                        measure.map_or(value, |m| m.canonical(value, units.get_untracked()))
+                    });
                     draft.update(|current| write(current, parsed));
                 }
             />

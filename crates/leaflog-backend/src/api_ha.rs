@@ -204,7 +204,21 @@ pub async fn capture_into(state: &AppState, grow_id: &str, action_log_id: &str) 
             let bindings = store::sensors::list(conn, &grow)?;
             for (role, entity_id) in &bindings {
                 if let Some(entity) = live.entities.get(entity_id) {
-                    store::sensors::snapshot(conn, &action, role, entity_id, &entity.state)?;
+                    let unit = entity
+                        .attributes
+                        .get("unit_of_measurement")
+                        .and_then(Value::as_str);
+                    let (value, unit) = if role == "temperature" {
+                        let Some(celsius) = entity.temperature_c() else {
+                            continue;
+                        };
+                        (celsius.to_string(), Some("°C"))
+                    } else {
+                        (entity.state.clone(), unit)
+                    };
+                    store::sensors::snapshot_with_unit(
+                        conn, &action, role, entity_id, &value, unit,
+                    )?;
                 }
             }
             Ok(())

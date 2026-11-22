@@ -20,6 +20,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures_util::{SinkExt as _, StreamExt as _};
+use leaflog_core::units::UnitSystem;
 use serde::Serialize;
 use serde_json::{Value, json};
 use tokio::sync::{mpsc, watch};
@@ -55,6 +56,19 @@ pub struct LiveEntity {
     pub state: String,
     /// Attributes worth showing (unit, friendly name).
     pub attributes: BTreeMap<String, Value>,
+}
+
+impl LiveEntity {
+    /// Reads a temperature sensor in canonical Celsius.
+    #[must_use]
+    pub fn temperature_c(&self) -> Option<f64> {
+        let value = self.state.parse().ok()?;
+        let unit = self
+            .attributes
+            .get("unit_of_measurement")
+            .and_then(Value::as_str);
+        leaflog_core::units::sensor_celsius(value, unit)
+    }
 }
 
 /// The shared live-state map plus connection status.
@@ -108,6 +122,7 @@ struct BridgeInner {
     live_rx: watch::Receiver<LiveData>,
     timezone_rx: watch::Receiver<Option<String>>,
     language_rx: watch::Receiver<Option<String>>,
+    units_rx: watch::Receiver<UnitSystem>,
     /// Shared REST client (audit D145): one connection pool for all
     /// Supervisor calls instead of a fresh client per call.
     http: reqwest::Client,
@@ -128,6 +143,7 @@ impl HaBridge {
         let (live_tx, live_rx) = watch::channel(LiveData::offline());
         let (timezone_tx, timezone_rx) = watch::channel(None);
         let (language_tx, language_rx) = watch::channel(None);
+        let (units_tx, units_rx) = watch::channel(UnitSystem::default());
         let (updates_tx, updates_rx) = mpsc::unbounded_channel();
         let ws_base = base_url.trim_end_matches('/').replacen("http", "ws", 1);
         let rest_base = base_url.trim_end_matches('/').to_owned();
@@ -148,8 +164,9 @@ impl HaBridge {
                 http: http.clone(),
             },
             ConfigWatches {
-                timezone_tx,
-                language_tx,
+                timezone: timezone_tx,
+                language: language_tx,
+                units: units_tx,
             },
         ));
         Self {
@@ -159,6 +176,7 @@ impl HaBridge {
                 live_rx,
                 timezone_rx,
                 language_rx,
+                units_rx,
                 http,
             }),
             updates_tx,
@@ -182,6 +200,12 @@ impl HaBridge {
     #[must_use]
     pub fn cached_language(&self) -> Option<String> {
         self.inner.language_rx.borrow().clone()
+    }
+
+    /// The last known HA unit system, or metric before a config fetch.
+    #[must_use]
+    pub fn cached_units(&self) -> UnitSystem {
+        *self.inner.units_rx.borrow()
     }
 
     /// A receiver of live-data snapshots (for the SSE endpoint).
@@ -346,9 +370,11 @@ pub fn backoff_for(attempt: u32) -> Duration {
 #[derive(Debug)]
 struct ConfigWatches {
     /// Canonical IANA timezone of the HA instance.
-    timezone_tx: watch::Sender<Option<String>>,
+    timezone: watch::Sender<Option<String>>,
     /// BCP-47 user language of the HA instance.
-    language_tx: watch::Sender<Option<String>>,
+    language: watch::Sender<Option<String>>,
+    /// Unit system configured in HA.
+    units: watch::Sender<UnitSystem>,
 }
 
 /// The REST-facing config of the socket task, bundled so it stays
@@ -383,22 +409,15 @@ async fn socket_task(
         while let Ok(Update::Entities(entities)) = updates.try_recv() {
             tracked = entities;
         }
-        // Refresh the canonical timezone (spec §2) and the user
-        // language (D112) on every (re)connect; unreachable HA keeps
-        // the last known values.
+        // Refresh the zone, language and units on every reconnect.
+        // If HA is unreachable, keep the last known values.
         refresh_config(&rest.rest_base, &rest.token, &rest.http, &watches).await;
-        let timezone = watches.timezone_tx.borrow().clone();
-        match run_socket(
-            &url,
-            &token,
-            &live_tx,
-            &tracked,
-            &mut updates,
-            &db,
-            timezone,
-        )
-        .await
-        {
+        let timezone = watches.timezone.borrow().clone();
+        let outcome = tokio::select! {
+            outcome = run_socket(&url, &token, &live_tx, &tracked, &mut updates, &db, timezone) => outcome,
+            () = refresh_config_periodically(&rest, &watches) => unreachable!("config loop never ends"),
+        };
+        match outcome {
             SocketOutcome::Retry(next_tracked) => {
                 tracked = next_tracked;
                 attempt = attempt.saturating_add(1);
@@ -414,11 +433,16 @@ async fn socket_task(
     }
 }
 
-/// Fetches `GET /core/api/config` and publishes its `timezone` (the
-/// documented field, spec §2) and `language` (the user language,
-/// D112) to the bridge's watch channels. Failures leave the previous
-/// values untouched — unreachable HA keeps the last known zone and
-/// language.
+// HA can change settings without dropping the socket.
+async fn refresh_config_periodically(rest: &SocketRest, watches: &ConfigWatches) {
+    loop {
+        tokio::time::sleep(Duration::from_secs(60)).await;
+        refresh_config(&rest.rest_base, &rest.token, &rest.http, watches).await;
+    }
+}
+
+/// Publishes the timezone, language and unit system from
+/// `GET /core/api/config`. Failures keep the last known values.
 async fn refresh_config(
     rest_base: &str,
     token: &SupervisorToken,
@@ -440,10 +464,19 @@ async fn refresh_config(
         return;
     };
     if let Some(zone) = config["timezone"].as_str() {
-        let _ = watches.timezone_tx.send(Some(zone.to_owned()));
+        let _ = watches.timezone.send(Some(zone.to_owned()));
+    }
+    // HA's metric and US customary systems advertise Celsius and Fahrenheit.
+    let units = match config["unit_system"]["temperature"].as_str() {
+        Some("°F") => Some(UnitSystem::Imperial),
+        Some("°C") => Some(UnitSystem::Metric),
+        _ => None,
+    };
+    if let Some(units) = units {
+        let _ = watches.units.send(units);
     }
     if let Some(language) = config["language"].as_str() {
-        let _ = watches.language_tx.send(Some(language.to_owned()));
+        let _ = watches.language.send(Some(language.to_owned()));
         // The API error wrappers read the language from the catalog's
         // process-global (D113) — published alongside the watch.
         crate::catalog::publish_language(Some(language));

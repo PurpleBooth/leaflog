@@ -62,9 +62,9 @@ test('healthy bindings show no dead-tile marks, at load or after load', async ({
 
   // Snapshot landed (readings strip rendered): still no marks, and a
   // real temperature reading next to them. Scoped to the strip — the
-  // history chart's axis labels carry the same "°C /" text (ticket 05).
+  // history chart's axis labels carry the same "°C" text (ticket 05).
   // The RH window footnote proves the strip's full shape (D136).
   await expect(page.locator('#env-strip').getByText(/band: \d+–\d+ %/)).toBeVisible();
   await expect(deadMark(page)).toHaveCount(0);
-  await expect(page.locator('#env-strip').getByText('°C /')).toBeVisible();
+  await expect(page.locator('#env-strip').getByText('°C')).toBeVisible();
 });
