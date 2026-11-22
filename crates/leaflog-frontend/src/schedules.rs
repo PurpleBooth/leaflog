@@ -267,8 +267,8 @@ pub fn SchedulesPage() -> impl IntoView {
                                 };
                                 view! {
                                     <div class="card bg-base-100 shadow-sm px-5 py-4">
-                                        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                                            <h3 class="m-0">{name}</h3>
+                                        <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                            <h3 class="m-0!">{name}</h3>
                                             {source.map(|source| {
                                                 view! { <Chip>{source}</Chip> }
                                             })}
