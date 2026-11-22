@@ -300,10 +300,11 @@ async fn list_actions(
 async fn create_action(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    Query(query): Query<LocalTimeQuery>,
     Json(mut input): Json<ActionInput>,
 ) -> Result<(StatusCode, Json<leaflog_core::grows::ActionEntry>), ApiError> {
-    validate_action(&mut input)?;
     let tz = canonical_timezone(&state).await;
+    validate_action(&mut input, query.local_time, &tz)?;
     let grow_id_for_capture = id.clone();
     // Flip, phase pins and harvest move the timeline the plan is fit
     // against (ADR 0004), so those writes re-fit the schedule.
@@ -316,6 +317,7 @@ async fn create_action(
         .db
         .with(move |conn| -> Result<_, ApiError> {
             let grow = store::grows::get(conn, &id)?;
+            validate_action_plants(conn, &id, &input)?;
             // A Germination pick re-anchors the grow (ticket 04): the
             // pick's local date becomes the start date and every
             // stored grow day is recomputed from its own timestamp.
@@ -410,10 +412,11 @@ async fn get_action(
 async fn update_action(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    Query(query): Query<LocalTimeQuery>,
     Json(mut input): Json<ActionInput>,
 ) -> Result<Json<leaflog_core::grows::ActionEntry>, ApiError> {
-    validate_action(&mut input)?;
     let tz = canonical_timezone(&state).await;
+    validate_action(&mut input, query.local_time, &tz)?;
     // Like create_action: a flip/phase-pin/harvest written through an
     // edit moves the timeline the plan is fit against (ADR 0004), so
     // the edit re-fits too (D145 audit fix).
@@ -433,6 +436,7 @@ async fn update_action(
         .db
         .with(move |conn| -> Result<_, ApiError> {
             let existing = store::actions::get(conn, &id)?;
+            validate_action_plants(conn, &existing.grow_id, &input)?;
             let grow = store::grows::get(conn, &existing.grow_id)?;
             let day =
                 day_number_in(&grow.started_on, &input.occurred_at, &tz).ok_or_else(|| {
@@ -693,7 +697,8 @@ async fn upload_photo(
 ) -> Result<(StatusCode, Json<leaflog_core::grows::Photo>), ApiError> {
     let tz = canonical_timezone(&state).await;
     let mut files: Vec<Vec<u8>> = Vec::new();
-    let mut plant_id: Option<String> = None;
+    let mut plant_ids: Vec<String> = Vec::new();
+    let mut captured_at: Option<String> = None;
     let mut action_log_id: Option<String> = None;
     let mut tags: Vec<String> = Vec::new();
     while let Some(field) = multipart
@@ -715,8 +720,13 @@ async fn upload_photo(
                 }
                 files.push(bytes.to_vec());
             }
-            Some("plant_id") => {
-                plant_id = non_empty_field(field).await;
+            Some("plant_id" | "plant_ids") => {
+                if let Some(value) = non_empty_field(field).await {
+                    plant_ids.push(value);
+                }
+            }
+            Some("captured_at") => {
+                captured_at = non_empty_field(field).await;
             }
             Some("action_log_id") => {
                 action_log_id = non_empty_field(field).await;
@@ -740,11 +750,30 @@ async fn upload_photo(
         ));
     }
 
+    let captured_at = captured_at
+        .map(|value| normalize_photo_time(&value, &tz))
+        .transpose()?;
+    plant_ids.sort();
+    plant_ids.dedup();
     let photos = state.photos.clone();
     let photo = state
         .db
         .with(move |conn| -> Result<_, ApiError> {
             let grow = store::grows::get(conn, &id)?;
+            for plant_id in &plant_ids {
+                if store::grows::get_plant(conn, plant_id)?.grow_id != id {
+                    return Err(ApiError::BadRequest(
+                        "plant does not belong to grow".to_owned(),
+                    ));
+                }
+            }
+            if let Some(action_id) = &action_log_id
+                && store::actions::get(conn, action_id)?.grow_id != id
+            {
+                return Err(ApiError::BadRequest(
+                    "action does not belong to grow".to_owned(),
+                ));
+            }
             // One row per uploaded part: the frontend appends every
             // selected photo under the same "file" field name, so each
             // part gets its own store() + row. The last created row is
@@ -777,7 +806,10 @@ async fn upload_photo(
                     .map_err(ApiError::from)?;
                 let mut last = None;
                 for part in &stored {
-                    let captured_at = part.captured_at.clone().unwrap_or_else(now_rfc3339);
+                    let captured_at = captured_at
+                        .clone()
+                        .or_else(|| part.captured_at.clone())
+                        .unwrap_or_else(now_rfc3339);
                     let day = day_number_in(&grow.started_on, &captured_at, &tz)
                         .ok_or_else(|| ApiError::BadRequest("invalid capture date".to_owned()))?;
                     let flip = store::actions::first_event_day(conn, &id, ActionType::Flip, day)?;
@@ -787,7 +819,7 @@ async fn upload_photo(
                     let phase = leaflog_core::actions::derive_phase(day, flip, harvested);
                     let new = store::photos::NewPhoto {
                         grow_id: id.clone(),
-                        plant_id: plant_id.clone(),
+                        plant_ids: plant_ids.clone(),
                         action_log_id: action_log_id.clone(),
                         captured_at,
                         grow_day: day,
@@ -945,6 +977,22 @@ async fn non_empty_field(field: axum::extract::multipart::Field<'_>) -> Option<S
     (!trimmed.is_empty()).then_some(trimmed)
 }
 
+/// Converts a wall-clock photo time in the grow's canonical zone to UTC.
+fn normalize_photo_time(value: &str, tz: &str) -> Result<String, ApiError> {
+    if let Ok(timestamp) = value.parse::<jiff::Timestamp>() {
+        return Ok(timestamp.to_string());
+    }
+    let civil: jiff::civil::DateTime = value
+        .parse()
+        .map_err(|_| ApiError::BadRequest("invalid capture date".to_owned()))?;
+    let zone = jiff::tz::TimeZone::get(tz)
+        .map_err(|_| ApiError::BadRequest("invalid timezone".to_owned()))?;
+    let zoned = civil
+        .to_zoned(zone)
+        .map_err(|_| ApiError::BadRequest("invalid capture date".to_owned()))?;
+    Ok(zoned.timestamp().to_string())
+}
+
 /// Shared grow validation.
 fn validate_grow(input: &GrowInput) -> Result<(), ApiError> {
     if input.name.trim().is_empty() {
@@ -971,6 +1019,13 @@ fn validate_grow(input: &GrowInput) -> Result<(), ApiError> {
     Ok(())
 }
 
+/// Existing clients send naive UTC times; the diary explicitly opts in to
+/// interpreting its wall-clock values in Home Assistant's canonical zone.
+#[derive(Debug, Default, Deserialize)]
+struct LocalTimeQuery {
+    local_time: Option<bool>,
+}
+
 /// Rewrites an offset-less `datetime-local` timestamp (what
 /// `<input type="datetime-local">` yields: `YYYY-MM-DDTHH:MM[:SS]`,
 /// no UTC offset) to RFC 3339 UTC; values already in RFC 3339 pass
@@ -990,11 +1045,37 @@ fn normalize_occurred_at(occurred_at: &str) -> Result<String, ApiError> {
         .expect("RFC 3339 formatting of a UTC instant cannot fail"))
 }
 
+/// Plant ids are an association, not free-form labels: every id must
+/// belong to the grow receiving this entry.
+fn validate_action_plants(
+    conn: &rusqlite::Connection,
+    grow_id: &str,
+    input: &ActionInput,
+) -> Result<(), ApiError> {
+    for id in &input.plant_ids {
+        let plant = store::grows::get_plant(conn, id)?;
+        if plant.grow_id != grow_id {
+            return Err(ApiError::BadRequest(
+                "plant does not belong to grow".to_owned(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Shared action validation; first rewrites an offset-less
 /// `datetime-local` timestamp in place to RFC 3339 UTC (see
 /// [`normalize_occurred_at`]) so the stored value round-trips.
-fn validate_action(input: &mut ActionInput) -> Result<(), ApiError> {
-    input.occurred_at = normalize_occurred_at(&input.occurred_at)?;
+fn validate_action(
+    input: &mut ActionInput,
+    local_time: Option<bool>,
+    tz: &str,
+) -> Result<(), ApiError> {
+    input.occurred_at = if local_time.unwrap_or(false) {
+        normalize_photo_time(&input.occurred_at, tz)?
+    } else {
+        normalize_occurred_at(&input.occurred_at)?
+    };
     if input.action_type == ActionType::PhaseChange && input.details.target_phase.is_none() {
         return Err(ApiError::BadRequest(
             "phase_change requires a target phase".to_owned(),

@@ -87,6 +87,257 @@ fn action_payload(kind: &str, occurred: &str) -> Value {
     })
 }
 
+/// Each file keeps its own captured time and plant links. The upload
+/// rejects a plant from another grow, rather than leaking that grow's
+/// identity into this diary.
+#[tokio::test]
+async fn photo_upload_has_independent_plants_and_local_capture_time() {
+    let (base, _root) = spawn().await;
+    let client = reqwest::Client::new();
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&grow_payload("Independent photos"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let id = grow["id"].as_str().unwrap();
+    let mut plant_ids = Vec::new();
+    for name in ["One", "Two"] {
+        let plant: Value = client
+            .post(format!("{base}/api/grows/{id}/plants"))
+            .json(&json!({"name": name}))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        plant_ids.push(plant["id"].as_str().unwrap().to_owned());
+    }
+    let other: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&grow_payload("Other grow"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let other_plant: Value = client
+        .post(format!(
+            "{base}/api/grows/{}/plants",
+            other["id"].as_str().unwrap()
+        ))
+        .json(&json!({"name": "Elsewhere"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let form = reqwest::multipart::Form::new()
+        .part(
+            "file",
+            reqwest::multipart::Part::bytes(plain_jpeg(16, 16, [200, 30, 30]))
+                .file_name("plant.jpg")
+                .mime_str("image/jpeg")
+                .unwrap(),
+        )
+        .text("captured_at", "2026-10-20T09:30")
+        .text("plant_id", plant_ids[0].clone())
+        .text("plant_ids", plant_ids[1].clone());
+    let response = client
+        .post(format!("{base}/api/grows/{id}/photos"))
+        .multipart(form)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::CREATED);
+    let photo: Value = response.json().await.unwrap();
+    assert_eq!(photo["captured_at"], "2026-10-20T09:30:00Z");
+    let mut linked = photo["plant_ids"].as_array().unwrap().clone();
+    linked.sort_by_key(Value::to_string);
+    plant_ids.sort();
+    assert_eq!(linked, json!(plant_ids).as_array().unwrap().clone());
+    assert_eq!(photo["plant_id"], plant_ids[0]);
+
+    let invalid = reqwest::multipart::Form::new()
+        .part(
+            "file",
+            reqwest::multipart::Part::bytes(plain_jpeg(16, 16, [200, 30, 30]))
+                .file_name("other.jpg")
+                .mime_str("image/jpeg")
+                .unwrap(),
+        )
+        .text("plant_id", other_plant["id"].as_str().unwrap().to_owned());
+    let response = client
+        .post(format!("{base}/api/grows/{id}/photos"))
+        .multipart(invalid)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn actions_reject_plants_from_another_grow_and_use_canonical_local_time() {
+    let (base, _root) = spawn().await;
+    let client = reqwest::Client::new();
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&grow_payload("Local note"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let id = grow["id"].as_str().unwrap();
+    let other: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&grow_payload("Other grow"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let plant: Value = client
+        .post(format!(
+            "{base}/api/grows/{}/plants",
+            other["id"].as_str().unwrap()
+        ))
+        .json(&json!({"name": "Elsewhere"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let response = client
+        .post(format!("{base}/api/grows/{id}/actions"))
+        .json(&action_payload("note", "2026-10-20T09:30:00Z"))
+        .send()
+        .await
+        .unwrap();
+    let note: Value = response.json().await.unwrap();
+    let mut wrong = action_payload("note", "2026-10-20T09:30:00Z");
+    wrong["plant_ids"] = json!([plant["id"]]);
+    let response = client
+        .put(format!(
+            "{base}/api/actions/{}",
+            note["id"].as_str().unwrap()
+        ))
+        .json(&wrong)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+    let response = client
+        .post(format!("{base}/api/grows/{id}/actions?local_time=true"))
+        .json(&action_payload("note", "2026-10-20T09:30"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::CREATED);
+    let note: Value = response.json().await.unwrap();
+    assert_eq!(note["occurred_at"], "2026-10-20T09:30:00Z");
+}
+
+/// Story pages cover whole local days, omit blank days, keep notes
+/// separate from photos, and paginate without repeating a boundary.
+#[tokio::test]
+async fn story_groups_notes_photos_and_paginates_whole_days() {
+    let (base, _root) = spawn().await;
+    let client = reqwest::Client::new();
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&grow_payload("Story run"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let id = grow["id"].as_str().unwrap();
+    for (at, note) in [
+        ("2026-10-18T09:00:00Z", "new leaves"),
+        ("2026-10-08T09:00:00Z", "older note"),
+    ] {
+        let mut input = action_payload("note", at);
+        input["notes"] = json!(note);
+        let response = client
+            .post(format!("{base}/api/grows/{id}/actions"))
+            .json(&input)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::CREATED);
+    }
+    let form = reqwest::multipart::Form::new()
+        .part(
+            "file",
+            reqwest::multipart::Part::bytes(plain_jpeg(16, 16, [200, 30, 30]))
+                .file_name("plant.jpg")
+                .mime_str("image/jpeg")
+                .unwrap(),
+        )
+        .text("captured_at", "2026-10-18T10:00");
+    let response = client
+        .post(format!("{base}/api/grows/{id}/photos"))
+        .multipart(form)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::CREATED);
+    let first: Value = client
+        .get(format!("{base}/api/grows/{id}/story?before=2026-10-19"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(first["timezone"], "UTC");
+    assert!(first["days"].is_array(), "story error: {first}");
+    let first_days: Vec<_> = first["days"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|day| day["date"].as_str().unwrap())
+        .collect();
+    assert_eq!(first_days, ["2026-10-18"], "story: {first}");
+    let day = &first["days"][0];
+    assert_eq!(day["actions"].as_array().unwrap().len(), 1);
+    assert_eq!(day["photos"].as_array().unwrap().len(), 1);
+    assert_eq!(day["has_observations"], false);
+    let before = first["before"].as_str().unwrap();
+    let second: Value = client
+        .get(format!("{base}/api/grows/{id}/story?before={before}"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(second["days"].as_array().unwrap().len(), 1);
+    assert_eq!(second["days"][0]["date"], "2026-10-08");
+    assert_eq!(second["before"], "2026-10-05");
+    let third: Value = client
+        .get(format!("{base}/api/grows/{id}/story?before=2026-10-05"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(third["days"].as_array().unwrap().len(), 0);
+    assert_eq!(third["before"], Value::Null);
+}
+
 /// Today's date, `YYYY-MM-DD` (tests/api.rs's `started_today`), for
 /// grows whose forecast must start now.
 fn started_today() -> String {

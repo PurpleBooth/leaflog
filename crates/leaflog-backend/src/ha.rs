@@ -274,16 +274,30 @@ impl HaBridge {
         // format! it into the query, where `&`/`#`/`%` would reshape or
         // extend the request sent with the admin Bearer token —
         // `.query()` percent-encodes instead.
+        self.history_between(entity_id, &from, None).await
+    }
+
+    /// Fetches one entity's recorded history over a bounded interval.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when Home Assistant cannot serve the request.
+    pub async fn history_between(
+        &self,
+        entity_id: &str,
+        from: &str,
+        to: Option<&str>,
+    ) -> Result<Value, HaError> {
         let url = format!("{}/core/api/history/period/{from}", self.rest_base());
+        let mut query = vec![("filter_entity_id", entity_id), ("minimal_response", "")];
+        if let Some(to) = to {
+            query.push(("end_time", to));
+        }
         let response = self
             .inner
             .http
             .get(&url)
-            .query(&[
-                ("filter_entity_id", entity_id),
-                // Flag parameter: an empty value is how the API expects it.
-                ("minimal_response", ""),
-            ])
+            .query(&query)
             .bearer_auth(self.inner.token.0.as_ref())
             .send()
             .await

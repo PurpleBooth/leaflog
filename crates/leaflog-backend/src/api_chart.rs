@@ -725,10 +725,20 @@ pub(crate) fn ha_history_points(role: &str, history: &Value) -> Vec<RawPoint> {
                 .and_then(|text| parse_value(role, text));
             let at = ["lu", "last_changed", "last_updated"]
                 .iter()
-                .find_map(|key| state.get(*key).and_then(Value::as_str));
+                .find_map(|key| {
+                    state.get(*key).and_then(|value| {
+                        value
+                            .as_str()
+                            .and_then(leaflog_core::chart::parse_epoch)
+                            .or_else(|| {
+                                value.as_f64().and_then(leaflog_core::chart::parse_ha_epoch)
+                            })
+                    })
+                });
             if let (Some(at), Some(value)) = (at, value) {
                 points.push(RawPoint {
-                    at: at.to_owned(),
+                    at: jiff::Timestamp::from_second(at)
+                        .map_or_else(|_| String::new(), |timestamp| timestamp.to_string()),
                     value,
                 });
             }
@@ -755,7 +765,7 @@ mod tests {
                     "last_changed": "2026-11-08T12:00:00.000000+00:00",
                     "last_updated": "2026-11-08T12:00:00.000000+00:00"
                 },
-                {"s": "24.2", "lu": "2026-11-08T11:00:00+00:00"},
+                {"s": "24.2", "lu": 1_778_213_200},
                 {"s": "24.1", "lu": "2026-11-08T10:00:00+00:00"},
                 {"s": "unavailable", "lu": "2026-11-08T09:00:00+00:00"},
                 {"s": "24.0"}
@@ -765,8 +775,9 @@ mod tests {
         let points = ha_history_points("temperature", &history);
         assert_eq!(points.len(), 3);
         assert_eq!(points[0].value, 24.3);
-        assert_eq!(points[0].at, "2026-11-08T12:00:00.000000+00:00");
+        assert_eq!(points[0].at, "2026-11-08T12:00:00Z");
         assert_eq!(points[1].value, 24.2);
+        assert_eq!(points[1].at, "2026-05-08T04:06:40Z");
         assert_eq!(points[2].value, 24.1);
     }
 

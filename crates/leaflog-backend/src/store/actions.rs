@@ -176,6 +176,37 @@ pub fn list_in_window(
         .map_err(StoreError::from)
 }
 
+/// Lists all entries within a half-open UTC interval, newest first.
+///
+/// # Errors
+/// Returns a [`StoreError`] on SQLite failures.
+pub fn list_for_story(
+    conn: &Connection,
+    grow_id: &str,
+    from: jiff::Timestamp,
+    to: jiff::Timestamp,
+) -> Result<Vec<ActionEntry>, StoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT * FROM action_log WHERE grow_id = ?1
+         ORDER BY occurred_at DESC, created_at DESC",
+    )?;
+    let rows = stmt.query_map(params![grow_id], |row| {
+        let entry = map_row(row)?;
+        // Keep fractional seconds: an entry in today's last partial
+        // second belongs in the half-open day, not after `now`.
+        let in_window = entry
+            .occurred_at
+            .parse::<jiff::Timestamp>()
+            .is_ok_and(|at| (from..to).contains(&at));
+        Ok(in_window.then_some(entry))
+    })?;
+    Ok(rows
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .flatten()
+        .collect())
+}
+
 /// Fetches one entry by id.
 ///
 /// # Errors

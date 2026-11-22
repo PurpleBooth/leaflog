@@ -51,6 +51,7 @@ pub mod api_ha;
 pub mod api_history;
 pub mod api_locale;
 pub mod api_phase;
+mod api_story;
 pub mod app;
 pub mod assets;
 pub mod catalog;

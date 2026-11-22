@@ -52,8 +52,8 @@ pub fn redate(
 pub struct NewPhoto {
     /// Owning grow.
     pub grow_id: String,
-    /// Plant, when known.
-    pub plant_id: Option<String>,
+    /// Plants in the photo; empty means the whole grow.
+    pub plant_ids: Vec<String>,
     /// Linked log entry, when attached to one.
     pub action_log_id: Option<String>,
     /// Capture time, RFC 3339 UTC.
@@ -82,7 +82,8 @@ pub fn create(conn: &Connection, new: &NewPhoto) -> Result<Photo, StoreError> {
     let photo = Photo {
         id: new_id(),
         grow_id: new.grow_id.clone(),
-        plant_id: new.plant_id.clone(),
+        plant_id: new.plant_ids.first().cloned(),
+        plant_ids: new.plant_ids.clone(),
         action_log_id: new.action_log_id.clone(),
         captured_at: new.captured_at.clone(),
         grow_day: new.grow_day,
@@ -115,6 +116,12 @@ pub fn create(conn: &Connection, new: &NewPhoto) -> Result<Photo, StoreError> {
             photo.updated_at,
         ],
     )?;
+    for plant_id in &photo.plant_ids {
+        conn.execute(
+            "INSERT INTO photo_plant (photo_id, plant_id) VALUES (?1, ?2)",
+            params![photo.id, plant_id],
+        )?;
+    }
     Ok(photo)
 }
 
@@ -124,8 +131,12 @@ pub fn create(conn: &Connection, new: &NewPhoto) -> Result<Photo, StoreError> {
 ///
 /// Returns a [`StoreError`] on SQLite failures.
 pub fn list_for_plant(conn: &Connection, plant_id: &str) -> Result<Vec<Photo>, StoreError> {
-    let mut stmt =
-        conn.prepare("SELECT * FROM photo WHERE plant_id = ?1 ORDER BY created_at DESC")?;
+    let mut stmt = conn.prepare(
+        "SELECT photo.*, (SELECT json_group_array(plant_id) FROM photo_plant
+         WHERE photo_id = photo.id) AS plant_ids FROM photo
+         JOIN photo_plant AS filter ON photo.id = filter.photo_id
+         WHERE filter.plant_id = ?1 ORDER BY photo.created_at DESC",
+    )?;
     let rows = stmt.query_map(params![plant_id], map_row)?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(StoreError::from)
@@ -137,11 +148,46 @@ pub fn list_for_plant(conn: &Connection, plant_id: &str) -> Result<Vec<Photo>, S
 ///
 /// Returns a [`StoreError`] on SQLite failures.
 pub fn list(conn: &Connection, grow_id: &str) -> Result<Vec<Photo>, StoreError> {
-    let mut stmt =
-        conn.prepare("SELECT * FROM photo WHERE grow_id = ?1 ORDER BY captured_at DESC")?;
+    let mut stmt = conn.prepare(
+        "SELECT photo.*, (SELECT json_group_array(plant_id) FROM photo_plant
+         WHERE photo_id = photo.id) AS plant_ids FROM photo
+         WHERE grow_id = ?1 ORDER BY captured_at DESC",
+    )?;
     let rows = stmt.query_map(params![grow_id], map_row)?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(StoreError::from)
+}
+
+/// Lists photos captured within a half-open UTC interval.
+///
+/// # Errors
+///
+/// Returns a [`StoreError`] on SQLite failures.
+pub fn list_in_window(
+    conn: &Connection,
+    grow_id: &str,
+    from: jiff::Timestamp,
+    to: jiff::Timestamp,
+) -> Result<Vec<Photo>, StoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT photo.*, (SELECT json_group_array(plant_id) FROM photo_plant
+         WHERE photo_id = photo.id) AS plant_ids FROM photo
+         WHERE grow_id = ?1 ORDER BY captured_at DESC, created_at DESC",
+    )?;
+    let rows = stmt.query_map(params![grow_id], |row| {
+        let photo = map_row(row)?;
+        // Photo capture timestamps can carry subsecond precision too.
+        let in_window = photo
+            .captured_at
+            .parse::<jiff::Timestamp>()
+            .is_ok_and(|at| (from..to).contains(&at));
+        Ok(in_window.then_some(photo))
+    })?;
+    Ok(rows
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .flatten()
+        .collect())
 }
 
 /// Fetches one photo by id.
@@ -150,9 +196,14 @@ pub fn list(conn: &Connection, grow_id: &str) -> Result<Vec<Photo>, StoreError> 
 ///
 /// Returns [`super::NotFound`] when the id does not exist.
 pub fn get(conn: &Connection, id: &str) -> Result<Photo, StoreOrNotFound> {
-    conn.query_row("SELECT * FROM photo WHERE id = ?1", params![id], map_row)
-        .optional()?
-        .ok_or_else(|| NotFound.into())
+    conn.query_row(
+        "SELECT photo.*, (SELECT json_group_array(plant_id) FROM photo_plant
+         WHERE photo_id = photo.id) AS plant_ids FROM photo WHERE id = ?1",
+        params![id],
+        map_row,
+    )
+    .optional()?
+    .ok_or_else(|| NotFound.into())
 }
 
 /// Marks the thumbnail as regenerated (or missing) after a lazy
@@ -212,6 +263,7 @@ fn map_row(row: &rusqlite::Row<'_>) -> Result<Photo, rusqlite::Error> {
         id: row.get("id")?,
         grow_id: row.get("grow_id")?,
         plant_id: row.get("plant_id")?,
+        plant_ids: serde_json::from_str(&row.get::<_, String>("plant_ids")?).unwrap_or_default(),
         action_log_id: row.get("action_log_id")?,
         captured_at: row.get("captured_at")?,
         grow_day: u16::try_from(grow_day.max(0)).unwrap_or(0),
