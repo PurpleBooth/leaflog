@@ -40,7 +40,7 @@ async function seedWaterings(
 
 function waterRow(page: Page, volume: number) {
   return page
-    .locator('ul.list-none li')
+    .locator('[data-testid="story-day"] ul.list-none li')
     .filter({ has: page.locator('strong:text-is("Water")') })
     .filter({ hasText: String(volume) });
 }

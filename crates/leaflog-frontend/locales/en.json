@@ -107,6 +107,28 @@
     "photos_uploaded": "Photos uploaded",
     "all_grows": "All grows"
   },
+  "story": {
+    "heading": "Grow story",
+    "add_entry": "Add note",
+    "add_photo": "Add photo",
+    "filter": "Filter the story by plant",
+    "all_plants": "All plants",
+    "empty": "No story entries for this selection.",
+    "load_older": "Load older days",
+    "day_period": "Lights on (day)",
+    "night_period": "Lights off (night)",
+    "light_hours": "{{ hours }} h of observed light",
+    "no_light": "No observed light duration",
+    "partial": "Partial observation",
+    "sparse": "Sparse observations; averages cover only the observed time.",
+    "no_data": "No environment observations recorded for this day.",
+    "automatic": "Automatic light activity recorded; the individual transitions stay hidden.",
+    "captured_at": "Photo date and time",
+    "recorded_at": "Date and time",
+    "photo_plants": "Plants in this photo (optional)",
+    "upload": "Upload photo",
+    "whole_grow": "Whole grow"
+  },
   "env": {
     "apply_band": "Apply band",
     "band_invalid": "Enter 0–100 with min ≤ max.",

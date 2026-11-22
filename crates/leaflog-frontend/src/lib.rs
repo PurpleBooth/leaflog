@@ -46,6 +46,7 @@ mod onboarding;
 mod phase_pick;
 mod quick_add;
 mod schedules;
+mod story;
 mod theme;
 mod ui;
 

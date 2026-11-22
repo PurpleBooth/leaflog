@@ -258,6 +258,10 @@ pub(crate) fn QuickAddMenu(
     pick_phase: RwSignal<Option<Phase>>,
     /// The phase form's backdating field, cleared on every open.
     pick_date: RwSignal<String>,
+    /// Plant filter inherited by new log entries; photos retain per-file links.
+    selected_plants: RwSignal<Vec<String>>,
+    /// Canonical Home Assistant timezone for the wall-clock form.
+    timezone: Signal<String>,
 ) -> impl IntoView {
     let open = RwSignal::new(false);
     let i18n = use_i18n();
@@ -290,8 +294,9 @@ pub(crate) fn QuickAddMenu(
     // form card — a plain reset left the draft as `note`, so every
     // quick add was logged as one (found by the e2e suite, D069).
     let pick = move |kind: ActionType| {
-        let mut reset = empty_action();
+        let mut reset = empty_action(&timezone.get_untracked());
         reset.action_type = kind;
+        reset.plant_ids = selected_plants.get_untracked();
         chip.set(Some(kind));
         draft.set(reset);
         // Remember the pick for the recents row (D127): stored most

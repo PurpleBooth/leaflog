@@ -87,7 +87,12 @@ async fn story(
         .actions
         .iter()
         .filter_map(|entry| local_date(&entry.occurred_at, &zone))
-        .chain(local.photos.iter().filter_map(|photo| local_date(&photo.captured_at, &zone)))
+        .chain(
+            local
+                .photos
+                .iter()
+                .filter_map(|photo| local_date(&photo.captured_at, &zone)),
+        )
         .min()
         .map_or(started, |date| date.min(started))
         .min(earliest.unwrap_or(started));

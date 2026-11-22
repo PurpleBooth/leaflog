@@ -110,7 +110,7 @@ test.describe('german-forced browser', () => {
     // (catalog grow.day); the quiet auto tier (grow.auto_heading)
     // is pinned when mock HA light transitions exist.
     await expect(
-      page.locator('[data-testid="timeline-day"]').first(),
+      page.locator('[data-testid="story-day"]').first(),
     ).toHaveText(/Tag \d+/);
 
     // And nothing drifted back to English.

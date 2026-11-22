@@ -6,6 +6,34 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-22 — one local-day grow story (D152)
+
+### D152: timeline, plants and photographs become one paginated diary
+
+The grow page now presents one local-calendar-day story rather than separate
+timeline, plant and photo sections. Each day carries its phase, notes and
+actions, independent photographs and day/night environmental summaries. A
+plant filter retains grow-wide context while filtering plant-specific items.
+Photographs accept their own timestamp and any number of plant associations;
+V21 stores those associations in `photo_plant`. Ordinary action and photo
+timestamps remain separate inputs.
+
+The API reads seven-day windows with an exclusive local-date cursor. Entries
+older than the grow are available through that cursor without inserting empty
+days. Calendar comparisons retain fractional seconds, so a fresh entry cannot
+fall beyond the current instant; sensor aggregation still uses whole-second
+windows. Sparse or missing observations stay explicit; light-state periods
+classify available measurements rather than inventing values for gaps. Home
+Assistant numeric `lu` history timestamps are normalized alongside RFC 3339
+timestamps, fixing both story and chart history parsing.
+
+Lint exceptions: `story.rs` allows `too_many_lines` for two declarative
+Leptos day-card composition functions. `grows.rs` allows
+`needless_pass_by_value` for a timezone retained by a Leptos view closure.
+The finite, bounded numeric timestamp conversion in `core/chart.rs` allows
+`cast_possible_truncation` because discarding fractional seconds is intended.
+These exceptions accompany existing declarative-view exceptions in that file.
+
 ## 2026-11-22 — the hash-length gate accepts what Trunk emits (D151)
 
 ### D151: the content-hash classifier stops assuming 16 hex digits

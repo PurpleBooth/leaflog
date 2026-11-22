@@ -107,6 +107,28 @@
     "photos_uploaded": "Fotos hochgeladen",
     "all_grows": "Alle Anbauten"
   },
+  "story": {
+    "heading": "Anbau-Tagebuch",
+    "add_entry": "Notiz hinzufügen",
+    "add_photo": "Foto hinzufügen",
+    "filter": "Tagebuch nach Pflanze filtern",
+    "all_plants": "Alle Pflanzen",
+    "empty": "Keine Tagebucheinträge für diese Auswahl.",
+    "load_older": "Ältere Tage laden",
+    "day_period": "Licht an (Tag)",
+    "night_period": "Licht aus (Nacht)",
+    "light_hours": "{{ hours }} h beobachtete Beleuchtung",
+    "no_light": "Keine beobachtete Beleuchtungsdauer",
+    "partial": "Unvollständige Beobachtung",
+    "sparse": "Wenige Beobachtungen; Mittelwerte beziehen sich nur auf die beobachtete Zeit.",
+    "no_data": "Für diesen Tag wurden keine Umweltwerte aufgezeichnet.",
+    "automatic": "Automatische Lichtaktivität erfasst; die einzelnen Schaltvorgänge bleiben ausgeblendet.",
+    "captured_at": "Foto-Datum und -Uhrzeit",
+    "recorded_at": "Datum und Uhrzeit",
+    "photo_plants": "Pflanzen auf diesem Foto (optional)",
+    "upload": "Foto hochladen",
+    "whole_grow": "Gesamter Anbau"
+  },
   "env": {
     "apply_band": "Band anwenden",
     "band_invalid": "Werte zwischen 0 und 100 eingeben, Minimum ≤ Maximum.",

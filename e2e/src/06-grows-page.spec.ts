@@ -6,7 +6,7 @@
 import { test, expect } from '@playwright/test';
 import { createGrow, createPlant, uniqueName, url } from './helpers';
 
-test('aborted photos request keeps the grow page with an error banner', async ({
+test('aborted story request keeps the grow page with an error banner', async ({
   page,
   request,
 }) => {
@@ -15,9 +15,9 @@ test('aborted photos request keeps the grow page with an error banner', async ({
   const growId = await createGrow(request, name);
   await createPlant(request, growId, plantName);
 
-  // Abort the photos request under the ingress prefix; the grow,
+  // Abort the story request under the ingress prefix; the grow,
   // plants and actions requests answer normally.
-  await page.route(url(`api/grows/${growId}/photos`), (route) => route.abort());
+  await page.route(url(`api/grows/${growId}/story`), (route) => route.abort());
   await page.goto(url(`/grows/${growId}`));
 
   // The page renders from its own fetches: the grow's heading and the
@@ -30,7 +30,7 @@ test('aborted photos request keeps the grow page with an error banner', async ({
   await expect(page.locator('p[role="alert"]')).toBeVisible();
 
   // Lifting the abort and reloading heals the page: no stale banner.
-  await page.unroute(url(`api/grows/${growId}/photos`));
+  await page.unroute(url(`api/grows/${growId}/story`));
   await page.reload();
   await expect(page.locator('p[role="alert"]')).toHaveCount(0);
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();

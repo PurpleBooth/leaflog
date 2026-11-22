@@ -9,8 +9,8 @@ use gloo_timers::future::TimeoutFuture;
 use leaflog_core::Phase;
 use leaflog_core::actions::{ActionDetails, ActionType};
 use leaflog_core::grows::{
-    ActionEntry, ActionInput, Grow, GrowInput, GrowStatus, Photo, PhotoperiodType, Plant,
-    PlantInput, Tolerance,
+    ActionEntry, ActionInput, Grow, GrowInput, GrowStatus, PhotoperiodType, Plant, PlantInput,
+    Tolerance,
 };
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -208,10 +208,22 @@ pub fn GrowsPage() -> impl IntoView {
 /// phase-day split pins (e2e 17), the phase badge, structured facts
 /// when any are set, notes, appearance tags and the local stamp.
 /// `on_delete` is the shared delete-with-undo callback.
+#[cfg(all(test, target_arch = "wasm32"))]
 pub fn timeline_entry(
     locale: Locale,
     entry: ActionEntry,
     on_delete: impl Fn(ActionEntry) + Copy + Send + Sync + 'static,
+) -> impl IntoView {
+    timeline_entry_in_zone(locale, entry, on_delete, String::new())
+}
+
+/// A diary entry whose wall clock uses the grow's canonical timezone.
+#[allow(clippy::needless_pass_by_value)] // the zone is retained by Leptos's view closure
+pub fn timeline_entry_in_zone(
+    locale: Locale,
+    entry: ActionEntry,
+    on_delete: impl Fn(ActionEntry) + Copy + Send + Sync + 'static,
+    timezone: String,
 ) -> impl IntoView {
     // The delete row keeps a full copy for the undo replay; the view
     // consumes the rest by move so nothing is cloned twice.
@@ -221,7 +233,7 @@ pub fn timeline_entry(
     let notes = entry.notes;
     let delete_label = td_string!(locale, entries.delete).into_owned();
     view! {
-        <li class=ui::card()>
+        <li class="border-l-2 border-primary/30 py-1 pl-3">
             <div class="flex flex-wrap items-baseline gap-2">
                 <strong>{labels::action_label(locale, entry.action_type)}</strong>
                 <Chip>{td_string!(
@@ -294,63 +306,9 @@ pub fn timeline_entry(
                 }
             })}
             <p class="text-base-content/70 text-sm">
-                {local_stamp(&entry.occurred_at)}
+                {local_stamp(&entry.occurred_at, &timezone)}
             </p>
         </li>
-    }
-}
-
-/// The machine-generated tier: HA light transitions as quiet
-/// one-liners, each still deletable so the diary stays curable. The
-/// delete callback is GrowDetail's delete-with-undo flow, passed
-/// down so both tiers share one undo window.
-#[component]
-fn AutoTier(
-    actions: RwSignal<Vec<ActionEntry>>,
-    on_delete: impl Fn(ActionEntry) + Copy + Send + Sync + 'static,
-) -> impl IntoView {
-    let i18n = use_i18n();
-    view! {
-        <Show when=move || {
-            actions.get().iter().any(is_auto)
-        }>
-            <div class="mt-4" data-testid="timeline-auto">
-                <h4 class="m-0 mb-1 text-sm font-semibold tracking-wide text-base-content/60">
-                    {t!(i18n, grow.auto_heading)}
-                </h4>
-                <ul class="list-none m-0 p-0 grid gap-1">
-                    {move || {
-                        let locale = i18n.get_locale();
-                        actions
-                            .with(|all| {
-                                all.iter()
-                                    .filter(|entry| is_auto(entry))
-                                    .map(|entry| {
-                                        let row = entry.clone();
-                                        let delete_label =
-                                            td_string!(locale, entries.delete).into_owned();
-                                        view! {
-                                            <li class="flex flex-wrap items-center gap-2 text-sm text-base-content/70">
-                                                <strong class="font-medium">{labels::action_label(locale, entry.action_type)}</strong>
-                                                <span class="min-w-0 truncate">{entry.notes.clone().unwrap_or_default()}</span>
-                                                <span class="ml-auto whitespace-nowrap">{local_stamp(&entry.occurred_at)}</span>
-                                                <button
-                                                    class="btn btn-ghost btn-xs min-h-8 min-w-8"
-                                                    type="button"
-                                                    aria-label=delete_label
-                                                    on:click=move |_| on_delete(row.clone())
-                                                >
-                                                    {"×"}
-                                                </button>
-                                            </li>
-                                        }
-                                    })
-                                    .collect::<Vec<_>>()
-                            })
-                    }}
-                </ul>
-            </div>
-        </Show>
     }
 }
 
@@ -438,16 +396,17 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             })
         })
     });
-    let photos = RwSignal::<Vec<Photo>>::new(Vec::new());
+    let story_revision = RwSignal::new(0);
+    let selected_plants = RwSignal::<Vec<String>>::new(Vec::new());
+    let timezone = RwSignal::new(String::new());
     let forecast = RwSignal::<Option<api::Forecast>>::new(None);
     let error = RwSignal::<Option<String>>::new(None);
 
     let chip = RwSignal::<Option<ActionType>>::new(None);
-    let draft = RwSignal::<ActionInput>::new(empty_action());
+    let draft = RwSignal::<ActionInput>::new(empty_action("UTC"));
     // Photo files staged by the quick-add Foto form; cleared after
     // every save, so a later non-photo entry uploads nothing.
     let photo_files = RwSignal::<Vec<leptos::web_sys::File>>::new(Vec::new());
-    let upload_note = RwSignal::<Option<String>>::new(None);
     // Set once a quick-add entry saves; cleared the moment the next
     // entry is picked, so the note always names the latest save.
     let just_logged = RwSignal::new(false);
@@ -474,7 +433,10 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             .unwrap_or_default()
     });
 
+    // Every successful grow mutation refreshes the story too. The
+    // resource skips an unchanged revision to avoid repeated history calls.
     let refresh = move || {
+        story_revision.update(|revision| *revision += 1);
         let id = grow_id.get();
         spawn_local(async move {
             let base = format!("api/grows/{id}");
@@ -494,13 +456,6 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             }
             match api::get::<Vec<ActionEntry>>(&format!("{base}/actions?limit=200")).await {
                 Ok(value) => actions.set(value),
-                Err(failure) => error.set(Some(api::failure_text(
-                    &failure,
-                    i18n.get_locale_untracked(),
-                ))),
-            }
-            match api::get::<Vec<Photo>>(&format!("{base}/photos")).await {
-                Ok(value) => photos.set(value),
                 Err(failure) => error.set(Some(api::failure_text(
                     &failure,
                     i18n.get_locale_untracked(),
@@ -615,53 +570,77 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
     // after the entry saved. A failed upload leaves the entry (with
     // its error surfaced) — the photo can be re-uploaded from the
     // gallery, not silently lost with the entry.
+    let story_add = move |(date, kind): (String, ActionType)| {
+        let mut input = empty_action(&timezone.get_untracked());
+        input.action_type = kind;
+        input.plant_ids = selected_plants.get_untracked();
+        if !date.is_empty() {
+            input.occurred_at = format!("{date}T12:00");
+        }
+        draft.set(input);
+        chip.set(Some(kind));
+        request_animation_frame(move || {
+            if let Some(card) = web_sys::window()
+                .and_then(|window| window.document())
+                .and_then(|document| document.get_element_by_id("quick-add-form"))
+                && let Some(element) = card.dyn_ref::<web_sys::HtmlElement>()
+            {
+                let _ = element.focus();
+                element.scroll_into_view();
+            }
+        });
+    };
+
     let save_action = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
         let id = grow_id.get();
         spawn_local(async move {
             let input = draft.get();
-            match api::post::<ActionInput, ActionEntry>(&format!("api/grows/{id}/actions"), &input)
-                .await
-            {
-                Ok(entry) => {
-                    chip.set(None);
-                    let files = if input.action_type == ActionType::Photo {
-                        photo_files.get_untracked()
-                    } else {
-                        Vec::new()
-                    };
-                    photo_files.set(Vec::new());
-                    let mut upload_failed = false;
-                    if !files.is_empty() {
-                        let form = FormData::new().expect("FormData constructs");
-                        for file in &files {
-                            form.append_with_blob("file", file)
-                                .expect("appending a blob cannot fail");
-                        }
-                        form.append_with_str("action_log_id", &entry.id)
+            if input.action_type == ActionType::Photo {
+                let files = photo_files.get_untracked();
+                let mut failed = false;
+                for file in &files {
+                    let form = FormData::new().expect("FormData constructs");
+                    form.append_with_blob("file", file)
+                        .expect("appending a blob cannot fail");
+                    form.append_with_str("captured_at", &input.occurred_at)
+                        .expect("appending a string cannot fail");
+                    for plant_id in &input.plant_ids {
+                        form.append_with_str("plant_id", plant_id)
                             .expect("appending a string cannot fail");
-                        let url = format!("api/grows/{id}/photos");
-                        match api::post_form(&url, &form).await {
-                            Ok(()) => {
-                                upload_note
-                                    .set(Some(t_string!(i18n, grow.photos_uploaded).into_owned()));
-                            }
-                            Err(failure) => {
-                                upload_failed = true;
-                                error.set(Some(api::failure_text(
-                                    &failure,
-                                    i18n.get_locale_untracked(),
-                                )));
-                            }
-                        }
                     }
-                    // The entry itself saved: the chip closes and the
-                    // timeline refreshes even when the upload failed —
-                    // the error above names the upload, not the entry.
-                    if !upload_failed {
-                        error.set(None);
+                    if let Err(failure) =
+                        api::post_form(&format!("api/grows/{id}/photos"), &form).await
+                    {
+                        error.set(Some(api::failure_text(
+                            &failure,
+                            i18n.get_locale_untracked(),
+                        )));
+                        failed = true;
                     }
+                }
+                if !failed {
+                    chip.set(None);
+                    photo_files.set(Vec::new());
+                    error.set(None);
                     just_logged.set(true);
+                }
+                story_revision.update(|revision| *revision += 1);
+                refresh();
+                return;
+            }
+            match api::post::<ActionInput, ActionEntry>(
+                &format!("api/grows/{id}/actions?local_time=true"),
+                &input,
+            )
+            .await
+            {
+                Ok(_entry) => {
+                    chip.set(None);
+                    photo_files.set(Vec::new());
+                    error.set(None);
+                    just_logged.set(true);
+                    story_revision.update(|revision| *revision += 1);
                     refresh();
                 }
                 Err(failure) => error.set(Some(api::failure_text(
@@ -684,7 +663,8 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
         let photoperiod = grow_photoperiod.get();
         let when = pick_date.get();
         let day = if when.is_empty() {
-            datetime_local_now()
+            leaflog_core::tz::local_datetime_minutes_now(&timezone.get_untracked())
+                .unwrap_or_default()
         } else {
             when
         };
@@ -791,7 +771,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                     // form opens right below it. Set phase
                                     // rides the same dialog (D148).
                                     <div class="flex items-center gap-2 ml-auto">
-                                        <QuickAddMenu chip draft pick_phase pick_date />
+                                        <QuickAddMenu chip draft pick_phase pick_date selected_plants timezone=timezone.into() />
                                         <A href=route_href(&format!("/grows/{}/edit", current.id))
                                             attr:class="btn btn-sm"
                                         >
@@ -828,7 +808,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                     class={format!("{} mt-4", ui::card())}
                     on:submit=save_action
                 >
-                    <ActionForm draft kind=chip photo_files />
+                    <ActionForm draft kind=chip photo_files plants />
                     <div class="flex flex-wrap gap-2 mt-4">
                         <button class="btn btn-primary btn-sm" type="submit">{t!(i18n, grow.quick_add_log)}</button>
                         <button class="btn btn-sm" type="button" on:click=move |_| chip.set(None)>{t!(i18n, grows.cancel)}</button>
@@ -897,101 +877,9 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
 
             <FeedSection grow_id=grow_id.get() />
 
-            <div class="grid gap-4 items-start lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-                <div>
-                    <h3>{t!(i18n, grow.timeline)}</h3>
-                    <UndoBanner message=undo_message.into() on_undo=undo_delete on_dismiss=dismiss_undo />
-                    // Day-grouped diary: one heading per grow day, the
-                    // day's manual entries as cards under it, and the
-                    // machine-generated HA transitions collapsed into
-                    // a quiet one-liner tier below the diary.
-                    <div class="grid gap-6">
-                        {move || {
-                            let locale = i18n.get_locale();
-                            day_groups(&actions.get())
-                                .into_iter()
-                                .map(|(day, entries)| {
-                                    let heading_phase = entries
-                                        .first()
-                                        .and_then(|entry| entry.phase);
-                                    view! {
-                                        <section data-testid="timeline-day">
-                                            <div class="flex flex-wrap items-baseline gap-2 border-b border-base-300 pb-1">
-                                                <h4 class="m-0 text-sm font-semibold tracking-wide">{td_string!(
-                                                    locale,
-                                                    grow.day,
-                                                    day = day.to_string(),
-                                                )}</h4>
-                                                {heading_phase.map(|phase| view! {
-                                                    <Chip class="badge-sm">{labels::phase_label(locale, phase)}</Chip>
-                                                })}
-                                            </div>
-                                            <ul class="list-none m-0 p-0 grid gap-2 mt-2">
-                                                {entries
-                                                    .into_iter()
-                                                    .map(|entry| timeline_entry(locale, entry, delete_entry))
-                                                    .collect::<Vec<_>>()}
-                                            </ul>
-                                        </section>
-                                    }
-                                })
-                                .collect::<Vec<_>>()
-                        }}
-                    </div>
-                    <AutoTier actions on_delete=delete_entry />
-                    <Show when=move || actions.get().is_empty()>
-                        <EmptyState>{t!(i18n, grow.nothing_logged)}</EmptyState>
-                    </Show>
-                </div>
-
-                <div>
-                    <h3>{t!(i18n, grow.plants)}</h3>
-                    <ul class="grid gap-4 lg:grid-cols-2">
-                        {move || {
-                            plants
-                                .get()
-                                .into_iter()
-                                .map(|plant| {
-                                    view! {
-                                        <li class=ui::card()>
-                                            <A href=route_href(&format!("/plants/{}", plant.id))>
-                                                {plant.name.clone()}
-                                            </A>
-                                        </li>
-                                    }
-                                })
-                                .collect::<Vec<_>>()
-                        }}
-                    </ul>
-                    <button class="btn btn-sm" on:click=add_plant>{t!(i18n, grow.add_plant)}</button>
-
-                    <h3>{t!(i18n, grow.photos)}</h3>
-                    {move || upload_note.get().map(|note| view! { <p class="text-base-content/70 text-sm">{note}</p> })}
-                    <div class="grid gap-2 mt-4 grid-cols-[repeat(auto-fill,minmax(7rem,1fr))]">
-                        {move || {
-                            let locale = i18n.get_locale();
-                            photos
-                                .get()
-                                .into_iter()
-                                .map(|photo| {
-                                    let url = format!("api/photos/{}/thumbnail", photo.id);
-                                    let full = format!("api/photos/{}/original", photo.id);
-                                    let alt = td_string!(locale, grow.day, day = photo.grow_day.to_string());
-                                    view! {
-                                        <a href=full target="_blank" rel="noreferrer"
-                                            class="grid gap-1 text-center no-underline"
-                                        >
-                                            <img class="w-full h-auto rounded-lg border border-base-300"
-                                                src=url alt=alt />
-                                            <span class="text-base-content/70 text-sm">{td_string!(locale, grow.day, day = photo.grow_day.to_string())}</span>
-                                        </a>
-                                    }
-                                })
-                                .collect::<Vec<_>>()
-                        }}
-                    </div>
-                </div>
-            </div>
+            <UndoBanner message=undo_message.into() on_undo=undo_delete on_dismiss=dismiss_undo />
+            <crate::story::Story grow_id plants=plants.into() selected_plants timezone revision=story_revision.into() on_add=Callback::new(story_add) on_delete=Callback::new(delete_entry) />
+            <button class="btn btn-sm mt-4" type="button" on:click=add_plant>{t!(i18n, grow.add_plant)}</button>
 
             <p><A href=route_href("/grows")>{t!(i18n, grow.all_grows)}</A></p>
         </section>
@@ -1208,11 +1096,18 @@ fn ActionForm(
     draft: RwSignal<ActionInput>,
     kind: RwSignal<Option<ActionType>>,
     photo_files: RwSignal<Vec<leptos::web_sys::File>>,
+    plants: RwSignal<Vec<Plant>>,
 ) -> impl IntoView {
     let i18n = use_i18n();
     view! {
         <div class="grid gap-2 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
-            <ui::Field label=Signal::derive(move || t_string!(i18n, form.when_utc).into_owned())>
+            <ui::Field label=Signal::derive(move || {
+            if draft.get().action_type == ActionType::Photo {
+                t_string!(i18n, story.captured_at).into_owned()
+            } else {
+                t_string!(i18n, story.recorded_at).into_owned()
+            }
+        })>
                 <input class="input" type="datetime-local" required
                     prop:value=move || draft.get().occurred_at
                     on:input=move |ev| draft.update(|d| d.occurred_at = event_target_value(&ev))
@@ -1271,6 +1166,7 @@ fn ActionForm(
                             class="col-span-full"
                         >
                             <input
+                                id="quick-add-photo"
                                 type="file"
                                 class="file-input file-input-sm"
                                 accept="image/jpeg,image/png,image/webp"
@@ -1350,6 +1246,34 @@ fn ActionForm(
                 })
                 .collect::<Vec<_>>()}
         </fieldset>
+        {move || {
+            (kind.get() != Some(ActionType::Photo)).then(|| view! {
+                <fieldset class="mt-2 flex flex-wrap gap-3">
+                    <legend class="text-sm">{t!(i18n, grow.plants)}</legend>
+                    {plants.get().into_iter().map(|plant| {
+                        let id = plant.id.clone();
+                        let input_id = format!("action-plant-{}", plant.id);
+                        view! {
+                            <label for=input_id class="flex min-h-11 items-center gap-2 text-sm">
+                                <input id={format!("action-plant-{id}")} class="checkbox checkbox-sm" type="checkbox"
+                                    prop:checked={
+                                        let id = id.clone();
+                                        move || draft.get().plant_ids.contains(&id)
+                                    }
+                                    on:change=move |_| draft.update(|input| {
+                                        if let Some(index) = input.plant_ids.iter().position(|current| current == &id) {
+                                            input.plant_ids.remove(index);
+                                        } else {
+                                            input.plant_ids.push(id.clone());
+                                        }
+                                    }) />
+                                {plant.name}
+                            </label>
+                        }
+                    }).collect::<Vec<_>>()}
+                </fieldset>
+            })
+        }}
     }
 }
 
@@ -1527,30 +1451,15 @@ pub fn entry_to_input(entry: &ActionEntry) -> ActionInput {
 /// A blank action draft: a `note` with no structured fields,
 /// timestamped now (UTC) in the shape a `datetime-local` input
 /// accepts.
-pub fn empty_action() -> ActionInput {
+pub fn empty_action(timezone: &str) -> ActionInput {
     ActionInput {
         plant_ids: Vec::new(),
-        occurred_at: datetime_local_now(),
+        occurred_at: leaflog_core::tz::local_datetime_minutes_now(timezone).unwrap_or_default(),
         action_type: ActionType::Note,
         details: ActionDetails::default(),
         notes: None,
         appearance_tags: Vec::new(),
     }
-}
-
-/// `Date::toISOString()` yields `YYYY-MM-DDTHH:MM:SS.sssZ`; a
-/// `datetime-local` input's sanitization rejects the seconds and
-/// offset tail, leaving the field empty (`required` then blocks
-/// submit). The value it accepts is the `YYYY-MM-DDTHH:MM` prefix;
-/// the backend normalizes it back to RFC 3339 UTC on save.
-fn datetime_local_now() -> String {
-    js_sys::Date::new_0()
-        .to_iso_string()
-        .as_string()
-        .unwrap_or_default()
-        .get(..16)
-        .unwrap_or_default()
-        .to_owned()
 }
 
 /// The browser's locale rendering of an RFC 3339 timestamp (`Nov 15,
@@ -1559,31 +1468,6 @@ fn datetime_local_now() -> String {
 /// Explicit components (no seconds — diary precision is minutes);
 /// falls back to the raw string when the browser APIs refuse the
 /// value.
-/// Machine-generated entries (HA light transitions) tag themselves in
-/// the note (`auto: light on`) — the same convention the retention
-/// sweeper prunes by, so both sides agree without a schema change.
-fn is_auto(entry: &ActionEntry) -> bool {
-    entry
-        .notes
-        .as_deref()
-        .is_some_and(|note| note.starts_with("auto:"))
-}
-
-/// Groups manual entries into a day-grouped diary: `grow_day`
-/// descending, entries newest-first inside each day. Auto entries are
-/// excluded — they render as the quiet one-liner tier.
-#[must_use]
-fn day_groups(entries: &[ActionEntry]) -> Vec<(u16, Vec<ActionEntry>)> {
-    let mut groups: Vec<(u16, Vec<ActionEntry>)> = Vec::new();
-    for entry in entries.iter().filter(|entry| !is_auto(entry)) {
-        match groups.last_mut() {
-            Some((day, group)) if *day == entry.grow_day => group.push(entry.clone()),
-            _ => groups.push((entry.grow_day, vec![entry.clone()])),
-        }
-    }
-    groups
-}
-
 /// Whether any structured fact is set — an empty `<dl class="facts">`
 /// renders as dead margins, so it is omitted entirely.
 const fn has_facts(details: &ActionDetails) -> bool {
@@ -1595,7 +1479,7 @@ const fn has_facts(details: &ActionDetails) -> bool {
         || details.plant_height_cm.is_some()
 }
 
-fn local_stamp(iso: &str) -> String {
+fn local_stamp(iso: &str, timezone: &str) -> String {
     let date = js_sys::Date::new(&wasm_bindgen::JsValue::from_str(iso));
     if date.get_time().is_nan() {
         return iso.to_owned();
@@ -1607,6 +1491,7 @@ fn local_stamp(iso: &str) -> String {
     };
     let options = js_sys::Object::new();
     for (key, value) in [
+        ("timeZone", timezone),
         ("year", "numeric"),
         ("month", "short"),
         ("day", "numeric"),
@@ -1746,65 +1631,7 @@ mod landing_pick_tests {
 
 #[cfg(test)]
 mod timeline_helpers {
-    use super::{ActionDetails, ActionEntry, ActionType, day_groups, has_facts, is_auto};
-
-    fn entry(grow_day: u16, notes: Option<&str>) -> ActionEntry {
-        ActionEntry {
-            id: format!("e{grow_day}{}", notes.unwrap_or("")),
-            grow_id: "g1".to_owned(),
-            plant_ids: Vec::new(),
-            action_type: ActionType::Lights,
-            grow_day,
-            phase: None,
-            occurred_at: "2026-11-19T03:02:31Z".to_owned(),
-            details: ActionDetails::default(),
-            notes: notes.map(str::to_owned),
-            appearance_tags: Vec::new(),
-            created_at: "2026-11-19T03:02:31Z".to_owned(),
-            updated_at: "2026-11-19T03:02:31Z".to_owned(),
-        }
-    }
-
-    /// HA transitions self-identify by the note prefix; any other note
-    /// is a human's.
-    #[test]
-    fn auto_detection_matches_the_note_prefix() {
-        assert!(is_auto(&entry(3, Some("auto: light on"))));
-        assert!(!is_auto(&entry(3, Some("watered by hand"))));
-        assert!(!is_auto(&entry(3, None)));
-    }
-
-    /// Days group descending with entries kept in arrival order; auto
-    /// entries never open a day group.
-    #[test]
-    fn manual_entries_group_by_day_descending() {
-        let entries = vec![
-            entry(25, Some("auto: light off")),
-            entry(25, None),
-            entry(25, None),
-            entry(24, None),
-            entry(24, Some("auto: light on")),
-            entry(9, None),
-        ];
-        let groups = day_groups(&entries);
-        assert_eq!(
-            groups.iter().map(|(day, _)| *day).collect::<Vec<_>>(),
-            vec![25, 24, 9],
-        );
-        assert_eq!(groups[0].1.len(), 2);
-        assert_eq!(groups[1].1.len(), 1);
-        assert_eq!(groups[2].1.len(), 1);
-    }
-
-    /// No manual entries, no groups — the auto tier takes over.
-    #[test]
-    fn all_auto_yields_no_groups() {
-        let entries = vec![
-            entry(3, Some("auto: light on")),
-            entry(2, Some("auto: light off")),
-        ];
-        assert_eq!(day_groups(&entries), [] as [(u16, Vec<ActionEntry>); 0]);
-    }
+    use super::{ActionDetails, has_facts};
 
     /// The facts grid is omitted unless at least one fact is set.
     #[test]

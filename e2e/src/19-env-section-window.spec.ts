@@ -90,8 +90,7 @@ test('one Environment section holds tiles and charts, above the Forecast', async
   // inside the page, above the first chart card.
   await expect(page.locator('#env-strip')).toBeVisible();
 
-  // Section order: Environment, Forecast, Feeding schedule,
-  // Timeline, Plants, Photos.
+  // Section order: Environment, Forecast, Feeding schedule, Grow story.
   const headings = await page
     .getByRole('heading')
     .evaluateAll((els) => els.map((el) => el.textContent?.trim() ?? ''));
@@ -99,9 +98,7 @@ test('one Environment section holds tiles and charts, above the Forecast', async
   expect(at('Environment'), `headings: ${headings.join(' | ')}`).toBeGreaterThanOrEqual(0);
   expect(at('Environment')).toBeLessThan(at('Forecast'));
   expect(at('Forecast')).toBeLessThan(at('Feeding schedule'));
-  expect(at('Feeding schedule')).toBeLessThan(at('Timeline'));
-  expect(at('Timeline')).toBeLessThan(at('Plants'));
-  expect(at('Plants')).toBeLessThan(at('Photos'));
+  expect(at('Feeding schedule')).toBeLessThan(at('Grow story'));
 });
 
 test('the shared control defaults to 7d and drives every chart card', async ({

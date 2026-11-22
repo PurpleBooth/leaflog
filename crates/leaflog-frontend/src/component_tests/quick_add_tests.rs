@@ -18,7 +18,7 @@ fn picker() -> (
     RwSignal<Option<leaflog_core::Phase>>,
 ) {
     let chip = RwSignal::new(None);
-    let draft = RwSignal::new(crate::grows::empty_action());
+    let draft = RwSignal::new(crate::grows::empty_action("UTC"));
     let pick_phase = RwSignal::new(None);
     let chip2 = chip;
     let draft2 = draft;
@@ -27,7 +27,7 @@ fn picker() -> (
     let mount = Mounted::new(move || {
         with_i18n(move || {
             view! {
-                <crate::quick_add::QuickAddMenu chip=chip2 draft=draft2 pick_phase=pick_phase2 pick_date />
+                <crate::quick_add::QuickAddMenu chip=chip2 draft=draft2 pick_phase=pick_phase2 pick_date selected_plants=RwSignal::new(Vec::new()) timezone=RwSignal::new("UTC".to_owned()).into() />
             }
         })
     });

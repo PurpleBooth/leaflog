@@ -46,11 +46,15 @@ test('phase picker: flowering records a flip and shows on the timeline', async (
   await expectNoReload(page);
 
   // The pick lands on the timeline as the flip it maps to.
-  await expect(page.locator('li.card', { hasText: 'Flip 12/12' }).first()).toBeVisible();
+  await expect(
+    page.locator('[data-testid="story-day"] li', { hasText: 'Flip 12/12' }).first(),
+  ).toBeVisible();
 
   // And it persists.
   await page.reload();
-  await expect(page.locator('li.card', { hasText: 'Flip 12/12' }).first()).toBeVisible();
+  await expect(
+    page.locator('[data-testid="story-day"] li', { hasText: 'Flip 12/12' }).first(),
+  ).toBeVisible();
 });
 
 test('phase picker: an autoflower flowering records a phase change', async ({
@@ -70,7 +74,7 @@ test('phase picker: an autoflower flowering records a phase change', async ({
   await expectNoReload(page);
 
   await expect(
-    page.locator('li.card', { hasText: 'Phase change' }).first(),
+    page.locator('[data-testid="story-day"] li', { hasText: 'Phase change' }).first(),
   ).toBeVisible();
 });
 
@@ -85,5 +89,7 @@ test('phase picker: drying records a harvest', async ({ page, request }) => {
   await page.locator('#phase-picker button', { hasText: 'Record phase' }).click();
   await expectNoReload(page);
 
-  await expect(page.locator('li.card', { hasText: 'Harvest' }).first()).toBeVisible();
+  await expect(
+    page.locator('[data-testid="story-day"] li', { hasText: 'Harvest' }).first(),
+  ).toBeVisible();
 });

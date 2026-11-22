@@ -100,6 +100,6 @@ test('phase day badge: a backdated pick re-anchors it without a reload', async (
   // The timeline entry keeps the Day count: the flip shows grow
   // day 7, distinct from the badge's phase day.
   await expect(
-    page.locator('li.card', { hasText: 'Flip 12/12' }).first(),
+    page.locator('[data-testid="story-day"] li', { hasText: 'Flip 12/12' }).first(),
   ).toContainText('day 7');
 });
