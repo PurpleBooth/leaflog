@@ -9,14 +9,16 @@ use wasm_bindgen_test::wasm_bindgen_test;
 use leptos::prelude::*;
 use leptos::view;
 
+/// The chip the picker is opened with (`None` = the full taxonomy).
+type Chip = RwSignal<Option<leaflog_core::actions::ActionType>>;
+/// The log entry being drafted.
+type Draft = RwSignal<leaflog_core::grows::ActionInput>;
+/// The phase picked from the "which phase" prompt.
+type PhasePick = RwSignal<Option<leaflog_core::Phase>>;
+
 /// The picker plus fresh chip/draft/phase-pick signals, the way the
 /// grow page mounts it.
-fn picker() -> (
-    Mounted<impl IntoView>,
-    RwSignal<Option<leaflog_core::actions::ActionType>>,
-    RwSignal<leaflog_core::grows::ActionInput>,
-    RwSignal<Option<leaflog_core::Phase>>,
-) {
+fn picker() -> (Mounted<impl IntoView>, Chip, Draft, PhasePick) {
     let chip = RwSignal::new(None);
     let draft = RwSignal::new(crate::grows::empty_action("UTC"));
     let pick_phase = RwSignal::new(None);

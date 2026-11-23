@@ -369,7 +369,7 @@ clippy:
 
 # Clippy for the frontend crate on wasm32.
 clippy-wasm:
-    cargo clippy -p leaflog-frontend --target wasm32-unknown-unknown -- -D warnings
+    cargo clippy -p leaflog-frontend --target wasm32-unknown-unknown --all-targets -- -D warnings
 
 # Run all tests.
 test:
