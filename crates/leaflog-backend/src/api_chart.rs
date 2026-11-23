@@ -302,8 +302,9 @@ async fn fetch_role_series(
     window: ChartWindow,
     now: &str,
 ) -> Vec<RoleFetch> {
-    let mut fetched = Vec::new();
-    for (role_name, points) in &loaded.roles {
+    // The roles' history requests are independent: a slow or timing-out
+    // HA must not make the chart wait once per role.
+    futures_util::future::join_all(loaded.roles.iter().map(|(role_name, points)| async {
         let mut ha_points = Vec::new();
         let mut degraded = false;
         if let Some(entity_id) = &points.entity_id {
@@ -312,13 +313,13 @@ async fn fetch_role_series(
                 Err(_) => degraded = true,
             }
         }
-        fetched.push(RoleFetch {
+        RoleFetch {
             series: chart::merge_series(now, window, &ha_points, &points.snapshots),
             degraded,
             bound: points.bound,
-        });
-    }
-    fetched
+        }
+    }))
+    .await
 }
 
 /// The light role's staircase as `(epoch, value)` pairs, for the
