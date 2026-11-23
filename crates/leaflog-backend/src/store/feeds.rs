@@ -49,6 +49,12 @@ pub fn actual_from_forecast(
     })
 }
 
+/// The dose unit a product row stores as JSON. A row the app cannot
+/// parse keeps the millilitres default the writer used.
+fn stored_unit(raw: &str) -> DoseUnit {
+    serde_json::from_str(raw).unwrap_or(DoseUnit::Milliliters)
+}
+
 /// Lists the schedule library with list-view facts.
 ///
 /// # Errors
@@ -90,8 +96,10 @@ pub fn list_schedules(conn: &Connection) -> Result<Vec<ScheduleSummary>, StoreEr
             let mut stmt = conn.prepare(
                 "SELECT DISTINCT unit FROM feed_schedule_product WHERE schedule_id = ?1",
             )?;
+            // The product row stores the unit as serialized JSON
+            // (`"ml_per_l"` with quotes); the list wants the label.
             for unit in stmt.query_map(params![&id], |r| r.get::<_, String>(0))? {
-                let unit = unit?;
+                let unit = stored_unit(&unit?).label().to_owned();
                 if !units.contains(&unit) {
                     units.push(unit);
                 }
@@ -159,7 +167,7 @@ pub fn get_schedule(conn: &Connection, id: &str) -> Result<FeedSchedule, StoreOr
             Ok(ScheduleProduct {
                 id: row.get("id")?,
                 name: row.get("name")?,
-                unit: serde_json::from_str(&unit_json).unwrap_or(DoseUnit::Milliliters),
+                unit: stored_unit(&unit_json),
                 group: row.get("group_label")?,
                 note: row.get("note")?,
                 doses: serde_json::from_str::<ProductDoses>(&doses_json).unwrap_or(ProductDoses {

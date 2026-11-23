@@ -637,6 +637,21 @@ async fn autoflower_grow_forecasts_and_fits_without_a_strain() {
         .json()
         .await
         .unwrap();
+    // The library list names the dose unit by its wire label, not the
+    // quoted JSON the product row stores.
+    let summaries: Vec<Value> = client
+        .get(format!("{base}/api/schedules"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let summary = summaries
+        .iter()
+        .find(|row| row["schedule"]["id"] == schedule["id"])
+        .expect("the new schedule is listed");
+    assert_eq!(summary["units"], json!(["ml_per_l"]));
     let grow: Value = client
         .post(format!("{base}/api/grows"))
         .json(&json!({
