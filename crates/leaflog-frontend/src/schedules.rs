@@ -210,7 +210,7 @@ pub fn SchedulesPage() -> impl IntoView {
         {move || {
             if loading.get() {
                 view! {
-                    <p class="py-6 text-center text-base-content/60">
+                    <p class="py-6 text-center text-base-content/70">
                         {t_string!(i18n, page.loading)}
                     </p>
                 }
@@ -613,7 +613,7 @@ pub fn ScheduleEditorPage(
         {move || {
             if loading.get() {
                 view! {
-                    <p class="py-6 text-center text-base-content/60">
+                    <p class="py-6 text-center text-base-content/70">
                         {t_string!(i18n, page.loading)}
                     </p>
                 }
@@ -651,7 +651,7 @@ pub fn ScheduleEditorPage(
                             </div>
                         </ui::Field>
                     </div>
-                    <p class="text-base-content/60 text-sm mt-1 mb-3">
+                    <p class="text-base-content/70 text-sm mt-1 mb-3">
                         {t_string!(i18n, schedules.range_hint)}
                     </p>
                     <div class="overflow-x-auto">
@@ -682,7 +682,7 @@ pub fn ScheduleEditorPage(
                     </div>
                     <div class="mt-2 flex flex-wrap items-center gap-3 text-sm">
                         <Show when=move || refitting.get()>
-                            <span class="text-base-content/60">
+                            <span class="text-base-content/70">
                                 {t_string!(i18n, schedules.refitting)}
                             </span>
                         </Show>
@@ -691,7 +691,7 @@ pub fn ScheduleEditorPage(
                         </Show>
                         {move || if id.get_value().is_some() {
                             view! {
-                                <span class="text-base-content/60 text-xs">
+                                <span class="text-base-content/70 text-xs">
                                     <strong class="font-medium">
                                         {t_string!(i18n, schedules.refit_heading)}
                                     </strong>

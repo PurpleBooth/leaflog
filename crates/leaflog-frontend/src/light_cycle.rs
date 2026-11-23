@@ -363,7 +363,7 @@ pub fn LightCycleEditor(
             </Show>
             {move || {
                 status.get().map(|message| {
-                    view! { <span class="text-base-content/60 text-sm">{message}</span> }
+                    view! { <span class="text-base-content/70 text-sm">{message}</span> }
                 })
             }}
             </form>

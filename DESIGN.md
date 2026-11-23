@@ -24,7 +24,7 @@ colors:
   dusk-loop: "#7ca9f7"
   leaf-warn: "#66bb6a"
   amber-soft: "#ffb74d"
-  dawn-alert: "#ef5350"
+  dawn-alert: "#f26d6a"
   # Shared chart signal
   marker-red: "#e53935"
 typography:
@@ -172,14 +172,17 @@ deliberate redesign decision (new-work), not drift.**
   code/pre borders. Dark: **Canopy Line** (`#2c422a`).
 - **Ink** (`#1d2b1f`, `base-content` light): all body text. Dark:
   **Morning Mist** (`#e7f0e4`).
-- Muted text is Ink/Sage at reduced opacity (`text-base-content/60` /
-  `/70`), never a separate grey token.
+- Muted text is Ink/Morning Mist at reduced opacity (`text-base-content/70`),
+  never a separate grey token. 70% is the floor: 60% measured 3.95:1 on the
+  light paper, under the WCAG AA 4.5:1 the product promises. The same floor
+  holds for input placeholders (`::placeholder` in `tailwind.css`), which
+  daisyUI ships at 60%.
 
 ### Status
 - Info **Sky Loop** `#5b8def` / dark **Dusk Loop** `#7ca9f7`; success
   **Vigor Green** `#4caf50` / dark **Leaf Warn** `#66bb6a`; warning
   **Amber Caution** `#ff9800` / dark **Amber Soft** `#ffb74d`; error
-  **Rust Alert** `#b3392f` / dark **Dawn Alert** `#ef5350`. Used via
+  **Rust Alert** `#b3392f` / dark **Dawn Alert** `#f26d6a`. Used via
   daisyUI `alert-*`, `btn-error`, badge roles — semantic roles, not raw
   hex in markup.
 
@@ -212,7 +215,8 @@ size and weight steps on one family; no decorative face anywhere.
   content.
 - **Label** (400, 0.75rem, letter-spacing 0.06em, uppercase): fact-grid
   captions (`.facts dt`) and Gantt phase labels (0.04em), always in
-  base-content at 65% opacity. Chart's today-label: 0.65rem/700.
+  base-content at 70% opacity. Chart's today-label: 0.75rem/700 in the
+  error token (the marker line itself stays marker-red).
 
 ### Named Rules
 **The System Stack Rule.** No downloaded fonts, ever. If a future design
@@ -230,9 +234,10 @@ inside cards, the `.facts` definition grid runs
 vocabulary is the Tailwind scale with `gap-2` (0.5rem) as the default
 gap, `px-5 py-4` (20px/16px) as the card recipe and `px-4 py-3` for
 smaller tiles. The header is a two-row bench bar: the brand wordmark
-(the home link) sits above a full-width link bar of the three section
-links (Grows · Schedules · History) over a hairline rule; links carry
-44px touch height and never wrap mid-bar; the active page is marked by
+(the home link) sits above a full-width link bar of the four section
+links (Grows · Schedules · History · Settings) over a hairline rule;
+links carry
+44px touch height and wrap as whole links when the bar is narrow; the active page is marked by
 a 2px underline offset 4px (`aria-current="page"`), never by colour
 alone. A single quiet footer closes every page with the version stamp,
 backend status and the local-first privacy line above a hairline rule.
@@ -313,7 +318,8 @@ themes; all styling flows through semantic roles (`bg-base-100`,
 
 ### Navigation
 - **Style:** two-row bench bar — brand wordmark (the home link) on top,
-  a full-width link bar beneath it (Grows · Schedules · History), page
+  a full-width link bar beneath it (Grows · Schedules · History ·
+  Settings), page
   ground showing through, text-sm links in primary colour with 44px
   touch height and a hairline rule under the bar.
 - **Active:** 2px underline, 4px offset, via `aria-current="page"` —
@@ -326,14 +332,14 @@ themes; all styling flows through semantic roles (`bg-base-100`,
 ### Fact Grid (`.facts`) — signature pattern
 The app's characteristic data presentation: a responsive definition grid
 where each value carries a 0.75rem uppercase letter-spaced caption at
-65% opacity above a normal-weight value. Every card that reports state
+70% opacity above a normal-weight value. Every card that reports state
 (grow facts, environment tiles, sensor bindings) uses it. New data
 displays should reach for it before inventing a layout.
 
 ### Gantt Forecast — signature chart
 Phase rows with a 6rem right-aligned uppercase label column, range
-bands (phase colour at 18% fill, 35% border) and likely-bars (55%
-fill), geometry computed in Rust and set inline; a 2px Marker Red
+bands (phase colour at 18% fill, 35% border) and likely-bars (30%
+fill over the band, so the label clears 4.5:1 in both themes), geometry computed in Rust and set inline; a 2px Marker Red
 today-line overlays the track. Flat, framed, no gridlines beyond the
 frame itself.
 
@@ -341,7 +347,7 @@ frame itself.
 
 ### Do:
 - **Do** style everything through daisyUI semantic roles and theme
-  variables (`bg-base-100`, `text-base-content/60`) — both themes come
+  variables (`bg-base-100`, `text-base-content/70`) — both themes come
   free; raw hex belongs only in chart geometry (phase colours, marker
   red).
 - **Do** check every visual choice in both themes before calling it

@@ -353,7 +353,7 @@ fn Aggregate(title: Signal<String>, rows: Signal<Vec<YieldAggregate>>) -> impl I
             <Show
                 when=move || !rows.get().is_empty()
                 fallback=move || view! {
-                    <p class="text-base-content/60 text-sm m-0">{t!(i18n, history.nothing_weighed)}</p>
+                    <p class="text-base-content/70 text-sm m-0">{t!(i18n, history.nothing_weighed)}</p>
                 }
             >
                 <div class="overflow-x-auto">
@@ -402,23 +402,35 @@ struct PlantView {
     actions: Vec<serde_json::Value>,
     /// Photos linked to this plant.
     photos: Vec<serde_json::Value>,
+    /// The zone the stamps render in (the settings override, else
+    /// Home Assistant's, D152).
+    #[serde(default)]
+    timezone: String,
 }
 
-/// The per-plant page.
+/// The per-plant route: reads the `id` path parameter.
+#[component]
+pub fn PlantViewPage() -> impl IntoView {
+    let params = leptos_router::hooks::use_params_map();
+    let plant_id = Signal::derive(move || params.get().get("id").unwrap_or_default());
+    view! { <PlantView plant_id /> }
+}
+
+/// The per-plant page: the plant as its heading, its yield facts,
+/// the entries and photos naming it, and the edit form.
 #[component]
 #[allow(clippy::too_many_lines)] // declarative view code, not logic; see docs/DECISIONS.md
-pub fn PlantViewPage() -> impl IntoView {
+pub fn PlantView(plant_id: Signal<String>) -> impl IntoView {
     let units = crate::presentation_units();
     let i18n = use_i18n();
     let locale = i18n.get_locale();
-    let params = leptos_router::hooks::use_params_map();
     let view = RwSignal::<Option<PlantView>>::new(None);
     let error = RwSignal::<Option<String>>::new(None);
     let edit_open = RwSignal::<bool>::new(false);
     let draft = RwSignal::<PlantInput>::new(empty_plant());
 
     let refresh = move || {
-        let id = params.get().get("id").unwrap_or_default();
+        let id = plant_id.get();
         spawn_local(async move {
             match api::get::<PlantView>(&format!("api/plants/{id}/view")).await {
                 Ok(fetched) => view.set(Some(fetched)),
@@ -430,7 +442,7 @@ pub fn PlantViewPage() -> impl IntoView {
         });
     };
     Effect::new(move |_| {
-        params.track();
+        plant_id.track();
         refresh();
     });
 
@@ -444,7 +456,7 @@ pub fn PlantViewPage() -> impl IntoView {
     // prevent_default first — see docs/DECISIONS.md D061.
     let save = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
-        let id = params.get().get("id").unwrap_or_default();
+        let id = plant_id.get();
         spawn_local(async move {
             let input = draft.get();
             match api::put::<PlantInput, Plant>(&format!("api/plants/{id}"), &input).await {
@@ -468,6 +480,7 @@ pub fn PlantViewPage() -> impl IntoView {
                 view.get().map(|data| {
                     let grow_id = data.plant.grow_id.clone();
                     let actions = data.actions.clone();
+                    let timezone = data.timezone.clone();
                     let has_actions = !actions.is_empty();
                     let photos = data.photos.len();
                     let for_edit = PlantInput {
@@ -479,7 +492,7 @@ pub fn PlantViewPage() -> impl IntoView {
                     view! {
                         <div class={format!("{} mb-4", ui::card())}>
                             <div class="flex flex-wrap items-baseline gap-2">
-                                <strong>{data.plant.name.clone()}</strong>
+                                <h2>{data.plant.name.clone()}</h2>
                                 <A href=route_href(&format!("/grows/{grow_id}"))>{t!(i18n, plant.back_to_grow)}</A>
                                 <button class="btn btn-sm" on:click=move |_| start_edit(&for_edit)>
                                     {t!(i18n, plant.edit)}
@@ -511,11 +524,17 @@ pub fn PlantViewPage() -> impl IntoView {
                                     {actions
                                         .iter()
                                         .map(|entry| {
+                                            // A labelled row, not the stored
+                                            // key and the raw RFC 3339 stamp.
                                             view! {
                                                 <li>
-                                                    {format!(
-                                                        "{} — {}",
+                                                    {crate::grows::local_stamp(
                                                         entry["occurred_at"].as_str().unwrap_or(""),
+                                                        &timezone,
+                                                    )}
+                                                    {" — "}
+                                                    {action_label_for_kind(
+                                                        locale,
                                                         entry["action_type"].as_str().unwrap_or(""),
                                                     )}
                                                 </li>

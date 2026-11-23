@@ -160,7 +160,7 @@ pub fn CardTitle(title: Signal<String>) -> impl IntoView {
 #[component]
 #[allow(clippy::must_use_candidate)] // #[component] macro drops #[must_use]; see docs/DECISIONS.md
 pub fn EmptyState(children: Children) -> impl IntoView {
-    view! { <p class="py-6 text-center text-base-content/60">{children()}</p> }
+    view! { <p class="py-6 text-center text-base-content/70">{children()}</p> }
 }
 
 /// The section micro-label header: the group's name in the section's
@@ -171,7 +171,7 @@ pub fn EmptyState(children: Children) -> impl IntoView {
 pub fn SectionHeader(title: Signal<String>) -> impl IntoView {
     view! {
         <div class="flex flex-wrap items-baseline gap-2 mt-4 mb-2">
-            <h4 class="m-0 text-xs font-semibold uppercase tracking-wider text-base-content/60">
+            <h4 class="m-0 text-xs font-semibold uppercase tracking-wider text-base-content/70">
                 {move || title.get()}
             </h4>
         </div>

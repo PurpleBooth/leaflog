@@ -144,3 +144,38 @@ async fn history_page_error_banner() {
         "retry button rendered"
     );
 }
+
+#[wasm_bindgen_test]
+async fn plant_page_names_the_plant_as_its_heading() {
+    fresh_environment();
+    let _stub = FetchStub::new(move |method, url, _body| {
+        if method == "GET" && url.contains("/api/plants/") && url.ends_with("/view") {
+            return (
+                200,
+                r#"{"plant":{"id":"p1","grow_id":"g1","name":"NL-1","created_at":"2026-11-01T00:00:00Z","updated_at":"2026-11-01T00:00:00Z"},"actions":[{"id":"a1","grow_id":"g1","plant_ids":["p1"],"occurred_at":"2026-11-09T10:00:00Z","action_type":"phase_change","phase":"flower","grow_day":31,"details":{"target_phase":"flower"},"notes":"","appearance_tags":[],"created_at":"2026-11-09T10:00:00Z","updated_at":"2026-11-09T10:00:00Z"}],"photos":[],"timezone":"Europe/Berlin"}"#
+                    .to_string(),
+            );
+        }
+        (404, String::new())
+    });
+    let mount = Mounted::new(move || {
+        with_i18n(move || {
+            with_router(move || {
+                view! {
+                    <crate::history::PlantView plant_id=Signal::derive(|| "p1".to_string()) />
+                }
+            })
+        })
+    });
+    let shown = try_wait_for(&mut || mount.contains("NL-1")).await;
+    assert!(shown, "plant page text: {}", mount.text());
+    let heading = mount.q("h2").and_then(|el| el.text_content());
+    assert_eq!(
+        heading.as_deref(),
+        Some("NL-1"),
+        "the plant is the page's h2"
+    );
+    // Entries read as labelled rows, never as the stored key.
+    assert!(!mount.text().contains("phase_change"), "{}", mount.text());
+    assert!(mount.text().contains("Phase change"), "{}", mount.text());
+}

@@ -171,7 +171,7 @@ pub fn Story(
                                 <input aria-label=plant.name.clone() type="checkbox" class="checkbox checkbox-sm"
                                     prop:checked=move || selected_plants.get().contains(&checked_id)
                                     on:change=move |_| selected_plants.update(|selected| toggle(selected, &id)) />
-                                <A href=crate::route_href(&format!("/plants/{}", plant.id)) attr:class="link link-hover">{plant.name.clone()}</A>
+                                <A href=crate::route_href(&format!("/plants/{}", plant.id)) attr:class="link link-hover py-3">{plant.name.clone()}</A>
                             </span>
                         }
                     }}
@@ -218,13 +218,15 @@ fn DayCard(
     let date_for_add = date.clone();
     let day_label = local_date(&date, locale);
     let light = day.light_hours.map(|hours| format!("{hours:.1}"));
+    // One caveat per day, not one per half of it.
+    let sparse = day.periods.iter().any(|period| period.sparse);
     let periods = day.periods;
     let photos = day.photos.clone();
     view! {
         <section class="border-t-2 border-primary/50 pt-3" data-testid="story-day">
             <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <h4 class="m-0 text-xl font-semibold">{day_label}</h4>
-                <span class="text-sm text-base-content/60">{td_string!(locale, grow.day, day = day.grow_day.to_string())}</span>
+                <span class="text-sm text-base-content/70">{td_string!(locale, grow.day, day = day.grow_day.to_string())}</span>
                 <ui::Chip class="badge-sm">{labels::phase_label(locale, day.phase)}</ui::Chip>
                 <span class="ml-auto flex gap-1">
                     <button class="btn btn-ghost btn-sm" type="button" aria-label={td_string!(locale, story.add_photo).into_owned()}
@@ -238,12 +240,13 @@ fn DayCard(
                     <PeriodLine locale period on=index == 0 />
                 }).collect::<Vec<_>>()}
             </div>
-            <p class="my-2 text-sm text-base-content/60">
+            <p class="my-2 text-sm text-base-content/70">
                 {light.map_or_else(|| td_string!(locale, story.no_light).into_owned(), |hours| td_string!(locale, story.light_hours, hours = hours).into_owned())}
                 {day.light_partial.then(|| view! { <span>{" · "}{t!(i18n, story.partial)}</span> })}
             </p>
-            {(!day.has_observations).then(|| view! { <p class="text-sm text-base-content/60">{t!(i18n, story.no_data)}</p> })}
-            {day.automatic.then(|| view! { <p class="text-sm text-base-content/60">{t!(i18n, story.automatic)}</p> })}
+            {sparse.then(|| view! { <p class="my-2 text-sm text-base-content/70">{t!(i18n, story.sparse)}</p> })}
+            {(!day.has_observations).then(|| view! { <p class="text-sm text-base-content/70">{t!(i18n, story.no_data)}</p> })}
+            {day.automatic.then(|| view! { <p class="text-sm text-base-content/70">{t!(i18n, story.automatic)}</p> })}
             <ul class="m-0 grid list-none gap-2 p-0">
                 {day.actions.into_iter().map(|entry| crate::grows::timeline_entry_in_zone(locale, entry, move |entry| on_delete.run(entry), timezone.get_untracked())).collect::<Vec<_>>()}
             </ul>
@@ -280,7 +283,6 @@ fn DayCard(
 
 #[component]
 fn PeriodLine(locale: Locale, period: Period, on: bool) -> impl IntoView {
-    let i18n = use_i18n();
     let style = crate::decimal_style(locale);
     let units = crate::presentation_units();
     let temperature = move || {
@@ -306,7 +308,6 @@ fn PeriodLine(locale: Locale, period: Period, on: bool) -> impl IntoView {
         <div>
             <h5 class="m-0 text-sm font-semibold">{heading}</h5>
             <p class="my-1 text-sm"><span>{temperature}</span>{" · "}<span>{humidity}</span>{" · VPD "}<span>{vpd}</span></p>
-            {period.sparse.then(|| view! { <span class="text-xs text-base-content/60">{t!(i18n, story.sparse)}</span> })}
         </div>
     }
 }
@@ -347,8 +348,14 @@ pub(crate) fn PhotoCard(
     let armed = Signal::derive(move || armed_photo.get().as_deref() == Some(&id));
     view! {
         <li>
-            <a href=format!("api/photos/{}/original", photo.id) target="_blank" rel="noreferrer" class="block overflow-hidden rounded-lg border border-base-300">
-                <img class="aspect-square w-full object-cover" loading="lazy" src=format!("api/photos/{}/thumbnail", photo.id) alt=caption />
+            // The link says what it does; the thumbnail is its preview
+            // and the caption below carries the date once, not three
+            // times (impeccable audit).
+            <a href=format!("api/photos/{}/original", photo.id) target="_blank" rel="noreferrer"
+                class="block overflow-hidden rounded-lg border border-base-300"
+                aria-label=t_string!(i18n, story.open_original).into_owned()
+            >
+                <img class="aspect-square w-full object-cover" loading="lazy" src=format!("api/photos/{}/thumbnail", photo.id) alt="" />
             </a>
             <p class="my-1 text-xs text-base-content/70">{caption}</p>
             <ui::ArmConfirmButton armed label confirm_label=confirm

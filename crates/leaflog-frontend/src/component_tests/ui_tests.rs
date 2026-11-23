@@ -20,7 +20,7 @@ async fn empty_state_renders_children_centered() {
     });
     let state = mount.q("p.text-center").expect("empty state paragraph");
     assert!(
-        classes(&state).contains("text-base-content/60"),
+        classes(&state).contains("text-base-content/70"),
         "empty state uses the muted text recipe, got: {}",
         classes(&state)
     );

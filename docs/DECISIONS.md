@@ -6,6 +6,53 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-23 — second audit batch (D154–D156)
+
+### D154: a settings screen instead of unreachable settings
+
+Seven backend settings had no control: language, display time zone,
+snapshot retention, photo warning size, automatic light logging,
+notifications and quiet hours. Two of them switched behaviour on by
+default (`auto_log_ha_events`) or could never be switched on
+(`env_alert_notifications`). The options schema could not hold them
+either: the app has no add-on options left (`log_level` was never read
+and is gone). One page under `/settings`, linked from the main
+navigation, loads `GET /api/settings` once and saves all seven keys in
+one `PUT`. Unset keys are sent as `null`, so the backend defaults apply
+and the page shows them in the hints. `onboarding_dismissed` is not this
+page's key and is never sent. The server rejects wrong value shapes
+(`setting_shape_ok`, api.rs), so a bad hand-crafted body writes nothing.
+
+### D155: contrast floors on the muted and status tokens
+
+The light theme's muted text (`text-base-content/60`) measured 3.95:1 on
+paper and 4.08:1 on cards, below the WCAG AA 4.5:1 the product
+promises. The token floor is now 70% everywhere text is muted, including
+`.facts dt`. The dark theme's error token moves from `#ef5350` (4.4:1 on
+cards) to `#f26d6a`. The Gantt today-label drops marker-red (3.6:1 on
+dark cards) for the error token and grows from 0.65rem to 0.75rem; the
+marker line itself stays marker-red. Gantt bars fill at 30% instead of
+55%: a bar sits on its range band (18% fill), so the effective fill is
+43%. At 45% the germination, seedling and drying labels computed to
+4.05:1, 4.40:1 and 4.25:1 on dark cards; at 30% every phase clears 5.2:1
+in dark and 8:1 in light.
+
+### D156: touch targets and reduced motion live in the stylesheet
+
+Most actions on the grow page are `btn-sm` (32px) and the small
+checkboxes are 20px. A `@media (pointer: coarse)` rule in
+`tailwind.css` gives `.btn-sm` and `summary` a 2.75rem minimum height and
+`.checkbox-sm` 1.5rem boxes, so mouse users keep the dense desktop
+rhythm and thumbs get the 44px the navigation already carries. Inline
+links stay as they are (WCAG 2.5.8 exempts them). A second rule shortens
+every CSS transition and animation to 0.01ms under
+`prefers-reduced-motion: reduce`; charts already render without
+animation. The type ramp (1rem, 1.05rem, 1.25rem, 1.35rem) stays as
+DESIGN.md defines it: the detector's 1.25-step target is a heuristic,
+the ramp is a recorded choice ("deliberately modest").
+
+---
+
 ## 2026-11-22 — Home Assistant display units (D153)
 
 ### D153: follow Home Assistant without changing stored values
@@ -3999,3 +4046,5 @@ once per crate.
 | leaflog-core | `feed.rs` module + `TdsScale` conversions | `clippy::cast_possible_truncation`, `clippy::cast_sign_loss` | SI scaling rounds to whole µL/L·mg/L steps before casting; grafted substrate/TDS arithmetic (ADR 0004) |
 | leaflog-frontend | `history.rs` fn `summary` | `clippy::cast_precision_loss` | u16/f64 day and gram tallies fit a diary's scales far below float precision; casts are exact in practice (D133) |
 | leaflog-frontend | `history.rs` test `yield_totals_come_from_the_first_nonempty_grouping` | `clippy::float_cmp` | Test re-adds the same f64 constants bit-identically; exact comparison is the point |
+| leaflog-frontend | `settings.rs` fn `whole` | `clippy::cast_possible_truncation` | The caller filters non-finite values and `whole` clamps to ≥ 1 and rounds before the cast, so the cast is exact (D154) |
+| leaflog-frontend | components `SettingsPage`, `GeneralCard`, `AutomationCard` in `settings.rs` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` (arrive with D154) |

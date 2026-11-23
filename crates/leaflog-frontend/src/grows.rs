@@ -781,7 +781,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                                         </A>
                                     </div>
                                 </div>
-                                <p class="m-0 text-sm text-base-content/60">
+                                <p class="m-0 text-sm text-base-content/70">
                                     {t!(i18n, grows.started, date = current.started_on)}
                                 </p>
                                 {current.notes.map(|notes| view! {
@@ -857,7 +857,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
                         </button>
                         <button class="btn btn-sm" type="button" on:click=move |_| pick_phase.set(None)>{t!(i18n, grows.cancel)}</button>
                     </div>
-                    <p class="m-0 mt-1 text-xs text-base-content/60">
+                    <p class="m-0 mt-1 text-xs text-base-content/70">
                         {t!(i18n, grow.set_phase_hint)}
                     </p>
                 </form>
@@ -865,7 +865,7 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             {move || {
                 just_logged.get().then(|| {
                     view! {
-                        <p class="mt-2 mb-0 text-sm text-base-content/60" role="status">
+                        <p class="mt-2 mb-0 text-sm text-base-content/70" role="status">
                             {t!(i18n, grow.logged_note)}
                         </p>
                     }
@@ -1205,7 +1205,7 @@ fn ActionForm(
                         .filter(|entry| entry.category == category);
                     view! {
                         <div class="mt-2">
-                            <p class="text-base-content/60 text-xs uppercase tracking-wide">
+                            <p class="text-base-content/70 text-xs uppercase tracking-wide">
                                 {labels::appearance_category_label(locale, category)}
                             </p>
                             <div class="flex flex-wrap gap-x-4 gap-y-1 mt-1">
@@ -1492,7 +1492,9 @@ const fn has_facts(details: &ActionDetails) -> bool {
         || details.plant_height_cm.is_some()
 }
 
-fn local_stamp(iso: &str, timezone: &str) -> String {
+/// `iso` as a short local stamp in `timezone`; the plant page
+/// shares it (an empty zone means the browser's own).
+pub fn local_stamp(iso: &str, timezone: &str) -> String {
     let date = js_sys::Date::new(&wasm_bindgen::JsValue::from_str(iso));
     if date.get_time().is_nan() {
         return iso.to_owned();

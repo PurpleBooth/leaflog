@@ -201,7 +201,7 @@ fn action_group(
 ) -> impl IntoView {
     view! {
         <section class="mt-3">
-            <h3 class="m-0 mb-2 text-xs font-semibold uppercase tracking-wider text-base-content/60">
+            <h3 class="m-0 mb-2 text-xs font-semibold uppercase tracking-wider text-base-content/70">
                 {heading}
             </h3>
             <div class="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2">

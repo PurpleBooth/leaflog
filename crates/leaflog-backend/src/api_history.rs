@@ -145,6 +145,9 @@ pub struct PlantView {
     pub photos: Vec<Photo>,
     /// The plant's harvest weights, when logged.
     pub yield_g: Option<YieldSummary>,
+    /// The IANA zone the page renders its stamps in (the settings
+    /// override, else Home Assistant's, D152).
+    pub timezone: String,
 }
 
 // Extractors are taken by value because Axum requires it.
@@ -154,6 +157,7 @@ async fn plant_view(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<PlantView>, ApiError> {
+    let timezone = crate::app::canonical_timezone(&state).await;
     let view = state
         .db
         .with(move |conn| -> Result<PlantView, StoreOrNotFound> {
@@ -168,6 +172,7 @@ async fn plant_view(
                 actions,
                 photos,
                 yield_g,
+                timezone,
             })
         })
         .await?;

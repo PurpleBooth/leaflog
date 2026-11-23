@@ -32,11 +32,17 @@ async fn photo_card_updates_names_after_plants_load() {
         .expect("test plant"),
     ]);
     assert!(
-        try_wait_for(&mut || mount.has("img[alt*='Test plant A']")).await,
+        try_wait_for(&mut || mount.has("a[aria-label='Open the original photo']")).await,
+        "photo links arrive asynchronously: {}",
+        mount.text()
+    );
+    // The caption carries the plant name once; the thumbnail is the
+    // link's silent preview (impeccable audit).
+    assert!(
+        try_wait_for(&mut || mount.text().contains("Test plant A")).await,
         "plant names arrive asynchronously: {}",
         mount.text()
     );
-    assert!(mount.text().contains("Test plant A"), "{}", mount.text());
 }
 
 #[wasm_bindgen_test]
@@ -77,7 +83,11 @@ async fn story_renders_a_plant_linked_photo() {
         })
     });
     assert!(
-        try_wait_for(&mut || mount.has("img[alt*='Test plant A']")).await,
+        try_wait_for(&mut || {
+            mount.has("a[aria-label='Open the original photo']")
+                && mount.text().contains("Test plant A")
+        })
+        .await,
         "plant-linked photo renders: {}",
         mount.text()
     );

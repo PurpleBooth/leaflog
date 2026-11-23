@@ -77,7 +77,7 @@
   --color-success-content: #0b1f0d;
   --color-warning: #ffb74d;
   --color-warning-content: #241300;
-  --color-error: #ef5350;
+  --color-error: #f26d6a;
   --color-error-content: #1f0b0a;
   --radius-selector: 0.5rem;
   --radius-field: 0.5rem;
@@ -211,6 +211,42 @@ p {
   text-underline-offset: 4px;
 }
 
+/* Touch targets (impeccable audit, 2026-11-23): the bench runs at
+ * thumb's length at the tent. On a coarse pointer every small
+ * control grows to the 44px the nav already carries; mouse users
+ * keep the dense desktop rhythm. Inline links in prose stay as
+ * they are (WCAG 2.5.8 exempts them). */
+@media (pointer: coarse) {
+  .btn-sm,
+  summary {
+    min-height: 2.75rem;
+  }
+
+  .checkbox-sm,
+  .checkbox-xs {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+}
+
+/* Placeholder hints are text too: daisyUI's 60% sits under 4.5:1. */
+::placeholder {
+  color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
+}
+
+/* Reduced motion (impeccable audit, 2026-11-23): a user who asks
+ * the OS for less motion gets instant state changes. daisyUI's
+ * colour and size transitions are the only motion on the bench —
+ * charts already render without animation. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* The footer's version stamp and status line share the muted ink;
  * inside it links stay primary (the global rule), there are none
  * today but the rule keeps the footer honest if one arrives. */
@@ -258,7 +294,7 @@ pre {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--color-base-content) 65%, transparent);
+  color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
 }
 
 .facts dd {
@@ -279,7 +315,7 @@ pre {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--color-base-content) 65%, transparent);
+  color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
 }
 
 .statband dd {
@@ -295,7 +331,7 @@ pre {
   margin-top: 0.125rem;
   font-size: 0.8125rem;
   font-weight: 500;
-  color: color-mix(in srgb, var(--color-base-content) 65%, transparent);
+  color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
 }
 
 /* Data tables read as figures, not prose. */
@@ -342,7 +378,7 @@ pre {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: color-mix(in srgb, var(--color-base-content) 65%, transparent);
+  color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
   text-align: right;
 }
 
@@ -368,7 +404,7 @@ pre {
   align-items: center;
   padding: 0 0.4rem;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--color, #90a4ae) 55%, transparent);
+  background: color-mix(in srgb, var(--color, #90a4ae) 30%, transparent);
   font-size: 0.7rem;
   font-weight: 600;
   color: var(--color-base-content);
@@ -413,8 +449,8 @@ pre {
   position: absolute;
   top: -0.2rem;
   left: 4px;
-  font-size: 0.65rem;
-  color: #e53935;
+  font-size: 0.75rem;
+  color: var(--color-error);
   font-weight: 700;
 }
 

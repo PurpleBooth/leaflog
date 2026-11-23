@@ -131,7 +131,7 @@ pub fn BandEditor() -> impl IntoView {
             </Show>
             {move || {
                 status.get().map(|message| {
-                    view! { <span class="text-base-content/60 text-sm">{message}</span> }
+                    view! { <span class="text-base-content/70 text-sm">{message}</span> }
                 })
             }}
         </div>
@@ -297,7 +297,7 @@ pub fn HistoryChart(
                                         t_string!(i18n, env.no_readings)
                                     };
                                     view! {
-                                        <p class="my-2 text-sm text-base-content/60">{hint}</p>
+                                        <p class="my-2 text-sm text-base-content/70">{hint}</p>
                                     }
                                 })
                         }}
