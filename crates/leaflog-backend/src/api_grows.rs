@@ -20,6 +20,7 @@ use crate::app::local_date_in;
 use crate::app::{canonical_timezone, day_number_in};
 use crate::db::StoreError;
 use crate::db::now_rfc3339;
+use crate::photos::{PhotoError, PhotoStore};
 use crate::store::{self, StoreOrNotFound};
 
 /// Maximum accepted upload size per photo (the body limit is 32 MiB).
@@ -755,47 +756,84 @@ async fn upload_photo(
         .transpose()?;
     plant_ids.sort();
     plant_ids.dedup();
+    // Ownership checks need the grow; the image work below does not.
+    let grow = state
+        .db
+        .with({
+            let (id, plant_ids, action_log_id) =
+                (id.clone(), plant_ids.clone(), action_log_id.clone());
+            move |conn| -> Result<_, ApiError> {
+                let grow = store::grows::get(conn, &id)?;
+                for plant_id in &plant_ids {
+                    if store::grows::get_plant(conn, plant_id)?.grow_id != id {
+                        return Err(ApiError::BadRequest(
+                            "plant does not belong to grow".to_owned(),
+                        ));
+                    }
+                }
+                if let Some(action_id) = &action_log_id
+                    && store::actions::get(conn, action_id)?.grow_id != id
+                {
+                    return Err(ApiError::BadRequest(
+                        "action does not belong to grow".to_owned(),
+                    ));
+                }
+                Ok(grow)
+            }
+        })
+        .await?;
+
+    // One row per uploaded part: the frontend appends every selected
+    // photo under the same "file" field name, so each part gets its
+    // own store() + row. The last created row is returned, matching
+    // the previous single-file response.
+    //
+    // The whole request is all-or-nothing: the file pipeline runs for
+    // every part *before* any row exists, all rows go in through one
+    // transaction, and any failure removes the files of every part
+    // written so far. A failed request therefore leaves nothing
+    // behind — a client retry (there is no idempotency key) must never
+    // duplicate photos.
+    //
+    // Decoding and re-encoding a phone photo takes seconds, so it runs
+    // on the blocking pool without the single DB connection held
+    // (every other request would wait on it).
     let photos = state.photos.clone();
+    let store_for_files = photos.clone();
+    let files_for_store = files.clone();
+    let id_for_store = id.clone();
+    let stored = tokio::task::spawn_blocking(move || {
+        let mut stored = Vec::with_capacity(files_for_store.len());
+        for bytes in &files_for_store {
+            match store_for_files.store(&id_for_store, bytes) {
+                Ok(part) => stored.push(part),
+                Err(error) => {
+                    for part in &stored {
+                        store_for_files.remove(
+                            &id_for_store,
+                            &part.original_name,
+                            Some(&part.thumbnail_name),
+                        );
+                    }
+                    return Err(ApiError::BadRequest(error.to_string()));
+                }
+            }
+        }
+        Ok(stored)
+    })
+    .await
+    .map_err(|error| ApiError::Internal(error.to_string()))??;
+
+    // File names stay here for the cleanup below; the rows take the rest.
+    let id_for_rows = id.clone();
+    let stored_names: Vec<(String, String)> = stored
+        .iter()
+        .map(|part| (part.original_name.clone(), part.thumbnail_name.clone()))
+        .collect();
     let photo = state
         .db
         .with(move |conn| -> Result<_, ApiError> {
-            let grow = store::grows::get(conn, &id)?;
-            for plant_id in &plant_ids {
-                if store::grows::get_plant(conn, plant_id)?.grow_id != id {
-                    return Err(ApiError::BadRequest(
-                        "plant does not belong to grow".to_owned(),
-                    ));
-                }
-            }
-            if let Some(action_id) = &action_log_id
-                && store::actions::get(conn, action_id)?.grow_id != id
-            {
-                return Err(ApiError::BadRequest(
-                    "action does not belong to grow".to_owned(),
-                ));
-            }
-            // One row per uploaded part: the frontend appends every
-            // selected photo under the same "file" field name, so each
-            // part gets its own store() + row. The last created row is
-            // returned, matching the previous single-file response.
-            //
-            // The whole request is all-or-nothing: the file pipeline
-            // runs for every part *before* any row exists, all rows go
-            // in through one transaction, and any failure removes the
-            // files of every part written so far. A failed request
-            // therefore leaves nothing behind — a client retry (there
-            // is no idempotency key) must never duplicate photos.
-            let mut stored: Vec<_> = Vec::with_capacity(files.len());
-            let outcome = (|| -> Result<leaflog_core::grows::Photo, ApiError> {
-                for bytes in &files {
-                    // Blocking image work inside the DB task keeps one
-                    // flow; store() is pure CPU + file I/O.
-                    stored.push(
-                        photos
-                            .store(&id, bytes)
-                            .map_err(|error| ApiError::BadRequest(error.to_string()))?,
-                    );
-                }
+            (|| -> Result<leaflog_core::grows::Photo, ApiError> {
                 // One transaction for every row (D012 single-connection
                 // design, hence `unchecked_transaction` on the shared
                 // `&Connection`): a failed INSERT rolls back the earlier
@@ -812,13 +850,18 @@ async fn upload_photo(
                         .unwrap_or_else(now_rfc3339);
                     let day = day_number_in(&grow.started_on, &captured_at, &tz)
                         .ok_or_else(|| ApiError::BadRequest("invalid capture date".to_owned()))?;
-                    let flip = store::actions::first_event_day(conn, &id, ActionType::Flip, day)?;
-                    let harvested =
-                        store::actions::first_event_day(conn, &id, ActionType::Harvest, day)?
-                            .is_some();
+                    let flip =
+                        store::actions::first_event_day(conn, &id_for_rows, ActionType::Flip, day)?;
+                    let harvested = store::actions::first_event_day(
+                        conn,
+                        &id_for_rows,
+                        ActionType::Harvest,
+                        day,
+                    )?
+                    .is_some();
                     let phase = leaflog_core::actions::derive_phase(day, flip, harvested);
                     let new = store::photos::NewPhoto {
-                        grow_id: id.clone(),
+                        grow_id: id_for_rows.clone(),
                         plant_ids: plant_ids.clone(),
                         action_log_id: action_log_id.clone(),
                         captured_at,
@@ -835,18 +878,20 @@ async fn upload_photo(
                     .map_err(StoreError::from)
                     .map_err(ApiError::from)?;
                 Ok(last.expect("files is non-empty (checked above)"))
-            })();
-            if let Err(error) = outcome {
-                // Rows are already gone (single transaction); remove the
-                // files of every part that reached the disk.
-                for part in &stored {
-                    photos.remove(&id, &part.original_name, Some(&part.thumbnail_name));
-                }
-                return Err(error);
-            }
-            outcome
+            })()
         })
-        .await?;
+        .await;
+    // A failed row write (or a panic in that task) must not leave the
+    // files behind either.
+    let photo = match photo {
+        Ok(photo) => photo,
+        Err(error) => {
+            for (original, thumbnail) in &stored_names {
+                photos.remove(&id, original, Some(thumbnail));
+            }
+            return Err(error);
+        }
+    };
     Ok((StatusCode::CREATED, Json(photo)))
 }
 
@@ -874,22 +919,46 @@ async fn delete_photo(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Serves a photo's file. Only the row lookup takes the DB lock; the
+/// file read (and a lazy thumbnail regeneration, which decodes the
+/// original) runs on the blocking pool, so a gallery load does not
+/// queue every other request behind it.
+async fn read_photo_file(
+    state: &AppState,
+    id: &str,
+    which: fn(&leaflog_core::grows::Photo) -> Option<String>,
+    read: fn(&PhotoStore, &str, &str) -> Result<Vec<u8>, PhotoError>,
+) -> Result<Vec<u8>, ApiError> {
+    let photo = state
+        .db
+        .with({
+            let id = id.to_owned();
+            move |conn| store::photos::get(conn, &id)
+        })
+        .await?;
+    let Some(name) = which(&photo) else {
+        return Err(ApiError::NotFound);
+    };
+    let photos = state.photos.clone();
+    tokio::task::spawn_blocking(move || read(&photos, &photo.grow_id, &name))
+        .await
+        .map_err(|error| ApiError::Internal(error.to_string()))?
+        .map_err(|error| ApiError::Internal(error.to_string()))
+}
+
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn photo_original(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, ApiError> {
-    let photos = state.photos.clone();
-    let bytes = state
-        .db
-        .with(move |conn| -> Result<Vec<u8>, ApiError> {
-            let photo = store::photos::get(conn, &id)?;
-            photos
-                .read_original(&photo.grow_id, &photo.original_name)
-                .map_err(|error| ApiError::Internal(error.to_string()))
-        })
-        .await?;
+    let bytes = read_photo_file(
+        &state,
+        &id,
+        |photo| Some(photo.original_name.clone()),
+        PhotoStore::read_original,
+    )
+    .await?;
     Ok((
         [
             (header::CONTENT_TYPE, "image/jpeg"),
@@ -908,25 +977,13 @@ async fn photo_thumbnail(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, ApiError> {
-    let photos = state.photos.clone();
-    let bytes = state
-        .db
-        .with(move |conn| -> Result<Vec<u8>, ApiError> {
-            let photo = store::photos::get(conn, &id)?;
-            let Some(name) = photo.thumbnail_name.clone() else {
-                return Err(ApiError::NotFound);
-            };
-            let bytes = photos
-                .read_thumbnail(&photo.grow_id, &name)
-                .map_err(|error| ApiError::Internal(error.to_string()))?;
-            // A lazy regeneration writes the file but the row keeps its
-            // name; nothing to update unless it changed.
-            if photo.thumbnail_name.as_deref() != Some(&name) {
-                store::photos::set_thumbnail(conn, &id, Some(&name))?;
-            }
-            Ok(bytes)
-        })
-        .await?;
+    let bytes = read_photo_file(
+        &state,
+        &id,
+        |photo| photo.thumbnail_name.clone(),
+        PhotoStore::read_thumbnail,
+    )
+    .await?;
     Ok((
         [
             (header::CONTENT_TYPE, "image/webp"),
