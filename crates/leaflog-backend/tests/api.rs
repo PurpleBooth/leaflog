@@ -188,6 +188,70 @@ async fn settings_round_trip() {
 }
 
 #[tokio::test]
+async fn settings_reject_wrong_value_types_and_store_nothing() {
+    let base = spawn_api().await;
+    let client = reqwest::Client::new();
+
+    for (key, value) in [
+        ("onboarding_dismissed", json!("yes")),
+        ("auto_log_ha_events", json!(1)),
+        ("env_alert_notifications", json!("off")),
+        ("photo_warn_bytes", json!("big")),
+        ("snapshot_retention_months", json!(-1)),
+        ("quiet_hours", json!(22)),
+        ("display_timezone", json!(12)),
+        ("language", json!(["de"])),
+        ("soil_moisture_band", json!(21)),
+    ] {
+        // One valid key rides along: a rejected body must not leave it
+        // behind, so the whole write is one transaction.
+        let response = client
+            .put(format!("{base}/api/settings"))
+            .json(&json!({ "onboarding_dismissed": true, key: value }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            reqwest::StatusCode::BAD_REQUEST,
+            "{key}: {value} must be rejected"
+        );
+        let stored: Value = client
+            .get(format!("{base}/api/settings"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(
+            stored,
+            json!({}),
+            "{key}: nothing from a rejected body is stored"
+        );
+    }
+
+    // `null` resets any key; the typed values themselves pass.
+    let saved: Value = client
+        .put(format!("{base}/api/settings"))
+        .json(&json!({
+            "onboarding_dismissed": true,
+            "photo_warn_bytes": 2_500_000_u64,
+            "quiet_hours": "22:00 - 07:00",
+            "soil_moisture_band": [21, 46],
+            "language": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(saved["photo_warn_bytes"], 2_500_000_u64);
+    assert_eq!(saved["language"], serde_json::Value::Null);
+}
+
+#[tokio::test]
 async fn sensors_replace_is_atomic_when_an_insert_fails() {
     use std::collections::BTreeMap;
 

@@ -117,6 +117,27 @@ const KNOWN_SETTINGS: &[&str] = &[
     "soil_moisture_band",
 ];
 
+/// Whether a setting value has the shape its key accepts. `null`
+/// resets any key; a value of the wrong type would otherwise sit in
+/// the table until a reader unwraps it somewhere unexpected.
+fn setting_shape_ok(key: &str, value: &Value) -> bool {
+    if value.is_null() {
+        return true;
+    }
+    match key {
+        "auto_log_ha_events" | "env_alert_notifications" | "onboarding_dismissed" => {
+            value.is_boolean()
+        }
+        "display_timezone" | "language" | "quiet_hours" => value.is_string(),
+        "photo_warn_bytes" | "snapshot_retention_months" => value.as_u64().is_some(),
+        "soil_moisture_band" => {
+            matches!(value.as_array(), Some(band) if band.len() == 2 && band.iter().all(Value::is_number))
+        }
+        // Unknown keys were rejected by the allow-list above.
+        _ => true,
+    }
+}
+
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn put_settings(
@@ -137,13 +158,25 @@ async fn put_settings(
             KNOWN_SETTINGS.join(", ")
         )));
     }
+    if let Some((key, value)) = map
+        .iter()
+        .find(|(key, value)| !setting_shape_ok(key, value))
+    {
+        return Err(ApiError::BadRequest(format!(
+            "setting {key:?} does not accept the value {value}"
+        )));
+    }
+    // One transaction: a write either lands whole or not at all.
     let settings = state
         .db
-        .with(move |conn| {
+        .with(move |conn| -> Result<Value, StoreError> {
+            let tx = conn.unchecked_transaction()?;
             for (key, value) in &map {
-                store::settings::put(conn, key, value)?;
+                store::settings::put(&tx, key, value)?;
             }
-            store::settings::list(conn)
+            let settings = store::settings::list(&tx)?;
+            tx.commit()?;
+            Ok(settings)
         })
         .await?;
     Ok(Json(settings))
