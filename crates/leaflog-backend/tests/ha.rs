@@ -816,6 +816,57 @@ async fn silent_websocket(upgrade: WebSocketUpgrade) -> Response {
     upgrade.on_upgrade(silent_socket)
 }
 
+/// A scripted Supervisor socket that asks for the token and then
+/// never answers: the bridge must not wait on it forever.
+async fn mute_after_auth_request_socket(socket: WebSocket, attempts: Arc<AtomicUsize>) {
+    attempts.fetch_add(1, Ordering::SeqCst);
+    let (mut sender, _receiver) = socket.split();
+    let required = Message::text(json!({ "type": "auth_required" }).to_string());
+    let _ = sender.send(required).await;
+}
+
+async fn mute_after_auth_request_websocket(
+    State(attempts): State<Arc<AtomicUsize>>,
+    upgrade: WebSocketUpgrade,
+) -> Response {
+    upgrade.on_upgrade(move |socket| mute_after_auth_request_socket(socket, attempts))
+}
+
+#[tokio::test]
+async fn a_socket_silent_before_auth_ok_is_retried() {
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let router = axum::Router::new()
+        .route(
+            "/core/websocket",
+            axum::routing::get(mute_after_auth_request_websocket),
+        )
+        .with_state(attempts.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+
+    let _bridge = HaBridge::spawn_with_heartbeat(
+        format!("http://{addr}"),
+        SupervisorToken::new(SECRET),
+        Db::open_in_memory().unwrap(),
+        Duration::from_millis(100),
+    );
+    _bridge.track_entities(vec!["light.grow_led".to_owned()]);
+
+    // The handshake waits at most 250 ms (2.5 heartbeats) for
+    // auth_ok; a second attempt proves the first one was abandoned.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while attempts.load(Ordering::SeqCst) < 2 {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "a socket silent before auth_ok must be abandoned and retried"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
 #[tokio::test]
 async fn a_socket_silent_past_the_idle_limit_is_dropped_and_replaced() {
     let router = axum::Router::new().route("/core/websocket", axum::routing::get(silent_websocket));

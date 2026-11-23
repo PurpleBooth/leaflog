@@ -70,14 +70,12 @@ impl LiveEntity {
         leaflog_core::units::sensor_celsius(value, unit)
     }
 
-    /// A dimmed light's level in percent of full output: HA reports
-    /// `brightness` on a 0–255 scale. `None` when the light is off or
-    /// reports no brightness.
+    /// A dimmable light's level in percent of full output: HA reports
+    /// `brightness` on a 0–255 scale and keeps it while the light is
+    /// off, so the lamp advice does not flip every night. `None` when
+    /// the entity reports no brightness.
     #[must_use]
     pub fn brightness_pct(&self) -> Option<u8> {
-        if self.state != "on" {
-            return None;
-        }
         let brightness = self.attributes.get("brightness")?.as_u64()?;
         u8::try_from(brightness.min(255) * 100 / 255).ok()
     }
@@ -551,12 +549,16 @@ async fn run_socket(
         return SocketOutcome::Retry(tracked);
     };
 
+    // A socket that goes quiet anywhere before or during the stream
+    // loop is dropped after the same idle limit.
+    let idle_after = rest.heartbeat.saturating_mul(5) / 2;
+
     // Expect auth_required, send the token, expect auth_ok.
-    if !auth_handshake(&mut socket, &rest.token).await {
+    if !auth_handshake(&mut socket, &rest.token, idle_after).await {
         return SocketOutcome::Retry(tracked);
     }
     let mut next_id = 1_u64;
-    if !subscribe(&mut socket, &tracked, &mut next_id).await {
+    if !subscribe(&mut socket, &tracked, &mut next_id, idle_after).await {
         return SocketOutcome::Retry(tracked);
     }
 
@@ -580,7 +582,6 @@ async fn run_socket(
     let mut heartbeat = tokio::time::interval(rest.heartbeat);
     heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     heartbeat.tick().await; // first tick is immediate
-    let idle_after = rest.heartbeat.saturating_mul(5) / 2;
     let mut last_seen = tokio::time::Instant::now();
 
     loop {
@@ -665,14 +666,14 @@ async fn run_socket(
 }
 
 /// The HA WebSocket auth handshake.
-async fn auth_handshake<S>(socket: &mut S, token: &SupervisorToken) -> bool
+async fn auth_handshake<S>(socket: &mut S, token: &SupervisorToken, idle_after: Duration) -> bool
 where
     S: futures_util::SinkExt<Message>
         + futures_util::StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>>
         + Unpin,
 {
-    let required = match socket.next().await {
-        Some(Ok(Message::Text(text))) => text.contains("auth_required"),
+    let required = match tokio::time::timeout(idle_after, socket.next()).await {
+        Ok(Some(Ok(Message::Text(text)))) => text.contains("auth_required"),
         _ => false,
     };
     if !required {
@@ -682,11 +683,19 @@ where
     if socket.send(Message::text(auth.to_string())).await.is_err() {
         return false;
     }
-    matches!(socket.next().await, Some(Ok(Message::Text(text))) if text.contains("auth_ok"))
+    matches!(
+        tokio::time::timeout(idle_after, socket.next()).await,
+        Ok(Some(Ok(Message::Text(text)))) if text.contains("auth_ok")
+    )
 }
 
 /// Sends `subscribe_entities` for the tracked set (empty set: skip).
-async fn subscribe<S>(socket: &mut S, tracked: &[String], next_id: &mut u64) -> bool
+async fn subscribe<S>(
+    socket: &mut S,
+    tracked: &[String],
+    next_id: &mut u64,
+    idle_after: Duration,
+) -> bool
 where
     S: futures_util::SinkExt<Message>
         + futures_util::StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>>
@@ -715,8 +724,8 @@ where
     // subscription. (HA accepts unknown entity ids silently — they
     // simply never appear in the initial batch — so an error here is
     // rare: a malformed command, or the user losing access.)
-    match socket.next().await {
-        Some(Ok(Message::Text(text))) => {
+    match tokio::time::timeout(idle_after, socket.next()).await {
+        Ok(Some(Ok(Message::Text(text)))) => {
             let Ok(value) = serde_json::from_str::<Value>(text.as_str()) else {
                 return false;
             };
@@ -921,7 +930,28 @@ mod tests {
     use serde_json::json;
     use tokio::sync::watch;
 
-    use super::{LiveData, apply_event, backoff_for};
+    use std::collections::BTreeMap;
+
+    use super::{LiveData, LiveEntity, apply_event, backoff_for};
+
+    #[test]
+    fn brightness_is_reported_while_the_light_is_off() {
+        let mut attributes = BTreeMap::new();
+        attributes.insert("brightness".to_owned(), json!(128));
+        let led = LiveEntity {
+            entity_id: "light.grow_led".to_owned(),
+            state: "off".to_owned(),
+            attributes,
+        };
+        assert_eq!(led.brightness_pct(), Some(50));
+
+        let plain = LiveEntity {
+            entity_id: "light.grow_led".to_owned(),
+            state: "on".to_owned(),
+            attributes: BTreeMap::new(),
+        };
+        assert_eq!(plain.brightness_pct(), None);
+    }
 
     #[test]
     fn backoff_grows_and_caps() {
