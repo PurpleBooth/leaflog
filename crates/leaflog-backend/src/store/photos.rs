@@ -186,11 +186,15 @@ pub fn list_in_window(
     let mut stmt = conn.prepare(
         "SELECT photo.*, (SELECT json_group_array(plant_id) FROM photo_plant
          WHERE photo_id = photo.id) AS plant_ids FROM photo
-         WHERE grow_id = ?1 ORDER BY captured_at DESC, created_at DESC",
+         WHERE grow_id = ?1
+           AND julianday(captured_at) >= julianday(?2)
+           AND julianday(captured_at) < julianday(?3) + 1.0 / 86400.0
+         ORDER BY captured_at DESC, created_at DESC",
     )?;
-    let rows = stmt.query_map(params![grow_id], |row| {
+    let rows = stmt.query_map(params![grow_id, from.to_string(), to.to_string()], |row| {
         let photo = map_row(row)?;
-        // Photo capture timestamps can carry subsecond precision too.
+        // Photo capture timestamps can carry subsecond precision too,
+        // so the exact half-open check follows the SQL pre-filter.
         let in_window = photo
             .captured_at
             .parse::<jiff::Timestamp>()

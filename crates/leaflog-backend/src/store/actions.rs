@@ -190,7 +190,8 @@ pub fn list_in_window(
         .map_err(StoreError::from)
 }
 
-/// Lists all entries within a half-open UTC interval, newest first.
+/// Lists the entries of one grow that fall in a half-open UTC interval,
+/// newest first.
 ///
 /// # Errors
 /// Returns a [`StoreError`] on SQLite failures.
@@ -200,11 +201,18 @@ pub fn list_for_story(
     from: jiff::Timestamp,
     to: jiff::Timestamp,
 ) -> Result<Vec<ActionEntry>, StoreError> {
+    // The SQL window narrows the indexed grow's rows to the page's
+    // days before any row is mapped. `julianday` keeps microseconds at
+    // best, so the upper bound gets a second of slack and the exact
+    // half-open check stays in Rust.
     let mut stmt = conn.prepare(
-        "SELECT * FROM action_log WHERE grow_id = ?1
+        "SELECT * FROM action_log
+         WHERE grow_id = ?1
+           AND julianday(occurred_at) >= julianday(?2)
+           AND julianday(occurred_at) < julianday(?3) + 1.0 / 86400.0
          ORDER BY occurred_at DESC, created_at DESC",
     )?;
-    let rows = stmt.query_map(params![grow_id], |row| {
+    let rows = stmt.query_map(params![grow_id, from.to_string(), to.to_string()], |row| {
         let entry = map_row(row)?;
         // Keep fractional seconds: an entry in today's last partial
         // second belongs in the half-open day, not after `now`.
