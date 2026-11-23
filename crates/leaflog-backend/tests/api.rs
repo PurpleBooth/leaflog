@@ -136,14 +136,14 @@ async fn settings_round_trip() {
 
     let saved: Value = client
         .put(format!("{base}/api/settings"))
-        .json(&json!({ "soil_moisture_band": [21, 46], "photo_warn_bytes": 1000 }))
+        .json(&json!({ "soil_moisture_band": { "min": 21, "max": 46 }, "photo_warn_bytes": 1000 }))
         .send()
         .await
         .unwrap()
         .json()
         .await
         .unwrap();
-    assert_eq!(saved["soil_moisture_band"], json!([21, 46]));
+    assert_eq!(saved["soil_moisture_band"], json!({ "min": 21, "max": 46 }));
 
     // Upsert one key, keep the other.
     let saved: Value = client
@@ -202,6 +202,11 @@ async fn settings_reject_wrong_value_types_and_store_nothing() {
         ("display_timezone", json!(12)),
         ("language", json!(["de"])),
         ("soil_moisture_band", json!(21)),
+        // An array was the shape the first validator guessed; the chart
+        // reader only ever parsed the min/max object.
+        ("soil_moisture_band", json!([21, 46])),
+        ("soil_moisture_band", json!({ "min": 21 })),
+        ("soil_moisture_band", json!({ "min": "low", "max": 46 })),
     ] {
         // One valid key rides along: a rejected body must not leave it
         // behind, so the whole write is one transaction.
@@ -238,7 +243,7 @@ async fn settings_reject_wrong_value_types_and_store_nothing() {
             "onboarding_dismissed": true,
             "photo_warn_bytes": 2_500_000_u64,
             "quiet_hours": "22:00 - 07:00",
-            "soil_moisture_band": [21, 46],
+            "soil_moisture_band": { "min": 21, "max": 46 },
             "language": null,
         }))
         .send()

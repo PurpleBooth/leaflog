@@ -130,8 +130,12 @@ fn setting_shape_ok(key: &str, value: &Value) -> bool {
         }
         "display_timezone" | "language" | "quiet_hours" => value.is_string(),
         "photo_warn_bytes" | "snapshot_retention_months" => value.as_u64().is_some(),
+        // The band editor sends `{ "min": 25, "max": 45 }`; that is
+        // also the only shape the chart reader parses (parse_soil_band).
         "soil_moisture_band" => {
-            matches!(value.as_array(), Some(band) if band.len() == 2 && band.iter().all(Value::is_number))
+            matches!(value.as_object(), Some(band) if band.len() == 2
+                && band.get("min").is_some_and(Value::is_number)
+                && band.get("max").is_some_and(Value::is_number))
         }
         // Unknown keys were rejected by the allow-list above.
         _ => true,
