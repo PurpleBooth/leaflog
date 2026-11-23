@@ -210,10 +210,18 @@ async fn grow_lamp(
                     .any(|t| leaflog_core::appearance::is_light_stress_tag(t))
             });
 
+            // The lamp's own dim level, from the bound light's
+            // brightness; unknown (no binding, light off) means full.
+            let dim_pct = bindings
+                .get("light")
+                .and_then(|e| live.entities.get(e))
+                .and_then(crate::ha::LiveEntity::brightness_pct)
+                .unwrap_or(100);
+
             let input = LampInput {
                 real_watts: advisor_watts(grow.real_watts),
                 dimmable: grow.dimmable,
-                dim_pct: 100,
+                dim_pct,
                 canopy_temperature_c: canopy_temp,
                 phase,
                 light_tolerance: grow.light_tolerance,

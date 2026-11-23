@@ -69,6 +69,18 @@ impl LiveEntity {
             .and_then(Value::as_str);
         leaflog_core::units::sensor_celsius(value, unit)
     }
+
+    /// A dimmed light's level in percent of full output: HA reports
+    /// `brightness` on a 0–255 scale. `None` when the light is off or
+    /// reports no brightness.
+    #[must_use]
+    pub fn brightness_pct(&self) -> Option<u8> {
+        if self.state != "on" {
+            return None;
+        }
+        let brightness = self.attributes.get("brightness")?.as_u64()?;
+        u8::try_from(brightness.min(255) * 100 / 255).ok()
+    }
 }
 
 /// The shared live-state map plus connection status.
@@ -808,7 +820,7 @@ fn attrs(value: Option<&Value>) -> BTreeMap<String, Value> {
         for (key, value) in attributes {
             if matches!(
                 key.as_str(),
-                "unit_of_measurement" | "friendly_name" | "device_class"
+                "unit_of_measurement" | "friendly_name" | "device_class" | "brightness"
             ) {
                 map.insert(key.clone(), value.clone());
             }

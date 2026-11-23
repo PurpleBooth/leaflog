@@ -707,6 +707,110 @@ async fn silent_socket(socket: WebSocket) {
     }
 }
 
+/// A scripted Supervisor socket whose subscription batch seeds one
+/// dimmed light: `brightness` 128 of 255.
+async fn dimmed_light_socket(socket: WebSocket) {
+    let (mut sender, mut receiver) = socket.split();
+    let required = Message::text(json!({ "type": "auth_required" }).to_string());
+    if sender.send(required).await.is_err() {
+        return;
+    }
+    let mut subscribed = false;
+    while let Some(Ok(message)) = receiver.next().await {
+        let Message::Text(text) = message else {
+            continue;
+        };
+        let Ok(value) = serde_json::from_str::<Value>(text.as_str()) else {
+            continue;
+        };
+        let reply = match value.get("type").and_then(Value::as_str) {
+            Some("auth") => json!({ "type": "auth_ok" }),
+            Some("subscribe_entities") if !subscribed => {
+                subscribed = true;
+                json!({ "id": value["id"], "type": "result", "success": true })
+            }
+            _ => continue,
+        };
+        if sender.send(Message::text(reply.to_string())).await.is_err() {
+            return;
+        }
+        if subscribed {
+            let batch = json!({
+                "type": "event",
+                "event": { "a": { "light.grow_led": {
+                    "s": "on", "a": { "brightness": 128, "friendly_name": "LED" }
+                } } },
+            });
+            if sender.send(Message::text(batch.to_string())).await.is_err() {
+                return;
+            }
+        }
+    }
+}
+
+// Extractors are taken by value because Axum requires it.
+async fn dimmed_light_websocket(upgrade: WebSocketUpgrade) -> Response {
+    upgrade.on_upgrade(dimmed_light_socket)
+}
+
+#[tokio::test]
+async fn lamp_advice_reads_the_dim_level_from_the_bound_light() {
+    let router = axum::Router::new().route(
+        "/core/websocket",
+        axum::routing::get(dimmed_light_websocket),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    let (base, _db, bridge) = spawn_api(&format!("http://{addr}")).await;
+    let http = reqwest::Client::new();
+    let grow = http
+        .post(format!("{base}/api/grows"))
+        .json(&json!({
+            "name": "Dimmed run", "substrate": "soil", "started_on": "2026-10-01",
+            "status": "active", "notes": null, "dimmable": true, "real_watts": 240,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json::<Value>()
+        .await
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    http.put(format!("{base}/api/grows/{grow}/bindings"))
+        .json(&json!({ "bindings": { "light": "light.grow_led" } }))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+    wait_connected(&bridge).await;
+    wait_state_contains(&bridge, "on").await;
+
+    let advice = http
+        .get(format!("{base}/api/grows/{grow}/lamp"))
+        .send()
+        .await
+        .unwrap()
+        .json::<Value>()
+        .await
+        .unwrap();
+    let codes: Vec<&str> = advice["why_codes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    assert!(
+        codes.contains(&"dimmed_closer"),
+        "a light at 50% brightness must trigger the dimmed-closer rule, got {advice}"
+    );
+}
+
 // Extractors are taken by value because Axum requires it.
 async fn silent_websocket(upgrade: WebSocketUpgrade) -> Response {
     upgrade.on_upgrade(silent_socket)
