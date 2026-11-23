@@ -294,11 +294,10 @@ fn resolve_coach_light_on(
         {
             return Ok(on);
         }
-        if let Some(snapshot) = store::sensors::snapshots_for_role(conn, &grow.id, "light")?
-            .last()
+        if let Some(on) = store::sensors::latest_snapshot_for_role(conn, &grow.id, "light")?
             .and_then(|snapshot| light_state_is_on(&snapshot.state))
         {
-            return Ok(snapshot);
+            return Ok(on);
         }
     }
     let windows = crate::api_chart::load_windows(conn, grow)?;

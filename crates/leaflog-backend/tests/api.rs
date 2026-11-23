@@ -252,6 +252,95 @@ async fn settings_reject_wrong_value_types_and_store_nothing() {
 }
 
 #[tokio::test]
+async fn story_history_reads_only_the_rows_it_needs() {
+    let db = Db::open_in_memory().unwrap();
+    let base = spawn_with(db.clone()).await;
+    let grow: String = reqwest::Client::new()
+        .post(format!("{base}/api/grows"))
+        .json(&json!({
+            "name": "Windowed", "substrate": "soil", "started_on": "2026-10-01",
+            "status": "active", "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json::<Value>()
+        .await
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    // Two log entries ten days apart, one light snapshot each. The
+    // story page must find the oldest timestamp without loading every
+    // row, and read snapshots inside its window only.
+    db.with({
+        let grow = grow.clone();
+        move |conn| -> Result<(), leaflog_backend::db::StoreError> {
+            for (id, occurred_at) in [
+                ("a1", "2026-11-01T10:00:00Z"),
+                ("a2", "2026-11-10T10:00:00Z"),
+            ] {
+                conn.execute(
+                    "INSERT INTO action_log (id, grow_id, plant_ids, occurred_at, action_type,
+                         grow_day, details, notes, appearance_tags, created_at, updated_at)
+                     VALUES (?1, ?2, '[]', ?3, 'note', 1, '{}', '', '[]', ?3, ?3)",
+                    rusqlite::params![id, grow, occurred_at],
+                )?;
+                leaflog_backend::store::sensors::snapshot_with_unit_at(
+                    conn,
+                    id,
+                    "light",
+                    "light.grow_led",
+                    "on",
+                    occurred_at,
+                    None,
+                )?;
+            }
+            Ok(())
+        }
+    })
+    .await
+    .unwrap();
+
+    let earliest = db
+        .with({
+            let grow = grow.clone();
+            move |conn| -> Result<(Option<String>, Option<String>), leaflog_backend::db::StoreError> {
+                Ok((
+                    leaflog_backend::store::actions::earliest_timestamp(conn, &grow)?,
+                    leaflog_backend::store::photos::earliest_timestamp(conn, &grow)?,
+                ))
+            }
+        })
+        .await
+        .unwrap();
+    assert_eq!(earliest.0.as_deref(), Some("2026-11-01T10:00:00Z"));
+    assert_eq!(earliest.1, None, "no photos, no timestamp");
+
+    let snapshots = db
+        .with({
+            let grow = grow.clone();
+            move |conn| {
+                leaflog_backend::store::sensors::snapshots_for_role_between(
+                    conn,
+                    &grow,
+                    "light",
+                    "2026-11-08T00:00:00Z",
+                    "2026-11-12T00:00:00Z",
+                )
+            }
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        snapshots.len(),
+        1,
+        "only the 10 November snapshot is in the window"
+    );
+    assert_eq!(snapshots[0].captured_at, "2026-11-10T10:00:00Z");
+}
+
+#[tokio::test]
 async fn sensors_replace_is_atomic_when_an_insert_fails() {
     use std::collections::BTreeMap;
 

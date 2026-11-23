@@ -158,6 +158,20 @@ pub fn list(conn: &Connection, grow_id: &str) -> Result<Vec<Photo>, StoreError> 
         .map_err(StoreError::from)
 }
 
+/// The oldest capture timestamp of a grow (`MIN(captured_at)`), or
+/// `None` when it has no photos.
+///
+/// # Errors
+///
+/// Returns a [`StoreError`] on SQLite failures.
+pub fn earliest_timestamp(conn: &Connection, grow_id: &str) -> Result<Option<String>, StoreError> {
+    Ok(conn.query_row(
+        "SELECT MIN(captured_at) FROM photo WHERE grow_id = ?1",
+        params![grow_id],
+        |row| row.get(0),
+    )?)
+}
+
 /// Lists photos captured within a half-open UTC interval.
 ///
 /// # Errors

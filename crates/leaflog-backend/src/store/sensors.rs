@@ -147,6 +147,32 @@ pub fn snapshot_with_unit(
     state: &str,
     unit: Option<&str>,
 ) -> Result<(), StoreError> {
+    snapshot_with_unit_at(
+        conn,
+        action_log_id,
+        role,
+        entity_id,
+        state,
+        &now_rfc3339(),
+        unit,
+    )
+}
+
+/// Writes a snapshot with a given capture time (seeds and tests; live
+/// captures go through [`snapshot_with_unit`]).
+///
+/// # Errors
+///
+/// Returns a [`StoreError`] on SQLite failures.
+pub fn snapshot_with_unit_at(
+    conn: &Connection,
+    action_log_id: &str,
+    role: &str,
+    entity_id: &str,
+    state: &str,
+    captured_at: &str,
+    unit: Option<&str>,
+) -> Result<(), StoreError> {
     conn.execute(
         "INSERT INTO sensor_snapshot (id, action_log_id, role, entity_id, state, captured_at, unit)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -156,8 +182,8 @@ pub fn snapshot_with_unit(
             role,
             entity_id,
             state,
-            now_rfc3339(),
-            unit,
+            captured_at,
+            unit
         ],
     )?;
     Ok(())
@@ -205,23 +231,78 @@ pub fn snapshots_for_role(
     grow_id: &str,
     role: &str,
 ) -> Result<Vec<SensorSnapshot>, StoreError> {
+    snapshots(conn, grow_id, role, None)
+}
+
+/// Lists a role's snapshots captured within a half-open `[from, to)`
+/// interval of RFC 3339 timestamps — the page window of the story.
+///
+/// # Errors
+///
+/// Returns a [`StoreError`] on SQLite failures.
+pub fn snapshots_for_role_between(
+    conn: &Connection,
+    grow_id: &str,
+    role: &str,
+    from: &str,
+    to: &str,
+) -> Result<Vec<SensorSnapshot>, StoreError> {
+    snapshots(conn, grow_id, role, Some((from, to)))
+}
+
+/// The most recent snapshot of a role, if the grow logged any.
+///
+/// # Errors
+///
+/// Returns a [`StoreError`] on SQLite failures.
+pub fn latest_snapshot_for_role(
+    conn: &Connection,
+    grow_id: &str,
+    role: &str,
+) -> Result<Option<SensorSnapshot>, StoreError> {
     let mut stmt = conn.prepare(
         "SELECT ss.id, ss.role, ss.entity_id, ss.state, ss.captured_at, ss.unit
          FROM sensor_snapshot AS ss
          JOIN action_log AS al ON al.id = ss.action_log_id
          WHERE al.grow_id = ?1 AND ss.role = ?2
+         ORDER BY ss.captured_at DESC
+         LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map(params![grow_id, role], map_snapshot_row)?;
+    rows.next().transpose().map_err(StoreError::from)
+}
+
+/// `window` narrows the capture time; `None` reads the whole grow.
+fn snapshots(
+    conn: &Connection,
+    grow_id: &str,
+    role: &str,
+    window: Option<(&str, &str)>,
+) -> Result<Vec<SensorSnapshot>, StoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT ss.id, ss.role, ss.entity_id, ss.state, ss.captured_at, ss.unit
+         FROM sensor_snapshot AS ss
+         JOIN action_log AS al ON al.id = ss.action_log_id
+         WHERE al.grow_id = ?1 AND ss.role = ?2
+           AND (?3 IS NULL OR (ss.captured_at >= ?3 AND ss.captured_at < ?4))
          ORDER BY ss.captured_at",
     )?;
-    let rows = stmt.query_map(params![grow_id, role], |row| {
-        Ok(SensorSnapshot {
-            id: row.get("id")?,
-            role: row.get("role")?,
-            entity_id: row.get("entity_id")?,
-            state: row.get("state")?,
-            unit: row.get("unit")?,
-            captured_at: row.get("captured_at")?,
-        })
-    })?;
-    rows.collect::<Result<Vec<_>, _>>()
+    let rows = stmt.query_map(
+        params![grow_id, role, window.map(|w| w.0), window.map(|w| w.1)],
+        map_snapshot_row,
+    )?;
+    rows.collect::<Result<Vec<_>, rusqlite::Error>>()
         .map_err(StoreError::from)
+}
+
+/// Maps one `sensor_snapshot` row of the joined queries above.
+fn map_snapshot_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SensorSnapshot> {
+    Ok(SensorSnapshot {
+        id: row.get("id")?,
+        role: row.get("role")?,
+        entity_id: row.get("entity_id")?,
+        state: row.get("state")?,
+        unit: row.get("unit")?,
+        captured_at: row.get("captured_at")?,
+    })
 }

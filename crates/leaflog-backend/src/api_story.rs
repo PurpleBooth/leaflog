@@ -48,14 +48,12 @@ async fn story(
     let earliest = state
         .db
         .with(move |conn| -> Result<Option<Date>, ApiError> {
-            // This unbounded timestamp lookup is cheap (indexed grow
-            // rows); a seven-day page must know about older records.
-            let action = store::actions::list(conn, &query_id, None, u32::MAX)?
-                .last()
-                .and_then(|entry| local_date(&entry.occurred_at, &query_zone));
-            let photo = store::photos::list(conn, &query_id)?
-                .last()
-                .and_then(|photo| local_date(&photo.captured_at, &query_zone));
+            // A seven-day page must know about older records; the
+            // aggregates walk the grow's time indexes, not every row.
+            let action = store::actions::earliest_timestamp(conn, &query_id)?
+                .and_then(|at| local_date(&at, &query_zone));
+            let photo = store::photos::earliest_timestamp(conn, &query_id)?
+                .and_then(|at| local_date(&at, &query_zone));
             Ok(action.into_iter().chain(photo).min())
         })
         .await?;
@@ -65,6 +63,7 @@ async fn story(
     let (grow, windows, local) = state
         .db
         .with(move |conn| -> Result<_, ApiError> {
+            let (from_s, to_s) = (from.to_string(), to.to_string());
             let grow = store::grows::get(conn, &id)?;
             let windows = crate::api_chart::load_windows(conn, &grow)?;
             let local = LocalHistory {
@@ -72,9 +71,15 @@ async fn story(
                 photos: store::photos::list_in_window(conn, &id, from, to)?,
                 bindings: store::sensors::list(conn, &id)?,
                 snapshots: [
-                    store::sensors::snapshots_for_role(conn, &id, ROLES[0])?,
-                    store::sensors::snapshots_for_role(conn, &id, ROLES[1])?,
-                    store::sensors::snapshots_for_role(conn, &id, ROLES[2])?,
+                    store::sensors::snapshots_for_role_between(
+                        conn, &id, ROLES[0], &from_s, &to_s,
+                    )?,
+                    store::sensors::snapshots_for_role_between(
+                        conn, &id, ROLES[1], &from_s, &to_s,
+                    )?,
+                    store::sensors::snapshots_for_role_between(
+                        conn, &id, ROLES[2], &from_s, &to_s,
+                    )?,
                 ],
             };
             Ok((grow, windows, local))

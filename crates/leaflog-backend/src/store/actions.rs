@@ -115,6 +115,20 @@ pub fn list_for_plant(conn: &Connection, plant_id: &str) -> Result<Vec<ActionEnt
         .map_err(StoreError::from)
 }
 
+/// The oldest log timestamp of a grow (`MIN(occurred_at)`), or `None`
+/// when it has no entries.
+///
+/// # Errors
+///
+/// Returns a [`StoreError`] on SQLite failures.
+pub fn earliest_timestamp(conn: &Connection, grow_id: &str) -> Result<Option<String>, StoreError> {
+    Ok(conn.query_row(
+        "SELECT MIN(occurred_at) FROM action_log WHERE grow_id = ?1",
+        params![grow_id],
+        |row| row.get(0),
+    )?)
+}
+
 /// Lists a grow's entries, newest first, optionally filtered by type.
 ///
 /// # Errors
