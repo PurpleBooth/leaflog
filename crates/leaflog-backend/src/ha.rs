@@ -163,8 +163,14 @@ impl HaBridge {
         let handle_token = token.clone();
         // One shared client for every REST call to the Supervisor:
         // connection reuse instead of a fresh dial per request
-        // (D145 audit fix).
-        let http = reqwest::Client::new();
+        // (D145 audit fix). Bounded waits: without deadlines a stalled
+        // Supervisor would park the reconnect loop's config refresh
+        // and every picker or history request forever.
+        let http = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30))
+            .build()
+            .unwrap_or_default();
         tokio::spawn(socket_task(
             ws_base,
             live_tx,
