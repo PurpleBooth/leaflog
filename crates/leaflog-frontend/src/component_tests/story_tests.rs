@@ -32,7 +32,7 @@ async fn photo_card_updates_names_after_plants_load() {
         .expect("test plant"),
     ]);
     assert!(
-        try_wait_for(&mut || mount.has("a[aria-label='Open the original photo']")).await,
+        try_wait_for(&mut || mount.has("a[aria-label^='Open the original photo']")).await,
         "photo links arrive asynchronously: {}",
         mount.text()
     );
@@ -84,7 +84,9 @@ async fn story_renders_a_plant_linked_photo() {
     });
     assert!(
         try_wait_for(&mut || {
-            mount.has("a[aria-label='Open the original photo']")
+            // The link name carries the action and the photo's caption.
+            mount.has("a[aria-label^='Open the original photo']")
+                && mount.has("a[aria-label*='Test plant A']")
                 && mount.text().contains("Test plant A")
         })
         .await,

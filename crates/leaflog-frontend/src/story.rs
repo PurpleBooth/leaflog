@@ -348,12 +348,13 @@ pub(crate) fn PhotoCard(
     let armed = Signal::derive(move || armed_photo.get().as_deref() == Some(&id));
     view! {
         <li>
-            // The link says what it does; the thumbnail is its preview
-            // and the caption below carries the date once, not three
-            // times (impeccable audit).
+            // The link names the action and the photo, so the links
+            // list stays unambiguous; the thumbnail is its preview
+            // (empty alt) and the caption below carries the date once
+            // (impeccable audit).
             <a href=format!("api/photos/{}/original", photo.id) target="_blank" rel="noreferrer"
                 class="block overflow-hidden rounded-lg border border-base-300"
-                aria-label=t_string!(i18n, story.open_original).into_owned()
+                aria-label=move || format!("{}: {}", t_string!(i18n, story.open_original), caption.get())
             >
                 <img class="aspect-square w-full object-cover" loading="lazy" src=format!("api/photos/{}/thumbnail", photo.id) alt="" />
             </a>

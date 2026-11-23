@@ -88,7 +88,9 @@ test('a day upload records its capture date and plant without an action entry', 
 
   await page.getByRole('button', { name: 'Load older days' }).click();
   const photo = days.filter({ has: page.locator('img[alt]') });
-  await expect(photo.getByRole('img', { name: plantName, exact: false })).toBeVisible();
+  // The link's accessible name is "Open the original photo: <date · plant>"
+  // (impeccable audit); the thumbnail itself has an empty alt.
+  await expect(photo.getByRole('link', { name: plantName, exact: false })).toBeVisible();
 
   const older = await request.get(url(`/api/grows/${growId}/story?before=${noteDate}`));
   expect(older.ok()).toBeTruthy();
