@@ -641,9 +641,8 @@ async fn grow_defaults_strain_and_lamp_fields_when_omitted() {
     assert_strain_lamp_fields(&fetched, &defaults);
 }
 
-/// A negative watt draw is nonsense (the equipment catalogue rejects
-/// it too); the grow's copy of the field follows the same rule — 400,
-/// never a stored row.
+/// A negative watt draw is nonsense; the grow's copy of the field
+/// follows the same rule — 400, never a stored row.
 #[tokio::test]
 async fn grow_rejects_negative_real_watts() {
     let (base, _root) = spawn().await;
