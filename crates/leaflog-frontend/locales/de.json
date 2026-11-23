@@ -3,7 +3,8 @@
     "history": "Verlauf",
     "grows": "Anbauten",
     "main": "Hauptnavigation",
-    "schedules": "Düngepläne"
+    "schedules": "Düngepläne",
+    "settings": "Einstellungen"
   },
   "page": {
     "footer_privacy": "Läuft lokal in deiner Home Assistant — keine Cloud, keine Telemetrie.",
@@ -127,7 +128,8 @@
     "recorded_at": "Datum und Uhrzeit",
     "photo_plants": "Pflanzen auf diesem Foto (optional)",
     "upload": "Foto hochladen",
-    "whole_grow": "Gesamter Anbau"
+    "whole_grow": "Gesamter Anbau",
+    "open_original": "Originalfoto öffnen"
   },
   "env": {
     "apply_band": "Band anwenden",
@@ -440,5 +442,29 @@
     "err_products_limit": "Ein Plan umfasst höchstens {{ count }} Produktzeilen.",
     "pending_fit": "„{{name}}“ ist zugewiesen. Der Plan erscheint, sobald das Blütenfenster bekannt ist — trage den Flip ein, um ihn zu starten.",
     "pending_open": "Düngeplan öffnen"
+  },
+  "settings": {
+    "heading": "Einstellungen",
+    "general": "Allgemein",
+    "automation": "Automatisierung",
+    "language": "Sprache",
+    "language_system": "Home Assistant folgen",
+    "language_hint": "Gilt nach dem nächsten Laden.",
+    "timezone": "Angezeigte Zeitzone",
+    "timezone_hint": "Ein IANA-Name wie Europe/Berlin. Leer folgt der Zeitzone von Home Assistant.",
+    "retention": "Sensormessungen aufbewahren (Monate)",
+    "retention_hint": "Ältere Messungen werden gelöscht. Standard 24.",
+    "photo_warn": "Vorwarnung ab Fotogröße (MiB)",
+    "photo_warn_hint": "Wird angezeigt, wenn ein Upload größer ist. Standard 2048.",
+    "auto_log": "Lichtwechsel automatisch protokollieren",
+    "auto_log_hint": "Schreibt einen Eintrag, wenn ein gebundenes Licht an- oder ausgeht.",
+    "notify": "Home-Assistant-Benachrichtigungen senden",
+    "notify_hint": "Wenn ein Wert sein Band verlässt. Dies ist der einzige Service-Aufruf der App.",
+    "quiet_hours": "Ruhezeiten",
+    "quiet_hours_hint": "In diesem Zeitfenster keine Benachrichtigungen, z. B. 22:00 - 07:00. Leer heißt: kein Ruhefenster.",
+    "save": "Speichern",
+    "saving": "Speichert…",
+    "saved": "Gespeichert",
+    "save_failed": "Speichern fehlgeschlagen — Werte prüfen."
   }
 }

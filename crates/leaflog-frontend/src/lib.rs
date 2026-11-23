@@ -46,6 +46,7 @@ mod onboarding;
 mod phase_pick;
 mod quick_add;
 mod schedules;
+mod settings;
 mod story;
 mod theme;
 mod ui;
@@ -82,6 +83,7 @@ use leptos::task::spawn_local;
 use leptos_router::components::{A, Route, Router, Routes};
 use leptos_router::path;
 use schedules::{ScheduleEditRoute, ScheduleNewRoute, SchedulesPage};
+use settings::SettingsPage;
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 
 use i18n::{I18nContextProvider, Locale, t, t_string, use_i18n};
@@ -271,7 +273,7 @@ pub fn App() -> impl IntoView {
 ///
 /// Two-row bench bar (nav rework, 2026-11-22): the brand is itself the
 /// home link — `/` opens the current grow's dashboard — and the three
-/// section links (Grows · Schedules · History) run full-width beneath
+/// section links (Grows · Schedules · History · Settings) run full-width beneath
 /// it, so the bar never wraps awkwardly on phones. The active page is
 /// marked by the aria-current underline (DESIGN.md Navigation), never
 /// by colour alone.
@@ -296,12 +298,13 @@ fn AppShell() -> impl IntoView {
                     </h1>
                 </div>
                 <nav
-                    class="mainnav flex w-full items-center gap-6 border-b border-base-300 pb-2 text-sm"
+                    class="mainnav flex w-full flex-wrap items-center gap-x-6 gap-y-1 border-b border-base-300 pb-2 text-sm"
                     aria-label={t_string!(i18n, nav.main).into_owned()}
                 >
                     <A href=route_href("/grows")>{t!(i18n, nav.grows)}</A>
                     <A href=route_href("/schedules")>{t!(i18n, nav.schedules)}</A>
                     <A href=route_href("/history")>{t!(i18n, nav.history)}</A>
+                    <A href=route_href("/settings")>{t!(i18n, nav.settings)}</A>
                 </nav>
             </header>
             <main id="main" class="min-w-0 flex-1 pt-6 pb-12">
@@ -379,6 +382,7 @@ fn routes() -> impl IntoView {
             <Route path=path!("/") view=Landing />
             <Route path=path!("/spike") view=Spike />
             <Route path=path!("/history") view=HistoryPage />
+            <Route path=path!("/settings") view=SettingsPage />
             <Route path=path!("/plants/:id") view=PlantViewPage />
             <Route path=path!("/grows") view=GrowsPage />
             <Route path=path!("/grows/:id") view=GrowsRoute />
@@ -398,6 +402,7 @@ fn routes() -> impl IntoView {
         <Routes fallback=move || view! { <p>{t!(i18n, page.loading)}</p> }>
             <Route path=path!("/") view=Landing />
             <Route path=path!("/history") view=HistoryPage />
+            <Route path=path!("/settings") view=SettingsPage />
             <Route path=path!("/plants/:id") view=PlantViewPage />
             <Route path=path!("/grows") view=GrowsPage />
             <Route path=path!("/grows/:id") view=GrowsRoute />

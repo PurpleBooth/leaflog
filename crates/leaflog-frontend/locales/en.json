@@ -3,7 +3,8 @@
     "history": "History",
     "grows": "Grows",
     "main": "Main",
-    "schedules": "Schedules"
+    "schedules": "Schedules",
+    "settings": "Settings"
   },
   "page": {
     "footer_privacy": "Runs locally on your Home Assistant — no cloud, no telemetry.",
@@ -127,7 +128,8 @@
     "recorded_at": "Date and time",
     "photo_plants": "Plants in this photo (optional)",
     "upload": "Upload photo",
-    "whole_grow": "Whole grow"
+    "whole_grow": "Whole grow",
+    "open_original": "Open the original photo"
   },
   "env": {
     "apply_band": "Apply band",
@@ -440,5 +442,29 @@
     "err_products_limit": "A schedule holds at most {{ count }} product rows.",
     "pending_fit": "\"{{name}}\" is assigned. The plan appears once the grow's flowering window is known — log the flip to start it.",
     "pending_open": "Open schedule"
+  },
+  "settings": {
+    "heading": "Settings",
+    "general": "General",
+    "automation": "Automation",
+    "language": "Language",
+    "language_system": "Follow Home Assistant",
+    "language_hint": "Applies after the next load.",
+    "timezone": "Display time zone",
+    "timezone_hint": "An IANA name such as Europe/Berlin. Empty follows Home Assistant's time zone.",
+    "retention": "Keep sensor snapshots (months)",
+    "retention_hint": "Older snapshots are pruned. Default 24.",
+    "photo_warn": "Warn above photo size (MiB)",
+    "photo_warn_hint": "Shown when an upload is larger than this. Default 2048.",
+    "auto_log": "Log light switches automatically",
+    "auto_log_hint": "Writes a log entry when a bound light turns on or off.",
+    "notify": "Send Home Assistant notifications",
+    "notify_hint": "When a reading leaves its band. This is the only service call the app makes.",
+    "quiet_hours": "Quiet hours",
+    "quiet_hours_hint": "No notifications in this window, e.g. 22:00 - 07:00. Leave it empty for no quiet window.",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Saved",
+    "save_failed": "Could not save — check the values."
   }
 }

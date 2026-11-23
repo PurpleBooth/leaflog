@@ -19,6 +19,7 @@ mod light_cycle_tests;
 mod onboarding_tests;
 mod quick_add_tests;
 mod schedules_tests;
+mod settings_tests;
 mod shared_components_tests;
 mod story_tests;
 mod support;
