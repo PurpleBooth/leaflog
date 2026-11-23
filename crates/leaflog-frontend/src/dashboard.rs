@@ -321,13 +321,13 @@ fn EnvTile(
     });
     view! {
         <div class=class>
-            <span class="text-xs uppercase tracking-wide text-base-content/60">{label}</span>
+            <span class="text-xs uppercase tracking-wide text-base-content/70">{label}</span>
             {mark}
             <span class="w-full text-lg font-semibold">{value}</span>
             {band.map_or_else(
                 || ().into_any(),
                 |band| {
-                    view! { <span class="w-full text-xs text-base-content/60">{band}</span> }
+                    view! { <span class="w-full text-xs text-base-content/70">{band}</span> }
                         .into_any()
                 },
             )}
@@ -423,12 +423,18 @@ pub fn EnvDashboard(grow_id: String) -> impl IntoView {
                     // The phase's RH window rides under the LF reading
                     // the same way the VPD band rides under VPD (D136):
                     // one tile per quantity, the corridor as a footnote.
-                    let rh_band = format!(
-                        "{}{}–{} %",
-                        t_string!(i18n, env.band_prefix),
-                        leaflog_core::format::format_decimal(v.rh_window.0, 0, style),
-                        leaflog_core::format::format_decimal(v.rh_window.1, 0, style)
-                    );
+                    // No RH can satisfy the band at this temperature
+                    // (cold room): a dash, not "0–0 %".
+                    let rh_band = if leaflog_core::env::rh_window_is_empty(v.rh_window) {
+                        "—".to_owned()
+                    } else {
+                        format!(
+                            "{}{}–{} %",
+                            t_string!(i18n, env.band_prefix),
+                            leaflog_core::format::format_decimal(v.rh_window.0, 0, style),
+                            leaflog_core::format::format_decimal(v.rh_window.1, 0, style)
+                        )
+                    };
                     let vpd_band = format!(
                         "{}{}–{}",
                         t_string!(i18n, env.band_prefix),

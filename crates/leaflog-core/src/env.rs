@@ -232,6 +232,14 @@ pub fn rh_window(air_temperature_c: f64, leaf_offset_c: f64, band: (f64, f64)) -
     (rh_min, rh_max)
 }
 
+/// Whether an [`rh_window`] is empty: no RH keeps VPD in band at that
+/// temperature (a cold room, or a band that is entirely out of reach).
+/// Callers show a dash instead of "0–0 %".
+#[must_use]
+pub const fn rh_window_is_empty(window: (f64, f64)) -> bool {
+    window.0 >= window.1
+}
+
 /// A recommended value band in volumetric percent, with the sources
 /// behind its numbers (≥2 sources per the seed-data discipline).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -779,8 +787,8 @@ mod tests {
         CO2_LIGHTS_OFF_PPM, CO2_LIGHTS_ON_PPM, DEFAULT_LEAF_OFFSET_C, LampInput,
         NIGHT_LEAF_OFFSET_C, NightVpdBand, Phase, TempThresholds, Tolerance, advise_lamp,
         advisor_watts, coach_tips, night_temperature_corridor, night_vpd_band, rh_window,
-        saturation_vp_kpa, temperature_corridor, temperature_target_band, vpd_band, vpd_kpa,
-        wattage_classes,
+        rh_window_is_empty, saturation_vp_kpa, temperature_corridor, temperature_target_band,
+        vpd_band, vpd_kpa, wattage_classes,
     };
 
     // --- VPD golden values (spec §13) ---
@@ -854,6 +862,17 @@ mod tests {
         assert!(with_offset < without, "negative leaf offset must lower VPD");
         // The difference is the saturation-pressure delta.
         assert!((without - with_offset).abs() > 0.1);
+    }
+
+    #[test]
+    fn rh_window_is_empty_when_the_room_is_too_cold() {
+        // A freezing room: the saturation pressures are so small that
+        // no RH reaches the seedling band, so the solver clamps to
+        // (0, 0). (Seen live with a mock sensor reading −36 °C.)
+        let cold = rh_window(-20.0, -2.0, (0.4, 0.8));
+        assert_eq!(cold, (0.0, 0.0));
+        assert!(rh_window_is_empty(cold));
+        assert!(!rh_window_is_empty(rh_window(25.0, -2.0, (0.4, 0.8))));
     }
 
     #[test]
