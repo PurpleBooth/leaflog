@@ -140,6 +140,19 @@ impl HaBridge {
     /// entries for light transitions.
     #[must_use]
     pub fn spawn(base_url: String, token: SupervisorToken, db: Db) -> Self {
+        Self::spawn_with_heartbeat(base_url, token, db, HEARTBEAT)
+    }
+
+    /// Like [`Self::spawn`], with a custom ping interval. The socket is
+    /// dropped once it stays silent for 2.5 intervals. Tests use short
+    /// intervals; production takes [`HEARTBEAT`].
+    #[must_use]
+    pub fn spawn_with_heartbeat(
+        base_url: String,
+        token: SupervisorToken,
+        db: Db,
+        heartbeat: Duration,
+    ) -> Self {
         let (live_tx, live_rx) = watch::channel(LiveData::offline());
         let (timezone_tx, timezone_rx) = watch::channel(None);
         let (language_tx, language_rx) = watch::channel(None);
@@ -154,7 +167,6 @@ impl HaBridge {
         let http = reqwest::Client::new();
         tokio::spawn(socket_task(
             ws_base,
-            token.clone(),
             live_tx,
             updates_rx,
             db,
@@ -162,6 +174,7 @@ impl HaBridge {
                 rest_base,
                 token,
                 http: http.clone(),
+                heartbeat,
             },
             ConfigWatches {
                 timezone: timezone_tx,
@@ -377,8 +390,9 @@ struct ConfigWatches {
     units: watch::Sender<UnitSystem>,
 }
 
-/// The REST-facing config of the socket task, bundled so it stays
-/// within its argument budget (same pattern as [`ConfigWatches`]).
+/// The REST client and socket timing of the socket task, bundled so
+/// it stays within its argument budget (same pattern as
+/// [`ConfigWatches`]).
 #[derive(Debug)]
 struct SocketRest {
     /// `http://supervisor`-style base for the REST calls.
@@ -387,14 +401,21 @@ struct SocketRest {
     token: SupervisorToken,
     /// The bridge's shared HTTP client (connection reuse, D145).
     http: reqwest::Client,
+    /// The socket's ping interval ([`HEARTBEAT`] in production).
+    heartbeat: Duration,
 }
+
+/// How often the socket pings the Supervisor. Every inbound frame
+/// counts as a sign of life; a socket silent for 2.5 intervals is
+/// dropped, because a half-open TCP connection never delivers an
+/// error on its own.
+const HEARTBEAT: Duration = Duration::from_secs(30);
 
 /// The socket task: connect, auth, subscribe, stream; reconnect
 /// forever. `db` writes auto-log entries when a bound light entity
 /// changes state and auto-logging is on.
 async fn socket_task(
     ws_base: String,
-    token: SupervisorToken,
     live_tx: watch::Sender<LiveData>,
     mut updates: mpsc::UnboundedReceiver<Update>,
     db: Db,
@@ -414,7 +435,7 @@ async fn socket_task(
         refresh_config(&rest.rest_base, &rest.token, &rest.http, &watches).await;
         let timezone = watches.timezone.borrow().clone();
         let outcome = tokio::select! {
-            outcome = run_socket(&url, &token, &live_tx, &tracked, &mut updates, &db, timezone) => outcome,
+            outcome = run_socket(&url, &rest, &live_tx, &tracked, &mut updates, &db, timezone) => outcome,
             () = refresh_config_periodically(&rest, &watches) => unreachable!("config loop never ends"),
         };
         match outcome {
@@ -495,11 +516,12 @@ enum SocketOutcome {
 }
 
 /// One connection lifecycle: WS handshake → `auth` →
-/// `subscribe_entities` → stream events until error/timeout/binding
-/// change. Marks the live data offline on exit.
+/// `subscribe_entities` → stream events until error, silence past
+/// 2.5 heartbeats, or a binding change. Marks the live data offline
+/// on exit.
 async fn run_socket(
     url: &str,
-    token: &SupervisorToken,
+    rest: &SocketRest,
     live_tx: &watch::Sender<LiveData>,
     tracked: &[String],
     updates: &mut mpsc::UnboundedReceiver<Update>,
@@ -513,7 +535,7 @@ async fn run_socket(
     };
 
     // Expect auth_required, send the token, expect auth_ok.
-    if !auth_handshake(&mut socket, token).await {
+    if !auth_handshake(&mut socket, &rest.token).await {
         return SocketOutcome::Retry(tracked);
     }
     let mut next_id = 1_u64;
@@ -538,13 +560,21 @@ async fn run_socket(
     let mut last_light_log: std::collections::HashMap<(String, String), std::time::Instant> =
         std::collections::HashMap::new();
 
-    let mut heartbeat = tokio::time::interval(Duration::from_secs(30));
+    let mut heartbeat = tokio::time::interval(rest.heartbeat);
     heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     heartbeat.tick().await; // first tick is immediate
+    let idle_after = rest.heartbeat.saturating_mul(5) / 2;
+    let mut last_seen = tokio::time::Instant::now();
 
     loop {
         tokio::select! {
             _ = heartbeat.tick() => {
+                // The pong is the sign of life we wait for. Checking
+                // the clock instead of matching pong ids tolerates
+                // any frame order and needs no extra state.
+                if last_seen.elapsed() >= idle_after {
+                    break;
+                }
                 let ping = json!({ "id": next_id, "type": "ping" });
                 next_id += 1;
                 if socket
@@ -573,6 +603,7 @@ async fn run_socket(
                 let Some(Ok(message)) = message else {
                     break;
                 };
+                last_seen = tokio::time::Instant::now();
                 match message {
                     Message::Text(text) => {
                         let changed = apply_event(text.as_str(), live_tx);

@@ -669,6 +669,83 @@ async fn failed_subscribe_entities_result_leaves_bridge_disconnected() {
     }
 }
 
+/// A scripted Supervisor socket: auth and `subscribe_entities` succeed,
+/// then nothing is answered — not even pings. That is what a half-open
+/// TCP connection (peer gone without a FIN) looks like to the client.
+async fn silent_socket(socket: WebSocket) {
+    let (mut sender, mut receiver) = socket.split();
+    let required = Message::text(json!({ "type": "auth_required" }).to_string());
+    if sender.send(required).await.is_err() {
+        return;
+    }
+    let mut subscribed = false;
+    while let Some(Ok(message)) = receiver.next().await {
+        let Message::Text(text) = message else {
+            continue;
+        };
+        let Ok(value) = serde_json::from_str::<Value>(text.as_str()) else {
+            continue;
+        };
+        match value.get("type").and_then(Value::as_str) {
+            Some("auth") => {
+                let ok = Message::text(json!({ "type": "auth_ok" }).to_string());
+                if sender.send(ok).await.is_err() {
+                    return;
+                }
+            }
+            Some("subscribe_entities") if !subscribed => {
+                subscribed = true;
+                let result = Message::text(
+                    json!({ "id": value["id"], "type": "result", "success": true }).to_string(),
+                );
+                if sender.send(result).await.is_err() {
+                    return;
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+// Extractors are taken by value because Axum requires it.
+async fn silent_websocket(upgrade: WebSocketUpgrade) -> Response {
+    upgrade.on_upgrade(silent_socket)
+}
+
+#[tokio::test]
+async fn a_socket_silent_past_the_idle_limit_is_dropped_and_replaced() {
+    let router = axum::Router::new().route("/core/websocket", axum::routing::get(silent_websocket));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+
+    let bridge = HaBridge::spawn_with_heartbeat(
+        format!("http://{addr}"),
+        SupervisorToken::new(SECRET),
+        Db::open_in_memory().unwrap(),
+        Duration::from_millis(100),
+    );
+    bridge.track_entities(vec!["light.grow_led".to_owned()]);
+    wait_connected(&bridge).await;
+
+    // 100 ms pings, so silence for 250 ms (2.5 pings) must end the
+    // connection: the live map is marked offline instead of staying
+    // "connected" on a socket that will never deliver a state again.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while bridge.live_now().connected {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "a socket silent past the idle limit must be dropped"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
+    // Dropped, not abandoned: a fresh connection takes over.
+    wait_connected(&bridge).await;
+}
+
 #[tokio::test]
 async fn entity_picker_filters_by_device_class() {
     let (mock_url, _mock) = spawn_mock().await;
