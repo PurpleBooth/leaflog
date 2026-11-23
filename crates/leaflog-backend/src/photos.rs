@@ -1,7 +1,7 @@
 //! Photo storage pipeline (spec §4.3).
 //!
-//! Originals are re-encoded without EXIF/GPS under
-//! `photos/originals/<grow>/`, WebP thumbnails under
+//! Originals are rotated upright, then re-encoded without EXIF/GPS
+//! under `photos/originals/<grow>/`, WebP thumbnails under
 //! `photos/thumbnails/<grow>/` (the thumbnail tree is excluded from
 //! backups and regenerated on demand). `originals/` and `thumbnails/`
 //! are top-level so the app `backup_exclude` entry `photos/thumbnails`
@@ -112,8 +112,10 @@ impl PhotoStore {
         // Normalize every input (RGBA/grayscale/…) to plain 8-bit RGB up
         // front: the re-encode through the pixel buffer guarantees no
         // EXIF/GPS or other metadata survives, whatever the input was,
-        // and every later step works on one known color type.
-        let rgb = decode(bytes)?.to_rgb8();
+        // and every later step works on one known color type. The pixels
+        // are rotated upright first, because the orientation tag is one
+        // of the things the re-encode strips.
+        let rgb = upright_rgb(bytes)?;
         let mut original = Vec::new();
         let mut encoder =
             image::codecs::jpeg::JpegEncoder::new_with_quality(&mut original, ORIGINAL_QUALITY);
@@ -145,14 +147,19 @@ impl PhotoStore {
         })
     }
 
-    /// Writes the 512-px WebP thumbnail for an RGB image.
+    /// Writes the WebP thumbnail (longest edge 512 px, aspect kept).
     fn write_thumbnail(
         &self,
         image: &image::RgbImage,
         grow_id: &str,
         name: &str,
     ) -> Result<(), PhotoError> {
-        let thumb = image::imageops::thumbnail(image, THUMBNAIL_EDGE, THUMBNAIL_EDGE);
+        let longest = u64::from(image.width().max(image.height()));
+        let edge = |pixels: u32| {
+            u32::try_from((u64::from(pixels) * u64::from(THUMBNAIL_EDGE) + longest / 2) / longest)
+                .expect("a scaled edge is never longer than the thumbnail edge")
+        };
+        let thumb = image::imageops::thumbnail(image, edge(image.width()), edge(image.height()));
         let mut out = Vec::new();
         let encoder = image::codecs::webp::WebPEncoder::new_lossless(&mut out);
         encoder
@@ -192,7 +199,7 @@ impl PhotoStore {
         std::fs::create_dir_all(self.thumbnails_dir(grow_id))?;
         let original_name = format!("{}.jpg", name.strip_suffix(".webp").unwrap_or(name));
         let bytes = self.read_original(grow_id, &original_name)?;
-        let rgb = decode(&bytes)?.to_rgb8();
+        let rgb = upright_rgb(&bytes)?;
         self.write_thumbnail(&rgb, grow_id, name)?;
         Ok(std::fs::read(path)?)
     }
@@ -287,6 +294,30 @@ fn decode(bytes: &[u8]) -> Result<DynamicImage, PhotoError> {
         .map_err(|error| PhotoError::Decode(error.to_string()))
 }
 
+/// Decodes the image, rotates it upright when the EXIF orientation tag
+/// says so, and converts it to 8-bit RGB.
+fn upright_rgb(bytes: &[u8]) -> Result<image::RgbImage, PhotoError> {
+    let mut image = decode(bytes)?;
+    if let Some(orientation) = exif_orientation(bytes) {
+        image.apply_orientation(orientation);
+    }
+    Ok(image.to_rgb8())
+}
+
+/// The EXIF orientation of `bytes`, when it carries a known value.
+fn exif_orientation(bytes: &[u8]) -> Option<image::metadata::Orientation> {
+    let exif = exif::Reader::new()
+        .read_from_container(&mut Cursor::new(bytes))
+        .ok()?;
+    let field = exif.get_field(exif::Tag::Orientation, exif::In::PRIMARY)?;
+    let exif::Value::Short(values) = &field.value else {
+        return None;
+    };
+    u8::try_from(*values.first()?)
+        .ok()
+        .and_then(image::metadata::Orientation::from_exif)
+}
+
 /// Extracts EXIF `DateTimeOriginal` as RFC 3339, if present and
 /// parseable. GPS and everything else is deliberately ignored (and
 /// dropped by the re-encode).
@@ -318,19 +349,33 @@ mod tests {
     /// A minimal valid JPEG (8x8) with a well-formed EXIF APP1 segment
     /// carrying `DateTimeOriginal`, built with the exif crate's own writer.
     fn jpeg_with_exif() -> Vec<u8> {
-        let img = image::DynamicImage::new_rgb8(8, 8);
+        jpeg_with_tags(
+            8,
+            8,
+            &[exif::Field {
+                tag: exif::Tag::DateTimeOriginal,
+                ifd_num: exif::In::PRIMARY,
+                value: exif::Value::Ascii(vec![b"2026:11:08 10:20:30".to_vec()]),
+            }],
+        )
+    }
+
+    /// Encodes a solid `width`x`height` RGB JPEG and inserts an EXIF APP1
+    /// segment with `fields` right after the SOI marker.
+    fn jpeg_with_tags(width: u32, height: u32, fields: &[exif::Field]) -> Vec<u8> {
+        let rgb = image::DynamicImage::new_rgb8(width, height).to_rgb8();
         let mut plain = Vec::new();
         image::codecs::jpeg::JpegEncoder::new(&mut plain)
-            .encode(img.to_rgb8().as_raw(), 8, 8, image::ExtendedColorType::Rgb8)
+            .encode(rgb.as_raw(), width, height, image::ExtendedColorType::Rgb8)
             .expect("encoding a solid image cannot fail");
 
-        let field = exif::Field {
-            tag: exif::Tag::DateTimeOriginal,
-            ifd_num: exif::In::PRIMARY,
-            value: exif::Value::Ascii(vec![b"2026:11:08 10:20:30".to_vec()]),
-        };
+        if fields.is_empty() {
+            return plain;
+        }
         let mut writer = exif::experimental::Writer::new();
-        writer.push_field(&field);
+        for field in fields {
+            writer.push_field(field);
+        }
         let mut tiff = std::io::Cursor::new(Vec::new());
         writer
             .write(&mut tiff, false)
@@ -398,6 +443,65 @@ mod tests {
         assert_eq!(&thumb[..4], b"RIFF", "WebP container magic");
         assert_eq!(&thumb[8..12], b"WEBP");
 
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    fn decode(bytes: &[u8]) -> (u32, u32) {
+        let image = image::load_from_memory(bytes).expect("stored bytes decode");
+        (image.width(), image.height())
+    }
+
+    #[test]
+    fn thumbnail_keeps_the_aspect_ratio() {
+        let dir = std::env::temp_dir().join(format!("leaflog-photos-{}", crate::db::new_id()));
+        let store = PhotoStore::new(dir.clone());
+        let stored = store
+            .store("grow1", &jpeg_with_tags(900, 600, &[]))
+            .unwrap();
+
+        let original = store.read_original("grow1", &stored.original_name).unwrap();
+        assert_eq!(decode(&original), (900, 600));
+
+        let thumb = store
+            .read_thumbnail("grow1", &stored.thumbnail_name)
+            .unwrap();
+        assert_eq!(
+            decode(&thumb),
+            (512, 341),
+            "the thumbnail fits inside 512x512 without cropping or squashing"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn store_applies_the_exif_orientation_before_stripping_it() {
+        // Orientation 6: row 0 is the visual right side, so a 480x900
+        // pixel buffer displays as 900x480.
+        let portrait = jpeg_with_tags(
+            480,
+            900,
+            &[exif::Field {
+                tag: exif::Tag::Orientation,
+                ifd_num: exif::In::PRIMARY,
+                value: exif::Value::Short(vec![6]),
+            }],
+        );
+        let dir = std::env::temp_dir().join(format!("leaflog-photos-{}", crate::db::new_id()));
+        let store = PhotoStore::new(dir.clone());
+        let stored = store.store("grow1", &portrait).unwrap();
+
+        let original = store.read_original("grow1", &stored.original_name).unwrap();
+        assert!(!contains_exif(&original), "EXIF must be stripped");
+        assert_eq!(
+            decode(&original),
+            (900, 480),
+            "pixels must be rotated so the photo looks right without the tag"
+        );
+
+        let thumb = store
+            .read_thumbnail("grow1", &stored.thumbnail_name)
+            .unwrap();
+        assert_eq!(decode(&thumb), (512, 273));
         std::fs::remove_dir_all(&dir).ok();
     }
 

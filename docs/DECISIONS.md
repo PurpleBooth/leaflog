@@ -3740,9 +3740,11 @@ UI/docs-only; no config changes needed for M4.
 EXIF/GPS stripping is done by decoding to pixels and re-encoding a
 clean JPEG (quality 95): whatever metadata the input carried cannot
 survive. EXIF `DateTimeOriginal` is read *before* the strip and kept
-as the capture time (spec §4.3); everything else is dropped.
-Thumbnails are 512-px lossless WebP (the `image` crate's built-in
-encoder). `originals/<grow>/` and `thumbnails/<grow>/` are top-level
+as the capture time (spec §4.3); everything else is dropped. The
+`Orientation` tag is honoured before it goes: pixels are rotated
+upright at decode, so originals and thumbnails show right without
+the tag. Thumbnails are lossless WebP with a 512-px longest edge
+(the `image` crate's built-in encoder); the aspect ratio is kept. `originals/<grow>/` and `thumbnails/<grow>/` are top-level
 so the app's `backup_exclude: photos/thumbnails` entry covers every
 grow at once; missing thumbnails regenerate lazily on first request
 (backup restores skip them by design).
