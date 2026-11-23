@@ -3,8 +3,8 @@
 A self-hosted cannabis grow diary packaged as a **Home Assistant app** that
 lives in your HA sidebar via ingress. Backend and frontend are both Rust.
 
-> Status: v0.1.0 released (2026-11-08); milestones M1-M8 complete. See
-> [`docs/SPEC.md`](docs/SPEC.md) for the full product spec and
+> Status: released; see [`CHANGELOG.md`](CHANGELOG.md) for the version
+> history, [`docs/SPEC.md`](docs/SPEC.md) for the full product spec and
 > [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how it fits together.
 
 ## Features

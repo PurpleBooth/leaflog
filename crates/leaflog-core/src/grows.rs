@@ -157,8 +157,7 @@ pub struct Grow {
     /// Absent JSON parses as [`Tolerance::Average`].
     #[serde(default)]
     pub light_tolerance: Tolerance,
-    /// The lamp's measured wall watts (D075, same concept as the
-    /// equipment catalogue's field); `None` = unknown, and the lamp
+    /// The lamp's measured wall watts (D075); `None` = unknown, and the lamp
     /// advisor falls back to its default fixture. Absent JSON parses
     /// as `None`.
     #[serde(default)]

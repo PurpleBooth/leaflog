@@ -123,7 +123,6 @@ pub enum HaError {
 #[derive(Clone, Debug)]
 pub struct HaBridge {
     inner: Arc<BridgeInner>,
-    #[allow(dead_code)] // kept for a future stop signal
     updates_tx: mpsc::UnboundedSender<Update>,
 }
 
@@ -876,7 +875,7 @@ async fn auto_log_light_change(
                 let day = timezone
                     .as_deref()
                     .and_then(|tz| crate::app::day_number_in(&grow.started_on, &occurred_at, tz))
-                    .or_else(|| day_from(&grow.started_on, &occurred_at))
+                    .or_else(|| crate::app::day_number_utc(&grow.started_on, &occurred_at))
                     .unwrap_or(0);
                 let flip = crate::store::actions::first_event_day(
                     conn,
@@ -913,16 +912,6 @@ async fn auto_log_light_change(
     if let Err(error) = result {
         eprintln!("auto-log skipped: {error}");
     }
-}
-
-/// Whole days between a `YYYY-MM-DD` start and an RFC 3339 instant.
-fn day_from(started_on: &str, occurred_at: &str) -> Option<u16> {
-    let date_format = time::macros::format_description!("[year]-[month]-[day]");
-    let start = time::Date::parse(started_on, &date_format).ok()?;
-    let moment =
-        time::OffsetDateTime::parse(occurred_at, &time::format_description::well_known::Rfc3339)
-            .ok()?;
-    u16::try_from((moment.date() - start).whole_days().max(0)).ok()
 }
 
 #[cfg(test)]

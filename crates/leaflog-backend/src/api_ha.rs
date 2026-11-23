@@ -5,9 +5,7 @@
 use std::collections::BTreeMap;
 
 use axum::extract::{Path, Query, State};
-use axum::http::{StatusCode, header};
 use axum::response::sse::{Event, KeepAlive, Sse};
-use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use futures_util::Stream;
@@ -226,19 +224,5 @@ pub async fn capture_into(state: &AppState, grow_id: &str, action_log_id: &str) 
         .await;
     if let Err(error) = result {
         eprintln!("auto-capture skipped: {error}");
-    }
-}
-
-/// A raw JSON body with the `application/json` content type.
-#[derive(Debug)]
-pub struct JsonBytes(pub Vec<u8>);
-
-impl IntoResponse for JsonBytes {
-    fn into_response(self) -> Response {
-        Response::builder()
-            .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, "application/json")
-            .body(axum::body::Body::from(self.0))
-            .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
     }
 }

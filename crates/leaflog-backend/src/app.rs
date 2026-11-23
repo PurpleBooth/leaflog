@@ -142,7 +142,7 @@ fn local_date_utc(occurred_at: &str) -> Option<String> {
 
 /// Plain UTC date math — the pre-canonical behaviour and the fallback
 /// for unknown zones.
-fn day_number_utc(started_on: &str, occurred_at: &str) -> Option<u16> {
+pub(crate) fn day_number_utc(started_on: &str, occurred_at: &str) -> Option<u16> {
     let start = time::Date::parse(
         started_on,
         &time::macros::format_description!("[year]-[month]-[day]"),

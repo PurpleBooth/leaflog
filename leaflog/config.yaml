@@ -22,7 +22,3 @@ backup: hot
 backup_exclude:
   - photos/thumbnails
 image: ghcr.io/purplebooth/leaflog-{arch}
-options:
-  log_level: info
-schema:
-  log_level: list(debug|info|warning|error)

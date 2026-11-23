@@ -14,12 +14,6 @@ per-grow bindings, a phase forecast, and feeding schedules fitted to
 the plant's real timeline. Environment coaching covers VPD, lamp
 height and substrate-aware pH/EC/TDS guidance.
 
-## Configuration
-
-| Option | Values | Description |
-|---|---|---|
-| `log_level` | `debug`, `info`, `warning`, `error` | Verbosity of the backend log (default `info`). |
-
 ## Data and backups
 
 Everything Leaflog stores lives in the add-on `/data` directory. Photo
