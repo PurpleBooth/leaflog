@@ -141,7 +141,7 @@ not be usable to attack third parties.
 | 2.4 | SSRF via the Supervisor link | Mitigated | The backend calls only the Supervisor base URL from the environment (`lib.rs:171`). The history passthrough interpolates a user-supplied `entity_id` into the Supervisor query (`ha.rs:181`), but the caller is already an HA administrator querying their own instance: no privilege crosses a boundary |
 | 2.5 | Container as a beachhead on the add-on network | Mitigated by packaging | No host network, no privileged mode, no Docker socket, `map: data:rw` only, no published ports (`leaflog/config.yaml`). A compromised container still has typical outbound network access; egress filtering is host-level and out of scope. Co-tenant add-ons cannot pass the ingress IP gate, and IP spoofing from another container is not possible without control of the host network namespace |
 | 2.6 | Resource abuse aimed at HA (reconnect storms, history hammering) | Mitigated | WS reconnect backs off 1→60 s with reset after auth (`ha.rs:229`, unit-tested); history hours are clamped 1..720 (`api_ha.rs:67`); SSE streams are `watch`-channel receivers, effectively free |
-| 2.7 | Reputation abuse (shipping malware via the image or HACS) | Partially open | The shipped `custom_components/leaflog` is a no-op marker for HACS update tracking (verified read: registers nothing). Build-time downloads are version-pinned but not hash-pinned: Trunk and wasm-bindgen in `leaflog/Dockerfile`, cocogitto in `.github/workflows/release.yml`. Recommendation R4. Images are not signed |
+| 2.7 | Reputation abuse (shipping malware via the image or HACS) | Partially open | The shipped `custom_components/leaflog` is a no-op marker for HACS update tracking (verified read: registers nothing). Build-time downloads are version-pinned but not hash-pinned: Trunk, wasm-bindgen and just in `leaflog/Dockerfile`, vale, gitleaks, cocogitto in the workflows. Workflow actions are SHA-pinned since 2026-11-23. Recommendation R4. Images are not signed |
 
 ## 7. TM3: Manipulation of data to harm plants
 
@@ -261,8 +261,8 @@ the categories above.
 | Open redirects | None: the app issues no redirects | Mitigated | verified |
 | Supply chain: crates | `Cargo.lock` committed; `cargo deny --workspace check` runs in `just ci` and the CI workflow | Mitigated | `justfile`, `.github/workflows/ci.yml` (R7 closed) |
 | Supply chain: base image | Pinned `ghcr.io/home-assistant/base:3.24-2026.11.0`, never `latest` (D007) | Mitigated | `leaflog/Dockerfile` |
-| Supply chain: build tools | Trunk, wasm-bindgen (Dockerfile) and cocogitto (release workflow) downloaded by version over HTTPS without hash verification | Open | R4 |
-| Supply chain: CI | Only the built-in `GITHUB_TOKEN` (no custom secrets in workflows); PR title validation; no `pull_request_target` flows | Mitigated | `.github/workflows/` |
+| Supply chain: build tools | Trunk, wasm-bindgen and just (`leaflog/Dockerfile`); vale and gitleaks (`ci.yml`); cocogitto and just (`pr-check.yml`, `release.yml`) — all downloaded by version over HTTPS without hash verification | Open | R4 |
+| Supply chain: CI | Workflow actions pinned to commit SHAs (`.github/workflows/`), bumped by Dependabot (`.github/dependabot.yml`); only the built-in `GITHUB_TOKEN` (no custom secrets in workflows); PR title validation; no `pull_request_target` flows | Mitigated | `.github/workflows/` |
 | Supply chain: published image | Not cosign-signed; users pin trust to GHCR/PurpleBooth | Open (low) | R9 |
 | Ingress conformance | Relative URLs only (build `public_url = "./"`), runtime base injection, no login redirects, explicit `DefaultBodyLimit` | Mitigated | `ARCHITECTURE.md`, `tests/ingress.rs` |
 
@@ -295,7 +295,7 @@ Prioritised; none blocks v0.1.0.
 | R1 | **Resolved** (D145): the decoder rejects any declared edge above 8000 px from the header before allocating | TM4.6, TM7 DoS |
 | R2 | **Resolved** (D145): `Cache-Control: private, no-store` on photo originals, `private, max-age=86400` on thumbnails | TM1.6, TM5.4 |
 | R3 | **Resolved** in the feature strip (D075, ticket 05): the strain catalogue — and with it every `source_url` — is gone, so the scheme validation is moot. Re-open only if a data-import feature returns and renders user URLs | TM2.2b |
-| R4 | SHA256-pin the Trunk, wasm-bindgen and cocogitto downloads in Dockerfile and release workflow | TM2.7 |
+| R4 | SHA256-pin the versioned tool downloads: Trunk, wasm-bindgen and just in `leaflog/Dockerfile`; vale and gitleaks in `ci.yml`; cocogitto and just in `pr-check.yml` and `release.yml`. Each upstream release ships a checksum file; record it next to the version and verify before the extract step. Done 2026-11-23 for the workflow *actions* (SHA pins + Dependabot); the tool downloads stay open | TM2.7 |
 | R5 | User-facing hardening notes (a `leaflog/DOCS.md` section or `docs/HARDENING.md`): encrypted HA backups, per-person HA accounts with MFA on admins, sign out of shared devices, FDE on x86 hosts, restraint with host-path add-ons, beware browser caches | TM1.3, TM4.3, TM4.7, TM5.2, TM6 |
 | R6 | Optional photo storage quota setting (default off) with a clear UI state when hit | TM4.4 |
 | R7 | **Resolved**: `cargo deny --workspace check` runs in `just ci` and the CI workflow installs `cargo-deny` | TM7 |

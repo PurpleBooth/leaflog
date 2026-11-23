@@ -1,0 +1,8 @@
+# Keeps the pinned workflow actions current (R4 in
+# docs/THREAT-MODEL.md): each bump is a reviewable PR.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
