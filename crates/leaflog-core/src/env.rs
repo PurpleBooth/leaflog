@@ -492,14 +492,15 @@ pub const DEFAULT_FIXTURE_WATTS: u32 = 330;
 /// rounds to the nearest watt and never lands below 1.
 #[must_use]
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-// the cast is guarded: rounded is a positive f64 and f64-to-int casts
-// saturate, never wrap (see docs/DECISIONS.md D044)
+// the guard routes zero, negative and NaN inputs to the 1 W floor
+// (NaN fails every comparison), and f64-to-u32 casts saturate,
+// never wrap (see docs/DECISIONS.md D044)
 pub fn advisor_watts(real_watts: Option<f64>) -> u32 {
     let Some(watts) = real_watts else {
         return DEFAULT_FIXTURE_WATTS;
     };
     let rounded = watts.round();
-    if rounded < 1.0 {
+    if rounded.is_nan() || rounded < 1.0 {
         return 1;
     }
     rounded as u32
@@ -1001,9 +1002,11 @@ mod tests {
         // A recorded value rounds to the nearest whole watt.
         assert_eq!(advisor_watts(Some(419.6)), 420);
         assert_eq!(advisor_watts(Some(240.0)), 240);
-        // Degenerate stored values never produce a zero-watt lamp.
+        // Degenerate stored values never produce a zero-watt lamp;
+        // NaN cannot compare, so it must be routed by the guard too.
         assert_eq!(advisor_watts(Some(0.4)), 1);
         assert_eq!(advisor_watts(Some(-5.0)), 1);
+        assert_eq!(advisor_watts(Some(f64::NAN)), 1);
     }
 
     #[test]

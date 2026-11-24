@@ -2100,8 +2100,8 @@ mod light_timeline_tests {
 #[cfg(test)]
 mod vpd_derive_tests {
     use super::{
-        ChartWindow, PointSource, RawPoint, VPD_PAIRING_TOLERANCE_SECS,
-        derive_vpd_series, merge_series, merge_series_span, parse_epoch,
+        ChartWindow, PointSource, RawPoint, VPD_PAIRING_TOLERANCE_SECS, derive_vpd_series,
+        merge_series, merge_series_span, parse_epoch,
     };
 
     const NOW: &str = "2026-11-16T12:00:00Z";
@@ -2215,5 +2215,4 @@ mod vpd_derive_tests {
         let dropped = merge_series_span(NOW, 72, &[point("2026-11-13T11:00:00Z", 1.0)], &[]);
         assert_eq!(dropped.points, Vec::new());
     }
-
 }

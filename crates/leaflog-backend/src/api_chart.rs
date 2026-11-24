@@ -460,7 +460,12 @@ async fn grow_history(
     // Pair roles carry [input, runoff]: the input side decides the
     // no-data state. The humidity chart's degraded/bound state rides
     // on its own role; the temperature series only feeds the band.
-    let (series, compare, degraded, all_bound) = reduce_response(
+    let ReducedResponse {
+        series,
+        compare,
+        degraded,
+        all_bound,
+    } = reduce_response(
         &role,
         is_pair,
         is_vpd,
@@ -586,11 +591,19 @@ fn build_role_bands(
     }
 }
 
+/// The pieces [`reduce_response`] assembles: the charted series, the
+/// optional compare series, and the degraded and bound flags.
+struct ReducedResponse {
+    series: ChartSeries,
+    compare: Option<ChartSeries>,
+    degraded: bool,
+    all_bound: bool,
+}
+
 /// Combines the fetched per-role series into the response series plus
 /// compare, degraded and bound flags. Pair roles ride on their input
 /// side; humidity's own fetch decides its chart's state (the
 /// temperature series only feeds the band).
-#[allow(clippy::type_complexity)] // the four-tuple mirrors the GrowHistory fields
 fn reduce_response(
     role: &str,
     is_pair: bool,
@@ -599,7 +612,7 @@ fn reduce_response(
     role_fetch: &mut [RoleFetch],
     now: &str,
     window: ChartWindow,
-) -> (ChartSeries, Option<ChartSeries>, bool, bool) {
+) -> ReducedResponse {
     let blank = || RoleFetch {
         series: empty_series(now, window),
         degraded: false,
@@ -615,7 +628,12 @@ fn reduce_response(
             .pop()
             .unwrap_or_else(|| empty_series(now, window));
         let bound = loaded.roles.first().is_some_and(|(_, points)| points.bound);
-        return (series, compare, false, bound);
+        return ReducedResponse {
+            series,
+            compare,
+            degraded: false,
+            all_bound: bound,
+        };
     }
     if role == "humidity" {
         let humidity = role_fetch.first();
@@ -623,7 +641,12 @@ fn reduce_response(
             humidity.map_or_else(|| empty_series(now, window), |fetch| fetch.series.clone());
         let degraded = humidity.is_some_and(|fetch| fetch.degraded);
         let bound = humidity.is_some_and(|fetch| fetch.bound);
-        return (series, None, degraded, bound);
+        return ReducedResponse {
+            series,
+            compare: None,
+            degraded,
+            all_bound: bound,
+        };
     }
     let mut degraded = false;
     let mut all_bound = true;
@@ -636,7 +659,12 @@ fn reduce_response(
         .map(|fetch| std::mem::replace(fetch, blank()))
         .collect();
     let (series, compare) = reduce_series(role, is_vpd, owned, now, window);
-    (series, compare, degraded, all_bound)
+    ReducedResponse {
+        series,
+        compare,
+        degraded,
+        all_bound,
+    }
 }
 
 /// Resolves the window's light-state timeline: the bound light

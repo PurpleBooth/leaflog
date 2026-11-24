@@ -9,12 +9,7 @@ for features, seed data, and acceptance criteria.
 ## Status
 
 Current release and version history: CHANGELOG.md (generated from the
-conventional commits, so it cannot drift). The feature strip
-(D075, M13) removed the strain catalogue, the seed bank, grow spaces
-and the equipment catalogue — the grow itself carries its strain
-label, photoperiod, tolerances and lamp facts. Post-release hardening:
-keep commits lint-clean; open items R1-R9 in docs/THREAT-MODEL.md (R3
-resolved by the strip), one-off choices in docs/DECISIONS.md.
+conventional commits, so it cannot drift). 
 
 ## Non-negotiables (violating these breaks the product)
 
@@ -84,13 +79,7 @@ Every crate root (`lib.rs`/`main.rs`) starts with its `//!` crate doc, then this
 - Macro-generated code (Leptos `#[component]`, serde/sqlx derives) gets a narrowly scoped
   `#[allow(...)]` on that item with a one-line reason comment; log every exception in
   `docs/DECISIONS.md`.
-- Handle friction properly, don't suppress: document all public items (`missing_docs`),
-  derive `Debug`/`Copy`, expect pedantic lints like `needless_pass_by_value` on Leptos props.
-- `clippy::cargo` requires complete package metadata in every `Cargo.toml` (`description`,
-  `license`, `repository`, `readme`, `keywords`, `categories`) — inherit via
-  `[workspace.package]`. Use SPDX `Unlicense` for `license`.
-- CI gate: `cargo clippy --workspace --all-targets -- -D warnings` for native **and**
-  `wasm32-unknown-unknown` (frontend crate), plus `cargo fmt --check`.
+- CI gate: `just ci`.
 
 ## Commands
 

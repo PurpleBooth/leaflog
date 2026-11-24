@@ -92,12 +92,11 @@ fn action_groups() -> Vec<(GroupKey, Vec<ActionType>)> {
     ]
 }
 
-/// The Lucide icon for a quick-add action. Every picker action has
-/// one (D148 gave `PhaseChange` the signpost); the caller renders it
-/// unconditionally.
-#[allow(clippy::unnecessary_wraps)] // the Option keeps the call sites' map() shape stable; see docs/DECISIONS.md
-fn icon_for(kind: ActionType) -> Option<icondata_core::Icon> {
-    let icon = match kind {
+/// The Lucide icon for a quick-add action; every picker action has
+/// one (D148 gave `PhaseChange` the signpost), so the caller renders
+/// it unconditionally.
+fn icon_for(kind: ActionType) -> icondata_core::Icon {
+    match kind {
         ActionType::Lights => icondata_lu::LuLightbulb,
         ActionType::Water => icondata_lu::LuDroplets,
         ActionType::Feed => icondata_lu::LuFlaskConical,
@@ -115,8 +114,7 @@ fn icon_for(kind: ActionType) -> Option<icondata_core::Icon> {
         ActionType::Harvest => icondata_lu::LuWheat,
         ActionType::DryCureCheck => icondata_lu::LuHourglass,
         ActionType::PhaseChange => icondata_lu::LuSignpost,
-    };
-    Some(icon)
+    }
 }
 
 /// localStorage key holding the most recent quick-add picks, most
@@ -224,7 +222,7 @@ fn action_group(
                                 class="btn min-h-11"
                                 on:click=on_click
                             >
-                                {icon_for(kind).map(|icon| view! { <Icon icon=icon /> })}
+                                {view! { <Icon icon=icon_for(kind) /> }}
                                 {picker_label(locale, kind)}
                             </button>
                         }
@@ -474,8 +472,7 @@ mod tests {
         let mut seen = Vec::new();
         let grouped = action_groups().into_iter().flat_map(|(_, actions)| actions);
         for kind in grouped {
-            let icon = icon_for(kind)
-                .unwrap_or_else(|| panic!("picker action without icon: {}", kind.label()));
+            let icon = icon_for(kind);
             assert!(!seen.contains(&icon), "duplicate icon for {}", kind.label());
             seen.push(icon);
         }
