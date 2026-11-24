@@ -151,16 +151,23 @@ test('edit page: binding picks land on the unchanged endpoint', async ({
     temperature.locator('option[value="sensor.grow_temperature"]'),
   ).toBeAttached();
   await temperature.selectOption('sensor.grow_temperature');
-  // The GET returns the bare map; the PUT wraps it in { bindings }.
+  // The GET returns the map beside the grow's stance (D159); the PUT
+  // wraps the map in { bindings }.
   await expect
     .poll(() =>
-      api<Record<string, string>>(
+      api<{
+        bindings: Record<string, string>;
+        light_unavailable_as_off: boolean;
+      }>(
         request,
         'GET',
         `api/grows/${growId}/bindings`,
       ),
     )
-    .toEqual({ temperature: 'sensor.grow_temperature' });
+    .toEqual({
+      bindings: { temperature: 'sensor.grow_temperature' },
+      light_unavailable_as_off: false,
+    });
 
   // The pick survives a reload of the page.
   await page.reload();
@@ -173,13 +180,16 @@ test('edit page: binding picks land on the unchanged endpoint', async ({
   await roleSelect(page, 'Temperature').selectOption('');
   await expect
     .poll(() =>
-      api<Record<string, string>>(
+      api<{
+        bindings: Record<string, string>;
+        light_unavailable_as_off: boolean;
+      }>(
         request,
         'GET',
         `api/grows/${growId}/bindings`,
       ),
     )
-    .toEqual({});
+    .toEqual({ bindings: {}, light_unavailable_as_off: false });
 });
 
 test('edit page: delete lives in the danger zone and returns to the overview', async ({

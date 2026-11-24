@@ -18,6 +18,7 @@
 use std::collections::BTreeMap;
 
 use crate::api;
+use crate::bindings::BindingsView;
 use crate::chart::{
     BandEditor, HistoryChart, WindowToggles, format_ec_us, format_kpa, format_pct, format_ph,
     format_ppm,
@@ -437,10 +438,10 @@ pub fn EnvironmentSection(
         Effect::new(move |_| {
             let id = grow_id.clone();
             spawn_local(async move {
-                if let Ok(map) =
-                    api::get::<BTreeMap<String, String>>(&format!("api/grows/{id}/bindings")).await
+                if let Ok(view) =
+                    api::get::<BindingsView>(&format!("api/grows/{id}/bindings")).await
                 {
-                    bindings.set(Some(map));
+                    bindings.set(Some(view.bindings));
                 }
             });
         });

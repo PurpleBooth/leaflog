@@ -1674,6 +1674,7 @@ mod landing_pick_tests {
             real_watts: None,
             dimmable: true,
             light_cycle: None,
+            light_unavailable_as_off: false,
             substrate: "soil".to_owned(),
             started_on: "2026-01-01".to_owned(),
             status,

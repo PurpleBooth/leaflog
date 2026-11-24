@@ -243,11 +243,14 @@ pub struct CoachResponse {
 /// Reads one raw light state the way the chart staircase does:
 /// `"on"` (any case) is lit, `"off"` is dark, and a numeric state
 /// counts as lit by the core rule — any positive value, D093.
-/// Anything else is unknown.
-fn light_state_is_on(state: &str) -> Option<bool> {
+/// Anything else is unknown — except a dead entity
+/// (`unavailable`/`unknown`) under the grow's dead-light stance,
+/// which reads as dark (D159).
+fn light_state_is_on(state: &str, dead_light_as_off: bool) -> Option<bool> {
     match state.trim().to_ascii_lowercase().as_str() {
         "on" => Some(true),
         "off" => Some(false),
+        "unavailable" | "unknown" if dead_light_as_off => Some(false),
         _ => state
             .trim()
             .parse::<f64>()
@@ -270,6 +273,10 @@ fn light_state_is_on(state: &str) -> Option<bool> {
 ///    convention the stepped corridors use for an unknown state
 ///    (D094), and the only reading available in the unlit phases.
 ///
+/// The grow's dead-light stance (D159) applies to the first two
+/// steps only: a dead bound light reads as off instead of unknown,
+/// so the resolution stops there instead of falling through.
+///
 /// A failed DB read of the schedule inputs surfaces as an API error;
 /// a merely unknown state does not.
 fn resolve_coach_light_on(
@@ -278,16 +285,17 @@ fn resolve_coach_light_on(
     grow: &leaflog_core::grows::Grow,
     tz: &str,
 ) -> Result<bool, ApiError> {
+    let stance = grow.light_unavailable_as_off;
     let bindings = store::sensors::list(conn, &grow.id)?;
     if let Some(entity_id) = bindings.get("light") {
         let live = ha.live_now();
         if let Some(entity) = live.entities.get(entity_id)
-            && let Some(on) = light_state_is_on(&entity.state)
+            && let Some(on) = light_state_is_on(&entity.state, stance)
         {
             return Ok(on);
         }
         if let Some(on) = store::sensors::latest_snapshot_for_role(conn, &grow.id, "light")?
-            .and_then(|snapshot| light_state_is_on(&snapshot.state))
+            .and_then(|snapshot| light_state_is_on(&snapshot.state, stance))
         {
             return Ok(on);
         }

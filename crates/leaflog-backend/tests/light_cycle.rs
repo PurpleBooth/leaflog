@@ -200,6 +200,43 @@ fn minute_of(text: &str) -> i64 {
 }
 
 #[tokio::test]
+async fn the_dead_light_stance_reads_unavailable_as_dark_hours() {
+    // The flaky plug light (D159's premise): its radio dies with the
+    // light off, so HA records `unavailable` exactly across the dark
+    // stretch. Without the stance, the last lit reading holds through
+    // the gap — 28 learned lit h ≈ 22 daily hours; with it, the dead
+    // hours are dark — 4 lit h ≈ 3 daily hours.
+    let (base, bridge) = spawn_mock_api().await;
+    wait_connected(&bridge).await;
+    let client = reqwest::Client::new();
+    let id = create_grow(&base).await;
+    bind_light(&client, &base, &id, "light.flaky_led").await;
+
+    let before = get_cycle(&client, &base, &id).await;
+    assert_eq!(before["observed"]["entity_id"], "light.flaky_led");
+    assert_eq!(before["observed"]["hours_on"], 22, "cycle: {before}");
+
+    // Take the stance through the bindings endpoint (the toggle's
+    // save): the same history now reads dead-as-dark, and the cached
+    // derivation must not survive the flip.
+    let _: Value = client
+        .put(format!("{base}/api/grows/{id}/bindings"))
+        .json(&json!({
+            "bindings": { "light": "light.flaky_led" },
+            "light_unavailable_as_off": true
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let after = get_cycle(&client, &base, &id).await;
+    assert_eq!(after["observed"]["entity_id"], "light.flaky_led");
+    assert_eq!(after["observed"]["hours_on"], 3, "cycle: {after}");
+}
+
+#[tokio::test]
 async fn bound_light_serves_the_observed_block_from_the_staircase() {
     let (base, bridge) = spawn_mock_api().await;
     wait_connected(&bridge).await;

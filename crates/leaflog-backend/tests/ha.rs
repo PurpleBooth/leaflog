@@ -165,7 +165,10 @@ async fn bindings_auto_capture_and_entities_endpoints() {
         .json()
         .await
         .unwrap();
-    assert_eq!(bindings["temperature"], "sensor.grow_temperature");
+    assert_eq!(
+        bindings["bindings"]["temperature"],
+        "sensor.grow_temperature"
+    );
 
     // Entity-id grammar (audit D145): anything outside HA's
     // `domain.object_id` lowercase shape is rejected at the boundary.
@@ -2693,4 +2696,86 @@ async fn env_alerts_render_english_by_default() {
         !sent.iter().any(|body| body.contains("Sollbereich")),
         "no German template leaks: {sent:?}"
     );
+}
+
+#[tokio::test]
+async fn the_dead_light_stance_drives_the_coach_dark() {
+    // The flaky plug light is permanently `unavailable` in the mock's
+    // live map. With a 24/7 schedule behind it, the coach without the
+    // stance falls through to the schedule (lights on, whatever the
+    // wall clock says); with the stance the dead entity itself reads
+    // as off — no snapshot or schedule fallthrough (D159).
+    let (mock_url, _mock) = spawn_mock().await;
+    let (base, db, bridge) = spawn_api(&mock_url).await;
+    TEST_BRIDGE
+        .lock()
+        .expect("bridge registry")
+        .insert(base.clone(), bridge.clone());
+    let grow_id = create_grow(&base).await;
+    let client = reqwest::Client::new();
+
+    let _: Value = client
+        .put(format!("{base}/api/grows/{grow_id}/light-cycle"))
+        .json(&json!({
+            "hours_on": {
+                "germination": 24,
+                "seedling": 24,
+                "vegetative": 24,
+                "flower": 24
+            }
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let _: Value = client
+        .put(format!("{base}/api/grows/{grow_id}/bindings"))
+        .json(&json!({
+            "bindings": { "light": "light.flaky_led" }
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    // The subscription seed has to land before the coach can see
+    // the dead entity in the live map.
+    wait_connected(&bridge).await;
+    wait_state_contains(&bridge, "unavailable").await;
+
+    let before: Value = client
+        .get(format!("{base}/api/grows/{grow_id}/coach"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(before["light_on"], true, "schedule fallthrough: {before}");
+
+    let _: Value = client
+        .put(format!("{base}/api/grows/{grow_id}/bindings"))
+        .json(&json!({
+            "bindings": { "light": "light.flaky_led" },
+            "light_unavailable_as_off": true
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let after: Value = client
+        .get(format!("{base}/api/grows/{grow_id}/coach"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(after["light_on"], false, "dead reads as off: {after}");
+    drop(db);
 }

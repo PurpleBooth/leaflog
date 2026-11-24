@@ -141,12 +141,17 @@ pub(crate) struct RolePoints {
 
 /// Parses one raw sensor state into a series value. The `light` role
 /// reads binary states as 1/0; everything else parses numerically
-/// (states a numeric sensor would never report drop out).
-fn parse_value(role: &str, state: &str) -> Option<f64> {
+/// (states a numeric sensor would never report drop out). The grow's
+/// dead-light stance (D159) extends only the light arm: with it set,
+/// `unavailable` and `unknown` — the states a plug-driven light
+/// reports while its radio is off — parse as lights-off instead of
+/// dropping out.
+fn parse_value(role: &str, state: &str, dead_light_as_off: bool) -> Option<f64> {
     if role == "light" {
         return match state.trim().to_ascii_lowercase().as_str() {
             "on" => Some(1.0),
             "off" => Some(0.0),
+            "unavailable" | "unknown" if dead_light_as_off => Some(0.0),
             _ => state.parse::<f64>().ok(),
         };
     }
@@ -193,10 +198,13 @@ fn load_detail_role(
 
 /// Loads one role's storage half: the binding and the role's snapshot
 /// points (pH/EC roles read their points from log-entry details).
+/// `dead_light_as_off` is the grow's dead-light stance (D159); it
+/// only matters for the light role's snapshots.
 pub(crate) fn load_role(
     conn: &rusqlite::Connection,
     grow_id: &str,
     role: &str,
+    dead_light_as_off: bool,
 ) -> Result<RolePoints, ApiError> {
     if let Some(field) = detail_field(role) {
         return load_detail_role(conn, grow_id, field);
@@ -206,7 +214,7 @@ pub(crate) fn load_role(
     let snapshots = store::sensors::snapshots_for_role(conn, grow_id, role)?
         .into_iter()
         .filter_map(|snapshot| {
-            let value = parse_value(role, &snapshot.state)?;
+            let value = parse_value(role, &snapshot.state, dead_light_as_off)?;
             let value = if role == "temperature" {
                 leaflog_core::units::sensor_celsius(value, Some(snapshot.unit.as_deref()?))?
             } else {
@@ -264,13 +272,14 @@ fn load_grow_db(
 ) -> Result<LoadedGrow, ApiError> {
     let grow = store::grows::get(conn, grow_id)?;
     let windows = load_windows(conn, &grow)?;
+    let stance = grow.light_unavailable_as_off;
     let mut roles = Vec::new();
     for role_name in wanted {
-        let points = load_role(conn, &grow.id, role_name)?;
+        let points = load_role(conn, &grow.id, role_name, stance)?;
         roles.push((role_name.clone(), points));
     }
     let light = load_light
-        .then(|| load_role(conn, &grow.id, "light"))
+        .then(|| load_role(conn, &grow.id, "light", stance))
         .transpose()?;
     let photoperiod = grow.photoperiod;
     let soil_band = store::settings::get(conn, "soil_moisture_band")
@@ -303,13 +312,16 @@ async fn fetch_role_series(
     now: &str,
 ) -> Vec<RoleFetch> {
     // The roles' history requests are independent: a slow or timing-out
-    // HA must not make the chart wait once per role.
+    // HA must not make the chart wait once per role. The grow's
+    // dead-light stance (D159) rides along for the light role's
+    // binary staircase; other roles parse numerically regardless.
+    let stance = loaded.grow.light_unavailable_as_off;
     futures_util::future::join_all(loaded.roles.iter().map(|(role_name, points)| async {
         let mut ha_points = Vec::new();
         let mut degraded = false;
         if let Some(entity_id) = &points.entity_id {
             match state.ha.history(entity_id, hours).await {
-                Ok(value) => ha_points = ha_history_points(role_name, &value),
+                Ok(value) => ha_points = ha_history_points(role_name, &value, stance),
                 Err(_) => degraded = true,
             }
         }
@@ -339,7 +351,7 @@ async fn fetch_light_staircase(
     let ha_points = if let Some(entity_id) = &points.entity_id
         && let Ok(value) = state.ha.history(entity_id, hours).await
     {
-        ha_history_points("light", &value)
+        ha_history_points("light", &value, loaded.grow.light_unavailable_as_off)
     } else {
         Vec::new()
     };
@@ -739,9 +751,15 @@ fn empty_series(now: &str, window: ChartWindow) -> ChartSeries {
 /// `history/period` response. The documented `minimal_response` shape
 /// is one full state object first, then short `{s, lu}` objects;
 /// unparseable states (a sensor reporting `unavailable`) and objects
-/// without a usable timestamp are skipped.
+/// without a usable timestamp are skipped. The grow's dead-light
+/// stance (D159) narrows that skip for the light role: a dead state
+/// becomes a lights-off point instead of a gap.
 #[must_use]
-pub(crate) fn ha_history_points(role: &str, history: &Value) -> Vec<RawPoint> {
+pub(crate) fn ha_history_points(
+    role: &str,
+    history: &Value,
+    dead_light_as_off: bool,
+) -> Vec<RawPoint> {
     let Some(series_list) = history.as_array() else {
         return Vec::new();
     };
@@ -760,7 +778,7 @@ pub(crate) fn ha_history_points(role: &str, history: &Value) -> Vec<RawPoint> {
                 .get("state")
                 .or_else(|| state.get("s"))
                 .and_then(Value::as_str)
-                .and_then(|text| parse_value(role, text))
+                .and_then(|text| parse_value(role, text, dead_light_as_off))
                 .and_then(|value| {
                     if role == "temperature" {
                         leaflog_core::units::sensor_celsius(value, unit)
@@ -817,7 +835,7 @@ mod tests {
             ],
             "not-an-array"
         ]);
-        let points = ha_history_points("temperature", &history);
+        let points = ha_history_points("temperature", &history, false);
         assert_eq!(points.len(), 3);
         assert_eq!(points[0].value, 24.3);
         assert_eq!(points[0].at, "2026-11-08T12:00:00Z");
@@ -834,7 +852,7 @@ mod tests {
             {"s": "300.15", "attributes": {"unit_of_measurement": "K"}, "lu": 3},
             {"s": "50", "attributes": {"unit_of_measurement": "%"}, "lu": 4}
         ]]);
-        let points = ha_history_points("temperature", &history);
+        let points = ha_history_points("temperature", &history, false);
         assert_eq!(points.len(), 3);
         for (point, celsius) in points.iter().zip([25.0, 30.0, 27.0]) {
             assert!((point.value - celsius).abs() < 1e-9);
@@ -843,20 +861,68 @@ mod tests {
 
     #[test]
     fn history_points_fail_closed_on_garbage() {
-        assert_eq!(ha_history_points("temperature", &json!("nope")), Vec::new());
-        assert_eq!(ha_history_points("temperature", &json!({})), Vec::new());
-        assert_eq!(ha_history_points("temperature", &json!([[]])), Vec::new());
+        assert_eq!(
+            ha_history_points("temperature", &json!("nope"), false),
+            Vec::new()
+        );
+        assert_eq!(
+            ha_history_points("temperature", &json!({}), false),
+            Vec::new()
+        );
+        assert_eq!(
+            ha_history_points("temperature", &json!([[]]), false),
+            Vec::new()
+        );
     }
 
     #[test]
     fn light_states_parse_as_one_and_zero() {
-        assert_eq!(parse_value("light", "on"), Some(1.0));
-        assert_eq!(parse_value("light", "OFF"), Some(0.0));
-        assert_eq!(parse_value("light", "unavailable"), None);
+        assert_eq!(parse_value("light", "on", false), Some(1.0));
+        assert_eq!(parse_value("light", "OFF", false), Some(0.0));
+        assert_eq!(parse_value("light", "unavailable", false), None);
         // Numeric light states (a dimmer's percentage) still parse.
-        assert_eq!(parse_value("light", "42"), Some(42.0));
+        assert_eq!(parse_value("light", "42", false), Some(42.0));
         // Other roles stay strictly numeric.
-        assert_eq!(parse_value("temperature", "on"), None);
+        assert_eq!(parse_value("temperature", "on", false), None);
+    }
+
+    #[test]
+    fn dead_light_states_follow_the_grow_stance() {
+        // Stance off (D159's default): a dead state is no reading —
+        // today's behaviour, hold-last-state staircases included.
+        assert_eq!(parse_value("light", "unavailable", false), None);
+        assert_eq!(parse_value("light", "unknown", false), None);
+        // Stance on: the bound light's dead states read as
+        // lights-off (the plug hardware that drops its radio while
+        // off, spec §4.2).
+        assert_eq!(parse_value("light", "unavailable", true), Some(0.0));
+        assert_eq!(parse_value("light", "unknown", true), Some(0.0));
+        // The stance never rewrites a live reading.
+        assert_eq!(parse_value("light", "on", true), Some(1.0));
+        assert_eq!(parse_value("light", "OFF", true), Some(0.0));
+        assert_eq!(parse_value("light", "42", true), Some(42.0));
+        // And it stays a light-role rule: other roles never gain a
+        // dead-as-zero read.
+        assert_eq!(parse_value("temperature", "unavailable", true), None);
+        assert_eq!(parse_value("humidity", "unknown", true), None);
+    }
+
+    #[test]
+    fn dead_light_history_yields_dark_points_under_the_stance() {
+        let history = json!([[
+            {"s": "on", "lu": "2026-11-08T12:00:00+00:00"},
+            {"s": "unavailable", "lu": "2026-11-08T14:00:00+00:00"},
+            {"s": "on", "lu": "2026-11-08T20:00:00+00:00"}
+        ]]);
+        // Stance off: the dead stretch is simply missing (a held
+        // staircase — today's behaviour).
+        let off = ha_history_points("light", &history, false);
+        assert_eq!(off.len(), 2);
+        // Stance on: the dead stretch is dark.
+        let stance = ha_history_points("light", &history, true);
+        assert_eq!(stance.len(), 3);
+        assert_eq!(stance[1].value, 0.0);
+        assert_eq!(stance[1].at, "2026-11-08T14:00:00Z");
     }
 
     #[test]

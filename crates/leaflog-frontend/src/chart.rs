@@ -15,6 +15,7 @@
 
 use crate::api;
 use crate::api::{GrowHistory, SoilBand};
+use crate::bindings::BindingsView;
 use crate::chart_option;
 use crate::i18n::{t, t_string, use_i18n};
 use crate::labels;
@@ -234,12 +235,10 @@ pub fn HistoryChart(
                     // independent source. A sensor role with a binding
                     // keeps its card (degraded); an unbound one stays
                     // hidden.
-                    if let Ok(bindings) = api::get::<std::collections::BTreeMap<String, String>>(
-                        &format!("api/grows/{id}/bindings"),
-                    )
-                    .await
+                    if let Ok(bindings) =
+                        api::get::<BindingsView>(&format!("api/grows/{id}/bindings")).await
                     {
-                        fallback_bound.set(bindings.contains_key(role));
+                        fallback_bound.set(bindings.bindings.contains_key(role));
                     }
                 }
             }

@@ -127,15 +127,35 @@ async fn live_stream(
 }
 
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
+/// The bindings endpoint's response: the role→entity map together
+/// with the grow's dead-light stance (D159), so the binding row's
+/// toggle renders one request after load.
+#[derive(Debug, serde::Serialize)]
+struct BindingsView {
+    /// Role → Home Assistant entity id.
+    bindings: BTreeMap<String, String>,
+    /// Whether the bound Light entity's dead states read as
+    /// lights-off (spec §4.1, D159).
+    light_unavailable_as_off: bool,
+}
+
+#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn get_bindings(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<BTreeMap<String, String>>, ApiError> {
-    let bindings = state
+) -> Result<Json<BindingsView>, ApiError> {
+    let view = state
         .db
-        .with(move |conn| store::sensors::list(conn, &id))
+        .with(move |conn| {
+            let bindings = store::sensors::list(conn, &id)?;
+            let stance = store::grows::get(conn, &id)?.light_unavailable_as_off;
+            Ok::<_, ApiError>(BindingsView {
+                bindings,
+                light_unavailable_as_off: stance,
+            })
+        })
         .await?;
-    Ok(Json(bindings))
+    Ok(Json(view))
 }
 
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
@@ -143,7 +163,7 @@ async fn put_bindings(
     State(state): State<AppState>,
     Path(id): Path<String>,
     Json(input): Json<store::sensors::BindingsInput>,
-) -> Result<Json<BTreeMap<String, String>>, ApiError> {
+) -> Result<Json<BindingsView>, ApiError> {
     // HA entity ids have a fixed grammar (`domain.object_id`, all
     // lowercase); rejecting anything else at the boundary (audit
     // D145) keeps malformed ids out of subscriptions and history
@@ -165,22 +185,31 @@ async fn put_bindings(
     }
     let bridge = state.ha.clone();
     let observed_id = id.clone();
-    let bindings = state
+    let view = state
         .db
         .with(move |conn| -> Result<_, ApiError> {
             store::grows::get(conn, &id)?;
             store::sensors::replace(conn, &id, &input)?;
+            if let Some(flag) = input.light_unavailable_as_off {
+                store::grows::set_light_unavailable_as_off(conn, &id, flag)?;
+            }
             let bindings = store::sensors::list(conn, &id)?;
+            let stance = store::grows::get(conn, &id)?.light_unavailable_as_off;
             // The union across all drives the WS subscription.
             let entities = store::sensors::all_bound_entities(conn)?;
             bridge.track_entities(entities);
-            Ok(bindings)
+            Ok(BindingsView {
+                bindings,
+                light_unavailable_as_off: stance,
+            })
         })
         .await?;
     // Rebinding a grow's light changes what its observed reality
-    // must say: drop any cached derivation now (D102).
+    // must say: drop any cached derivation now (D102). The stance
+    // flip changes it just as much — the same dead history then
+    // reads as dark hours.
     state.observed.invalidate(&observed_id);
-    Ok(Json(bindings))
+    Ok(Json(view))
 }
 
 /// Captures the bound entities' live states into a log entry's

@@ -388,6 +388,7 @@ async fn sensors_replace_is_atomic_when_an_insert_fails() {
                         ("temperature".to_owned(), "sensor.grow_temp".to_owned()),
                         ("humidity".to_owned(), "sensor.grow_hum".to_owned()),
                     ]),
+                    light_unavailable_as_off: None,
                 };
                 replace(conn, &grow.id, &input)?;
                 Ok((grow.id, input.bindings))
@@ -410,6 +411,7 @@ async fn sensors_replace_is_atomic_when_an_insert_fails() {
                 &trigger_grow_id,
                 &BindingsInput {
                     bindings: BTreeMap::from([("co2".to_owned(), "sensor.grow_co2".to_owned())]),
+                    light_unavailable_as_off: None,
                 },
             );
             conn.execute_batch("DROP TRIGGER abort_binding")?;
@@ -1070,7 +1072,11 @@ async fn onboarding_wizard_appears_runs_and_stays_dismissable() {
         .json()
         .await
         .unwrap();
-    assert_eq!(bindings["temperature"], "sensor.grow_temperature");
+    assert_eq!(
+        bindings["bindings"]["temperature"],
+        "sensor.grow_temperature"
+    );
+    assert_eq!(bindings["light_unavailable_as_off"], false);
     for name in ["Plant 1", "Plant 2"] {
         client
             .post(format!("{base}/api/grows/{grow_id}/plants"))
@@ -1530,4 +1536,108 @@ async fn unavailable_bound_entities_render_no_data_and_can_rebind() {
     assert_eq!(bindings.len(), 1, "the humidity role was released");
     assert_eq!(bindings[0]["entity_id"], "sensor.new_temp");
     assert_eq!(bindings[0]["available"], false, "still offline");
+}
+
+#[tokio::test]
+async fn bindings_round_trip_the_unavailable_counts_as_off_flag() {
+    // The grow's dead-light stance (spec §4.1, D159): the flag rides
+    // the bindings endpoint — read together with the map, written
+    // only when the request carries it, so a picker-only save never
+    // clobbers the stance a toggle set.
+    let base = spawn_api().await;
+    let client = reqwest::Client::new();
+
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&json!({
+            "name": "Drift run",
+            "feed_schedule_id": null,
+            "substrate": "soil",
+            "started_on": "2026-10-01",
+            "status": "active",
+            "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let grow_id = grow["id"].as_str().unwrap().to_owned();
+
+    let first: Value = client
+        .get(format!("{base}/api/grows/{grow_id}/bindings"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(first["bindings"], json!({}));
+    assert_eq!(
+        first["light_unavailable_as_off"],
+        json!(false),
+        "the stance defaults to off (today's read of a dead light)"
+    );
+
+    // The toggle's save: bind the flaky light and take the stance in
+    // one write (the flag lives on the grow record, spec §4.1).
+    client
+        .put(format!("{base}/api/grows/{grow_id}/bindings"))
+        .json(&json!({
+            "bindings": { "light": "light.flaky_led" },
+            "light_unavailable_as_off": true
+        }))
+        .send()
+        .await
+        .unwrap();
+    let second: Value = client
+        .get(format!("{base}/api/grows/{grow_id}/bindings"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(second["bindings"]["light"], "light.flaky_led");
+    assert_eq!(second["light_unavailable_as_off"], json!(true));
+
+    // A picker-only save (the map without the flag) moves the
+    // binding and must leave the stance alone.
+    client
+        .put(format!("{base}/api/grows/{grow_id}/bindings"))
+        .json(&json!({ "bindings": { "light": "light.spare_led" } }))
+        .send()
+        .await
+        .unwrap();
+    let third: Value = client
+        .get(format!("{base}/api/grows/{grow_id}/bindings"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(third["bindings"]["light"], "light.spare_led");
+    assert_eq!(third["light_unavailable_as_off"], json!(true));
+
+    // Flipping the stance back off is the same single-field write.
+    client
+        .put(format!("{base}/api/grows/{grow_id}/bindings"))
+        .json(&json!({
+            "bindings": { "light": "light.spare_led" },
+            "light_unavailable_as_off": false
+        }))
+        .send()
+        .await
+        .unwrap();
+    let fourth: Value = client
+        .get(format!("{base}/api/grows/{grow_id}/bindings"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(fourth["light_unavailable_as_off"], json!(false));
 }

@@ -90,12 +90,15 @@ test('wizard happy path: sensors, grow and plants land on the dashboard', async 
   // The step-1 pick persisted: the grow page's binding picker shows the
   // bound entity (the API is the independent source of truth).
   const growId = new URL(page.url()).pathname.split('/').pop()!;
-  const bindings = await api<Record<string, string>>(
+  const bindings = await api<{
+    bindings: Record<string, string>;
+    light_unavailable_as_off: boolean;
+  }>(
     page.context().request,
     'GET',
     `api/grows/${growId}/bindings`,
   );
-  expect(bindings!.temperature).toBe('sensor.grow_temperature');
+  expect(bindings!.bindings.temperature).toBe('sensor.grow_temperature');
 
   // The inline strain facts carried into the created grow: the label
   // badges the dashboard header.

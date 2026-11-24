@@ -173,6 +173,15 @@ pub struct Grow {
     /// as `None`.
     #[serde(default)]
     pub light_cycle: Option<crate::light_cycle::LightCycle>,
+    /// The grow's dead-light stance (spec §4.1, D159): when `true`,
+    /// the bound Light entity's dead HA states (`unavailable` /
+    /// `unknown`) read as lights-off at every interpretation site
+    /// (observed cycle, charts, corridors, coach) — for hardware
+    /// whose radio dies with the light off. The bindings view still
+    /// reports the entity's real health. Absent JSON parses as
+    /// `false` (today's read: a dead state is no reading).
+    #[serde(default)]
+    pub light_unavailable_as_off: bool,
     /// Substrate label: one of [`SUBSTRATES`] or a user-defined name.
     pub substrate: String,
     /// Seed/clone start date, `YYYY-MM-DD`. Day numbers count from here.

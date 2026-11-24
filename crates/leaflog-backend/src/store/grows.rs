@@ -47,14 +47,17 @@ pub fn create(conn: &Connection, input: &GrowInput) -> Result<Grow, StoreError> 
         // A new grow starts on the preset defaults; the cycle is set
         // (and reset) through its own endpoint.
         light_cycle: None,
+        // A new grow starts with today's read of a dead light (no
+        // reading); the stance is set through the bindings endpoint.
+        light_unavailable_as_off: false,
         substrate: input.substrate.clone(),
         started_on: input.started_on.clone(),
         status: input.status,
         notes: input.notes.clone(),
     };
     conn.execute(
-        "INSERT INTO grow (id, name, feed_schedule_id, planned_veg_weeks, strain_label, photoperiod, heat_tolerance, cold_tolerance, light_tolerance, real_watts, dimmable, substrate, started_on, status, notes, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+        "INSERT INTO grow (id, name, feed_schedule_id, planned_veg_weeks, strain_label, photoperiod, heat_tolerance, cold_tolerance, light_tolerance, real_watts, dimmable, light_unavailable_as_off, substrate, started_on, status, notes, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
         params![
             grow.id,
             grow.name,
@@ -67,6 +70,7 @@ pub fn create(conn: &Connection, input: &GrowInput) -> Result<Grow, StoreError> 
             grow.light_tolerance.label(),
             grow.real_watts,
             i64::from(grow.dimmable),
+            i64::from(grow.light_unavailable_as_off),
             grow.substrate,
             grow.started_on,
             grow.status.label(),
@@ -126,6 +130,28 @@ pub fn set_light_cycle(
     conn.execute(
         "UPDATE grow SET light_cycle = ?2, updated_at = ?3 WHERE id = ?1",
         params![updated.id, json, updated.updated_at],
+    )?;
+    Ok(updated)
+}
+
+/// Stores the grow's dead-light stance (spec §4.1, D159) and returns
+/// the updated row. Set through the bindings endpoint; a plain grow
+/// edit never disturbs it.
+///
+/// # Errors
+///
+/// Returns [`super::NotFound`] when the id does not exist.
+pub fn set_light_unavailable_as_off(
+    conn: &Connection,
+    id: &str,
+    flag: bool,
+) -> Result<Grow, StoreOrNotFound> {
+    let mut updated = get(conn, id)?;
+    updated.updated_at = now_rfc3339();
+    updated.light_unavailable_as_off = flag;
+    conn.execute(
+        "UPDATE grow SET light_unavailable_as_off = ?2, updated_at = ?3 WHERE id = ?1",
+        params![updated.id, i64::from(flag), updated.updated_at],
     )?;
     Ok(updated)
 }
@@ -348,6 +374,7 @@ fn map_grow(row: &rusqlite::Row<'_>) -> Result<Grow, rusqlite::Error> {
         light_tolerance: label_or_default(row, "light_tolerance", Tolerance::from_label)?,
         real_watts: row.get("real_watts")?,
         dimmable: dimmable != 0,
+        light_unavailable_as_off: row.get::<_, i64>("light_unavailable_as_off")? != 0,
         substrate: row.get("substrate")?,
         started_on: row.get("started_on")?,
         status: if status == "archived" {

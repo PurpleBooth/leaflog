@@ -468,6 +468,7 @@ mod form_snapshot_tests {
             real_watts: Some(105.5),
             dimmable: true,
             light_cycle: None,
+            light_unavailable_as_off: false,
             substrate: "coco".to_owned(),
             started_on: "2026-05-01".to_owned(),
             status: GrowStatus::Active,

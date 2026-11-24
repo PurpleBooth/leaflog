@@ -100,6 +100,11 @@ impl FakeRoom {
             // binding role must accept any on/off entity, not only a
             // light.* fixture.
             entity_state("switch.grow_panel", "on", "", "Grow panel switch"),
+            // A light on a plug that kills its radio while off (the
+            // D159 stance's premise): it reads `unavailable` exactly
+            // while dark. Its history tells the same story — see
+            // [`flaky_light_history`].
+            entity_state("light.flaky_led", "unavailable", "", "Flaky plug light"),
         ])
     }
 
@@ -113,6 +118,9 @@ impl FakeRoom {
             "sensor.grow_soil_moisture": { "s": format!("{:.0}", self.soil_moisture), "a": { "unit_of_measurement": "%" } },
             "sensor.grow_co2": { "s": format!("{:.0}", self.co2), "a": { "unit_of_measurement": "ppm" } },
             "light.grow_led": { "s": if self.light_on { "on" } else { "off" }, "a": {} },
+            // The flaky plug light (D159): dead in the live map too —
+            // the radio is off while the light is.
+            "light.flaky_led": { "s": "unavailable", "a": {} },
         })
     }
 
@@ -293,6 +301,9 @@ async fn history(State(state): State<MockState>, Query(query): Query<HistoryQuer
     if entity == "light.grow_led" || entity == "switch.grow_panel" {
         return Json(on_off_history(&entity));
     }
+    if entity == "light.flaky_led" {
+        return Json(flaky_light_history());
+    }
     let (base, temperature, humidity, soil_moisture, co2) = {
         let room = state.room.lock().await;
         (
@@ -364,6 +375,33 @@ fn on_off_history(entity_id: &str) -> Value {
             },
             { "s": "on", "lu": stamp(20) },
             { "s": "off", "lu": stamp(18) },
+        ]
+    ])
+}
+
+/// The flaky plug light's staircase for `history/period` (the D159
+/// stance's premise): lit, then dead (`unavailable`) for most of a
+/// day while its radio is off, lit again briefly, then off. Under
+/// the grow's dead-light stance the dead stretch reads as dark —
+/// 4 lit h across a 30 h span ≈ 3 daily hours; without it the lit
+/// reading holds through the gap — 28 lit h ≈ 22 daily hours.
+fn flaky_light_history() -> Value {
+    let now = jiff::Timestamp::now();
+    let stamp = |hours_ago: i64| (now - jiff::Span::new().hours(hours_ago)).to_string();
+    // minimal_response shape: one full state object first, then
+    // short {s, lu} objects.
+    json!([
+        [
+            {
+                "entity_id": "light.flaky_led",
+                "state": "on",
+                "attributes": { "friendly_name": "Flaky plug light" },
+                "last_changed": stamp(30),
+                "last_updated": stamp(30),
+            },
+            { "s": "unavailable", "lu": stamp(28) },
+            { "s": "on", "lu": stamp(4) },
+            { "s": "off", "lu": stamp(2) },
         ]
     ])
 }

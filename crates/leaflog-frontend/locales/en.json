@@ -250,6 +250,8 @@
     "heading": "Entity bindings",
     "intro": "Bind a Home Assistant entity to each role — bindings are the only sensor setup there is, and the picks here are this grow's own.",
     "unbound": "— unbound —",
+    "unavailable_as_off": "Unavailable counts as off",
+    "unavailable_as_off_hint": "This plug reports “unavailable” while off; read dead hours as lights-off.",
     "role_temperature": "Temperature",
     "role_humidity": "Humidity",
     "role_co2": "CO2",

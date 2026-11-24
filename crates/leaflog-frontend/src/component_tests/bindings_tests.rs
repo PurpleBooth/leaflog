@@ -25,7 +25,7 @@ fn role_selects<V: leptos::IntoView + 'static>(
 async fn entity_bindings_render_the_seven_role_pickers() {
     fresh_environment();
     let _stub = FetchStub::new(|method, url, _body| match (method, url) {
-        ("GET", u) if u.ends_with("/bindings") => (200, "{}".to_string()),
+        ("GET", u) if u.ends_with("/bindings") => (200, r#"{"bindings":{}}"#.to_string()),
         ("GET", u) if u.ends_with("/ha/entities") => (200, ENTITIES.to_string()),
         _ => (404, String::new()),
     });
@@ -55,9 +55,10 @@ async fn entity_bindings_render_the_seven_role_pickers() {
 async fn entity_bindings_preselect_and_offer_friendly_names() {
     fresh_environment();
     let _stub = FetchStub::new(|method, url, _body| match (method, url) {
-        ("GET", u) if u.ends_with("/bindings") => {
-            (200, r#"{"temperature":"sensor.tent_temp"}"#.to_string())
-        }
+        ("GET", u) if u.ends_with("/bindings") => (
+            200,
+            r#"{"bindings":{"temperature":"sensor.tent_temp"}}"#.to_string(),
+        ),
         ("GET", u) if u.ends_with("/ha/entities") => (200, ENTITIES.to_string()),
         _ => (404, String::new()),
     });
@@ -89,9 +90,10 @@ async fn entity_bindings_preselect_and_offer_friendly_names() {
 async fn entity_bindings_change_puts_the_whole_map_and_bumps_the_epoch() {
     fresh_environment();
     let _stub = FetchStub::new(|method, url, _body| match (method, url) {
-        ("GET", u) if u.ends_with("/bindings") => {
-            (200, r#"{"temperature":"sensor.tent_temp"}"#.to_string())
-        }
+        ("GET", u) if u.ends_with("/bindings") => (
+            200,
+            r#"{"bindings":{"temperature":"sensor.tent_temp"}}"#.to_string(),
+        ),
         ("GET", u) if u.ends_with("/ha/entities") => (200, ENTITIES.to_string()),
         ("PUT", u) if u.ends_with("/bindings") => (200, "{}".to_string()),
         _ => (404, String::new()),
@@ -136,9 +138,10 @@ async fn entity_bindings_change_puts_the_whole_map_and_bumps_the_epoch() {
 async fn entity_bindings_unbound_choice_removes_the_role() {
     fresh_environment();
     let _stub = FetchStub::new(|method, url, _body| match (method, url) {
-        ("GET", u) if u.ends_with("/bindings") => {
-            (200, r#"{"temperature":"sensor.tent_temp"}"#.to_string())
-        }
+        ("GET", u) if u.ends_with("/bindings") => (
+            200,
+            r#"{"bindings":{"temperature":"sensor.tent_temp"}}"#.to_string(),
+        ),
         ("GET", u) if u.ends_with("/ha/entities") => (200, ENTITIES.to_string()),
         ("PUT", u) if u.ends_with("/bindings") => (200, "{}".to_string()),
         _ => (404, String::new()),
@@ -192,4 +195,127 @@ async fn entity_bindings_fetch_failure_shows_the_error_banner() {
         mount.text().contains("500"),
         "failure text reaches the alert"
     );
+}
+
+#[wasm_bindgen_test(async)]
+async fn entity_bindings_show_the_stance_toggle_only_with_a_light_binding() {
+    fresh_environment();
+    let _stub = FetchStub::new(|method, url, _body| match (method, url) {
+        ("GET", u) if u.ends_with("/bindings") => (
+            200,
+            r#"{"bindings":{"temperature":"sensor.tent_temp"},"light_unavailable_as_off":false}"#
+                .to_string(),
+        ),
+        ("GET", u) if u.ends_with("/ha/entities") => (200, ENTITIES.to_string()),
+        _ => (404, String::new()),
+    });
+    let epoch = RwSignal::new(0u64);
+    let mount = Mounted::new(move || {
+        with_i18n(
+            move || view! { <crate::bindings::EntityBindings grow_id="g1".to_string() bindings_epoch=epoch /> },
+        )
+    });
+    wait_for(|| {
+        role_selects(&mount)
+            .first()
+            .is_some_and(|s| s.value() == "sensor.tent_temp")
+    })
+    .await;
+    assert!(
+        mount
+            .q("input[data-stance='light_unavailable_as_off']")
+            .is_none(),
+        "no light bound: the stance toggle stays hidden"
+    );
+
+    // Re-render with a bound light: the toggle appears, reflecting the
+    // grow's stored stance.
+    fresh_environment();
+    let _stub = FetchStub::new(|method, url, _body| match (method, url) {
+        ("GET", u) if u.ends_with("/bindings") => (
+            200,
+            r#"{"bindings":{"light":"light.tent_led"},"light_unavailable_as_off":true}"#
+                .to_string(),
+        ),
+        ("GET", u) if u.ends_with("/ha/entities") => (200, ENTITIES.to_string()),
+        _ => (404, String::new()),
+    });
+    let epoch = RwSignal::new(0u64);
+    let mount = Mounted::new(move || {
+        with_i18n(
+            move || view! { <crate::bindings::EntityBindings grow_id="g1".to_string() bindings_epoch=epoch /> },
+        )
+    });
+    wait_for(|| {
+        mount
+            .q("input[data-stance='light_unavailable_as_off']")
+            .is_some()
+    })
+    .await;
+    let toggle = mount
+        .q("input[data-stance='light_unavailable_as_off']")
+        .expect("toggle rendered");
+    let toggle: web_sys::HtmlInputElement = wasm_bindgen::JsCast::unchecked_into(toggle);
+    assert!(toggle.checked(), "stored stance is on");
+    let text = mount.text();
+    assert!(
+        text.contains("Unavailable counts as off"),
+        "label renders in English: {:?}",
+        text.get(..200).unwrap_or(&text)
+    );
+}
+
+#[wasm_bindgen_test(async)]
+async fn entity_bindings_toggle_the_stance_alongside_the_map() {
+    fresh_environment();
+    let _stub = FetchStub::new(|method, url, _body| match (method, url) {
+        ("GET", u) if u.ends_with("/bindings") => (
+            200,
+            r#"{"bindings":{"light":"light.tent_led"},"light_unavailable_as_off":false}"#
+                .to_string(),
+        ),
+        ("GET", u) if u.ends_with("/ha/entities") => (200, ENTITIES.to_string()),
+        ("PUT", u) if u.ends_with("/bindings") => (
+            200,
+            r#"{"bindings":{"light":"light.tent_led"},"light_unavailable_as_off":true}"#
+                .to_string(),
+        ),
+        _ => (404, String::new()),
+    });
+    let epoch = RwSignal::new(0u64);
+    let mount = Mounted::new(move || {
+        with_i18n(
+            move || view! { <crate::bindings::EntityBindings grow_id="g1".to_string() bindings_epoch=epoch /> },
+        )
+    });
+    wait_for(|| {
+        mount
+            .q("input[data-stance='light_unavailable_as_off']")
+            .is_some()
+    })
+    .await;
+    let toggle = mount
+        .q("input[data-stance='light_unavailable_as_off']")
+        .expect("toggle rendered");
+    let toggle: web_sys::HtmlInputElement = wasm_bindgen::JsCast::unchecked_into(toggle);
+    assert!(!toggle.checked());
+    toggle.set_checked(true);
+    fire_change(toggle.as_ref());
+    wait_for(|| epoch.get_untracked() == 1).await;
+    let calls = fetch_calls();
+    let put = calls
+        .iter()
+        .find(|c| c.method == "PUT" && c.url.ends_with("/bindings"))
+        .expect("PUT recorded");
+    assert!(
+        put.body.contains(r#""light_unavailable_as_off":true"#),
+        "stance travels with the save: {}",
+        put.body
+    );
+    assert!(
+        put.body.contains(r#""light":"light.tent_led""#),
+        "binding preserved: {}",
+        put.body
+    );
+    assert!(toggle.checked(), "optimistic local state");
 }

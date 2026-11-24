@@ -25,6 +25,12 @@ pub type Bindings = BTreeMap<String, String>;
 pub struct BindingsInput {
     /// Role → Home Assistant entity id; roles not present are unbound.
     pub bindings: Bindings,
+    /// The grow's dead-light stance (spec §4.1, D159), when the
+    /// request carries it. `None` (or an absent field) leaves the
+    /// stored stance untouched, so a picker-only save never clobbers
+    /// a toggle's write.
+    #[serde(default)]
+    pub light_unavailable_as_off: Option<bool>,
 }
 
 /// Replaces a grow's bindings wholesale.

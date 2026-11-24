@@ -122,9 +122,16 @@ pub async fn observed_for(
     now: &str,
 ) -> Option<ObservedReality> {
     let role_grow_id = grow_id.to_owned();
-    let loaded = state
+    let (loaded, stance) = state
         .db
-        .with(move |conn| crate::api_chart::load_role(conn, &role_grow_id, "light"))
+        .with(
+            move |conn| -> Result<(crate::api_chart::RolePoints, bool), crate::api::ApiError> {
+                let stance =
+                    crate::store::grows::get(conn, &role_grow_id)?.light_unavailable_as_off;
+                let loaded = crate::api_chart::load_role(conn, &role_grow_id, "light", stance)?;
+                Ok((loaded, stance))
+            },
+        )
         .await
         .ok()?;
     let Some(entity_id) = loaded.entity_id else {
@@ -140,7 +147,7 @@ pub async fn observed_for(
 
     let derived = match state.ha.history(&entity_id, OBSERVED_WINDOW_HOURS).await {
         Ok(history) => {
-            let ha_points = crate::api_chart::ha_history_points("light", &history);
+            let ha_points = crate::api_chart::ha_history_points("light", &history, stance);
             let merged = chart::merge_series_span(
                 now,
                 i64::from(OBSERVED_WINDOW_HOURS),

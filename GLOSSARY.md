@@ -15,7 +15,7 @@ The kind of reading a binding provides (temperature, humidity, CO₂, soil moist
 _Avoid_: Sensor type, channel kind
 
 **Dead binding**:
-A binding whose entity Home Assistant currently reports as unavailable or unknown. Dead bindings are the only ones the grow page may call "no data".
+A binding whose entity Home Assistant currently reports as unavailable or unknown. Dead bindings are the only ones the grow page may call "no data" — except a light under the grow's dead-light stance (D159), where death itself is the reading: lights-off.
 _Avoid_: Broken sensor
 
 **Air**:
@@ -31,7 +31,7 @@ The rolling time span an environment chart covers, always ending at now; the tog
 _Avoid_: Day, Week, Month (as toggle captions), period
 
 **Light Cycle**:
-A grow's recurring pattern of grow-light state: one daily lights-on local time plus hours-on per lit phase — a Lights-On Period followed by a Lights-Off Period. Unset parts fall back to sourced preset defaults (photoperiod 18/6 veg and 12/12 flower; autoflowers long days throughout), and reset-to-default restores those defaults. It is not the grow's Photoperiod, and not a chart window. Where a light entity is bound, the entity's observed on/off behaviour overrides the cycle wherever it has data; the cycle remains the editable fallback for gaps and the future. Charts and the phase coach follow the same precedence.
+A grow's recurring pattern of grow-light state: one daily lights-on local time plus hours-on per lit phase — a Lights-On Period followed by a Lights-Off Period. Unset parts fall back to sourced preset defaults (photoperiod 18/6 veg and 12/12 flower; autoflowers long days throughout), and reset-to-default restores those defaults. It is not the grow's Photoperiod, and not a chart window. Where a light entity is bound, the entity's observed on/off behaviour overrides the cycle wherever it has data; the cycle remains the editable fallback for gaps and the future. Charts and the phase coach follow the same precedence. Under the dead-light stance (D159) the bound entity's dead states count as data — lights-off — on both sides of that precedence.
 _Avoid_: Light schedule setting, lights config, day/night schedule, lights timer
 
 **Lights-On Period**:

@@ -250,6 +250,8 @@
     "heading": "Entitäts-Bindungen",
     "intro": "Binde pro Rolle eine Home-Assistant-Entität — Bindungen sind die einzige Sensor-Einrichtung, und die Wahlen hier gehören zu diesem Anbau.",
     "unbound": "— ungebunden —",
+    "unavailable_as_off": "Nicht verfügbar gilt als aus",
+    "unavailable_as_off_hint": "Dieser Stecker meldet „unavailable“, wenn er aus ist; tote Stunden zählen als Licht-aus.",
     "role_temperature": "Temperatur",
     "role_humidity": "Luftfeuchte",
     "role_co2": "CO2",

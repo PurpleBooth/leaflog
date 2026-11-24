@@ -6,6 +6,40 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-24 — a dead plug light can count as off (D159)
+
+### D159: unavailable counts as off, per grow
+
+Some plug lights cut their own radio when switched off, so the bound
+light entity reports `unavailable` (or `unknown`) exactly across the dark
+stretch. Without help, the dropped states leave the last reading holding
+through the gap — the chart staircase stays lit, the observed cycle
+learns inflated hours — and the coach's live-state resolution falls
+through to snapshot and schedule, which read day.
+
+The fix is a per-grow stance, not a global setting: a boolean on the grow
+record (`light_unavailable_as_off`, V23, default off) surfaced as a
+toggle on the light binding row — present only when a light entity is
+bound, so the premise is visible exactly where it applies. When on, every
+interpretation site for the bound light's history or state — `parse_value`
+for the chart staircase and observed window, `light_state_is_on` for the
+coach's live/snapshot resolution — reads `unavailable`/`unknown` as
+lights-off instead of dropping it. The coach stops at a dead live entity
+(no snapshot/schedule fallthrough) because the dead state is now a
+reading, not an absence. Everything derived re-runs on read, so flips
+apply retroactively over the whole 72-hour window; the bindings PUT
+invalidates the observed cache (D102) alongside. Picker saves re-send the
+flag unchanged; the bindings GET/PUT payload grew a sibling field next to
+the map instead of a new endpoint. The drift tile stays honest:
+bindings health still reports the entity dead — the stance says what the
+death means, not that it didn't happen.
+
+No debounce: HA-restart blips also read dark under the stance, and the
+whole-hour rounding in the observed window absorbs such slivers (the
+cost of honesty is a few dark minutes, never a lit night).
+
+---
+
 ## 2026-11-24 — tracing is the logging mechanism, on both sides of the wasm bridge (D158)
 
 ### D158: one logging facade, two subscribers
