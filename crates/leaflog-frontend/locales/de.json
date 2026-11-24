@@ -363,7 +363,8 @@
   },
   "entries": {
     "delete": "Eintrag löschen",
-    "deleted": "Eintrag gelöscht."
+    "deleted": "Eintrag gelöscht.",
+    "photo_deleted": "Foto gelöscht."
   },
   "schedules": {
     "none_row": "Kein Düngeplan.",

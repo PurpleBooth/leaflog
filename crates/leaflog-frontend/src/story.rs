@@ -5,6 +5,7 @@ use crate::{
     i18n::{Locale, t, t_string, td_string, use_i18n},
     labels, ui,
 };
+use gloo_timers::callback::Timeout;
 use leaflog_core::actions::ActionType;
 use leaflog_core::grows::{ActionEntry, Photo, Plant};
 use leaflog_core::story::{Period, StoryDay, StoryPage};
@@ -30,7 +31,21 @@ pub fn Story(
     let loading = RwSignal::new(false);
     let error = RwSignal::<Option<String>>::new(None);
     let armed_photo = RwSignal::<Option<String>>::new(None);
+    // Photo deletes have no undo (the bytes are gone); without a
+    // status line the card just vanished, so say so and auto-clear
+    // on the same cadence as the undo window.
+    let photo_status = RwSignal::<Option<String>>::new(None);
     let loaded = RwSignal::new(false);
+    Effect::new(move |_| {
+        photo_status.track();
+        // `forget` leaks a one-shot 8 s timer per delete; it only
+        // clears a status line, so the handle outliving the effect
+        // is harmless and avoids a stored-timer slot here.
+        Timeout::new(u32::try_from(ui::UNDO_WINDOW_MS).unwrap_or(0), move || {
+            photo_status.set(None);
+        })
+        .forget();
+    });
     Effect::new(move |_| {
         let id = grow_id.get();
         revision.track();
@@ -138,6 +153,9 @@ pub fn Story(
                         }
                     });
                     error.set(None);
+                    photo_status.set(Some(
+                        td_string!(i18n.get_locale_untracked(), entries.photo_deleted).into_owned(),
+                    ));
                 }
                 Err(failure) => error.set(Some(api::failure_text(
                     &failure,
@@ -195,6 +213,11 @@ pub fn Story(
                 </button>
             </fieldset>
             <ErrorIf error />
+            <Show when=move || photo_status.get().is_some()>
+                <p class="mt-2 mb-0 text-sm text-base-content/70" role="status">
+                    {move || photo_status.get().unwrap_or_default()}
+                </p>
+            </Show>
             <Show when=move || loaded.get() && visible_days(&pages.get(), &selected_plants.get()).is_empty() && !loading.get()>
                 <ui::EmptyState>{t!(i18n, story.empty)}</ui::EmptyState>
             </Show>

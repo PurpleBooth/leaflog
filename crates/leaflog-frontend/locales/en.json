@@ -363,7 +363,8 @@
   },
   "entries": {
     "delete": "Delete entry",
-    "deleted": "Entry deleted."
+    "deleted": "Entry deleted.",
+    "photo_deleted": "Photo deleted."
   },
   "schedules": {
     "none_row": "No feeding schedule.",

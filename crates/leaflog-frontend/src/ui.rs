@@ -32,7 +32,7 @@ pub const fn tile() -> &'static str {
 pub const CARD_GRID: &str = "grid grid-cols-1 gap-4 items-start lg:grid-cols-2";
 
 use crate::i18n::{t_string, use_i18n};
-use gloo_timers::callback::Timeout;
+use gloo_timers::callback::{Interval, Timeout};
 
 /// A page title and its actions, aligned and wrapped the same way on
 /// every list page. Use small buttons for the page-level actions.
@@ -362,12 +362,20 @@ pub fn UndoBanner(
     // neither Send nor Sync, and the effect re-arms on every caption
     // change, so a rapid second delete must not cut the first window
     // short. Cancelling is just taking the slot empty (env_section.rs
-    // keeps its arming timer the same way).
+    // keeps its arming timer the same way). The tick slot drives the
+    // visible countdown, so the window lapsing never surprises.
     let dismiss_slot = StoredValue::new_local(Option::<Timeout>::None);
+    let tick_slot = StoredValue::new_local(Option::<Interval>::None);
+    let remaining = RwSignal::new(UNDO_WINDOW_MS / 1000);
     let stop_dismiss = move || {
         dismiss_slot.update_value(|slot| {
             if let Some(timer) = slot.take() {
                 timer.cancel();
+            }
+        });
+        tick_slot.update_value(|slot| {
+            if let Some(tick) = slot.take() {
+                tick.cancel();
             }
         });
     };
@@ -379,12 +387,18 @@ pub fn UndoBanner(
                 on_dismiss();
             });
             dismiss_slot.set_value(Some(timer));
+            remaining.set(UNDO_WINDOW_MS / 1000);
+            let tick = Interval::new(1_000, move || {
+                remaining.update(|left| *left = left.saturating_sub(1));
+            });
+            tick_slot.set_value(Some(tick));
         }
     });
     on_cleanup(stop_dismiss);
     move || {
         message.get().map(|text| {
             let undo_label = t_string!(i18n, common.undo).into_owned();
+            let undo_caption = undo_label.clone();
             let on_undo = on_undo.clone();
             let banner_class = format!("{} flex flex-wrap items-center gap-2 my-2", card());
             view! {
@@ -396,7 +410,7 @@ pub fn UndoBanner(
                         aria-label=undo_label
                         on:click=move |_| on_undo()
                     >
-                        {undo_label.clone()}
+                        {move || format!("{undo_caption} · {}s", remaining.get())}
                     </button>
                 </div>
             }
