@@ -367,6 +367,10 @@ pre {
   padding: var(--gantt-pad) var(--gantt-pad) var(--gantt-pad)
     var(--gantt-gutter);
   background: var(--color-base-100);
+  /* Bound the visible-overflow captions to the chart box: without
+   * this a right-edge bar's caption ("laufend") spills past the
+   * viewport and adds horizontal page scroll on phones. */
+  overflow: hidden;
 }
 
 .gantt-rows {

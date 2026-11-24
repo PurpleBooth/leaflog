@@ -237,7 +237,7 @@ pub fn Story(
                         let id = plant.id.clone();
                         let checked_id = id.clone();
                         let open_id = plant.id.clone();
-                        let open_label = plant.name.clone();
+                        let open_label = plant.name;
                         view! {
                             // Two clearly distinct targets: the padded
                             // label toggles the filter (never just a
@@ -251,7 +251,7 @@ pub fn Story(
                             <A href=crate::route_href(&format!("/plants/{open_id}"))
                                 attr:class="link link-hover px-2 py-3"
                             >
-                                {open_label.clone()}
+                                {open_label}
                             </A>
                         }
                     }}
