@@ -231,6 +231,11 @@ fn DayCard(
     let date = day.date.clone();
     let date_for_add = date.clone();
     let day_label = local_date(&date, locale);
+    // Six icon buttons share two generic captions on a long page;
+    // scope each with its day so screen-reader lists (and voice
+    // control) can tell them apart.
+    let add_photo_label = format!("{} — {}", td_string!(locale, story.add_photo), day_label.clone());
+    let add_entry_label = format!("{} — {}", td_string!(locale, story.add_entry), day_label.clone());
     let light = day.light_hours.map(|hours| format!("{hours:.1}"));
     // One caveat per day, not one per half of it.
     let sparse = day.periods.iter().any(|period| period.sparse);
@@ -243,9 +248,9 @@ fn DayCard(
                 <span class="text-sm text-base-content/70">{td_string!(locale, grow.day, day = day.grow_day.to_string())}</span>
                 <ui::Chip class="badge-sm">{labels::phase_label(locale, day.phase)}</ui::Chip>
                 <span class="ml-auto flex gap-1">
-                    <button class="btn btn-ghost btn-sm" type="button" aria-label={td_string!(locale, story.add_photo).into_owned()}
+                    <button class="btn btn-ghost btn-sm" type="button" aria-label=add_photo_label
                         on:click=move |_| on_add.run((date_for_add.clone(), ActionType::Photo))><leptos_icons::Icon icon=icondata_lu::LuCamera /></button>
-                    <button class="btn btn-ghost btn-sm" type="button" aria-label={td_string!(locale, story.add_entry).into_owned()}
+                    <button class="btn btn-ghost btn-sm" type="button" aria-label=add_entry_label
                         on:click=move |_| on_add.run((date.clone(), ActionType::Note))><leptos_icons::Icon icon=icondata_lu::LuPencil /></button>
                 </span>
             </div>
@@ -357,7 +362,7 @@ pub(crate) fn PhotoCard(
             }
         )
     });
-    let label = Signal::derive(move || t_string!(i18n, entries.delete).into_owned());
+    let label = Signal::derive(move || t_string!(i18n, story.delete_photo).into_owned());
     let confirm = Signal::derive(move || t_string!(i18n, schedules.confirm_delete).into_owned());
     let armed = Signal::derive(move || armed_photo.get().as_deref() == Some(&id));
     view! {
