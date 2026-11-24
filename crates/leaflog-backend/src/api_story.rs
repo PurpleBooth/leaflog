@@ -60,7 +60,7 @@ async fn story(
     let (start, end, now) = page_window(&query, &zone)?;
     let from = midnight(start, &zone)?;
     let to = midnight(end, &zone)?;
-    let (grow, windows, local) = state
+    let (grow, windows, local, all_photos) = state
         .db
         .with(move |conn| -> Result<_, ApiError> {
             let (from_s, to_s) = (from.to_string(), to.to_string());
@@ -82,7 +82,10 @@ async fn story(
                     )?,
                 ],
             };
-            Ok((grow, windows, local))
+            // The photo calendar spans the whole grow, independent of
+            // the requested window.
+            let all_photos = store::photos::list(conn, &id)?;
+            Ok((grow, windows, local, all_photos))
         })
         .await?;
     let started: Date = grow.started_on.parse().map_err(invalid_date)?;
@@ -140,10 +143,21 @@ async fn story(
             periods: summary.periods,
         });
     }
+    // Window-independent jump targets for the story page: every
+    // photo date across the grow, newest first, so the Photos (n)
+    // button can keep loading older days until its target appears.
+    let mut photo_dates: Vec<String> = all_photos
+        .iter()
+        .filter_map(|photo| local_date(&photo.captured_at, &zone))
+        .map(|date| date.to_string())
+        .collect();
+    photo_dates.sort_unstable_by(|a, b| b.cmp(a));
+    photo_dates.dedup();
     Ok(Json(StoryPage {
         timezone,
         days,
         before: (start > earliest).then(|| start.to_string()),
+        photo_dates,
     }))
 }
 

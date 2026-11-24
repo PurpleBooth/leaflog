@@ -340,6 +340,19 @@ async fn story_groups_notes_photos_and_paginates_whole_days() {
         .unwrap();
     assert_eq!(third["days"].as_array().unwrap().len(), 0);
     assert_eq!(third["before"], Value::Null);
+    // The photo calendar is window-independent: even a window that
+    // holds no photo day reports every photo date across the grow.
+    let fourth: Value = client
+        .get(format!("{base}/api/grows/{id}/story?before=2026-10-15"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(fourth["days"][0]["date"], "2026-10-08");
+    assert_eq!(fourth["photo_dates"], json!(["2026-10-18"]));
+    assert_eq!(first["photo_dates"], json!(["2026-10-18"]));
 }
 
 /// An entry the grower dated later today still renders on today's

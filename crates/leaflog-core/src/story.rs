@@ -14,6 +14,9 @@ pub struct StoryPage {
     pub days: Vec<StoryDay>,
     /// Exclusive local date cursor for the next window.
     pub before: Option<String>,
+    /// Local dates carrying at least one photo across the whole grow,
+    /// regardless of the returned window, newest first.
+    pub photo_dates: Vec<String>,
 }
 
 /// The diary and available observations for a local calendar date.

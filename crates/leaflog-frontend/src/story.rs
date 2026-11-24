@@ -28,6 +28,9 @@ pub fn Story(
     let i18n = use_i18n();
     let pages = RwSignal::<Vec<StoryDay>>::new(Vec::new());
     let cursor = RwSignal::<Option<String>>::new(None);
+    // Whole-grow photo calendar from the API: the Photos (n) button
+    // jumps even to days no older-window load has fetched yet.
+    let photo_dates = RwSignal::<Vec<String>>::new(Vec::new());
     let loading = RwSignal::new(false);
     let error = RwSignal::<Option<String>>::new(None);
     let armed_photo = RwSignal::<Option<String>>::new(None);
@@ -51,6 +54,7 @@ pub fn Story(
         revision.track();
         pages.set(Vec::new());
         cursor.set(None);
+        photo_dates.set(Vec::new());
         loaded.set(false);
         loading.set(true);
         spawn_local(async move {
@@ -59,6 +63,7 @@ pub fn Story(
                     timezone.set(page.timezone);
                     pages.set(page.days);
                     cursor.set(page.before);
+                    photo_dates.set(page.photo_dates);
                 }
                 Err(failure) => error.set(Some(api::failure_text(
                     &failure,
@@ -73,22 +78,64 @@ pub fn Story(
         let Some(before) = cursor.get_untracked() else {
             return;
         };
+        spawn_local(load_older(
+            grow_id.get_untracked(),
+            before,
+            pages,
+            cursor,
+            photo_dates,
+            timezone,
+            loading,
+            error,
+            i18n.get_locale_untracked(),
+        ));
+    };
+    // The photo calendar spans the whole grow while days arrive in
+    // windows; jumping keeps loading older days until the target day
+    // is on screen, then scrolls to it and flashes it.
+    let jump_to_photos = move |_| {
+        let Some(target) = first_visible_photo_date(
+            &pages.get_untracked(),
+            &photo_dates.get_untracked(),
+            &selected_plants.get_untracked(),
+        ) else {
+            return;
+        };
         let id = grow_id.get_untracked();
-        loading.set(true);
+        let locale = i18n.get_locale_untracked();
         spawn_local(async move {
-            match api::get::<StoryPage>(&format!("api/grows/{id}/story?before={before}")).await {
-                Ok(page) => {
-                    timezone.set(page.timezone);
-                    pages.update(|days| days.extend(page.days));
-                    cursor.set(page.before);
-                    error.set(None);
-                }
-                Err(failure) => error.set(Some(api::failure_text(
-                    &failure,
-                    i18n.get_locale_untracked(),
-                ))),
+            while !page_loaded(&pages.get_untracked(), &target) {
+                let Some(before) = cursor.get_untracked() else {
+                    break;
+                };
+                load_older(
+                    id.clone(),
+                    before,
+                    pages,
+                    cursor,
+                    photo_dates,
+                    timezone,
+                    loading,
+                    error,
+                    locale,
+                )
+                .await;
             }
-            loading.set(false);
+            // A plant filter can hide the target day's photographs;
+            // fall back to the nearest day that is actually visible.
+            let target = first_visible_photo_date(
+                &pages.get_untracked(),
+                &photo_dates.get_untracked(),
+                &selected_plants.get_untracked(),
+            )
+            .unwrap_or(target);
+            if let Some(element) = web_sys::window()
+                .and_then(|window| window.document())
+                .and_then(|document| document.get_element_by_id(&format!("day-{target}")))
+            {
+                element.scroll_into_view();
+                let _ = element.class_list().add_1("entry-flash");
+            }
         });
     };
     let add_photo = move |ev: leptos::ev::SubmitEvent| {
@@ -133,7 +180,14 @@ pub fn Story(
                     error.set(None);
                     // A capture date can put the photo in an already-loaded
                     // older day, so reload the story rather than guessing.
-                    reload_story(grow_id.get_untracked(), pages, cursor, timezone, error);
+                    reload_story(
+                        grow_id.get_untracked(),
+                        pages,
+                        cursor,
+                        photo_dates,
+                        timezone,
+                        error,
+                    );
                 }
                 Err(failure) => error.set(Some(api::failure_text(
                     &failure,
@@ -211,6 +265,11 @@ pub fn Story(
                 <button class="btn btn-ghost btn-sm" type="button" on:click=move |_| on_add.run((String::new(), ActionType::Photo))>
                     {t!(i18n, story.add_photo)}
                 </button>
+                <button class="btn btn-ghost btn-sm" type="button" on:click=jump_to_photos
+                    disabled=move || photo_dates.get().is_empty()
+                >
+                    {move || format!("{} ({})", t_string!(i18n, story.photos), photo_dates.get().len())}
+                </button>
             </fieldset>
             <ErrorIf error />
             <Show when=move || photo_status.get().is_some()>
@@ -218,11 +277,11 @@ pub fn Story(
                     {move || photo_status.get().unwrap_or_default()}
                 </p>
             </Show>
-            <Show when=move || loaded.get() && visible_days(&pages.get(), &selected_plants.get()).is_empty() && !loading.get()>
+            <Show when=move || loaded.get() && visible_days(&pages.get(), &selected_plants.get(), false).is_empty() && !loading.get()>
                 <ui::EmptyState>{t!(i18n, story.empty)}</ui::EmptyState>
             </Show>
             <div class="mt-6 grid gap-8">
-                <For each=move || visible_days(&pages.get(), &selected_plants.get()) key=|day| day.date.clone() let:day>
+                <For each=move || visible_days(&pages.get(), &selected_plants.get(), false) key=|day| day.date.clone() let:day>
                     <DayCard day plants selected_plants timezone=timezone.into() on_add on_delete armed_photo delete_photo add_photo />
                 </For>
             </div>
@@ -254,6 +313,9 @@ fn DayCard(
     let date = day.date.clone();
     let date_for_add = date.clone();
     let day_label = local_date(&date, locale);
+    // Jump target for the Photos (n) button (story.rs scrolls to
+    // #day-<date> after loading the window that contains it).
+    let day_anchor = format!("day-{date}");
     // Six icon buttons share two generic captions on a long page;
     // scope each with its day so screen-reader lists (and voice
     // control) can tell them apart.
@@ -265,7 +327,7 @@ fn DayCard(
     let periods = day.periods;
     let photos = day.photos.clone();
     view! {
-        <section class="border-t-2 border-primary/50 pt-3" data-testid="story-day">
+        <section id=day_anchor class="border-t-2 border-primary/50 pt-3" data-testid="story-day">
             <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <h4 class="m-0 text-xl font-semibold">{day_label}</h4>
                 <span class="text-sm text-base-content/70">{td_string!(locale, grow.day, day = day.grow_day.to_string())}</span>
@@ -412,6 +474,7 @@ fn reload_story(
     id: String,
     pages: RwSignal<Vec<StoryDay>>,
     cursor: RwSignal<Option<String>>,
+    photo_dates: RwSignal<Vec<String>>,
     timezone: RwSignal<String>,
     error: RwSignal<Option<String>>,
 ) {
@@ -421,10 +484,39 @@ fn reload_story(
                 timezone.set(page.timezone);
                 pages.set(page.days);
                 cursor.set(page.before);
+                photo_dates.set(page.photo_dates);
             }
             Err(failure) => error.set(Some(failure.message.unwrap_or_default())),
         }
     });
+}
+
+/// Loads one older window into the page. Split from the button
+/// handler so the photo jump can keep calling it until its target
+/// day is on screen.
+async fn load_older(
+    id: String,
+    before: String,
+    pages: RwSignal<Vec<StoryDay>>,
+    cursor: RwSignal<Option<String>>,
+    photo_dates: RwSignal<Vec<String>>,
+    timezone: RwSignal<String>,
+    loading: RwSignal<bool>,
+    error: RwSignal<Option<String>>,
+    locale: Locale,
+) {
+    loading.set(true);
+    match api::get::<StoryPage>(&format!("api/grows/{id}/story?before={before}")).await {
+        Ok(page) => {
+            timezone.set(page.timezone);
+            pages.update(|days| days.extend(page.days));
+            cursor.set(page.before);
+            photo_dates.set(page.photo_dates);
+            error.set(None);
+        }
+        Err(failure) => error.set(Some(api::failure_text(&failure, locale))),
+    }
+    loading.set(false);
 }
 
 fn form_values(form: &web_sys::HtmlFormElement, name: &str) -> Vec<String> {
@@ -438,37 +530,61 @@ fn form_values(form: &web_sys::HtmlFormElement, name: &str) -> Vec<String> {
         })
 }
 
-fn visible_days(days: &[StoryDay], plants: &[String]) -> Vec<StoryDay> {
+fn visible_days(days: &[StoryDay], plants: &[String], photos_only: bool) -> Vec<StoryDay> {
     days.iter()
         .filter_map(|day| {
-            let matches = |ids: &[String]| {
-                plants.is_empty() || ids.is_empty() || ids.iter().any(|id| plants.contains(id))
+            let actions = if photos_only {
+                Vec::new()
+            } else {
+                day.actions
+                    .iter()
+                    .filter(|entry| matches_plants(&entry.plant_ids, plants))
+                    .cloned()
+                    .collect::<Vec<_>>()
             };
-            let actions = day
-                .actions
-                .iter()
-                .filter(|entry| matches(&entry.plant_ids))
-                .cloned()
-                .collect::<Vec<_>>();
             let photos = day
                 .photos
                 .iter()
-                .filter(|photo| matches(&photo.plant_ids))
+                .filter(|photo| matches_plants(&photo.plant_ids, plants))
                 .cloned()
                 .collect::<Vec<_>>();
-            // Grow-wide environment is context, not a plant-specific match.
-            (!actions.is_empty()
-                || !photos.is_empty()
-                || day.has_observations
-                || day.automatic
-                || plants.is_empty())
-            .then(|| StoryDay {
+            // Grow-wide environment is context, not a plant-specific
+            // match; photos-only mode drops it entirely.
+            let keep_environment =
+                !photos_only && (day.has_observations || day.automatic || plants.is_empty());
+            (!actions.is_empty() || !photos.is_empty() || keep_environment).then(|| StoryDay {
                 actions,
                 photos,
                 ..day.clone()
             })
         })
         .collect()
+}
+
+fn matches_plants(ids: &[String], plants: &[String]) -> bool {
+    plants.is_empty() || ids.is_empty() || ids.iter().any(|id| plants.contains(id))
+}
+
+/// The first whole-grow photo date whose day is loaded and visible
+/// under the current plant filter, newest first.
+fn first_visible_photo_date(
+    days: &[StoryDay],
+    dates: &[String],
+    plants: &[String],
+) -> Option<String> {
+    dates
+        .iter()
+        .find(|date| {
+            days.iter()
+                .filter(|day| day.date == **date)
+                .flat_map(|day| day.photos.iter())
+                .any(|photo| matches_plants(&photo.plant_ids, plants))
+        })
+        .cloned()
+}
+
+fn page_loaded(days: &[StoryDay], date: &str) -> bool {
+    days.iter().any(|day| day.date == date)
 }
 
 fn toggle(ids: &mut Vec<String>, id: &str) {
@@ -545,6 +661,31 @@ mod tests {
         serde_json::from_str(r#"{"date":"2026-11-22","grow_day":1,"phase":"vegetative","actions":[],"photos":[],"automatic":false,"has_observations":false,"light_hours":null,"light_partial":false,"periods":[{"sparse":false},{"sparse":false}]}"#).expect("test day")
     }
 
+    fn photo(id: &str, plant_ids: &[&str]) -> Photo {
+        serde_json::from_str(&format!(
+            r#"{{"id":"{id}","grow_id":"g1","plant_ids":{},"captured_at":"2026-11-22T12:00:00Z","grow_day":1,"tags":[],"original_name":"a.jpg","thumbnail_name":"a.webp","bytes_stored":1,"created_at":"2026-11-22T12:00:00Z","updated_at":"2026-11-22T12:00:00Z"}}"#,
+            serde_json::to_string(plant_ids).expect("plant ids")
+        ))
+        .expect("test photo")
+    }
+
+    fn note(id: &str, plant_ids: &[&str]) -> ActionEntry {
+        ActionEntry {
+            id: id.to_owned(),
+            grow_id: "g1".to_owned(),
+            plant_ids: plant_ids.iter().map(|id| (*id).to_owned()).collect(),
+            occurred_at: "2026-11-22T12:00:00Z".to_owned(),
+            action_type: ActionType::Note,
+            phase: None,
+            grow_day: 1,
+            details: ActionDetails::default(),
+            notes: None,
+            appearance_tags: Vec::new(),
+            created_at: "2026-11-22T12:00:00Z".to_owned(),
+            updated_at: "2026-11-22T12:00:00Z".to_owned(),
+        }
+    }
+
     #[test]
     fn plant_toggles_are_independent() {
         let mut ids = Vec::new();
@@ -561,7 +702,7 @@ mod tests {
             serde_json::from_str::<Photo>(r#"{"id":"plant-photo","grow_id":"g1","plant_ids":["plant-1"],"captured_at":"2026-11-22T12:00:00Z","grow_day":1,"tags":[],"original_name":"a.jpg","thumbnail_name":"a.webp","bytes_stored":1,"created_at":"2026-11-22T12:00:00Z","updated_at":"2026-11-22T12:00:00Z"}"#).expect("plant photo"),
             serde_json::from_str::<Photo>(r#"{"id":"grow-photo","grow_id":"g1","plant_ids":[],"captured_at":"2026-11-22T12:00:00Z","grow_day":1,"tags":[],"original_name":"b.jpg","thumbnail_name":"b.webp","bytes_stored":1,"created_at":"2026-11-22T12:00:00Z","updated_at":"2026-11-22T12:00:00Z"}"#).expect("grow photo"),
         ];
-        let days = visible_days(&[day], &[]);
+        let days = visible_days(&[day], &[], false);
         assert_eq!(days[0].photos.len(), 2);
     }
 
@@ -588,7 +729,7 @@ mod tests {
             })
             .to_vec();
         day.photos = vec![serde_json::from_str::<Photo>(r#"{"id":"plant-photo","grow_id":"g1","plant_ids":["plant-1"],"captured_at":"2026-11-22T12:00:00Z","grow_day":1,"tags":[],"original_name":"a.jpg","thumbnail_name":"a.webp","bytes_stored":1,"created_at":"2026-11-22T12:00:00Z","updated_at":"2026-11-22T12:00:00Z"}"#).expect("plant photo")];
-        let days = visible_days(&[day], &["plant-1".to_owned()]);
+        let days = visible_days(&[day], &["plant-1".to_owned()], false);
         assert_eq!(days[0].actions.len(), 2);
         assert_eq!(days[0].photos.len(), 1);
     }
@@ -597,7 +738,7 @@ mod tests {
     fn grow_wide_environment_remains_under_a_plant_filter() {
         let mut day = day();
         day.has_observations = true;
-        let days = visible_days(&[day], &["plant-1".to_owned()]);
+        let days = visible_days(&[day], &["plant-1".to_owned()], false);
         assert_eq!(days.len(), 1);
         assert_eq!(days[0].date, "2026-11-22");
     }
@@ -606,6 +747,28 @@ mod tests {
     fn selected_plants_hide_other_plant_entries() {
         let mut day = day();
         day.photos = vec![serde_json::from_str::<Photo>(r#"{"id":"other-photo","grow_id":"g1","plant_ids":["plant-2"],"captured_at":"2026-11-22T12:00:00Z","grow_day":1,"tags":[],"original_name":"a.jpg","thumbnail_name":"a.webp","bytes_stored":1,"created_at":"2026-11-22T12:00:00Z","updated_at":"2026-11-22T12:00:00Z"}"#).expect("other plant photo")];
-        assert_eq!(visible_days(&[day], &["plant-1".to_owned()]).len(), 0);
+        assert_eq!(visible_days(&[day], &["plant-1".to_owned()], false).len(), 0);
+    }
+
+    #[test]
+    fn photos_only_drops_actions_and_environment() {
+        let mut day = day();
+        day.has_observations = true;
+        day.actions = vec![note("note-1", &[])];
+        assert_eq!(visible_days(&[day.clone()], &[], true).len(), 0);
+        // Unfiltered, the same day survives for its environment.
+        assert_eq!(visible_days(&[day], &[], false).len(), 1);
+    }
+
+    #[test]
+    fn photos_only_keeps_only_matching_photos() {
+        let mut day = day();
+        day.actions = vec![note("note-1", &["plant-1"])];
+        day.photos = vec![photo("mine", &["plant-1"]), photo("theirs", &["plant-2"])];
+        let days = visible_days(&[day], &["plant-1".to_owned()], true);
+        assert_eq!(days.len(), 1);
+        assert_eq!(days[0].actions.len(), 0);
+        assert_eq!(days[0].photos.len(), 1);
+        assert_eq!(days[0].photos[0].id, "mine");
     }
 }

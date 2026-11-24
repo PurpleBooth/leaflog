@@ -131,7 +131,8 @@
     "whole_grow": "Gesamter Anbau",
     "open_original": "Originalfoto öffnen",
     "open_plant": "Pflanze öffnen",
-    "delete_photo": "Foto löschen"
+    "delete_photo": "Foto löschen",
+    "photos": "Fotos"
   },
   "env": {
     "apply_band": "Band anwenden",

@@ -131,7 +131,8 @@
     "whole_grow": "Whole grow",
     "open_original": "Open the original photo",
     "open_plant": "Open plant",
-    "delete_photo": "Delete photo"
+    "delete_photo": "Delete photo",
+    "photos": "Photos"
   },
   "env": {
     "apply_band": "Apply band",
