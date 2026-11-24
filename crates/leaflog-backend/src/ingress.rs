@@ -134,8 +134,13 @@ fn base_script_tag(base: &IngressPath) -> String {
 /// - `style-src 'self' 'unsafe-inline'` — the linked stylesheet plus
 ///   the inline styles Leptos emits (element `style` attributes and
 ///   dynamic `<style>` elements).
-/// - `img-src`/`connect-src`/`form-action`/`base-uri` `'self'` —
-///   photos, API polling, and the injected `<base href>` are all
+/// - `img-src 'self' data:` — photos are same-origin relative URLs,
+///   and DaisyUI paints its loading spinners and tooltip tails from
+///   inline `data:` SVG masks, which `'self'` alone blocks. The masks
+///   ship inside the audited stylesheet, so they carry no remote
+///   content (AGENTS.md ingress rules).
+/// - `connect-src`/`form-action`/`base-uri` `'self'` — API polling
+///   and the injected `<base href>` are all
 ///   same-origin relative URLs (AGENTS.md ingress rules).
 /// - `object-src 'none'`, `default-src 'self'`.
 ///
@@ -161,7 +166,7 @@ pub fn content_security_policy(base: &IngressPath, template: &str) -> String {
         "default-src 'self'; \
          script-src 'self' 'wasm-unsafe-eval' {}; \
          style-src 'self' 'unsafe-inline'; \
-         img-src 'self'; \
+         img-src 'self' data:; \
          connect-src 'self'; \
          object-src 'none'; \
          base-uri 'self'; \
@@ -450,7 +455,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
             super::content_security_policy(&IngressPath::new(None), ""),
             "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' \
              'sha256-AEesw44Mnq5qKta2TJ7d7OT2cUsXlnb0xxvKbIPhr+8='; \
-             style-src 'self' 'unsafe-inline'; img-src 'self'; \
+             style-src 'self' 'unsafe-inline'; img-src 'self' data:; \
              connect-src 'self'; object-src 'none'; base-uri 'self'; \
              form-action 'self'"
         );
