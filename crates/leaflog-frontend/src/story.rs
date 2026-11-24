@@ -49,6 +49,14 @@ pub fn Story(
         })
         .forget();
     });
+    let state = StoryState {
+        pages,
+        cursor,
+        photo_dates,
+        timezone,
+        loading,
+        error,
+    };
     Effect::new(move |_| {
         let id = grow_id.get();
         revision.track();
@@ -78,17 +86,7 @@ pub fn Story(
         let Some(before) = cursor.get_untracked() else {
             return;
         };
-        spawn_local(load_older(
-            grow_id.get_untracked(),
-            before,
-            pages,
-            cursor,
-            photo_dates,
-            timezone,
-            loading,
-            error,
-            i18n.get_locale_untracked(),
-        ));
+        state.load_older(grow_id.get_untracked(), before, i18n.get_locale_untracked());
     };
     // The photo calendar spans the whole grow while days arrive in
     // windows; jumping keeps loading older days until the target day
@@ -108,18 +106,25 @@ pub fn Story(
                 let Some(before) = cursor.get_untracked() else {
                     break;
                 };
-                load_older(
-                    id.clone(),
-                    before,
-                    pages,
-                    cursor,
-                    photo_dates,
-                    timezone,
-                    loading,
-                    error,
-                    locale,
-                )
-                .await;
+                // Inline fetch loop: this task must await each window
+                // before deciding to load the next, so it cannot go
+                // through the fire-and-forget helper below.
+                loading.set(true);
+                match api::get::<StoryPage>(&format!("api/grows/{id}/story?before={before}")).await
+                {
+                    Ok(page) => {
+                        timezone.set(page.timezone);
+                        pages.update(|days| days.extend(page.days));
+                        cursor.set(page.before);
+                        photo_dates.set(page.photo_dates);
+                        error.set(None);
+                    }
+                    Err(failure) => {
+                        error.set(Some(api::failure_text(&failure, locale)));
+                        break;
+                    }
+                }
+                loading.set(false);
             }
             // A plant filter can hide the target day's photographs;
             // fall back to the nearest day that is actually visible.
@@ -180,14 +185,7 @@ pub fn Story(
                     error.set(None);
                     // A capture date can put the photo in an already-loaded
                     // older day, so reload the story rather than guessing.
-                    reload_story(
-                        grow_id.get_untracked(),
-                        pages,
-                        cursor,
-                        photo_dates,
-                        timezone,
-                        error,
-                    );
+                    state.reload(grow_id.get_untracked());
                 }
                 Err(failure) => error.set(Some(api::failure_text(
                     &failure,
@@ -249,9 +247,9 @@ pub fn Story(
                                 <input type="checkbox" class="checkbox checkbox-sm"
                                     prop:checked=move || selected_plants.get().contains(&checked_id)
                                     on:change=move |_| selected_plants.update(|selected| toggle(selected, &id)) />
-                                {plant.name.clone()}
+                                {plant.name}
                             </label>
-                            <A href=crate::route_href(&format!("/plants/{}", open_id))
+                            <A href=crate::route_href(&format!("/plants/{open_id}"))
                                 attr:class="link link-hover px-2 py-3"
                                 attr:aria-label=move || {
                                     format!("{}: {}", t_string!(i18n, story.open_plant), open_label.clone())
@@ -319,16 +317,8 @@ fn DayCard(
     // Six icon buttons share two generic captions on a long page;
     // scope each with its day so screen-reader lists (and voice
     // control) can tell them apart.
-    let add_photo_label = format!(
-        "{} — {}",
-        td_string!(locale, story.add_photo),
-        day_label.clone()
-    );
-    let add_entry_label = format!(
-        "{} — {}",
-        td_string!(locale, story.add_entry),
-        day_label.clone()
-    );
+    let add_photo_label = format!("{} — {}", td_string!(locale, story.add_photo), day_label);
+    let add_entry_label = format!("{} — {}", td_string!(locale, story.add_entry), day_label);
     let light = day.light_hours.map(|hours| format!("{hours:.1}"));
     // One caveat per day, not one per half of it.
     let sparse = day.periods.iter().any(|period| period.sparse);
@@ -478,53 +468,55 @@ pub(crate) fn PhotoCard(
     }
 }
 
-fn reload_story(
-    id: String,
-    pages: RwSignal<Vec<StoryDay>>,
-    cursor: RwSignal<Option<String>>,
-    photo_dates: RwSignal<Vec<String>>,
-    timezone: RwSignal<String>,
-    error: RwSignal<Option<String>>,
-) {
-    spawn_local(async move {
-        match api::get::<StoryPage>(&format!("api/grows/{id}/story")).await {
-            Ok(page) => {
-                timezone.set(page.timezone);
-                pages.set(page.days);
-                cursor.set(page.before);
-                photo_dates.set(page.photo_dates);
-            }
-            Err(failure) => error.set(Some(failure.message.unwrap_or_default())),
-        }
-    });
-}
-
-/// Loads one older window into the page. Split from the button
-/// handler so the photo jump can keep calling it until its target
-/// day is on screen.
-async fn load_older(
-    id: String,
-    before: String,
+/// The story page's shared signals, bundled so the fetch helpers
+/// take one argument instead of six (`clippy::too_many_arguments`).
+#[derive(Debug, Clone, Copy)]
+struct StoryState {
     pages: RwSignal<Vec<StoryDay>>,
     cursor: RwSignal<Option<String>>,
     photo_dates: RwSignal<Vec<String>>,
     timezone: RwSignal<String>,
     loading: RwSignal<bool>,
     error: RwSignal<Option<String>>,
-    locale: Locale,
-) {
-    loading.set(true);
-    match api::get::<StoryPage>(&format!("api/grows/{id}/story?before={before}")).await {
-        Ok(page) => {
-            timezone.set(page.timezone);
-            pages.update(|days| days.extend(page.days));
-            cursor.set(page.before);
-            photo_dates.set(page.photo_dates);
-            error.set(None);
-        }
-        Err(failure) => error.set(Some(api::failure_text(&failure, locale))),
+}
+
+impl StoryState {
+    /// Re-fetches the first window, replacing the page's days.
+    fn reload(&self, id: String) {
+        let this = *self;
+        spawn_local(async move {
+            match api::get::<StoryPage>(&format!("api/grows/{id}/story")).await {
+                Ok(page) => {
+                    this.timezone.set(page.timezone);
+                    this.pages.set(page.days);
+                    this.cursor.set(page.before);
+                    this.photo_dates.set(page.photo_dates);
+                }
+                Err(failure) => this.error.set(Some(failure.message.unwrap_or_default())),
+            }
+        });
     }
-    loading.set(false);
+
+    /// Loads one older window and appends it. Fire-and-forget; the
+    /// photo jump runs its own inline fetch loop because it must
+    /// await each window before deciding to load the next.
+    fn load_older(&self, id: String, before: String, locale: Locale) {
+        self.loading.set(true);
+        let this = *self;
+        spawn_local(async move {
+            match api::get::<StoryPage>(&format!("api/grows/{id}/story?before={before}")).await {
+                Ok(page) => {
+                    this.timezone.set(page.timezone);
+                    this.pages.update(|days| days.extend(page.days));
+                    this.cursor.set(page.before);
+                    this.photo_dates.set(page.photo_dates);
+                    this.error.set(None);
+                }
+                Err(failure) => this.error.set(Some(api::failure_text(&failure, locale))),
+            }
+            this.loading.set(false);
+        });
+    }
 }
 
 fn form_values(form: &web_sys::HtmlFormElement, name: &str) -> Vec<String> {
