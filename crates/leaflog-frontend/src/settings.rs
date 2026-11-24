@@ -96,7 +96,8 @@ impl Draft {
 
 /// A rounded, non-negative count; the backend stores whole numbers.
 fn whole(value: f64) -> u64 {
-    #[allow(clippy::cast_possible_truncation)] // clamped to ≥ 1 and finite, so the cast is exact
+    #[allow(clippy::cast_possible_truncation)]
+    // the cast saturates and the checked conversion falls back to 1
     u64::try_from(value.round() as i64).unwrap_or(1)
 }
 

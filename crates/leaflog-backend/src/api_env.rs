@@ -72,7 +72,6 @@ fn entity_available(entity: Option<&crate::ha::LiveEntity>) -> bool {
     entity.is_some_and(|live| live.state != "unavailable" && live.state != "unknown")
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn grow_env(
     State(state): State<AppState>,
@@ -95,73 +94,67 @@ pub(crate) fn snapshot(
     live: &crate::ha::LiveData,
     tz: &str,
 ) -> Result<EnvSnapshot, ApiError> {
-    {
-        let grow = store::grows::get(conn, id)?;
+    let grow = store::grows::get(conn, id)?;
 
-        // The phase the grow is in today, from the re-anchored
-        // forecast (D073). Local calendar days in the canonical zone
-        // (spec §2); UTC math is the fallback for unknown zones.
-        let today =
-            crate::app::day_number_in(&grow.started_on, &crate::db::now_rfc3339(), tz).unwrap_or(0);
-        let phase = crate::api_phase::current_phase(conn, &grow, today)?;
+    // The phase the grow is in today, from the re-anchored forecast (D073).
+    let today =
+        crate::app::day_number_in(&grow.started_on, &crate::db::now_rfc3339(), tz).unwrap_or(0);
+    let phase = crate::api_phase::current_phase(conn, &grow, today)?;
 
-        // Temperature and humidity from the bound sensors, with
-        // each binding's drift status beside them (spec §4.1).
-        let bindings = store::sensors::list(conn, id)?;
-        let temp_entity = bindings.get("temperature");
-        let humidity_entity = bindings.get("humidity");
-        let drift = bindings
-            .iter()
-            .map(|(role, entity_id)| BindingStatus {
-                role: role.clone(),
-                entity_id: entity_id.clone(),
-                available: entity_available(live.entities.get(entity_id)),
-            })
-            .collect::<Vec<_>>();
-        let temperature_c = temp_entity
-            .and_then(|e| live.entities.get(e))
-            .and_then(crate::ha::LiveEntity::temperature_c);
-        let humidity_pct = humidity_entity
-            .and_then(|e| live.entities.get(e))
-            .and_then(|e| e.state.parse::<f64>().ok());
-
-        // VPD (needs both temp and RH).
-        let vpd = match (temperature_c, humidity_pct) {
-            (Some(t), Some(h)) => Some(vpd_kpa(t, h, leaflog_core::env::DEFAULT_LEAF_OFFSET_C)),
-            _ => None,
-        };
-
-        let band = vpd_band(phase);
-        let rh_w = rh_window(
-            temperature_c.unwrap_or(25.0),
-            leaflog_core::env::DEFAULT_LEAF_OFFSET_C,
-            band,
-        );
-
-        // Grow-shifted thresholds (D075): unset tolerances are
-        // Average, so a fresh grow needs no tuning.
-        let thresholds =
-            TempThresholds::default().shifted(grow.heat_tolerance, grow.cold_tolerance);
-
-        let temp_ok = temperature_c.map(|t| t >= thresholds.floor_c && t <= thresholds.ceiling_c);
-        let vpd_ok = vpd.map(|v| v >= band.0 && v <= band.1);
-
-        Ok(EnvSnapshot {
-            bindings: drift,
-            temperature_c,
-            humidity_pct,
-            vpd_kpa: vpd,
-            vpd_band: band,
-            rh_window: rh_w,
-            thresholds,
-            phase: phase.label().to_owned(),
-            temp_ok,
-            vpd_ok,
+    // Temperature and humidity from the bound sensors, with
+    // each binding's drift status beside them (spec §4.1).
+    let bindings = store::sensors::list(conn, id)?;
+    let temp_entity = bindings.get("temperature");
+    let humidity_entity = bindings.get("humidity");
+    let drift = bindings
+        .iter()
+        .map(|(role, entity_id)| BindingStatus {
+            role: role.clone(),
+            entity_id: entity_id.clone(),
+            available: entity_available(live.entities.get(entity_id)),
         })
-    }
+        .collect::<Vec<_>>();
+    let temperature_c = temp_entity
+        .and_then(|e| live.entities.get(e))
+        .and_then(crate::ha::LiveEntity::temperature_c);
+    let humidity_pct = humidity_entity
+        .and_then(|e| live.entities.get(e))
+        .and_then(|e| e.state.parse::<f64>().ok());
+
+    // VPD (needs both temp and RH).
+    let vpd = match (temperature_c, humidity_pct) {
+        (Some(t), Some(h)) => Some(vpd_kpa(t, h, leaflog_core::env::DEFAULT_LEAF_OFFSET_C)),
+        _ => None,
+    };
+
+    let band = vpd_band(phase);
+    let rh_w = rh_window(
+        temperature_c.unwrap_or(25.0),
+        leaflog_core::env::DEFAULT_LEAF_OFFSET_C,
+        band,
+    );
+
+    // Grow-shifted thresholds (D075): unset tolerances are
+    // Average, so a fresh grow needs no tuning.
+    let thresholds = TempThresholds::default().shifted(grow.heat_tolerance, grow.cold_tolerance);
+
+    let temp_ok = temperature_c.map(|t| t >= thresholds.floor_c && t <= thresholds.ceiling_c);
+    let vpd_ok = vpd.map(|v| v >= band.0 && v <= band.1);
+
+    Ok(EnvSnapshot {
+        bindings: drift,
+        temperature_c,
+        humidity_pct,
+        vpd_kpa: vpd,
+        vpd_band: band,
+        rh_window: rh_w,
+        thresholds,
+        phase: phase.label().to_owned(),
+        temp_ok,
+        vpd_ok,
+    })
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn grow_lamp(
     State(state): State<AppState>,
@@ -175,8 +168,6 @@ async fn grow_lamp(
             let grow = store::grows::get(conn, &id)?;
 
             // Phase from the re-anchored forecast (D073).
-            // Local calendar days in the canonical zone (spec §2);
-            // UTC math is the fallback for unknown zones.
             let today = crate::app::day_number_in(&grow.started_on, &crate::db::now_rfc3339(), &tz)
                 .unwrap_or(0);
             let phase = crate::api_phase::current_phase(conn, &grow, today)?;
@@ -317,7 +308,6 @@ fn resolve_coach_light_on(
     .unwrap_or(true))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn grow_coach(
     State(state): State<AppState>,
@@ -331,8 +321,6 @@ async fn grow_coach(
             let grow = store::grows::get(conn, &id)?;
 
             // Phase from the re-anchored forecast (D073).
-            // Local calendar days in the canonical zone (spec §2);
-            // UTC math is the fallback for unknown zones.
             let today = crate::app::day_number_in(&grow.started_on, &crate::db::now_rfc3339(), &tz)
                 .unwrap_or(0);
             let phase = crate::api_phase::current_phase(conn, &grow, today)?;

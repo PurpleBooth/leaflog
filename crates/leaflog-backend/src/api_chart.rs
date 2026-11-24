@@ -391,7 +391,6 @@ fn reduce_series(
     )
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn grow_history(
     State(state): State<AppState>,

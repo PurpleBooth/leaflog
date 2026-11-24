@@ -147,7 +147,6 @@ pub struct PlantView {
     pub timezone: String,
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn plant_view(
     State(state): State<AppState>,
@@ -179,7 +178,6 @@ async fn plant_view(
 /// copying the strain label, photoperiod, substrate and feed
 /// template from this one (the label travels as the free text it is;
 /// there is no catalogue entry left to reference, spec §4.15).
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn next_run(
     State(state): State<AppState>,

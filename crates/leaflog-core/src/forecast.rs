@@ -491,7 +491,7 @@ fn add_vegetative(
 
 /// Appends a window and returns it; retro-truncates the previous phase
 /// when an actual start lands earlier than its predicted end.
-#[allow(clippy::too_many_arguments)] // grouped below in future cleanup; see docs/DECISIONS.md
+#[allow(clippy::too_many_arguments)] // grouping would obscure the call sites; see docs/DECISIONS.md
 fn add(
     windows: &mut Vec<PhaseWindow>,
     phase: Phase,

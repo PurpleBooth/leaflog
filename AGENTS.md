@@ -79,7 +79,6 @@ Every crate root (`lib.rs`/`main.rs`) starts with its `//!` crate doc, then this
 - Macro-generated code (Leptos `#[component]`, serde/sqlx derives) gets a narrowly scoped
   `#[allow(...)]` on that item with a one-line reason comment; log every exception in
   `docs/DECISIONS.md`.
-- CI gate: `just ci`.
 
 ## Commands
 
@@ -97,12 +96,6 @@ Automation lives in a `justfile` (or `xtask` crate) — no bash-only scripts.
 
 - **Devbox** (Nix-based): commit `devbox.json`, `devbox.lock`, `rust-toolchain.toml`
   (stable ≥ 1.88). `rustup` as a Devbox package; wasm32 target + clippy/rustfmt via init_hook.
-- **Host is Fedora Silverblue (immutable)**: `/nix` setup is a one-time *manual* host step —
-  do not automate it; options are documented in `docs/DEV_SETUP.md`. Keep Podman on the host,
-  out of Devbox.
-- Image builds use **Podman** (locally), multi-stage BuildKit, musl targets for aarch64 + amd64,
-  pinned HA Alpine base (`ghcr.io/home-assistant/base:<tag>`, never `latest`). Cross-compilation
-  happens inside the container build.
 - **GitHub Actions** builds and publishes the multi-arch image, plus a local-build path via
   Podman. CI (`just ci` gate: fmt, clippy native + wasm, tests, WASM build) also runs on
   GitHub Actions.
@@ -125,13 +118,7 @@ Automation lives in a `justfile` (or `xtask` crate) — no bash-only scripts.
   removal plan) in `docs/DECISIONS.md`. Bundled seed data is data, not vendored code.
 - Pick the simplest option when ambiguous, log it in `docs/DECISIONS.md`, keep going.
   Ask only about blocking choices.
-- Re-check the HA developer docs before each milestone ("add-ons" are now "apps"; naming is
-  in flux).
-- Out of scope for v1: multi-user, cloud sync, native mobile app, sharing/selling features,
-  automatic device control by default.
-- Owner is in Germany: plant-count limits and access-securing reminders are informational
-  only (default off outside DE); verify statutory limits from current statute text before
-  encoding.
+- Re-check the HA developer docs before each milestone
 
 ## Agent skills
 

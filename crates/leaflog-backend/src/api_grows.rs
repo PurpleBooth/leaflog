@@ -78,7 +78,6 @@ async fn list_grows(
     Ok(Json(state.db.with(store::grows::list).await?))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn create_grow(
     State(state): State<AppState>,
@@ -113,7 +112,6 @@ async fn create_grow(
     Ok((StatusCode::CREATED, Json(grow)))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn get_grow(
     State(state): State<AppState>,
@@ -127,7 +125,6 @@ async fn get_grow(
     ))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn update_grow(
     State(state): State<AppState>,
@@ -162,7 +159,6 @@ async fn update_grow(
     Ok(Json(grow))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn delete_grow(
     State(state): State<AppState>,
@@ -183,7 +179,6 @@ async fn delete_grow(
     Ok(StatusCode::NO_CONTENT)
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn list_plants(
     State(state): State<AppState>,
@@ -197,7 +192,6 @@ async fn list_plants(
     ))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn create_plant(
     State(state): State<AppState>,
@@ -218,7 +212,6 @@ async fn create_plant(
     Ok((StatusCode::CREATED, Json(plant)))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn update_plant(
     State(state): State<AppState>,
@@ -242,7 +235,6 @@ async fn update_plant(
     Ok(Json(plant))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn delete_plant(
     State(state): State<AppState>,
@@ -264,7 +256,6 @@ struct ActionQuery {
     limit: Option<u32>,
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn list_actions(
     State(state): State<AppState>,
@@ -289,7 +280,6 @@ async fn list_actions(
     ))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn create_action(
     State(state): State<AppState>,
@@ -386,7 +376,6 @@ async fn create_action(
     Ok((StatusCode::CREATED, Json(entry)))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn get_action(
     State(state): State<AppState>,
@@ -400,7 +389,6 @@ async fn get_action(
     ))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn update_action(
     State(state): State<AppState>,
@@ -496,7 +484,6 @@ fn refit_after_edit(conn: &rusqlite::Connection, grow_id: &str) -> Result<(), Ap
     crate::api_feeds::fit_grow(conn, grow_id).map(|_| ())
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn delete_action(
     State(state): State<AppState>,
@@ -544,7 +531,6 @@ pub struct ForecastResponse {
     pub windows: Vec<leaflog_core::forecast::PhaseWindow>,
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn get_forecast(
     State(state): State<AppState>,
@@ -578,7 +564,6 @@ async fn get_forecast(
     Ok(Json(response))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn list_photos(
     State(state): State<AppState>,
@@ -592,7 +577,6 @@ async fn list_photos(
     ))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn get_light_cycle(
     State(state): State<AppState>,
@@ -614,7 +598,6 @@ async fn get_light_cycle(
     }))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn put_light_cycle(
     State(state): State<AppState>,
@@ -638,7 +621,6 @@ async fn put_light_cycle(
     Ok(Json(stored.light_cycle.unwrap_or_default()))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn reset_light_cycle(
     State(state): State<AppState>,
@@ -655,7 +637,6 @@ async fn reset_light_cycle(
     Ok(StatusCode::NO_CONTENT)
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn get_yield(
     State(state): State<AppState>,
@@ -674,7 +655,6 @@ async fn get_yield(
     Ok(Json(summary))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 #[allow(clippy::too_many_lines)] // multipart field walk, not logic; see docs/DECISIONS.md
 async fn upload_photo(
@@ -881,7 +861,6 @@ async fn upload_photo(
     Ok((StatusCode::CREATED, Json(photo)))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn delete_photo(
     State(state): State<AppState>,
@@ -931,7 +910,6 @@ async fn read_photo_file(
         .map_err(|error| ApiError::Internal(error.to_string()))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn photo_original(
     State(state): State<AppState>,
@@ -956,7 +934,6 @@ async fn photo_original(
         .into_response())
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn photo_thumbnail(
     State(state): State<AppState>,

@@ -36,7 +36,6 @@ struct EntitiesQuery {
     device_class: Option<String>,
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn ha_entities(
     State(state): State<AppState>,
@@ -84,7 +83,6 @@ struct HistoryQuery {
     hours: Option<u32>,
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn ha_history(
     State(state): State<AppState>,
@@ -127,7 +125,6 @@ async fn live_stream(
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn get_bindings(
     State(state): State<AppState>,
@@ -140,7 +137,6 @@ async fn get_bindings(
     Ok(Json(bindings))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn put_bindings(
     State(state): State<AppState>,

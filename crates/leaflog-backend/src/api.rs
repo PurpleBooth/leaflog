@@ -139,7 +139,6 @@ fn setting_shape_ok(key: &str, value: &Value) -> bool {
     }
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn put_settings(
     State(state): State<AppState>,

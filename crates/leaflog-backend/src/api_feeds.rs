@@ -45,7 +45,6 @@ async fn list_schedules(
     Ok(Json(summaries))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn create_schedule(
     State(state): State<AppState>,
@@ -73,7 +72,6 @@ async fn create_schedule(
     Ok((StatusCode::CREATED, Json(created)))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 /// The ids of the grows currently referencing a schedule: the edit
 /// page's refit loop walks this list after a schedule save so the
@@ -100,7 +98,6 @@ async fn get_schedule(
     Ok(Json(schedule))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn update_schedule(
     State(state): State<AppState>,
@@ -130,7 +127,6 @@ async fn update_schedule(
     Ok(Json(updated))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn delete_schedule(
     State(state): State<AppState>,
@@ -143,7 +139,6 @@ async fn delete_schedule(
     Ok(StatusCode::NO_CONTENT)
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn duplicate_schedule(
     State(state): State<AppState>,
@@ -156,7 +151,6 @@ async fn duplicate_schedule(
     Ok((StatusCode::CREATED, Json(copy)))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn get_plan(
     State(state): State<AppState>,
@@ -169,7 +163,6 @@ async fn get_plan(
     Ok(Json(plan))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 /// Fits the grow's assigned schedule to its timeline and stores the
 /// plan. `Ok(None)` when the grow has no schedule or its forecast is
@@ -197,7 +190,6 @@ pub(crate) fn fit_grow(
     )?))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn refit_feed(
     State(state): State<AppState>,
@@ -214,7 +206,6 @@ async fn refit_feed(
     Ok(Json(plan))
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn list_profiles(
     State(state): State<AppState>,

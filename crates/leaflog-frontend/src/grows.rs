@@ -206,10 +206,7 @@ pub fn GrowsPage() -> impl IntoView {
     }
 }
 
-/// One manual diary entry as a card: action label, the day badge the
-/// phase-day split pins (e2e 17), the phase badge, structured facts
-/// when any are set, notes, appearance tags and the local stamp.
-/// `on_delete` is the shared delete-with-undo callback.
+/// Test-only shim: [`timeline_entry_in_zone`] with an empty zone.
 #[cfg(all(test, target_arch = "wasm32"))]
 pub fn timeline_entry(
     locale: Locale,
@@ -219,7 +216,11 @@ pub fn timeline_entry(
     timeline_entry_in_zone(locale, entry, on_delete, String::new())
 }
 
-/// A diary entry whose wall clock uses the grow's canonical timezone.
+/// One manual diary entry as a card: action label, the day badge the
+/// phase-day split pins (e2e 17), the phase badge, structured facts
+/// when any are set, notes, appearance tags and the local stamp. The
+/// wall clock uses the grow's canonical timezone; `on_delete` is the
+/// shared delete-with-undo callback.
 #[allow(clippy::needless_pass_by_value)] // the zone is retained by Leptos's view closure
 pub fn timeline_entry_in_zone(
     locale: Locale,
@@ -1282,9 +1283,10 @@ fn ActionForm(
 }
 
 /// Converts an optional form float into an integer field after
-/// rounding and clamping.
-// f64 -> i64 is the one unavoidable primitive cast; values come from
-// parsed number inputs and are clamped before the cast.
+/// rounding.
+// f64 -> i64 is the one unavoidable primitive cast; the saturating
+// cast plus the checked try_from turn out-of-range values into None
+// instead of a panic or a wrap.
 #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)] // see docs/DECISIONS.md
 fn clamp_int<T: TryFrom<i64>>(value: Option<f64>) -> Option<T> {
     value.and_then(|value| T::try_from(value.round() as i64).ok())
@@ -1458,8 +1460,8 @@ pub fn entry_to_input(entry: &ActionEntry) -> ActionInput {
 }
 
 /// A blank action draft: a `note` with no structured fields,
-/// timestamped now (UTC) in the shape a `datetime-local` input
-/// accepts.
+/// timestamped now in `timezone` in the shape a `datetime-local`
+/// input accepts.
 pub fn empty_action(timezone: &str) -> ActionInput {
     ActionInput {
         plant_ids: Vec::new(),

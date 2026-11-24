@@ -252,7 +252,6 @@ async fn ping() -> Json<Value> {
     json!({ "message": "API running." }).into()
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn config(State(state): State<MockState>) -> Json<Value> {
     // The documented config surface Leaflog reads (spec §2): the
@@ -274,21 +273,18 @@ async fn config(State(state): State<MockState>) -> Json<Value> {
     .into()
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn notify(State(state): State<MockState>, body: String) -> StatusCode {
     state.notifications.lock().await.push(body);
     StatusCode::OK
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn states(State(state): State<MockState>) -> Json<Value> {
     let room = state.room.lock().await;
     room.states().into()
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn history(State(state): State<MockState>, Query(query): Query<HistoryQuery>) -> Json<Value> {
     let entity = query
@@ -372,7 +368,6 @@ fn on_off_history(entity_id: &str) -> Value {
     ])
 }
 
-// Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn websocket(State(state): State<MockState>, upgrade: WebSocketUpgrade) -> Response {
     upgrade.on_upgrade(move |socket| socket_loop(socket, state))
