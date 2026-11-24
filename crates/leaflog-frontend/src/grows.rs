@@ -421,9 +421,12 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
     // after undoing the entry it announced.
     Effect::new(move |_| {
         if just_logged.get() {
-            Timeout::new(u32::try_from(crate::ui::UNDO_WINDOW_MS).unwrap_or(0), move || {
-                just_logged.set(false);
-            })
+            Timeout::new(
+                u32::try_from(crate::ui::UNDO_WINDOW_MS).unwrap_or(0),
+                move || {
+                    just_logged.set(false);
+                },
+            )
             .forget();
         }
     });

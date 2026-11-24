@@ -319,8 +319,16 @@ fn DayCard(
     // Six icon buttons share two generic captions on a long page;
     // scope each with its day so screen-reader lists (and voice
     // control) can tell them apart.
-    let add_photo_label = format!("{} — {}", td_string!(locale, story.add_photo), day_label.clone());
-    let add_entry_label = format!("{} — {}", td_string!(locale, story.add_entry), day_label.clone());
+    let add_photo_label = format!(
+        "{} — {}",
+        td_string!(locale, story.add_photo),
+        day_label.clone()
+    );
+    let add_entry_label = format!(
+        "{} — {}",
+        td_string!(locale, story.add_entry),
+        day_label.clone()
+    );
     let light = day.light_hours.map(|hours| format!("{hours:.1}"));
     // One caveat per day, not one per half of it.
     let sparse = day.periods.iter().any(|period| period.sparse);
@@ -747,7 +755,10 @@ mod tests {
     fn selected_plants_hide_other_plant_entries() {
         let mut day = day();
         day.photos = vec![serde_json::from_str::<Photo>(r#"{"id":"other-photo","grow_id":"g1","plant_ids":["plant-2"],"captured_at":"2026-11-22T12:00:00Z","grow_day":1,"tags":[],"original_name":"a.jpg","thumbnail_name":"a.webp","bytes_stored":1,"created_at":"2026-11-22T12:00:00Z","updated_at":"2026-11-22T12:00:00Z"}"#).expect("other plant photo")];
-        assert_eq!(visible_days(&[day], &["plant-1".to_owned()], false).len(), 0);
+        assert_eq!(
+            visible_days(&[day], &["plant-1".to_owned()], false).len(),
+            0
+        );
     }
 
     #[test]
