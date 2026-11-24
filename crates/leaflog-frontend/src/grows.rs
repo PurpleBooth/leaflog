@@ -5,6 +5,7 @@
 use crate::phase_pick::{self, phase_from_label, picker_phases};
 use crate::quick_add::QuickAddMenu;
 use futures::future::Either;
+use gloo_timers::callback::Timeout;
 use gloo_timers::future::TimeoutFuture;
 use leaflog_core::Phase;
 use leaflog_core::actions::{ActionDetails, ActionType};
@@ -236,8 +237,9 @@ pub fn timeline_entry_in_zone(
     let units = crate::presentation_units();
     let notes = entry.notes;
     let delete_label = td_string!(locale, entries.delete).into_owned();
+    let entry_anchor = format!("entry-{}", entry.id);
     view! {
-        <li class="border-l-2 border-primary/30 py-1 pl-3">
+        <li id=entry_anchor class="border-l-2 border-primary/30 py-1 pl-3">
             <div class="flex flex-wrap items-baseline gap-2">
                 <strong>{labels::action_label(locale, entry.action_type)}</strong>
                 <Chip>{td_string!(
@@ -414,6 +416,17 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
     // Set once a quick-add entry saves; cleared the moment the next
     // entry is picked, so the note always names the latest save.
     let just_logged = RwSignal::new(false);
+    // The confirmation is a flash, not a landing page: clear it on
+    // the same cadence as the undo window so it never reads stale
+    // after undoing the entry it announced.
+    Effect::new(move |_| {
+        if just_logged.get() {
+            Timeout::new(u32::try_from(crate::ui::UNDO_WINDOW_MS).unwrap_or(0), move || {
+                just_logged.set(false);
+            })
+            .forget();
+        }
+    });
     Effect::new(move |_| {
         if chip.get().is_some() {
             just_logged.set(false);
@@ -639,11 +652,12 @@ pub fn GrowDetail(grow_id: Signal<String>) -> impl IntoView {
             )
             .await
             {
-                Ok(_entry) => {
+                Ok(entry) => {
                     chip.set(None);
                     photo_files.set(Vec::new());
                     error.set(None);
                     just_logged.set(true);
+                    flash_new_entry(&entry.id);
                     story_revision.update(|revision| *revision += 1);
                     refresh();
                 }
@@ -1312,6 +1326,29 @@ fn ActionForm(
             })
         }}
     }
+}
+
+/// Scrolls a freshly logged entry into view and flashes it once the
+/// re-rendered timeline carries its anchor: the form sits at the top
+/// of the grow page while the entry lands at the bottom, so feedback
+/// has to travel (impeccable critique).
+fn flash_new_entry(id: &str) {
+    let anchor = format!("entry-{id}");
+    spawn_local(async move {
+        // The story refresh re-renders on the next ticks; poll briefly
+        // for the anchor instead of guessing a fixed delay.
+        for _ in 0..20 {
+            if let Some(element) = leptos::web_sys::window()
+                .and_then(|window| window.document())
+                .and_then(|document| document.get_element_by_id(&anchor))
+            {
+                element.scroll_into_view();
+                let _ = element.class_list().add_1("entry-flash");
+                return;
+            }
+            TimeoutFuture::new(100).await;
+        }
+    });
 }
 
 /// Converts an optional form float into an integer field after

@@ -498,3 +498,20 @@ pre {
   min-height: 1px;
 }
 
+
+/* A freshly logged entry flashes once after being scrolled into
+   view, so the eye lands on the new row at the bottom of the story
+   (grows.rs adds .entry-flash to the entry's list item). */
+.entry-flash {
+  animation: entry-flash 1.6s ease-out 1;
+}
+
+@keyframes entry-flash {
+  from {
+    background-color: color-mix(in srgb, var(--color-primary) 25%, transparent);
+  }
+
+  to {
+    background-color: transparent;
+  }
+}
