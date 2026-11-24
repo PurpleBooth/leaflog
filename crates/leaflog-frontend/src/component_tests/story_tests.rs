@@ -52,7 +52,7 @@ async fn story_renders_a_plant_linked_photo() {
         if method == "GET" && url.contains("/api/grows/g1/story") {
             return (
                 200,
-                r#"{"timezone":"Europe/Berlin","days":[{"date":"2026-11-20","grow_day":50,"phase":"vegetative","actions":[],"photos":[{"id":"photo1","grow_id":"g1","plant_id":"plant-1","plant_ids":["plant-1"],"action_log_id":null,"captured_at":"2026-11-20T08:15:00Z","grow_day":50,"phase":"vegetative","tags":[],"original_name":"photo.jpg","thumbnail_name":"photo.webp","bytes_stored":629,"created_at":"2026-11-20T08:15:00Z","updated_at":"2026-11-20T08:15:00Z"}],"automatic":false,"has_observations":false,"light_hours":null,"light_partial":true,"periods":[{"sparse":false},{"sparse":false}]}],"before":null}"#
+                r#"{"timezone":"Europe/Berlin","days":[{"date":"2026-11-20","grow_day":50,"phase":"vegetative","actions":[],"photos":[{"id":"photo1","grow_id":"g1","plant_id":"plant-1","plant_ids":["plant-1"],"action_log_id":null,"captured_at":"2026-11-20T08:15:00Z","grow_day":50,"phase":"vegetative","tags":[],"original_name":"photo.jpg","thumbnail_name":"photo.webp","bytes_stored":629,"created_at":"2026-11-20T08:15:00Z","updated_at":"2026-11-20T08:15:00Z"}],"automatic":false,"has_observations":false,"light_hours":null,"light_partial":true,"periods":[{"sparse":false},{"sparse":false}]}],"before":null,"photo_dates":["2026-11-20"]}"#
                     .to_string(),
             );
         }
