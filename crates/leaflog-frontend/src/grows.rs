@@ -1196,8 +1196,12 @@ fn ActionForm(
                 })
             }}
         </div>
-        <fieldset class="fieldset mt-3">
-            <legend class="fieldset-legend">{t!(i18n, form.appearance)}</legend>
+        // Appearance is optional metadata; collapse it behind a
+        // disclosure so the 14-trait wall stops dominating the form
+        // and never hides the Log button below it.
+        <details class="mt-3">
+            <summary class="cursor-pointer text-sm font-medium">{t!(i18n, form.appearance)}</summary>
+            <fieldset class="fieldset mt-2">
             {leaflog_core::appearance::Category::all()
                 .into_iter()
                 .map(|category| {
@@ -1250,11 +1254,39 @@ fn ActionForm(
                     }
                 })
                 .collect::<Vec<_>>()}
-        </fieldset>
+            </fieldset>
+        </details>
         {move || {
             (kind.get() != Some(ActionType::Photo)).then(|| view! {
                 <fieldset class="mt-2 flex flex-wrap gap-3">
                     <legend class="text-sm">{t!(i18n, grow.plants)}</legend>
+                    <label class="flex min-h-11 items-center gap-2 text-sm">
+                        <input class="checkbox checkbox-sm" type="checkbox"
+                            prop:checked=move || {
+                                let total = plants.get().len();
+                                total > 0 && draft.get().plant_ids.len() == total
+                            }
+                            prop:indeterminate=move || {
+                                let total = plants.get().len();
+                                let chosen = draft.get().plant_ids.len();
+                                chosen > 0 && chosen < total
+                            }
+                            on:change=move |ev| {
+                                let checked = event_target_checked(&ev);
+                                draft.update(|input| {
+                                    input.plant_ids = if checked {
+                                        plants
+                                            .get_untracked()
+                                            .iter()
+                                            .map(|plant| plant.id.clone())
+                                            .collect()
+                                    } else {
+                                        Vec::new()
+                                    };
+                                });
+                            } />
+                        {t!(i18n, form.all_plants)}
+                    </label>
                     {plants.get().into_iter().map(|plant| {
                         let id = plant.id.clone();
                         let input_id = format!("action-plant-{}", plant.id);

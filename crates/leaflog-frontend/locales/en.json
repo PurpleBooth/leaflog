@@ -356,7 +356,8 @@
     "veg_weeks": "Planned vegetative weeks",
     "volume_ml": "Volume ({{ unit }})",
     "wet_weight_g": "Wet weight ({{ unit }})",
-    "when_utc": "When (UTC) *"
+    "when_utc": "When (UTC) *",
+    "all_plants": "All plants"
   },
   "common": {
     "undo": "Undo"

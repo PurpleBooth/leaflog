@@ -356,7 +356,8 @@
     "veg_weeks": "Geplante Vegetationswochen",
     "volume_ml": "Volumen ({{ unit }})",
     "wet_weight_g": "Nassgewicht ({{ unit }})",
-    "when_utc": "Zeitpunkt (UTC) *"
+    "when_utc": "Zeitpunkt (UTC) *",
+    "all_plants": "Alle Pflanzen"
   },
   "common": {
     "undo": "Rückgängig"
