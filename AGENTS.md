@@ -90,7 +90,7 @@ Automation lives in a `justfile` (or `xtask` crate) — no bash-only scripts.
   markdown and Rust comments; config in `.vale.ini`, D065, D117).
 - Cutting a release — `docs/RELEASE.md`. Push a signed `v*` tag on the version commit and
   let the Release workflow own the changelog commits; never hand-commit `just changelog`
-  output (D062).
+  output.
 
 ## Dev environment
 
@@ -105,8 +105,6 @@ Automation lives in a `justfile` (or `xtask` crate) — no bash-only scripts.
 - Cite a source for every default number in preset files. Where sources disagree, store the
   **range** and mark it. Re-check each number against ≥2 sources; if impossible, mark `unverified`.
 - Presets are ranges, never single magic numbers. All user-editable with reset-to-default.
-- Every preset row carries a source label. The feed and substrate presets are the only
-  bundled data left (D075 removed the bundled strain and equipment records).
 - The code is Unlicense, but **bundled preset data is third-party**: store source and
   licence per record and check licences before bundling anything.
 
@@ -116,11 +114,20 @@ Automation lives in a `justfile` (or `xtask` crate) — no bash-only scripts.
   copies in the repo. Vendoring is not preferred — avoid it, and remove existing vendored
   code when a proper dependency can replace it. Log any unavoidable exception (and its
   removal plan) in `docs/DECISIONS.md`. Bundled seed data is data, not vendored code.
-- Pick the simplest option when ambiguous, log it in `docs/DECISIONS.md`, keep going.
-  Ask only about blocking choices.
-- Re-check the HA developer docs before each milestone
 
 ## Agent skills
+
+Most important for the UI:
+
+/impeccable audit
+
+Most important for code:
+
+/ponytail-review
+
+Most important for architecture
+
+/improve-codebase-architecture
 
 ### Issue tracker
 

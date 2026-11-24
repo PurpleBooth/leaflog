@@ -3836,7 +3836,7 @@ surface; no changes needed.
 
 | Crate | Items | Lint | Reason |
 |---|---|---|---|
-| leaflog-frontend | `grows::clamp_int` | `clippy::cast_sign_loss`, `clippy::cast_possible_truncation` | One unavoidable f64→i64 form-input conversion, clamped and rounded before the cast |
+| leaflog-frontend | `grows::clamp_int` | `clippy::cast_sign_loss`, `clippy::cast_possible_truncation` | One unavoidable f64→i64 form-input conversion; the saturating cast plus the checked `try_from` turn out-of-range values into `None` |
 
 ---
 
@@ -3896,7 +3896,7 @@ packaging changes were needed.
 | Crate | Items | Lint | Reason |
 |---|---|---|---|
 | leaflog-frontend | module `api` | `clippy::future_not_send` | WASM is single-threaded; gloo-net response types are not `Send` and `spawn_local` does not require it |
-| leaflog-frontend | `GrowsPage::fetch_list`, `GrowsPage::timed_get` | `clippy::future_not_send` | Same rationale as module `api`: the list fetch races a timeout future and the wasm types are not `Send` |
+| leaflog-frontend | `GrowsPage::fetch_list`, `retry_once_after_timeout`, `race_timeout` | `clippy::future_not_send` | Same rationale as module `api`: the list fetch races a timeout future and the wasm types are not `Send` |
 | leaflog-frontend | `EquipmentPage`, `EquipmentForm`, `StrainsPage`, `StrainForm` | `clippy::too_many_lines` | **Historical**: the pages left with the D075 strip; kept as register history (the declarative-view reason now covers the surviving pages) |
 | leaflog-backend | store `photos`, `feeds`, `actions`, `grows` serde writes | `clippy::missing_panics_doc` | Serialising plain data with serde_json cannot fail |
 | leaflog-frontend | `OnboardingState` in `onboarding.rs` | `clippy::struct_excessive_bools` | **Historical**: D078 shrank the state to three booleans, under the lint's threshold; kept as register history |
@@ -4049,22 +4049,29 @@ once per crate.
 | Crate | Items | Lint | Reason |
 |---|---|---|---|
 | leaflog-backend | `ingress::IngressPath` | `clippy::module_name_repetitions` | The domain name (`IngressPath`) is the right name; the module is `ingress` |
-| leaflog-backend | `app.rs` handlers `health`, `index`, `fallback` and middlewares `supervisor_gate`, `security_headers`, `dev_prefix_strip` | `clippy::needless_pass_by_value` | Axum handlers/middlewares must take extractors (`State`, `HeaderMap`, `Request`) by value |
-| leaflog-backend | `api_locale.rs` handler `locale` | `clippy::needless_pass_by_value` | Same Axum handler contract as above (D112) |
-| leaflog-backend | `app.rs` handler `health` | `clippy::unused_async` | Axum handlers must be `async fn` even when they never await |
-| mock-ha | handlers `root`, `ping`, `states` | `clippy::unused_async` | Same Axum contract as above |
-| leaflog-frontend | component `App` | `clippy::must_use_candidate` | The Leptos `#[component]` macro drops a hand-written `#[must_use]`, so the lint fires on the generated function |
-| leaflog-frontend | components `Home`, `LocaleChain`, `AppShell` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` (`Home` predates the register row; `LocaleChain`/`AppShell` arrive with D112) |
-| leaflog-frontend | component `ErrorIf` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` |
-| leaflog-frontend | components `EmptyState`, `SectionHeader`, `UndoBanner` in `ui.rs` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` (arrive with D120; `UndoBanner` with D126; `EntityIdChip` removed with D146) |
-| leaflog-frontend | components `Field`, `NumberField`, `ArmConfirmButton`, `Chip`, `Fact`, `FactGrid`, `CardTitle` in `ui.rs`; `EnvTile` in `dashboard.rs` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` (arrive with D140, D141) |
-| leaflog-frontend | component `LightCycleEditor` in `light_cycle.rs` | `clippy::too_many_lines` | Declarative view code, not logic; splitting would obscure the form (same pattern as the M2 register row) |
-| leaflog-frontend | components `FeedSection` in `feed.rs`, `ScheduleEditorPage`/`EditorGrid` in `schedules.rs` | `clippy::needless_pass_by_value` | Leptos component props are taken by value by the `#[component]` macro contract |
-| leaflog-frontend | components `FeedSection` in `feed.rs`, `SchedulesPage`/`ScheduleEditorPage`/`EditorGrid` in `schedules.rs` | `clippy::too_many_lines` | Declarative view code, not logic; splitting would obscure the form (same pattern as `LightCycleEditor`) |
-| leaflog-backend | `api_feeds.rs` handlers | `clippy::needless_pass_by_value` | Same Axum handler contract as the `app.rs` row above |
-| leaflog-backend | `api_feeds.rs` handlers | `clippy::unused_async` | Same Axum contract as the `app.rs` row above |
+| leaflog-backend | Axum handlers and middlewares: `app.rs` `index`, `fallback`, `supervisor_gate`; handlers in `api.rs`, `api_chart.rs`, `api_env.rs`, `api_feeds.rs`, `api_grows.rs`, `api_ha.rs`, `api_history.rs`, `api_locale.rs` | `clippy::needless_pass_by_value` | Axum handlers/middlewares must take extractors (`State`, `HeaderMap`, `Request`) by value |
+| leaflog-backend | `app.rs` handler `health`; `theme_harness.rs` harness route | `clippy::unused_async` | Axum handlers must be `async fn` even when the body never awaits |
+| leaflog-backend | `api_chart.rs` fn `fetch_role_series` | `clippy::cast_possible_truncation`, `clippy::cast_sign_loss` | The window hours are small positive constants (24/168/720); the HA history call takes `u32` |
+| leaflog-backend | `api_grows.rs` fn `upload_photo`, `store::grows` fn `map_grow` | `clippy::too_many_lines` | Row/photo plumbing is declarative; splitting would obscure the shape |
+| leaflog-backend | store `photos`, `feeds`, `actions`, `grows` serde writes | `clippy::missing_panics_doc` | Serialising plain data with serde_json cannot fail |
+| leaflog-backend | `db::embedded` module | `missing_docs` | Refinery `embed_migrations!` output; the wrapper module documents the contract |
+| mock-ha | handlers `config`, `notify`, `states`, `history`, `websocket` | `clippy::needless_pass_by_value` | Same Axum handler contract as above |
+| mock-ha | struct `HistoryQuery` | `dead_code` | Mirrors HA's query shape; `filter_entity_id` is only read by the history arm |
 | leaflog-core | `feed.rs` module + `TdsScale` conversions | `clippy::cast_possible_truncation`, `clippy::cast_sign_loss` | SI scaling rounds to whole µL/L·mg/L steps before casting; grafted substrate/TDS arithmetic (ADR 0004) |
-| leaflog-frontend | `history.rs` fn `summary` | `clippy::cast_precision_loss` | u16/f64 day and gram tallies fit a diary's scales far below float precision; casts are exact in practice (D133) |
-| leaflog-frontend | `history.rs` test `yield_totals_come_from_the_first_nonempty_grouping` | `clippy::float_cmp` | Test re-adds the same f64 constants bit-identically; exact comparison is the point |
-| leaflog-frontend | `settings.rs` fn `whole` | `clippy::cast_possible_truncation` | The caller filters non-finite values and `whole` clamps to ≥ 1 and rounds before the cast, so the cast is exact (D154) |
-| leaflog-frontend | components `SettingsPage`, `GeneralCard`, `AutomationCard` in `settings.rs` | `clippy::must_use_candidate` | Same `#[component]` macro behaviour as `App` (arrive with D154) |
+| leaflog-core | fn `env::advisor_watts` | `clippy::cast_possible_truncation`, `clippy::cast_sign_loss` | The value is rounded and floored at 1 before the cast, and f64→u32 casts saturate rather than wrap |
+| leaflog-core | fn `forecast::add` | `clippy::too_many_arguments` | Phase-window builder takes windows, phase, start, three lengths, two flags; grouping would obscure the call sites |
+| leaflog-core | `chart.rs` fn `parse_ha_epoch` | `clippy::cast_possible_truncation` | HA timestamps are whole seconds inside a bounded range, so the floor is exact |
+| leaflog-core | `chart.rs` fn `push_merged` | `clippy::float_cmp`, `clippy::suspicious_operation_groupings` | Range edges are preset constants copied bit-identical (D074); `end == start` is the butt-join check |
+| leaflog-frontend | modules `api`, `component_tests` | `clippy::future_not_send` | WASM is single-threaded; gloo-net response types are not `Send` and `spawn_local` does not require it |
+| leaflog-frontend | `grows.rs` fns `fetch_list`, `retry_once_after_timeout`, `race_timeout` | `clippy::future_not_send` | Same rationale as module `api`: the list fetch races a timeout future |
+| leaflog-frontend | components in `lib.rs`, `ui.rs`, `settings.rs`, `Home`, and `EnvTile` in `dashboard.rs` | `clippy::must_use_candidate` | The Leptos `#[component]` macro drops a hand-written `#[must_use]`, so the lint fires on the generated function |
+| leaflog-frontend | components and view helpers in `grows.rs`, `story.rs`, `schedules.rs`, `dashboard.rs`, `feed.rs`, `gantt.rs`, `history.rs`, `edit.rs`, `onboarding.rs`, `quick_add.rs`, `bindings.rs`, `light_cycle.rs` | `clippy::too_many_lines` | Declarative view code, not logic; splitting would obscure the layout |
+| leaflog-frontend | component props and view helpers in `feed.rs`, `schedules.rs`, `dashboard.rs`, `gantt.rs`, `grows.rs` (`timeline_entry_in_zone`) | `clippy::needless_pass_by_value` | Leptos `#[component]` props and view closures retain state, so values move in by contract |
+| leaflog-frontend | module `gantt` | `clippy::cast_precision_loss` | Day counts are < 1000; i64→f64 for percentage layout cannot lose meaningful precision |
+| leaflog-frontend | `grows.rs` fn `clamp_int` | `clippy::cast_sign_loss`, `clippy::cast_possible_truncation` | One unavoidable f64→i64 form-input conversion; the saturating cast plus the checked `try_from` turn out-of-range values into `None` |
+| leaflog-frontend | `ui.rs` fn `now_ms` | `clippy::cast_sign_loss`, `clippy::cast_possible_truncation` | `Date::now()` is always a positive, finite millisecond count |
+| leaflog-frontend | `history.rs` fn `summary` | `clippy::cast_precision_loss` | u16/f64 day and gram tallies fit a diary's scales far below float precision (D133) |
+| leaflog-frontend | tests in `history.rs`, `chart_option.rs` | `clippy::float_cmp` | The tests re-add the same f64 constants bit-identically; exact comparison is the point |
+| leaflog-frontend | `settings.rs` fn `whole` | `clippy::cast_possible_truncation` | The cast saturates and the checked conversion falls back to 1 (D154) |
+| leaflog-frontend | `dashboard.rs` fields `EnvSnapshot::phase`, `equipment_suggestions` | `dead_code` | Coach payload completeness; the fields surface through the coach strip, not this view |
+| leaflog-frontend | `lib.rs` `generated_i18n` module | `missing_docs`, `clippy::pedantic`, `clippy::nursery` | leptos-i18n macro output; the one codegen allow (D114) |
