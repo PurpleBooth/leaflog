@@ -9,6 +9,10 @@ use leaflog_backend::photos::PhotoStore;
 use leaflog_backend::{AppState, Assets, Db, Mode, app};
 use serde_json::{Value, json};
 
+mod common;
+
+use common::started_today;
+
 /// Spawns the API with an empty in-memory DB and a temp photo store;
 /// returns the base URL and the store root.
 async fn spawn() -> (String, PathBuf) {
@@ -401,18 +405,6 @@ async fn story_shows_an_entry_dated_later_today() {
     let actions = days[0]["actions"].as_array().unwrap();
     assert_eq!(actions.len(), 1, "story: {page}");
     assert_eq!(actions[0]["notes"], "dated later today");
-}
-
-/// Today's date, `YYYY-MM-DD` (tests/api.rs's `started_today`), for
-/// grows whose forecast must start now.
-fn started_today() -> String {
-    let today = time::OffsetDateTime::now_utc().date();
-    format!(
-        "{:04}-{:02}-{:02}",
-        today.year(),
-        u8::from(today.month()),
-        today.day()
-    )
 }
 
 /// An eight-week flowering schedule with one product, the shape the

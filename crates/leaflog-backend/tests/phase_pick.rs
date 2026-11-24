@@ -10,6 +10,10 @@ use leaflog_backend::photos::PhotoStore;
 use leaflog_backend::{AppState, Assets, Db, Mode, app};
 use serde_json::{Value, json};
 
+mod common;
+
+use common::started_today;
+
 /// Spawns the API against an offline Supervisor; returns the base URL
 /// and the shared [`Db`] handle (trigger installation needs it).
 async fn spawn() -> (String, Db, PathBuf) {
@@ -123,17 +127,6 @@ async fn action_days(base: &str, id: &str) -> Vec<(String, String, Value)> {
             )
         })
         .collect()
-}
-
-/// Today's UTC date (`YYYY-MM-DD`).
-fn started_today() -> String {
-    let today = time::OffsetDateTime::now_utc().date();
-    format!(
-        "{:04}-{:02}-{:02}",
-        today.year(),
-        u8::from(today.month()),
-        today.day()
-    )
 }
 
 #[tokio::test]

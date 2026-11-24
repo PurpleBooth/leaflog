@@ -9,6 +9,10 @@ use std::path::Path;
 use leaflog_backend::{AppState, Assets, Db, Mode};
 use serde_json::{Value, json};
 
+mod common;
+
+use common::started_today;
+
 /// Spawns the API on an ephemeral port with an empty in-memory database.
 async fn spawn_api() -> String {
     spawn_with(Db::open_in_memory().unwrap()).await
@@ -457,17 +461,6 @@ async fn lamp_min_for_grow(client: &reqwest::Client, base: &str, body: Value) ->
         .await
         .unwrap();
     advice["height"]["min_in"].as_f64().unwrap()
-}
-
-/// Today's date, `YYYY-MM-DD`, for grows whose forecast starts now.
-fn started_today() -> String {
-    let today = time::OffsetDateTime::now_utc().date();
-    format!(
-        "{:04}-{:02}-{:02}",
-        today.year(),
-        u8::from(today.month()),
-        today.day()
-    )
 }
 
 /// A UTC date `days` before today, `YYYY-MM-DD`, for backdated
