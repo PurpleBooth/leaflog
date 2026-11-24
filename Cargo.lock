@@ -1841,6 +1841,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.27.0",
  "tower",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
  "ulid",
@@ -3773,6 +3774,7 @@ dependencies = [
  "tower",
  "tower-layer",
  "tower-service",
+ "tracing",
  "url",
 ]
 

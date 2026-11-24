@@ -11,6 +11,8 @@ use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use serde::Serialize;
+use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
+use tracing::Level;
 
 use crate::assets::{Assets, content_type};
 use crate::catalog::{self, Message};
@@ -179,6 +181,14 @@ pub fn build_router(state: AppState) -> Router {
         // Outside the gate so gate rejections (403) are covered too.
         .layer(middleware::from_fn(security_headers))
         .layer(axum::extract::DefaultBodyLimit::max(BODY_LIMIT_BYTES))
+        // Outermost so the gate's rejections are logged too (D158). One
+        // INFO line per request: method, path, status, latency; headers
+        // never — the Supervisor token rides the Authorization header.
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
+                .on_response(DefaultOnResponse::new().level(Level::INFO)),
+        )
         .with_state(state)
 }
 

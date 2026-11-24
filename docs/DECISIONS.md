@@ -23,6 +23,13 @@ output stays `println!`: that is the command's answer, not a log. Frontend
 logs only the failures the UI's error buckets hide (transport and parse,
 status 0).
 
+Every HTTP request also gets a `tower-http` `TraceLayer` — the outermost
+router layer, so connection-gate rejections (403) are logged too. It emits
+one `INFO` line per request (method, path, status, latency) with the
+defaults bumped to `INFO` since spans are invisible under the global info
+filter at `DEBUG`. Headers are deliberately never logged: the Supervisor
+token rides the `Authorization` header of every ingress request.
+
 ---
 
 ## 2026-11-24 — diary membership is calendar-correct (D157)

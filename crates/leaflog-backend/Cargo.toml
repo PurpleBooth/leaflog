@@ -21,6 +21,10 @@ embed-assets = ["dep:include_dir"]
 [dependencies]
 leaflog-core.workspace = true
 axum = { workspace = true, features = ["multipart"] }
+# Request tracing (D158): TraceLayer wraps every request — method,
+# path, status, latency. Headers stay out (the ingress token rides
+# the Authorization header).
+tower-http = { version = "0.6", features = ["trace"] }
 tokio = { workspace = true, features = ["net", "signal", "fs"] }
 serde.workspace = true
 serde_json.workspace = true
