@@ -531,6 +531,7 @@ pub fn PlantView(plant_id: Signal<String>) -> impl IntoView {
                                                     {crate::grows::local_stamp(
                                                         entry["occurred_at"].as_str().unwrap_or(""),
                                                         &timezone,
+                                                        locale,
                                                     )}
                                                     {" — "}
                                                     {action_label_for_kind(

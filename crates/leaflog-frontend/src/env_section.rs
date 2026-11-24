@@ -211,7 +211,10 @@ fn HistoryWindowControl(window: RwSignal<String>, markers: RwSignal<bool>) -> im
                         markers.set(event_target_checked(&ev));
                     }
                 />
-                {t_string!(i18n, env.markers)}
+                // A closure, not a bare t_string!: the control mounts
+                // before the locale can change, and a captured string
+                // would keep speaking the boot locale forever.
+                {move || t_string!(i18n, env.markers)}
             </label>
         </div>
     }

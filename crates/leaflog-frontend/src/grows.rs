@@ -310,7 +310,7 @@ pub fn timeline_entry_in_zone(
                 }
             })}
             <p class="text-base-content/70 text-sm">
-                {local_stamp(&entry.occurred_at, &timezone)}
+                {local_stamp(&entry.occurred_at, &timezone, locale)}
             </p>
         </li>
     }
@@ -909,7 +909,7 @@ pub fn GrowForm(draft: RwSignal<GrowInput>) -> impl IntoView {
     view! {
         <div class="grid gap-2 grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
             <ui::Field label=Signal::derive(move || t_string!(i18n, form.name).into_owned())>
-                <input class="input" type="text" required placeholder={t_string!(i18n, form.name_placeholder)}
+                <input class="input" type="text" required placeholder=move || t_string!(i18n, form.name_placeholder)
                     prop:value=move || draft.get().name
                     on:input=move |ev| draft.update(|d| d.name = event_target_value(&ev))
                 />
@@ -1484,16 +1484,17 @@ const fn has_facts(details: &ActionDetails) -> bool {
         || details.plant_height_cm.is_some()
 }
 
-/// `iso` as a short local stamp in `timezone`; the plant page
-/// shares it (an empty zone means the browser's own).
+/// `iso` as a short local stamp in `timezone` and the app locale;
+/// the plant page shares it (an empty zone means the browser's own).
 ///
-/// The browser's locale rendering of an RFC 3339 timestamp (`Nov 15,
-/// 2026, 7:20 PM`): the timeline is a diary read by a human in their
-/// own zone, so machine-formatted UTC would read like an error.
-/// Explicit components (no seconds — diary precision is minutes);
-/// falls back to the raw string when the browser APIs refuse the
-/// value.
-pub fn local_stamp(iso: &str, timezone: &str) -> String {
+/// The locale's rendering of an RFC 3339 timestamp (`Nov 15, 2026,
+/// 7:20 PM` / `15. Nov., 19:20`): the timeline is a diary read by a
+/// human in their own zone, so machine-formatted UTC would read like
+/// an error, and the *browser's* locale would contradict the rest of
+/// the UI after a locale switch. Explicit components (no seconds —
+/// diary precision is minutes); falls back to the raw string when
+/// the browser APIs refuse the value.
+pub fn local_stamp(iso: &str, timezone: &str, locale: Locale) -> String {
     let date = js_sys::Date::new(&wasm_bindgen::JsValue::from_str(iso));
     if date.get_time().is_nan() {
         return iso.to_owned();
@@ -1518,7 +1519,11 @@ pub fn local_stamp(iso: &str, timezone: &str) -> String {
             &wasm_bindgen::JsValue::from_str(value),
         );
     }
-    fmt.call1(&date, &options)
+    let tag = match locale {
+        Locale::de => "de",
+        Locale::en => "en",
+    };
+    fmt.call2(&date, &tag.into(), &options)
         .ok()
         .and_then(|value| value.as_string())
         .unwrap_or_else(|| iso.to_owned())
