@@ -129,7 +129,8 @@
     "photo_plants": "Plants in this photo (optional)",
     "upload": "Upload photo",
     "whole_grow": "Whole grow",
-    "open_original": "Open the original photo"
+    "open_original": "Open the original photo",
+    "open_plant": "Open plant"
   },
   "env": {
     "apply_band": "Apply band",

@@ -166,13 +166,27 @@ pub fn Story(
                     {{
                         let id = plant.id.clone();
                         let checked_id = id.clone();
+                        let open_id = plant.id.clone();
+                        let open_label = plant.name.clone();
                         view! {
-                            <span class="flex min-h-11 items-center gap-2 text-sm">
-                                <input aria-label=plant.name.clone() type="checkbox" class="checkbox checkbox-sm"
+                            // The whole row toggles the filter: the name
+                            // sits inside the label, so a 20px checkbox
+                            // is never the only tap target. The plant
+                            // page keeps a separate, named glyph link.
+                            <label class="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
+                                <input type="checkbox" class="checkbox checkbox-sm"
                                     prop:checked=move || selected_plants.get().contains(&checked_id)
                                     on:change=move |_| selected_plants.update(|selected| toggle(selected, &id)) />
-                                <A href=crate::route_href(&format!("/plants/{}", plant.id)) attr:class="link link-hover py-3">{plant.name.clone()}</A>
-                            </span>
+                                {plant.name.clone()}
+                            </label>
+                            <A href=crate::route_href(&format!("/plants/{}", open_id))
+                                attr:class="link link-hover px-2 py-3"
+                                attr:aria-label=move || {
+                                    format!("{}: {}", t_string!(i18n, story.open_plant), open_label.clone())
+                                }
+                            >
+                                {"\u{2192}"}
+                            </A>
                         }
                     }}
                 </For>

@@ -129,7 +129,8 @@
     "photo_plants": "Pflanzen auf diesem Foto (optional)",
     "upload": "Foto hochladen",
     "whole_grow": "Gesamter Anbau",
-    "open_original": "Originalfoto öffnen"
+    "open_original": "Originalfoto öffnen",
+    "open_plant": "Pflanze öffnen"
   },
   "env": {
     "apply_band": "Band anwenden",
