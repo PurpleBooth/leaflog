@@ -124,6 +124,13 @@ pub fn route_href(path: &str) -> String {
 /// Module entry: mounts the app (called by `wasm-bindgen` on load).
 #[wasm_bindgen(start)]
 pub fn start_app() {
+    // Logging (D158): tracing events to the browser devtools console,
+    // the wasm twin of the backend's stdout subscriber. INFO and up —
+    // debug/trace stay out of the shipped bundle's console.
+    let mut config = wasm_tracing::WasmLayerConfig::new();
+    config.set_max_level(tracing::Level::INFO);
+    // Err only if a global default already exists; start_app runs first.
+    let _ = wasm_tracing::set_as_global_default_with_config(config);
     theme::init_parent_theme_match();
     mount_to_body(App);
 }

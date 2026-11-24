@@ -11,6 +11,7 @@ use serde::de::DeserializeOwned;
 
 use gloo_net::http::{Request, RequestBuilder, Response};
 use leptos_i18n::td_string;
+use tracing::warn;
 
 use crate::i18n::Locale;
 
@@ -212,9 +213,14 @@ fn json_body<T: Serialize>(builder: RequestBuilder, body: &T) -> Request {
 /// Turns a transport result into a response or an [`ApiFailure`],
 /// decoding the JSON `error` field when the status is not a success.
 async fn check(result: Result<Response, gloo_net::Error>) -> Result<Response, ApiFailure> {
-    let response = result.map_err(|error| ApiFailure {
-        status: 0,
-        message: Some(error.to_string()),
+    let response = result.map_err(|error| {
+        // Transport failures are invisible in the UI's error buckets;
+        // mirror them to the devtools console (D158).
+        warn!("api request failed: {error}");
+        ApiFailure {
+            status: 0,
+            message: Some(error.to_string()),
+        }
     })?;
     if response.ok() {
         return Ok(response);
@@ -234,9 +240,12 @@ async fn check(result: Result<Response, gloo_net::Error>) -> Result<Response, Ap
 
 /// Parses a response body as JSON.
 async fn parse<T: DeserializeOwned>(response: Response) -> Result<T, ApiFailure> {
-    response.json::<T>().await.map_err(|error| ApiFailure {
-        status: 0,
-        message: Some(error.to_string()),
+    response.json::<T>().await.map_err(|error| {
+        warn!("api response failed to parse: {error}");
+        ApiFailure {
+            status: 0,
+            message: Some(error.to_string()),
+        }
     })
 }
 

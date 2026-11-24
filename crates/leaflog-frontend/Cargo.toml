@@ -42,6 +42,10 @@ gloo-timers = { version = "0.3", features = ["futures"] }
 futures = "0.3"
 serde.workspace = true
 serde_json.workspace = true
+# Structured logging (D158): same tracing macros as the backend; this
+# layer mirrors events into the browser devtools console (INFO+).
+tracing.workspace = true
+wasm-tracing = "2.1"
 # The ECharts option payload crosses the wasm boundary as a JsValue
 # (ticket 02, temperature chart).
 serde-wasm-bindgen = "0.6"

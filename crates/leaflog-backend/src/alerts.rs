@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use leaflog_core::tz::QuietHours;
 use tokio::time::Instant;
+use tracing::warn;
 
 use crate::catalog::{self, Locale, Message};
 use crate::ha::HaBridge;
@@ -106,7 +107,7 @@ pub fn spawn(db: crate::db::Db, bridge: Arc<HaBridge>) {
         loop {
             ticker.tick().await;
             if let Err(error) = evaluate(&db, &bridge, &mut last_sent).await {
-                eprintln!("env-alert pass skipped: {error}");
+                warn!("env-alert pass skipped: {error}");
             }
         }
     });
@@ -195,7 +196,7 @@ pub async fn evaluate<S: std::hash::BuildHasher>(
                 Ok(()) => {
                     last_sent.insert(key, now);
                 }
-                Err(error) => eprintln!("env-alert notification skipped: {error}"),
+                Err(error) => warn!("env-alert notification skipped: {error}"),
             }
         }
     }

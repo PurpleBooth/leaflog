@@ -6,6 +6,25 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-24 — tracing is the logging mechanism, on both sides of the wasm bridge (D158)
+
+### D158: one logging facade, two subscribers
+
+`println!`/`eprintln!` scattered through the backend and silent frontend
+failures get one mechanism: the `tracing` macros everywhere, with a
+target-specific subscriber on each side of the wasm boundary. The backend
+initialises a `tracing-subscriber` fmt subscriber on stdout (HA Supervisor
+captures container stdout; `RUST_LOG` overrides the info default). The
+frontend installs `wasm-tracing` (maintained fork of `tracing-wasm`) at
+`INFO` in the wasm start entry, mirroring the same events into the browser
+devtools console — it pulls only tracing-subscriber's lean `registry`
+feature, so the bundle cost stays small. The `migrate status`/`apply` CLI
+output stays `println!`: that is the command's answer, not a log. Frontend
+logs only the failures the UI's error buckets hide (transport and parse,
+status 0).
+
+---
+
 ## 2026-11-24 — diary membership is calendar-correct (D157)
 
 ### D157: an entry dated later today still renders on its day

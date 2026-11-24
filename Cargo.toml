@@ -33,6 +33,10 @@ base64 = "0.22"
 # Embedded IANA tz database: canonical-timezone day math (spec §2)
 # without system tzdata in the container image.
 jiff = { version = "0.2", features = ["js"] }
+# Structured logging (D158): tracing macros on both sides of the wasm
+# boundary — stdout subscriber in the backend, devtools console layer
+# in the frontend.
+tracing = "0.1"
 
 # Lean release artifacts for the HA image. Note: no `strip` here —
 # stripping removes the wasm `target_features` section, which makes

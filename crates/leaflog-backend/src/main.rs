@@ -22,6 +22,16 @@
 #![allow(clippy::multiple_crate_versions)]
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Logging (D158): fmt subscriber to stdout — HA Supervisor captures
+    // the container's stdout. `RUST_LOG` overrides the info default.
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::builder()
+                .with_default_directive(tracing_subscriber::filter::LevelFilter::INFO.into())
+                .from_env_lossy(),
+        )
+        .init();
+
     let mut args = std::env::args().skip(1);
     match args.next().as_deref() {
         None => leaflog_backend::run(),

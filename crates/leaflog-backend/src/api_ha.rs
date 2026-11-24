@@ -11,6 +11,7 @@ use axum::{Json, Router};
 use futures_util::Stream;
 use serde::Deserialize;
 use serde_json::{Value, json};
+use tracing::warn;
 
 use crate::api::ApiError;
 use crate::app::AppState;
@@ -216,6 +217,6 @@ pub async fn capture_into(state: &AppState, grow_id: &str, action_log_id: &str) 
         })
         .await;
     if let Err(error) = result {
-        eprintln!("auto-capture skipped: {error}");
+        warn!("auto-capture skipped: {error}");
     }
 }

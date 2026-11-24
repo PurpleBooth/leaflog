@@ -41,6 +41,10 @@ time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
 thiserror = "2"
 sha2.workspace = true
 base64.workspace = true
+tracing.workspace = true
+# Stdout fmt subscriber (D158); `env-filter` enables the RUST_LOG
+# override of the info default.
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
 mock-ha = { path = "../mock-ha" }

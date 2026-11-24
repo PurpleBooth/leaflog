@@ -25,6 +25,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use tokio::sync::{mpsc, watch};
 use tokio_tungstenite::tungstenite::Message;
+use tracing::warn;
 
 use crate::db::Db;
 
@@ -919,7 +920,7 @@ async fn auto_log_light_change(
         })
         .await;
     if let Err(error) = result {
-        eprintln!("auto-log skipped: {error}");
+        warn!("auto-log skipped: {error}");
     }
 }
 

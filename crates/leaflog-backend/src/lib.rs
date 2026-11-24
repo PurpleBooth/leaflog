@@ -21,6 +21,8 @@
 //!   when no `X-Ingress-Path` header is sent).
 //! - `LEAFLOG_STATIC_DIR` — serve the frontend from this directory
 //!   (development) instead of the embedded bundle.
+//! - `RUST_LOG` — tracing filter for log verbosity (default `info`;
+//!   e.g. `leaflog_backend=debug`).
 
 #![warn(clippy::nursery)]
 #![deny(
@@ -65,6 +67,8 @@ pub mod store;
 pub mod theme_harness;
 
 use std::path::PathBuf;
+
+use tracing::{info, warn};
 
 pub use app::{AppState, Mode, build_router};
 pub use assets::Assets;
@@ -301,7 +305,7 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     let mode = config.mode;
     let db = Db::open(&config.db_path())?;
     if let Err(error) = seed::seed_feed_presets(&db).await {
-        eprintln!("feed/substrate seeding skipped: {error}");
+        warn!("feed/substrate seeding skipped: {error}");
     }
     // Snapshot retention (spec §4.2): prune at startup and weekly.
     {
@@ -326,8 +330,8 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
                     .await;
                 match pruned {
                     Ok(0) => {}
-                    Ok(count) => println!("Pruned {count} old sensor snapshots"),
-                    Err(error) => eprintln!("snapshot retention skipped: {error}"),
+                    Ok(count) => info!("Pruned {count} old sensor snapshots"),
+                    Err(error) => warn!("snapshot retention skipped: {error}"),
                 }
             }
         });
@@ -357,7 +361,7 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     );
     let app = app::service(state).into_make_service_with_connect_info::<std::net::SocketAddr>();
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", config.port)).await?;
-    println!(
+    info!(
         "Leaflog backend listening on 0.0.0.0:{} ({mode:?} mode)",
         config.port
     );
