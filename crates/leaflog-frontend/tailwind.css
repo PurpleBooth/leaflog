@@ -160,8 +160,16 @@ p {
     filter: brightness(1.1);
   }
 
+  /* Buttons, form controls and summary are natively focusable but
+   * not covered by a/[tabindex]; without the ring, keyboard focus
+   * on the filter row and the day-card buttons is invisible. */
   a:focus-visible,
-  [tabindex]:focus-visible {
+  [tabindex]:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  summary:focus-visible {
     outline: 3px solid var(--color-primary);
     outline-offset: 2px;
     border-radius: 4px;
@@ -409,7 +417,16 @@ pre {
   font-weight: 600;
   color: var(--color-base-content);
   white-space: nowrap;
-  overflow: hidden;
+  /* Short bars are narrower than their caption (a 2-day germination
+   * window is ~13px against a 39px "✓ 6d"), and overflow: hidden
+   * clipped the caption mid-glyph, so a bare "1" read as a day
+   * count. Let the caption spill onto the track's muted band with a
+   * halo that separates it from whatever it crosses; the bar itself
+   * stays honest about the window's length. */
+  overflow: visible;
+  text-shadow:
+    0 0 3px var(--color-base-100),
+    0 0 6px var(--color-base-100);
 }
 
 /* Today-marker overlay spanning exactly the track columns: the
