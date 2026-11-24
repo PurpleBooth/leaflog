@@ -239,23 +239,19 @@ pub fn Story(
                         let open_id = plant.id.clone();
                         let open_label = plant.name.clone();
                         view! {
-                            // The whole row toggles the filter: the name
-                            // sits inside the label, so a 20px checkbox
-                            // is never the only tap target. The plant
-                            // page keeps a separate, named glyph link.
-                            <label class="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
-                                <input type="checkbox" class="checkbox checkbox-sm"
+                            // Two clearly distinct targets: the padded
+                            // label toggles the filter (never just a
+                            // 20px checkbox), the name itself navigates
+                            // to the plant page (WCAG 2.5.8).
+                            <label class="flex min-h-11 cursor-pointer items-center px-2 text-sm">
+                                <input aria-label={open_label.clone()} type="checkbox" class="checkbox checkbox-sm"
                                     prop:checked=move || selected_plants.get().contains(&checked_id)
                                     on:change=move |_| selected_plants.update(|selected| toggle(selected, &id)) />
-                                {plant.name}
                             </label>
                             <A href=crate::route_href(&format!("/plants/{open_id}"))
                                 attr:class="link link-hover px-2 py-3"
-                                attr:aria-label=move || {
-                                    format!("{}: {}", t_string!(i18n, story.open_plant), open_label.clone())
-                                }
                             >
-                                {"\u{2192}"}
+                                {open_label.clone()}
                             </A>
                         }
                     }}
