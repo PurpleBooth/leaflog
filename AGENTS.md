@@ -53,8 +53,8 @@ Every crate root (`lib.rs`/`main.rs`) starts with its `//!` crate doc, then this
 ## Commands
 
 Automation lives in a `justfile` (or `xtask` crate) — no bash-only scripts.
-- `just dev` — Start a dev server
-- `just ci` - Tests, lints, etc
+- `devbox run just dev` — Start a dev server
+- `devbox run just ci` - Tests, lints, etc
 - Cutting a release — `docs/RELEASE.md`.
 
 ## Dev environment
@@ -62,7 +62,7 @@ Automation lives in a `justfile` (or `xtask` crate) — no bash-only scripts.
 - **Devbox** (Nix-based): commit `devbox.json`, `devbox.lock`, `rust-toolchain.toml`
   (stable ≥ 1.88). `rustup` as a Devbox package; wasm32 target + clippy/rustfmt via init_hook.
 - **GitHub Actions** builds and publishes the multi-arch image, plus a local-build path via
-  Podman. CI (`just ci` gate: fmt, clippy native + wasm, tests, WASM build) also runs on
+  Podman. CI (`devbox run just ci` gate: fmt, clippy native + wasm, tests, WASM build) also runs on
   GitHub Actions.
 
 ## Working agreements
