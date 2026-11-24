@@ -17,7 +17,6 @@
 /// computed values substitute `var()` references, which is what the
 /// frontend's computed-style read relies on.
 #[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
-#[allow(clippy::needless_pass_by_value)] // Axum handler shape; see docs/DECISIONS.md
 pub async fn harness_page() -> axum::response::Html<&'static str> {
     axum::response::Html(HARNESS_HTML)
 }

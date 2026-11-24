@@ -94,9 +94,6 @@ impl From<StoreError> for ApiError {
     }
 }
 
-// Extractors are taken by value because Axum requires it.
-#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
 async fn get_settings(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let settings = state.db.with(store::settings::list).await?;
     Ok(Json(settings))
@@ -190,9 +187,6 @@ async fn put_settings(
 /// the wizard shows while there are no grows and no prior dismissal.
 /// Dismissal and restart are the `onboarding_dismissed` settings flag
 /// (`PUT /api/settings`).
-// Extractors are taken by value because Axum requires it.
-#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
 async fn onboarding_state(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let report = state
         .db

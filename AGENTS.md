@@ -4,7 +4,7 @@ Self-hosted cannabis grow diary packaged as a **Home Assistant app** (sidebar ta
 Backend and frontend are both **Rust**. Hosted on **GitHub** (CI via GitHub Actions).
 Licensed under the **Unlicense** (`UNLICENSE` file at root; SPDX `Unlicense` in Cargo.toml).
 Greenfield project; the full spec is the source of truth
-for features, seed data, and acceptance criteria (research snapshot 2026-11-08).
+for features, seed data, and acceptance criteria.
 
 ## Status
 

@@ -240,8 +240,6 @@ pub struct HistoryQuery {
     minimal_response: Option<String>,
 }
 
-// Extractors are taken by value because Axum requires it.
-#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn root() -> Json<Value> {
     json!({
         "app": "mock-ha",
@@ -250,15 +248,12 @@ async fn root() -> Json<Value> {
     .into()
 }
 
-// Extractors are taken by value because Axum requires it.
-#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn ping() -> Json<Value> {
     json!({ "message": "API running." }).into()
 }
 
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
 async fn config(State(state): State<MockState>) -> Json<Value> {
     // The documented config surface Leaflog reads (spec §2): the
     // canonical timezone for display and grow-day numbering, and the
@@ -281,7 +276,6 @@ async fn config(State(state): State<MockState>) -> Json<Value> {
 
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
 async fn notify(State(state): State<MockState>, body: String) -> StatusCode {
     state.notifications.lock().await.push(body);
     StatusCode::OK
@@ -289,7 +283,6 @@ async fn notify(State(state): State<MockState>, body: String) -> StatusCode {
 
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
 async fn states(State(state): State<MockState>) -> Json<Value> {
     let room = state.room.lock().await;
     room.states().into()
@@ -297,7 +290,6 @@ async fn states(State(state): State<MockState>) -> Json<Value> {
 
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
 async fn history(State(state): State<MockState>, Query(query): Query<HistoryQuery>) -> Json<Value> {
     let entity = query
         .filter_entity_id

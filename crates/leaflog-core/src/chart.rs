@@ -2100,7 +2100,7 @@ mod light_timeline_tests {
 #[cfg(test)]
 mod vpd_derive_tests {
     use super::{
-        ChartWindow, PointSource, RawPoint, SeriesPoint, VPD_PAIRING_TOLERANCE_SECS,
+        ChartWindow, PointSource, RawPoint, VPD_PAIRING_TOLERANCE_SECS,
         derive_vpd_series, merge_series, merge_series_span, parse_epoch,
     };
 
@@ -2216,8 +2216,4 @@ mod vpd_derive_tests {
         assert_eq!(dropped.points, Vec::new());
     }
 
-    // Silence the unused-import lint when SeriesPoint is only
-    // constructed inside the implementation.
-    #[allow(dead_code)]
-    fn shape_check(_: SeriesPoint) {}
 }

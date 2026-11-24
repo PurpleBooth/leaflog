@@ -235,8 +235,6 @@ pub fn service(state: AppState) -> DevPrefixService<Router> {
 }
 
 /// `GET /api/health` — liveness and mode reporting.
-// Handler extractors are taken by value because Axum requires it.
-#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
 #[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
 async fn health(State(state): State<AppState>) -> Json<Health> {
     Json(Health {
@@ -384,8 +382,6 @@ fn resolve_base(state: &AppState, headers: &HeaderMap) -> IngressPath {
 /// content-sniffs photo or asset bytes into an executable type. The app
 /// lives on HA's origin (docs/THREAT-MODEL.md §2), where a sniffing
 /// mismatch would be amplified well beyond Leaflog's own panel.
-// Extractors are taken by value because Axum requires it.
-#[allow(clippy::needless_pass_by_value)] // Axum middleware extractor contract; see docs/DECISIONS.md
 async fn security_headers(request: Request, next: Next) -> Response {
     let mut response = next.run(request).await;
     response.headers_mut().insert(

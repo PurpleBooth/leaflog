@@ -38,8 +38,6 @@ fn validation_message(error: leaflog_core::feed::ScheduleValidationError) -> Str
     }
 }
 
-// Extractors are taken by value because Axum requires it.
-#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
 async fn list_schedules(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<store::feeds::ScheduleSummary>>, ApiError> {
@@ -80,7 +78,6 @@ async fn create_schedule(
 /// The ids of the grows currently referencing a schedule: the edit
 /// page's refit loop walks this list after a schedule save so the
 /// frozen plans re-fit onto the new chart.
-#[allow(clippy::unused_async)] // Axum handler extractor contract; see docs/DECISIONS.md
 async fn list_grow_ids(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -135,7 +132,6 @@ async fn update_schedule(
 
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
 async fn delete_schedule(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -162,7 +158,6 @@ async fn duplicate_schedule(
 
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
 async fn get_plan(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -204,7 +199,6 @@ pub(crate) fn fit_grow(
 
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
 async fn refit_feed(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -222,7 +216,6 @@ async fn refit_feed(
 
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
 async fn list_profiles(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<SubstrateProfile>>, ApiError> {

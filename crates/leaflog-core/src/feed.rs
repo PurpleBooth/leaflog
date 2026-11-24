@@ -123,7 +123,6 @@ pub fn parse_dose_text(text: &str, unit: DoseUnit) -> Option<Dose> {
 /// enough and the `try_from` rejects the absurd.
 // f64 -> u64 after `.round()` on validated non-negative finite input;
 // no truncation or sign loss can occur (docs/DECISIONS.md register).
-#[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
 fn scale_to_si(min: f64, max: f64, unit: DoseUnit) -> Option<Dose> {
     let scale = f64::from(DoseUnit::SI_STEPS_PER_UNIT);
     let min_si = (min * scale).round() as u64;

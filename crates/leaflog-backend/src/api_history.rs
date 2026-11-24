@@ -62,9 +62,6 @@ pub struct HistoryReport {
 /// together so cross-label totals never hide them.
 const UNLABELLED: &str = "unlabelled";
 
-// Extractors are taken by value because Axum requires it.
-#[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
 async fn history(State(state): State<AppState>) -> Result<Json<HistoryReport>, ApiError> {
     let report = state
         .db
@@ -152,7 +149,6 @@ pub struct PlantView {
 
 // Extractors are taken by value because Axum requires it.
 #[allow(clippy::needless_pass_by_value)] // Axum handler extractor contract; see docs/DECISIONS.md
-#[allow(clippy::unused_async)] // Axum handlers must be async fns; see docs/DECISIONS.md
 async fn plant_view(
     State(state): State<AppState>,
     Path(id): Path<String>,
