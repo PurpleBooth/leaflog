@@ -338,6 +338,71 @@ async fn story_groups_notes_photos_and_paginates_whole_days() {
     assert_eq!(third["before"], Value::Null);
 }
 
+/// An entry the grower dated later today still renders on today's
+/// card: phase picks stamp noon (D073), so a morning pick's wall
+/// clock is ahead of now. Membership is calendar-correct; only the
+/// environment summary is clipped. Before the fix the whole day
+/// vanished from the page until the stamp had passed.
+#[tokio::test]
+async fn story_shows_an_entry_dated_later_today() {
+    let (base, _root) = spawn().await;
+    let client = reqwest::Client::new();
+    let grow: Value = client
+        .post(format!("{base}/api/grows"))
+        .json(&json!({
+            "name": "Later today",
+            "substrate": "soil",
+            "started_on": started_today(),
+            "status": "active",
+            "notes": null,
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let id = grow["id"].as_str().unwrap();
+    // One hour ahead, capped at the last minute of the UTC day so the
+    // stamp cannot roll onto tomorrow's (unrendered) page.
+    let now = time::OffsetDateTime::now_utc();
+    let tomorrow = time::Date::from_calendar_date(now.year(), now.month(), now.day())
+        .unwrap()
+        .next_day()
+        .unwrap()
+        .midnight();
+    let stamp = std::cmp::min(
+        now + time::Duration::hours(1),
+        tomorrow.assume_utc() - time::Duration::minutes(1),
+    );
+    let occurred = stamp
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap();
+    let mut input = action_payload("note", &occurred);
+    input["notes"] = json!("dated later today");
+    let response = client
+        .post(format!("{base}/api/grows/{id}/actions"))
+        .json(&input)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::CREATED);
+    let page: Value = client
+        .get(format!("{base}/api/grows/{id}/story"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let days = page["days"].as_array().unwrap();
+    assert_eq!(days.len(), 1, "story: {page}");
+    assert_eq!(days[0]["date"], started_today());
+    let actions = days[0]["actions"].as_array().unwrap();
+    assert_eq!(actions.len(), 1, "story: {page}");
+    assert_eq!(actions[0]["notes"], "dated later today");
+}
+
 /// Today's date, `YYYY-MM-DD` (tests/api.rs's `started_today`), for
 /// grows whose forecast must start now.
 fn started_today() -> String {

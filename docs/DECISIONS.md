@@ -6,6 +6,26 @@ here. Date format: YYYY-MM-DD.
 
 ---
 
+## 2026-11-24 — diary membership is calendar-correct (D157)
+
+### D157: an entry dated later today still renders on its day
+
+The story page clipped each day's membership window at `now`
+(api_story.rs), so an entry whose wall clock was still ahead vanished
+from the page. Phase picks stamp noon of the pick date (D073), so a
+pick recorded before 13:00 local was invisible for hours — the grow
+page's diary showed nothing while the phase badge and forecast had
+already moved. The specs hit this whenever they ran before 13:00
+(three failures overnight, passing again after noon). The fix drops
+the clip for actions and photos: membership is calendar membership,
+and an entry the grower dated within a day belongs on that day's card
+even while its stamp lies ahead. Only the environment summary stays
+clipped at `now`, because sensors cannot observe the future — such a
+card shows the entry plus the usual "no data" hint. Entries dated
+tomorrow or later stay off the page (pages walk back from tomorrow).
+
+---
+
 ## 2026-11-23 — second audit batch (D154–D156)
 
 ### D154: a settings screen instead of unreachable settings

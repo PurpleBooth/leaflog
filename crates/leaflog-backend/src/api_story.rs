@@ -108,8 +108,13 @@ async fn story(
     while date > start.max(earliest) {
         date = date.yesterday().map_err(invalid_date)?;
         let lo = midnight(date, &zone)?;
-        let hi = midnight(date.tomorrow().map_err(invalid_date)?, &zone)?.min(now);
+        let hi = midnight(date.tomorrow().map_err(invalid_date)?, &zone)?;
         let day_number = (date - started).get_days().max(0);
+        // Diary membership is calendar-correct: an entry the grower
+        // dated within this day belongs here even while its wall clock
+        // is still ahead (phase picks stamp noon, D073). Only the
+        // environment summary is clipped to now, because sensors
+        // cannot observe the future.
         let (actions, automatic) = day_actions(&local.actions, lo, hi);
         let photos: Vec<_> = local
             .photos
@@ -118,7 +123,7 @@ async fn story(
             .cloned()
             .collect();
         // Sensor weighting remains second-based; calendar membership does not.
-        let summary = history.summary(lo.as_second(), hi.as_second());
+        let summary = history.summary(lo.as_second(), hi.min(now).as_second());
         if actions.is_empty() && photos.is_empty() && !automatic && !summary.has_observations {
             continue;
         }
