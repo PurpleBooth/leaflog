@@ -29,6 +29,7 @@ use crate::feed::FeedSection;
 use crate::gantt::GanttTimeline;
 use crate::i18n::{Locale, t, t_string, td_string, use_i18n};
 use crate::labels;
+use crate::non_empty;
 use crate::onboarding::OnboardingWizard;
 use crate::route_href;
 use crate::schedules::ScheduleSummary;
@@ -1338,11 +1339,6 @@ fn grow_num_field(
     }
 }
 
-/// Empty strings become `None`.
-fn non_empty(value: String) -> Option<String> {
-    (!value.trim().is_empty()).then_some(value)
-}
-
 /// How long one grows-page list request may run before it is
 /// abandoned and tried again (a stalled request must never pin the
 /// page).
@@ -1475,12 +1471,6 @@ pub fn empty_action(timezone: &str) -> ActionInput {
     }
 }
 
-/// The browser's locale rendering of an RFC 3339 timestamp (`Nov 15,
-/// 2026, 7:20 PM`): the timeline is a diary read by a human in their
-/// own zone, so machine-formatted UTC would read like an error.
-/// Explicit components (no seconds — diary precision is minutes);
-/// falls back to the raw string when the browser APIs refuse the
-/// value.
 /// Whether any structured fact is set — an empty `<dl class="facts">`
 /// renders as dead margins, so it is omitted entirely.
 const fn has_facts(details: &ActionDetails) -> bool {
@@ -1494,6 +1484,13 @@ const fn has_facts(details: &ActionDetails) -> bool {
 
 /// `iso` as a short local stamp in `timezone`; the plant page
 /// shares it (an empty zone means the browser's own).
+///
+/// The browser's locale rendering of an RFC 3339 timestamp (`Nov 15,
+/// 2026, 7:20 PM`): the timeline is a diary read by a human in their
+/// own zone, so machine-formatted UTC would read like an error.
+/// Explicit components (no seconds — diary precision is minutes);
+/// falls back to the raw string when the browser APIs refuse the
+/// value.
 pub fn local_stamp(iso: &str, timezone: &str) -> String {
     let date = js_sys::Date::new(&wasm_bindgen::JsValue::from_str(iso));
     if date.get_time().is_nan() {

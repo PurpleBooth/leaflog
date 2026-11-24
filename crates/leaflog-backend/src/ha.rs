@@ -1031,7 +1031,6 @@ mod tests {
         assert_eq!(changed, [] as [(String, String); 0]);
         let sensor = rx.borrow().entities["sensor.grow_humidity"].clone();
         assert_eq!(sensor.state, "44", "the state survives an attrs-only diff");
-        assert_eq!(sensor.state, "44", "the state survives an attrs-only diff");
         assert_eq!(
             sensor.attributes.get("unit_of_measurement"),
             Some(&json!(" %"))
@@ -1051,7 +1050,6 @@ mod tests {
         let (rx, changed) = apply(&[seed, drop]);
         assert_eq!(changed, [] as [(String, String); 0]);
         let light = rx.borrow().entities["light.grow_led"].clone();
-        assert_eq!(light.state, "on", "the entity survives the diff");
         assert_eq!(light.state, "on", "the entity survives the diff");
         assert!(!light.attributes.contains_key("effect"));
         assert_eq!(

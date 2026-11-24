@@ -211,7 +211,8 @@ async fn grow_lamp(
             });
 
             // The lamp's own dim level, from the bound light's
-            // brightness; unknown (no binding, light off) means full.
+            // brightness; unknown (no binding, or the light reports
+            // no brightness) means full.
             let dim_pct = bindings
                 .get("light")
                 .and_then(|e| live.entities.get(e))
