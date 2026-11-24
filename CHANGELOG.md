@@ -2,6 +2,17 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.20.0 - 2026-11-24
+#### Features
+- **(bindings)** read dead plug lights as off, per grow - (6b95e90) - Billie Thompson
+- **(logging)** trace every HTTP request (TraceLayer) - (dfe634d) - Billie Thompson
+- **(logging)** tracing on both sides of the wasm bridge - (7229cef) - Billie Thompson
+#### Miscellaneous
+- **(release)** bump version to 0.19.0 - (fa59a64) - github-actions[bot]
+- **(version)** 0.20.0 - (e552299) - Billie Thompson
+
+- - -
+
 ## v0.19.0 - 2026-11-24
 #### Bug Fixes
 - **(api)** accept the band editor's min/max object for soil_moisture_band - (bfeb334) - billie.codes

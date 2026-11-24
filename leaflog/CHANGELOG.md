@@ -2,6 +2,20 @@
 All notable changes to the Leaflog Home Assistant app. Version headings are exactly `## <version>` — Home Assistant slices release notes on them. Generated file; never edit by hand.
 
 - - -
+## 0.20.0
+
+_Released 2026-11-24._
+
+#### Features
+- **(bindings)** read dead plug lights as off, per grow - (6b95e90) - Billie Thompson
+- **(logging)** trace every HTTP request (TraceLayer) - (dfe634d) - Billie Thompson
+- **(logging)** tracing on both sides of the wasm bridge - (7229cef) - Billie Thompson
+#### Miscellaneous
+- **(release)** bump version to 0.19.0 - (fa59a64) - github-actions[bot]
+- **(version)** 0.20.0 - (e552299) - Billie Thompson
+
+- - -
+
 ## 0.19.0
 
 _Released 2026-11-24._
