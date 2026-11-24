@@ -2,9 +2,73 @@
 All notable changes to the Leaflog Home Assistant app. Version headings are exactly `## <version>` — Home Assistant slices release notes on them. Generated file; never edit by hand.
 
 - - -
+## 0.19.0
+
+_Released 2026-11-24._
+
+#### Bug Fixes
+- **(api)** accept the band editor's min/max object for soil_moisture_band - (bfeb334) - billie.codes
+- **(api)** validate setting value shapes and write settings in one transaction - (927576f) - billie.codes
+- **(backend)** allow data: images in the ingress CSP - (e745509) - Billie Thompson
+- **(backend)** show diary entries dated later on their day - (d08ecc5) - billie.codes
+- **(env)** show a dash when no humidity band exists - (4eb28a1) - billie.codes
+- **(env)** advise lamp height from the bound light's real dim level - (2f92c7a) - billie.codes
+- **(feeds)** label the stored dose unit in one place - (d232f1f) - billie.codes
+- **(frontend)** bound gantt caption spill to the chart - (949fd50) - Billie Thompson
+- **(frontend)** keep the plant name as the story filter's link - (a5f8d2d) - Billie Thompson
+- **(frontend)** carry log confirmation to the entry it created - (25a2fa8) - Billie Thompson
+- **(frontend)** collapse the trait wall and add an all-plants toggle - (f51a67b) - Billie Thompson
+- **(frontend)** show the undo window and acknowledge photo deletes - (b4a31f8) - Billie Thompson
+- **(frontend)** day-scope the story buttons and name the photo delete - (f087bca) - Billie Thompson
+- **(frontend)** make the story plant filter row clickable as a whole - (811d343) - Billie Thompson
+- **(frontend)** visible focus ring and unclipped gantt captions - (abf70e8) - Billie Thompson
+- **(frontend)** resolve entry stamps and two labels in the app locale - (1dcdcaf) - Billie Thompson
+- **(ha)** time out the Supervisor handshakes and keep the dim level while the light is off - (8bfd089) - billie.codes
+- **(ha)** bound every Supervisor REST call with connect and total timeouts - (4bf7da5) - billie.codes
+- **(ha)** drop a Supervisor socket that stays silent past 2.5 heartbeats - (969a846) - billie.codes
+- **(photos)** decode uploads and read files off the DB lock - (a5834c3) - billie.codes
+- **(photos)** keep the thumbnail aspect ratio and honour the EXIF orientation - (74f8098) - billie.codes
+- **(story)** name each photo link after its photo - (12a43a2) - billie.codes
+- **(ui)** contrast floors, touch targets, reduced motion and page headings - (458894b) - billie.codes
+#### CI
+- pin workflow actions to commit SHAs and record the open tool downloads - (e408227) - billie.codes
+- lint the wasm test targets too - (64ab700) - billie.codes
+#### Documentation
+- reconcile the allow register with the code - (e0a62fc) - billie.codes
+#### Features
+- **(settings)** give the seven backend settings a screen - (36dab41) - billie.codes
+- **(story)** jump straight to the photographs - (8aa8d1b) - Billie Thompson
+#### Miscellaneous
+- **(deps)** bump cookie to 0.18.3 for RUSTSEC-2026-0594 - (80a98ad) - billie.codes
+- **(impeccable)** drop the stale feed-schedules surface file - (22b4f3a) - billie.codes
+- **(release)** bump version to 0.18.0 - (266e523) - github-actions[bot]
+- **(version)** 0.19.0 - (3dce8b3) - Billie Thompson
+- pre-prefix the devbox command - (ea6b106) - Billie Thompson
+- Strip down some noise in the AGENTS.md - (f6a4695) - Billie Thompson
+#### Performance
+- **(chart)** fetch the roles' HA history concurrently - (7a87755) - billie.codes
+- **(story)** window the action and photo rows in SQL before mapping - (a0b2e07) - billie.codes
+- **(story)** read only the rows the page window needs - (412d07d) - billie.codes
+#### Refactoring
+- **(frontend)** bundle the story signals for the fetch helpers - (b854a6e) - Billie Thompson
+- **(tests)** share started_today via tests/common - (760de2a) - billie.codes
+- drop comments the allows and docs already carry - (0b2375d) - billie.codes
+- satisfy flagged lints at the source - (91fccd4) - billie.codes
+- delete lint allows the compiler proves dead - (537dd1e) - billie.codes
+- tighten comments and drop duplication from the cleanup review - (ff6e439) - billie.codes
+- delete dead options, dead code and stale text - (6ea2547) - billie.codes
+#### Style
+- address clippy nits from the critique pass - (36aa1cc) - Billie Thompson
+- cargo fmt - (97910a2) - Billie Thompson
+#### Tests
+- **(frontend)** add photo_dates to the story component-test stub - (b4ecab4) - Billie Thompson
+- **(grows)** drop the equipment-catalogue remark from the watt test - (5be1c31) - billie.codes
+
+- - -
+
 ## 0.18.0
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### Bug Fixes
 - **(frontend)** tighten feeding schedule card headers - (fc39cdb) - billie.codes
@@ -20,7 +84,7 @@ _Released 2026-11-22._
 
 ## 0.17.0
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### Features
 - **(backend)** serve paginated grow stories - (7ac333b) - billie.codes
@@ -34,7 +98,7 @@ _Released 2026-11-22._
 
 ## 0.16.1
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### Bug Fixes
 - **(frontend)** unify page spacing and coach text - (71a9b8b) - billie.codes
@@ -46,7 +110,7 @@ _Released 2026-11-22._
 
 ## 0.16.0
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### Bug Fixes
 - **(backend)** cache Trunk's bundles when the hash is shorter than 16 digits - (6553b8e) - billie.codes
@@ -66,7 +130,7 @@ _Released 2026-11-22._
 
 ## 0.15.4
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### Features
 - **(frontend)** bench-bar navigation, Grows-first landing and quiet footer (D147) - (92a0907) - billie.codes
@@ -79,7 +143,7 @@ _Released 2026-11-22._
 
 ## 0.15.3
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### Bug Fixes
 - **(frontend)** short attribution line and Foto uploads through quick add (D144) - (341c22d) - billie.codes
@@ -92,7 +156,7 @@ _Released 2026-11-22._
 
 ## 0.15.2
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### Bug Fixes
 - contain the feeding section and restore the prototype dose-list metrics (D143) - (e4f19c3) - billie.codes
@@ -104,7 +168,7 @@ _Released 2026-11-22._
 
 ## 0.15.1
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### Bug Fixes
 - **(test)** compare the Air shading with slack instead of byte equality - (5fd9360) - billie.codes
@@ -117,7 +181,7 @@ _Released 2026-11-22._
 
 ## 0.15.0
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### Bug Fixes
 - **(ci)** pin chromedriver to our Chrome build, not the runner image's - (4c54463) - billie.codes
@@ -141,7 +205,7 @@ _Released 2026-11-22._
 
 ## 0.14.0
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### Bug Fixes
 - **(frontend)** reserve root-zone space when the feed log has pH/EC - (0740721) - billie.codes
@@ -168,7 +232,7 @@ _Released 2026-11-22._
 
 ## 0.13.0
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### Documentation
 - **(release)** the v0.13.0 upgrade note - (a745746) - billie.codes
@@ -182,7 +246,7 @@ _Released 2026-11-22._
 
 ## 0.12.0
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### Bug Fixes
 - **(backend)** land the subscribe_entities seed so steady entities report available - (1bd23b7) - billie.codes
@@ -207,7 +271,7 @@ _Released 2026-11-22._
 
 ## 0.11.0
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### Bug Fixes
 - **(backend)** window-bound the marker scan before its limit - (3b3c646) - billie.codes
@@ -278,7 +342,7 @@ _Released 2026-11-22._
 
 ## 0.10.0
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### Features
 - **(frontend)** the logging loop opens in the grow header - (841c0fc) - billie.codes
@@ -291,7 +355,7 @@ _Released 2026-11-22._
 
 ## 0.9.0
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### Bug Fixes
 - **(frontend)** tile_class is const - (a474b03) - billie.codes
@@ -348,7 +412,7 @@ _Released 2026-11-22._
 
 ## 0.8.0
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### Bug Fixes
 - **(frontend)** a bound chart card survives a failed history fetch - (e0f9f15) - billie.codes
@@ -374,7 +438,7 @@ _Released 2026-11-22._
 
 ## 0.7.0
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### Bug Fixes
 - **(frontend)** give ECharts the option as plain objects (bug 1b2b540) - (c27c7af) - billie.codes
@@ -441,7 +505,7 @@ _Released 2026-11-22._
 
 ## 0.6.0
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### Bug Fixes
 - **(frontend)** space and seed-batch selects keep their pick on refetch - (16b7b3e) - billie.codes
@@ -481,7 +545,7 @@ _Released 2026-11-22._
 
 ## 0.5.1
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### Bug Fixes
 - **(dashboard)** show the No-data banner only for real dead bindings - (d788fe3) - billie.codes
@@ -507,7 +571,7 @@ _Released 2026-11-22._
 
 ## 0.5.0
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### Bug Fixes
 - **(ci)** UI prose extraction drops Tailwind class lists (D065) - (063b515) - billie.codes
@@ -532,7 +596,7 @@ _Released 2026-11-22._
 
 ## 0.4.1
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### Bug Fixes
 - **(frontend)** submit handlers must prevent_default themselves (D061) - (f949965) - billie.codes
@@ -544,7 +608,7 @@ _Released 2026-11-22._
 
 ## 0.4.0
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### CI
 - **(changelog)** generate CHANGELOG.md with cocogitto in CI - (fed0dea) - billie.codes
@@ -576,7 +640,7 @@ _Released 2026-11-22._
 
 ## 0.3.0
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### Bug Fixes
 - **(backend)** add nosniff and a hash-pinned CSP to served responses - (bae8103) - billie.codes
@@ -598,7 +662,7 @@ _Released 2026-11-22._
 
 ## 0.2.0
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### Bug Fixes
 - **(backend)** normalize photos to rgb8 so non-rgb inputs cannot panic - (ebcf88e) - billie.codes
@@ -627,7 +691,7 @@ _Released 2026-11-22._
 
 ## 0.1.0
 
-_Released 2026-11-22._
+_Released 2026-11-24._
 
 #### Bug Fixes
 - **(ci)** reference arch-tagged images when merging the multi-arch manifest - (23a7e5a) - billie.codes
