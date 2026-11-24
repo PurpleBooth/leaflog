@@ -146,19 +146,26 @@ async fn story(
     // Window-independent jump targets for the story page: every
     // photo date across the grow, newest first, so the Photos (n)
     // button can keep loading older days until its target appears.
-    let mut photo_dates: Vec<String> = all_photos
-        .iter()
-        .filter_map(|photo| local_date(&photo.captured_at, &zone))
-        .map(|date| date.to_string())
-        .collect();
-    photo_dates.sort_unstable_by(|a, b| b.cmp(a));
-    photo_dates.dedup();
     Ok(Json(StoryPage {
         timezone,
         days,
         before: (start > earliest).then(|| start.to_string()),
-        photo_dates,
+        photo_dates: photo_dates(&all_photos, &zone),
     }))
+}
+
+/// Window-independent jump targets for the story page: every
+/// photo date across the grow, newest first, so the Photos (n)
+/// button can keep loading older days until its target appears.
+fn photo_dates(all_photos: &[Photo], zone: &TimeZone) -> Vec<String> {
+    let mut dates: Vec<String> = all_photos
+        .iter()
+        .filter_map(|photo| local_date(&photo.captured_at, zone))
+        .map(|date| date.to_string())
+        .collect();
+    dates.sort_unstable_by(|a, b| b.cmp(a));
+    dates.dedup();
+    dates
 }
 
 fn page_window(query: &StoryQuery, zone: &TimeZone) -> Result<(Date, Date, Timestamp), ApiError> {

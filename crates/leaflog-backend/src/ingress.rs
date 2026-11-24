@@ -135,7 +135,7 @@ fn base_script_tag(base: &IngressPath) -> String {
 ///   the inline styles Leptos emits (element `style` attributes and
 ///   dynamic `<style>` elements).
 /// - `img-src 'self' data:` — photos are same-origin relative URLs,
-///   and DaisyUI paints its loading spinners and tooltip tails from
+///   and `DaisyUI` paints its loading spinners and tooltip tails from
 ///   inline `data:` SVG masks, which `'self'` alone blocks. The masks
 ///   ship inside the audited stylesheet, so they carry no remote
 ///   content (AGENTS.md ingress rules).
