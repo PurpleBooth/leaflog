@@ -107,8 +107,7 @@ test.describe('german-forced browser', () => {
     ).toBeVisible();
 
     // The timeline groups manual entries under German day headings
-    // (catalog grow.day); the quiet auto tier (grow.auto_heading)
-    // is pinned when mock HA light transitions exist.
+    // (catalog grow.day).
     await expect(
       page.locator('[data-testid="story-day"]').first(),
     ).toHaveText(/Tag \d+/);

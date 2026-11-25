@@ -82,7 +82,6 @@
     "empty": "Noch keine Anbauten — starte deinen ersten."
   },
   "grow": {
-    "auto_heading": "Automatisch (Home Assistant)",
     "edit": "Anbau bearbeiten",
     "day": "Tag {{ day }}",
     "quick_add_log": "Eintragen",

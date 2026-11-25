@@ -82,7 +82,6 @@
     "empty": "No grows yet — start your first one."
   },
   "grow": {
-    "auto_heading": "Automatic (Home Assistant)",
     "edit": "Edit grow",
     "day": "day {{ day }}",
     "quick_add_log": "Log it",
