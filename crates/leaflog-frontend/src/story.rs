@@ -266,6 +266,9 @@ pub fn Story(
                 </button>
             </fieldset>
             <ErrorIf error />
+            <Show when=move || pages.get().iter().any(|day| day.automatic)>
+                <p class="mt-2 mb-0 text-sm text-base-content/70">{t!(i18n, story.automatic)}</p>
+            </Show>
             <Show when=move || photo_status.get().is_some()>
                 <p class="mt-2 mb-0 text-sm text-base-content/70" role="status">
                     {move || photo_status.get().unwrap_or_default()}
@@ -315,8 +318,13 @@ fn DayCard(
     // control) can tell them apart.
     let add_photo_label = format!("{} — {}", td_string!(locale, story.add_photo), day_label);
     let add_entry_label = format!("{} — {}", td_string!(locale, story.add_entry), day_label);
-    let light = day.light_hours.map(|hours| format!("{hours:.1}"));
-    // One caveat per day, not one per half of it.
+    let light = day
+        .light_hours
+        .map(|hours| leaflog_core::format::format_decimal(hours, 1, crate::decimal_style(locale)));
+    // One caveat per day, not one per half of it — and all caveats
+    // share the light line as lowercase fragments instead of stacking
+    // full sentences under every day. The auto-light legend never
+    // varies per day, so it renders once at story level instead.
     let sparse = day.periods.iter().any(|period| period.sparse);
     let periods = day.periods;
     let photos = day.photos.clone();
@@ -341,10 +349,9 @@ fn DayCard(
             <p class="my-2 text-sm text-base-content/70">
                 {light.map_or_else(|| td_string!(locale, story.no_light).into_owned(), |hours| td_string!(locale, story.light_hours, hours = hours).into_owned())}
                 {day.light_partial.then(|| view! { <span>{" · "}{t!(i18n, story.partial)}</span> })}
+                {sparse.then(|| view! { <span>{" · "}{t!(i18n, story.sparse)}</span> })}
+                {(!day.has_observations).then(|| view! { <span>{" · "}{t!(i18n, story.no_data)}</span> })}
             </p>
-            {sparse.then(|| view! { <p class="my-2 text-sm text-base-content/70">{t!(i18n, story.sparse)}</p> })}
-            {(!day.has_observations).then(|| view! { <p class="text-sm text-base-content/70">{t!(i18n, story.no_data)}</p> })}
-            {day.automatic.then(|| view! { <p class="text-sm text-base-content/70">{t!(i18n, story.automatic)}</p> })}
             <ul class="m-0 grid list-none gap-2 p-0">
                 {day.actions.into_iter().map(|entry| crate::grows::timeline_entry_in_zone(locale, entry, move |entry| on_delete.run(entry), timezone.get_untracked())).collect::<Vec<_>>()}
             </ul>
