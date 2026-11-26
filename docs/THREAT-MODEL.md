@@ -261,9 +261,10 @@ the categories above.
 | Open redirects | None: the app issues no redirects | Mitigated | verified |
 | Supply chain: crates | `Cargo.lock` committed; `cargo deny --workspace check` runs in `just ci` and the CI workflow | Mitigated | `justfile`, `.github/workflows/ci.yml` (R7 closed) |
 | Supply chain: base image | None in the app stage — `FROM scratch` (D161); the only bases are the pinned Rust builder stages | Mitigated | `leaflog/Dockerfile` |
-| Supply chain: build tools | Trunk, wasm-bindgen and just (`leaflog/Dockerfile`); vale and gitleaks (`ci.yml`); cocogitto and just (`pr-check.yml`, `release.yml`) — all downloaded by version over HTTPS without hash verification | Open | R4 |
+| Supply chain: build tools | Every versioned tool download is sha256-verified before extraction: Trunk, wasm-bindgen and just (`leaflog/Dockerfile`); vale and gitleaks (`ci.yml`); cocogitto and just (`pr-check.yml`, `release.yml`). The hashes come from the upstream checksum files (cocogitto publishes none, so its hash is trust-on-first-use, noted in place). The `taiki-e/install-action` installs verify checksums and artifact attestations themselves | Mitigated | workflow files, R4 closed |
 | Supply chain: CI | Workflow actions pinned to commit SHAs (`.github/workflows/`), bumped by Dependabot (`.github/dependabot.yml`); only the built-in `GITHUB_TOKEN` (no custom secrets in workflows); PR title validation; no `pull_request_target` flows | Mitigated | `.github/workflows/` |
-| Supply chain: published image | Not cosign-signed; users pin trust to GHCR/PurpleBooth | Open (low) | R9 |
+| Supply chain: published image | Keyless cosign signatures (Sigstore, certificate identity = this repository's `image.yml` at the ref it ran from) on every per-arch digest and the multi-arch index; SLSA provenance and an SBOM are attached as attestations; the merge job verifies the signature against the pinned identity before finishing | Mitigated | `image.yml`, D162, R9 closed |
+| Supply chain: npm | `npm audit` (moderate and above) in the CI and e2e jobs for both npm trees; lockfiles committed and bumped by Dependabot | Mitigated | `ci.yml`, R10 closed |
 | Ingress conformance | Relative URLs only (build `public_url = "./"`), runtime base injection, no login redirects, explicit `DefaultBodyLimit` | Mitigated | `ARCHITECTURE.md`, `tests/ingress.rs` |
 
 ## 12. Risk register
@@ -276,7 +277,7 @@ mitigated is omitted from the table.
 | TM1.3 | Diary and photos disclosed via unencrypted backups | likely | high | **High** | Open (R5) |
 | TM1.6 / TM5.4 | Photos persist in shared machines' browser cache | possible | medium | Medium | Mitigated (D145) |
 | TM2.2b | `javascript:` URL in strain `source_url` (vector via future import) | rare today | high | Low today, High with import | Closed (D075: strains removed) |
-| TM2.7 | Un-hash-pinned build-tool downloads | rare | critical | Medium | Open (R4) |
+| TM2.7 | Un-hash-pinned build-tool downloads | rare | critical | Medium | Mitigated (sha256 pins, R4 closed) |
 | TM3.1 | Sensor poisoning steers advice | possible | medium | Medium | Accepted |
 | TM4.1 | One-click destructive delete, no undo | possible | high | **High** | Open (R8) |
 | TM4.4 | Disk exhaustion from unbounded photo growth | possible | medium | Medium | Open (R6) |
@@ -284,7 +285,8 @@ mitigated is omitted from the table.
 | TM5.2 | Shared admin session exposes the diary to household members | possible | medium | Medium | Accepted (app), Open (guidance, R5) |
 | TM6 | No encryption at rest on host or (by default) in backups | possible | high | **High** | Deferred (D036), guidance (R5) |
 | TM7 | No dependency-audit gate in CI | rare | medium | Low-Medium | Closed (cargo-deny in CI) |
-| TM7 | Unsigned images | rare | high | Medium | Open (R9) |
+| TM7 | Unsigned images | rare | high | Medium | Mitigated (keyless cosign, D162, R9 closed) |
+| TM7 | Known-vulnerable npm dependency in the ECharts bundle or the e2e suite | rare | medium | Low-Medium | Mitigated (`npm audit` + Dependabot, R10 closed) |
 
 ## 13. Open items
 
@@ -295,12 +297,13 @@ Prioritised; none blocks v0.1.0.
 | R1 | **Resolved** (D145): the decoder rejects any declared edge above 8000 px from the header before allocating | TM4.6, TM7 DoS |
 | R2 | **Resolved** (D145): `Cache-Control: private, no-store` on photo originals, `private, max-age=86400` on thumbnails | TM1.6, TM5.4 |
 | R3 | **Resolved** in the feature strip (D075, ticket 05): the strain catalogue — and with it every `source_url` — is gone, so the scheme validation is moot. Re-open only if a data-import feature returns and renders user URLs | TM2.2b |
-| R4 | SHA256-pin the versioned tool downloads: Trunk, wasm-bindgen and just in `leaflog/Dockerfile`; vale and gitleaks in `ci.yml`; cocogitto and just in `pr-check.yml` and `release.yml`. Each upstream release ships a checksum file; record it next to the version and verify before the extract step. Done 2026-11-23 for the workflow *actions* (SHA pins + Dependabot); the tool downloads stay open | TM2.7 |
+| R4 | **Resolved**: every versioned tool download is sha256-verified against the upstream checksum file before extraction (`leaflog/Dockerfile`, `ci.yml`, `pr-check.yml`, `release.yml`). Workflow *actions* were SHA-pinned on 2026-11-23 | TM2.7 |
 | R5 | User-facing hardening notes (a `leaflog/DOCS.md` section or `docs/HARDENING.md`): encrypted HA backups, per-person HA accounts with MFA on admins, sign out of shared devices, FDE on x86 hosts, restraint with host-path add-ons, beware browser caches | TM1.3, TM4.3, TM4.7, TM5.2, TM6 |
 | R6 | Optional photo storage quota setting (default off) with a clear UI state when hit | TM4.4 |
 | R7 | **Resolved**: `cargo deny --workspace check` runs in `just ci` and the CI workflow installs `cargo-deny` | TM7 |
 | R8 | Product decision: confirmation dialog for cascade deletes, and/or a soft-delete "recently deleted" window with purge on backup | TM4.1 |
-| R9 | Cosign-sign published images (nice-to-have) | TM7 |
+| R9 | **Resolved** (D162): per-arch digests and the multi-arch index are signed with keyless cosign; the workflow verifies against the pinned identity | TM7 |
+| R10 | **Resolved**: `npm audit --audit-level=moderate` runs for both npm trees in CI; Dependabot covers `cargo` and `npm` as well as `github-actions` | TM7 |
 
 ## 14. Revisit triggers
 

@@ -50,7 +50,8 @@ just ci        # fmt, clippy (native + wasm), tests, WASM build
 2. Install **Leaflog** — it appears as a sidebar tab
 
 Both `amd64` and `aarch64` images are published to
-`ghcr.io/purplebooth/leaflog`.
+`ghcr.io/purplebooth/leaflog`. Every image is scanned with Trivy,
+carries an SBOM and is signed with cosign (see `leaflog/DOCS.md`).
 
 ## Development workflow
 

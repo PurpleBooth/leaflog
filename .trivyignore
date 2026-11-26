@@ -1,0 +1,10 @@
+# Vulnerabilities and misconfigurations Trivy must not report for the
+# app image (.github/workflows/image.yml). Every entry carries its
+# reason and the decision that backs it; an entry without one is a bug.
+#
+# DS-0002 "Image user should not be 'root'": the app stage is
+# FROM scratch (D161) with no USER on purpose. The Home Assistant
+# Supervisor starts app containers as root and owns /data as root; a
+# non-root USER could not write the SQLite database or photos there.
+# There is no shell or package manager in the image to abuse either.
+DS-0002

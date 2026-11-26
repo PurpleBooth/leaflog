@@ -1,10 +1,15 @@
-# Builds and publishes the multi-arch Leaflog app image.
+# Builds, scans, signs and publishes the multi-arch Leaflog app image.
 #
 # Per-arch native runners build each architecture (no cross/emulation),
 # pushing ghcr.io/purplebooth/leaflog-<arch>:<tag>; a merge job then
 # creates the multi-arch manifest ghcr.io/purplebooth/leaflog:<tag>.
-# Authentication uses only the built-in GITHUB_TOKEN — no custom
-# secrets (the repository is public; nothing secret may appear here).
+# Each pushed digest is scanned with Trivy and signed with cosign
+# (keyless, Sigstore) before the merge; the merge job signs the final
+# index too. Verification is pinned to this workflow's identity, so a
+# verifier only needs the repository and the issuer
+# (docs/DECISIONS.md D162). Authentication uses only the built-in
+# GITHUB_TOKEN — no custom secrets (the repository is public; nothing
+# secret may appear here).
 
 name: Image
 
@@ -18,6 +23,12 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE: ghcr.io/purplebooth/leaflog
+  # The identity cosign signs as and verifies against: the GitHub OIDC
+  # issuer, and this workflow file at the ref it ran from. The merge
+  # job runs in this same file whether it was pushed directly or
+  # called from release.yml, so one value covers both.
+  COSIGN_IDENTITY: https://github.com/PurpleBooth/leaflog/.github/workflows/image.yml
+  COSIGN_ISSUER: https://token.actions.githubusercontent.com
 
 jobs:
   build:
@@ -26,6 +37,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # Keyless cosign: the OIDC token becomes the signing certificate.
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -67,8 +80,54 @@ jobs:
             BUILD_VERSION=${{ steps.tag.outputs.tag }}
           push: true
           tags: ${{ env.IMAGE }}-${{ matrix.arch }}:${{ steps.tag.outputs.tag }}
+          # Provenance is attached by default; the SBOM is attached the
+          # same way (an attestation manifest beside the image), so
+          # `cosign download attestation` and Trivy can read it.
+          sbom: true
           cache-from: type=gha,scope=${{ matrix.arch }}
           cache-to: type=gha,scope=${{ matrix.arch }},mode=max
+
+      # Scan the pushed digest, not the tag: that is what gets signed
+      # and merged. HIGH/CRITICAL only, fixed-only, so the gate stays
+      # at zero noise; `.trivyignore` lists the deliberate exceptions
+      # with their reasons. The platform is set explicitly: trivy-action
+      # has no platform input, only the TRIVY_* env passthrough, and
+      # containerd silently falls back to a single-arch index's only
+      # child — so a wrong platform would scan the wrong arch and pass.
+      - name: Scan the image with Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_PLATFORM: linux/${{ matrix.arch }}
+        with:
+          version: v0.76.2
+          image-ref: ${{ env.IMAGE }}-${{ matrix.arch }}@${{ steps.build.outputs.digest }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
+          trivyignores: .trivyignore
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@881c63bd87e38389154debd8331404ce7ca8a3ab # v4.1.4
+        with:
+          cosign-release: v3.1.6
+
+      - name: Sign the arch image
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          cosign sign --yes "${IMAGE}-${{ matrix.arch }}@${DIGEST}"
+
+      # Same pinned identity as the merge job's verify step: the
+      # signature must come from this workflow at this ref.
+      - name: Verify the signature
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          cosign verify \
+            --certificate-identity="${COSIGN_IDENTITY}@${GITHUB_REF}" \
+            --certificate-oidc-issuer="${COSIGN_ISSUER}" \
+            "${IMAGE}-${{ matrix.arch }}@${DIGEST}"
 
       - name: Export digest
         run: |
@@ -84,12 +143,13 @@ jobs:
           retention-days: 1
 
   merge:
-    name: Merge multi-arch manifest
+    name: Merge, sign and verify
     needs: build
     runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
+      id-token: write
     steps:
       - name: Determine image tag
         id: tag
@@ -116,6 +176,7 @@ jobs:
       # Each build job pushes ghcr.io/purplebooth/leaflog-<arch>:<tag>
       # and exports its digest; reference those arch images here.
       - name: Create manifest
+        id: manifest
         run: |
           sources=""
           for dir in /tmp/digests/digests-*; do
@@ -128,3 +189,41 @@ jobs:
           docker buildx imagetools create \
             -t "${IMAGE}:${{ steps.tag.outputs.tag }}" \
             $sources
+          # The index digest of what we just pushed, for signing.
+          digest="$(docker buildx imagetools inspect "${IMAGE}:${{ steps.tag.outputs.tag }}" \
+            --format '{{ json .Manifest }}' | jq -r '.digest')"
+          test -n "$digest"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@881c63bd87e38389154debd8331404ce7ca8a3ab # v4.1.4
+        with:
+          cosign-release: v3.1.6
+
+      # --recursive also signs the per-arch manifests inside the index.
+      - name: Sign the multi-arch index
+        env:
+          DIGEST: ${{ steps.manifest.outputs.digest }}
+        run: |
+          cosign sign --yes --recursive \
+            "${IMAGE}@${DIGEST}"
+
+      # Prove the signature verifies against the pinned identity, so a
+      # broken signing setup fails here instead of at the user's end.
+      - name: Verify the signature
+        env:
+          DIGEST: ${{ steps.manifest.outputs.digest }}
+        run: |
+          cosign verify \
+            --certificate-identity="${COSIGN_IDENTITY}@${GITHUB_REF}" \
+            --certificate-oidc-issuer="${COSIGN_ISSUER}" \
+            "${IMAGE}@${DIGEST}"
+
+      - name: Show how to verify
+        run: |
+          echo "Signed ${IMAGE}:${{ steps.tag.outputs.tag }} (${GITHUB_REF})."
+          echo "Verify with:"
+          echo "  cosign verify \\"
+          echo "    --certificate-identity '${COSIGN_IDENTITY}@${GITHUB_REF}' \\"
+          echo "    --certificate-oidc-issuer '${COSIGN_ISSUER}' \\"
+          echo "    '${IMAGE}@${{ steps.manifest.outputs.digest }}'"

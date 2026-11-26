@@ -4,6 +4,59 @@ One-off choices, in reverse-chronological order. Every `#[allow]` exception
 to the mandatory lint policy (see AGENTS.md / SPEC.md §10) must be logged
 here. Date format: YYYY-MM-DD.
 
+## 2026-11-26 — supply-chain gates: pinned tool hashes, scanned and signed images (D162)
+
+### D162: images are scanned and keyless-signed; tool downloads are hash-verified
+
+Four gaps from the threat model closed in one pass (R4, R9, and the
+new R10):
+
+- **Tool downloads are hash-verified.** Trunk, wasm-bindgen, just,
+  vale, gitleaks and cocogitto are downloaded by version over HTTPS;
+  each step now records the sha256 from the upstream checksum file next
+to the version and runs `sha256sum -c` before extracting. A mismatch
+  fails the build, so a hijacked release asset cannot reach the
+  toolchain. cocogitto publishes no checksum file; its hash is
+  trust-on-first-use and the comment says so. The downloads use
+  `curl -f` so an HTML error page is never hashed as if it were the
+  archive. The `taiki-e/install-action` tool installs already verify
+  checksums and artifact attestations themselves.
+- **Images are scanned.** Trivy runs on each pushed per-arch digest
+  (HIGH/CRITICAL, fixed only) and fails the job on a finding. The only
+  exception is `.trivyignore` DS-0002: the app stage is `FROM scratch`
+  with no `USER`, because the Supervisor runs app containers as root
+  and owns `/data` as root. A scratch image has no OS packages, so the
+  scan's real job is to catch the day a base image or a bundled
+  runtime returns.
+- **Images are signed.** cosign keyless (Sigstore): the GitHub OIDC
+  token becomes a short-lived Fulcio certificate, the signature lands
+  in Rekor. Both the per-arch digests and the merged multi-arch index
+  are signed, and each job verifies its signature against the pinned
+  identity — `https://github.com/PurpleBooth/leaflog/.github/workflows/image.yml@<ref>`
+  from `https://token.actions.githubusercontent.com` — so a broken
+  signing setup fails in CI rather than at the user's end. The
+  identity is the *called* workflow's `job_workflow_ref`, so it is the
+  same whether `image.yml` is pushed directly or called from
+  `release.yml`. A caller can only narrow a called workflow's
+  permissions, so `release.yml` grants `id-token: write` itself. We
+  don't use the HA builder actions (they can sign too); the Supervisor
+  does not check signatures today, so this is a verifiable trust anchor
+  for users, not a gate.
+- **An SBOM is attached.** `build-push-action` attaches an SPDX SBOM as
+  an attestation next to the SLSA provenance it already produced.
+- **npm trees are audited.** `npm audit --audit-level=moderate` runs for
+  `e2e/` and `crates/leaflog-frontend/charts/` in CI; Dependabot now
+  covers `cargo` and both `npm` trees as well as `github-actions`.
+
+Users verify an image with:
+
+```
+cosign verify \
+  --certificate-identity 'https://github.com/PurpleBooth/leaflog/.github/workflows/image.yml@refs/tags/v0.22.0' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  ghcr.io/purplebooth/leaflog@sha256:<digest>
+```
+
 ## 2026-11-26 — scratch app image: no base, no s6 (D161)
 
 ### D161: the final image is `FROM scratch` — a single static binary, no s6 overlay

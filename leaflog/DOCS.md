@@ -28,6 +28,19 @@ Backups keep your database and photos.
 - All Supervisor calls are read-only. The app makes no service calls,
   and no opt-in switch exists yet.
 
+## Verifying the image
+
+Every published image is signed with [cosign](https://docs.sigstore.dev/cosign/signing/overview/) (keyless, Sigstore), scanned with Trivy, and carries an SBOM. The Supervisor does not check signatures, so this is optional; to verify one yourself:
+
+```sh
+cosign verify \
+  --certificate-identity 'https://github.com/PurpleBooth/leaflog/.github/workflows/image.yml@refs/tags/v0.22.0' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  ghcr.io/purplebooth/leaflog@sha256:<digest>
+```
+
+Use the digest from `docker buildx imagetools inspect ghcr.io/purplebooth/leaflog:<version>`.
+
 ## Troubleshooting
 
 The app must be opened from the Home Assistant sidebar or via ingress;
