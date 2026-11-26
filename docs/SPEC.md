@@ -264,10 +264,10 @@ Wattage class at full power (starting point):
 - Screenshots in `docs/` (desktop + mobile, light + dark).
 
 ## 7. Home Assistant packaging
-- Repo: `repository.yaml` plus an app folder with `config.yaml`, `Dockerfile`, `rootfs/etc/s6-overlay/` (s6 longrun service), `README.md`, `DOCS.md`, `CHANGELOG.md`, `icon.png`, `logo.png`, translations.
+- Repo: `repository.yaml` plus an app folder with `config.yaml`, `Dockerfile`, `README.md`, `DOCS.md`, `CHANGELOG.md`, `icon.png`, `logo.png`, translations.
 - `config.yaml`: `arch: [aarch64, amd64]`, `ingress: true`, `ingress_port: 8099`, `panel_icon: mdi:cannabis`, `panel_title: Leaflog`, `panel_admin: true`, `homeassistant_api: true`, `init: false`, `map` for `data`, no options schema — units, TDS scale and the service-call opt-in are in-app settings, as are entity bindings, alert thresholds and presets — and a multi-arch `image:` name.
 - **Backups:** default is `backup: hot`, so checkpoint SQLite via `backup_pre`, or choose `cold`. Exclude thumbnail caches. Prove backup → restore keeps data and photos.
-- **Dockerfile:** multi-stage with BuildKit, musl targets for both arches, and a **pinned** HA Alpine base (`ghcr.io/home-assistant/base:<tag>`), never `latest`. `BUILD_FROM` is no longer passed by default, so use a fixed `FROM` or give it a default. The musl cross-compilation happens inside the container build (document how: per-arch runners, or a pinned cross linker), so the Devbox environment doesn't need musl targets.
+- **Dockerfile:** multi-stage with BuildKit, musl targets for both arches, and a `FROM scratch` final stage: the backend is a static musl binary with the frontend embedded, so there is no base image to pin and no s6 overlay — `config.yaml` keeps the default `init: true` (Docker's init process). The musl build happens inside the container build (document how: per-arch runners, or plain Podman locally), so the Devbox environment doesn't need musl targets.
 - GitHub Actions to build and publish a multi-arch image, plus a local-build path.
 - Re-check the HA developer docs before each milestone. Naming and behaviour are changing ("add-ons" are now "apps").
 

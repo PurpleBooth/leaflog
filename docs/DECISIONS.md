@@ -4,6 +4,32 @@ One-off choices, in reverse-chronological order. Every `#[allow]` exception
 to the mandatory lint policy (see AGENTS.md / SPEC.md §10) must be logged
 here. Date format: YYYY-MM-DD.
 
+## 2026-11-26 — scratch app image: no base, no s6 (D161)
+
+### D161: the final image is `FROM scratch` — a single static binary, no s6 overlay
+
+The HA Alpine base and its s6-overlay longrun service bought a shell,
+bashio, tzdata, and CA certificates that Leaflog never uses: the
+backend is a static musl binary with the frontend embedded (D003),
+talks plain HTTP to `http://supervisor` on the internal network
+(reqwest has no TLS feature), and works in UTC by design. The s6 run
+script only re-exported defaults the binary already derives
+(`LEAFLOG_PORT=8099`, production mode from `SUPERVISOR_TOKEN`), and
+`with-contenv` existed to lift the Docker env into s6 — with a plain
+entrypoint the process env is already there. Stage 3 is therefore
+`FROM scratch`: the binary, the `io.hass` labels (we build outside the HA
+builder actions, so the labels are ours to set —
+apps/guides/dockerfile/#labels), and `ENTRYPOINT ["/leaflog-backend"]`.
+`config.yaml` drops `init: false`: per the app docs, an image without
+s6 keeps the default `init: true`, so Docker's init process forwards
+SIGTERM (as PID 1 the bare binary would ignore it) and reaps zombies.
+Supersedes the pinned-base half of D007 — the in-container musl build
+stays; spec §7 and the threat model follow. Supply-chain win: the app
+stage has no third-party layers at all, only the pinned Rust builder
+stages remain.
+
+---
+
 ## 2026-11-26 — two release profiles: size for wasm, speed for the server (D160)
 
 ### D160: `[profile.release]` optimizes the wasm bundle for size; `[profile.server]` maximizes the backend

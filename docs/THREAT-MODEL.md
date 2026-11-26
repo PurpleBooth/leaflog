@@ -104,7 +104,7 @@ Two structural facts drive most of the analysis:
 | Compromised HA (phished remote access, malicious or broken add-on) | Everything Leaflog trusts | Stealthy, patient |
 | Malicious co-tenant add-on | Own container on the HA network; host-path access if the owner granted it | Lateral movement |
 | Host root / physical thief | Whole disk | Theft, ransomware, disposal of disks |
-| Supply-chain attacker | crates.io, GitHub release artifacts, GH Actions, base image, HACS | Code execution at build or update time |
+| Supply-chain attacker | crates.io, GitHub release artifacts, GH Actions, HACS | Code execution at build or update time |
 | Beneficiaries of disclosure (employer, landlord, litigant, burglar) | None technical | They consume the output of a leak; they set the impact ratings |
 
 ## 5. TM1: Disclosure that the owner cultivates cannabis
@@ -260,7 +260,7 @@ the categories above.
 | Clickjacking / framing | Not applicable: HA ingress panels render in HA's own iframe by design | n/a | §2 |
 | Open redirects | None: the app issues no redirects | Mitigated | verified |
 | Supply chain: crates | `Cargo.lock` committed; `cargo deny --workspace check` runs in `just ci` and the CI workflow | Mitigated | `justfile`, `.github/workflows/ci.yml` (R7 closed) |
-| Supply chain: base image | Pinned `ghcr.io/home-assistant/base:3.24-2026.11.0`, never `latest` (D007) | Mitigated | `leaflog/Dockerfile` |
+| Supply chain: base image | None in the app stage — `FROM scratch` (D161); the only bases are the pinned Rust builder stages | Mitigated | `leaflog/Dockerfile` |
 | Supply chain: build tools | Trunk, wasm-bindgen and just (`leaflog/Dockerfile`); vale and gitleaks (`ci.yml`); cocogitto and just (`pr-check.yml`, `release.yml`) — all downloaded by version over HTTPS without hash verification | Open | R4 |
 | Supply chain: CI | Workflow actions pinned to commit SHAs (`.github/workflows/`), bumped by Dependabot (`.github/dependabot.yml`); only the built-in `GITHUB_TOKEN` (no custom secrets in workflows); PR title validation; no `pull_request_target` flows | Mitigated | `.github/workflows/` |
 | Supply chain: published image | Not cosign-signed; users pin trust to GHCR/PurpleBooth | Open (low) | R9 |

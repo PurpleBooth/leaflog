@@ -5,9 +5,6 @@
 # needs no musl targets (spec §7 / docs/DECISIONS.md D007).
 
 ARG TARGETARCH
-# Pinned Home Assistant Alpine base — never `latest` (spec §7). Tag
-# scheme is <alpine>-<yyyy.mm.n>; resolved from ghcr.io on 2026-11-08.
-ARG HA_BASE=ghcr.io/home-assistant/base:3.24-2026.11.0
 
 # ---------------------------------------------------------------------------
 # Stage 1: build the frontend (Trunk, relative public URL).
@@ -70,10 +67,23 @@ RUN --mount=type=cache,target=/build/target \
     && cp target/server/leaflog-backend /leaflog-backend
 
 # ---------------------------------------------------------------------------
-# Stage 3: the app image.
+# Stage 3: the app image — `FROM scratch` (D161).
+# The backend is a static musl binary with the frontend embedded
+# (embed-assets, D003). It needs none of what a base image ships: no
+# shell, no tzdata (the backend works in UTC by design), and no CA
+# bundle (reqwest has no TLS feature — the Supervisor API is plain
+# HTTP on the internal network). No s6 overlay either: `config.yaml`
+# keeps the default `init: true`, so Docker's init process reaps and
+# forwards SIGTERM. We build outside the HA builder actions, so the
+# io.hass labels are ours to set
+# (contributors.home-assistant.io/apps/guides/dockerfile/#labels).
 # ---------------------------------------------------------------------------
-FROM ${HA_BASE} AS app
-# The build context is the repository root; the s6-overlay rootfs
-# (longrun service) is copied from the app folder.
-COPY leaflog/rootfs/ /
-COPY --from=backend-builder /leaflog-backend /usr/local/bin/leaflog-backend
+FROM scratch AS app
+ARG TARGETARCH
+ARG BUILD_VERSION
+LABEL \
+  io.hass.version="${BUILD_VERSION}" \
+  io.hass.type="app" \
+  io.hass.arch="${TARGETARCH}"
+COPY --from=backend-builder /leaflog-backend /leaflog-backend
+ENTRYPOINT ["/leaflog-backend"]

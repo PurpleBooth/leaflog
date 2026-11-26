@@ -485,6 +485,7 @@ image arch=arch:
     fi
     podman build \
         --build-arg TARGETARCH={{arch}} \
+        --build-arg BUILD_VERSION=dev \
         -f leaflog/Dockerfile \
         -t "ghcr.io/purplebooth/leaflog-{{arch}}:dev" \
         .

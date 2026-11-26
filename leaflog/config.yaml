@@ -15,7 +15,9 @@ panel_icon: mdi:cannabis
 panel_title: Leaflog
 panel_admin: true
 homeassistant_api: true
-init: false
+# No `init: false`: the image is `FROM scratch` without s6 overlay, so
+# the default `init: true` lets Docker's init process reap and forward
+# signals to the backend (D161).
 map:
   - data:rw
 backup: hot
