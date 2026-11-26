@@ -472,8 +472,10 @@ test-wasm: wasm-tools
 build-frontend: tailwind-daisyui build-echarts
     cd {{frontend_dir}} && trunk build --release && node charts/verify.mjs dist
 
-# Build the HA app image locally with Podman (amd64 by default).
-arch := "amd64"
+# Build the HA app image locally with Podman (native arch by
+# default; the Dockerfile only knows amd64 and aarch64).
+host_arch := `uname -m`
+arch := if host_arch == "aarch64" { "aarch64" } else if host_arch == "x86_64" { "amd64" } else { error("unsupported architecture for a local image build: " + host_arch) }
 image arch=arch:
     #!/usr/bin/env bash
     set -euo pipefail
