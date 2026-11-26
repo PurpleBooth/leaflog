@@ -68,11 +68,18 @@ jobs:
           node-version: 24
 
       - name: Install e2e deps and chromium
+        working-directory: e2e
         run: |
-          cd e2e && npm ci
+          npm ci
           npm audit --audit-level=moderate
-          cd ../crates/leaflog-frontend/charts && npm audit --audit-level=moderate
           npx playwright install --with-deps chromium
+
+      # Separate step: the previous one must stay inside e2e/ so the
+      # browsers land where the suite expects them (R10 in
+      # docs/THREAT-MODEL.md).
+      - name: Audit the ECharts bundle dependencies
+        working-directory: crates/leaflog-frontend/charts
+        run: npm audit --audit-level=moderate
 
       - name: Run the e2e suite
         run: just e2e

@@ -44,8 +44,12 @@ jobs:
       matrix:
         include:
           - arch: amd64
+            platform: linux/amd64
             runner: ubuntu-24.04
+          # `arch` is Docker's TARGETARCH and the image-tag suffix; the
+          # index records the OCI name, where aarch64 is arm64.
           - arch: aarch64
+            platform: linux/arm64
             runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
@@ -90,14 +94,15 @@ jobs:
       # Scan the pushed digest, not the tag: that is what gets signed
       # and merged. HIGH/CRITICAL only, fixed-only, so the gate stays
       # at zero noise; `.trivyignore` lists the deliberate exceptions
-      # with their reasons. The platform is set explicitly: trivy-action
-      # has no platform input, only the TRIVY_* env passthrough, and
-      # containerd silently falls back to a single-arch index's only
-      # child — so a wrong platform would scan the wrong arch and pass.
+      # with their reasons. The platform is set explicitly with the
+      # OCI name: trivy-action has no platform input, only the TRIVY_*
+      # env passthrough, and trivy matches the platform against the
+      # index strictly ("no child with platform linux/aarch64" —
+      # Docker's aarch64 is arm64 there).
       - name: Scan the image with Trivy
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:
-          TRIVY_PLATFORM: linux/${{ matrix.arch }}
+          TRIVY_PLATFORM: ${{ matrix.platform }}
         with:
           version: v0.76.2
           image-ref: ${{ env.IMAGE }}-${{ matrix.arch }}@${{ steps.build.outputs.digest }}
