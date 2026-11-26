@@ -44,5 +44,7 @@ tracing = "0.1"
 # wasm-opt, which chokes on bulk-memory ops). The backend binary is
 # stripped in the Dockerfile instead (docs/DECISIONS.md D009).
 [profile.release]
-lto = true
-codegen-units = 1
+opt-level = "s"   # Optimize for size ('z' for even smaller, but potentially slower)
+lto = true         # Enable Link Time Optimization
+codegen-units = 1  # Reduce code generation units for more aggressive optimization
+debug = false      # Disable debug info for smaller binaries

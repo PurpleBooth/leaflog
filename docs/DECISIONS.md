@@ -4,6 +4,22 @@ One-off choices, in reverse-chronological order. Every `#[allow]` exception
 to the mandatory lint policy (see AGENTS.md / SPEC.md §10) must be logged
 here. Date format: YYYY-MM-DD.
 
+## 2026-11-26 — release profile optimizes for size (D160)
+
+### D160: `opt-level = "s"` in the workspace release profile
+
+The HA image ships two release artifacts (backend ELF, frontend
+wasm + glue JS). With `lto` + `codegen-units = 1` already set, adding
+`opt-level = "s"` cut the wasm bundle from 4.15 MB to 2.64 MB (−36 %)
+at no measured cost for this workload — Leaflog is a single-household
+diary, not a hot-loop server; the frontend is a UI that pays the
+wasm download on first load, and the backend sits idle between
+requests. `debug = false` is recorded for explicitness (it is the
+release default). `'z'` was not chosen: beyond `s` it also drops
+alignment/semantics that barely matter here but start to nibble at
+panic formatting and unwind tables — not worth the last ~5 %. The
+`strip` ban and wasm-bindgen constraints stay as D009 says.
+
 ---
 
 ## 2026-11-24 — a dead plug light can count as off (D159)
