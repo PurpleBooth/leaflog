@@ -65,9 +65,9 @@ COPY --from=frontend-builder /out/dist crates/leaflog-frontend/dist
 RUN --mount=type=cache,target=/build/target \
     --mount=type=cache,target=/root/.cargo/git \
     --mount=type=cache,target=/root/.cargo/registry \
-    cargo build --release -p leaflog-backend \
-    && strip target/release/leaflog-backend \
-    && cp target/release/leaflog-backend /leaflog-backend
+    cargo build --profile server -p leaflog-backend \
+    && strip target/server/leaflog-backend \
+    && cp target/server/leaflog-backend /leaflog-backend
 
 # ---------------------------------------------------------------------------
 # Stage 3: the app image.

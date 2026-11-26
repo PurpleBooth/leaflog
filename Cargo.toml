@@ -38,13 +38,26 @@ jiff = { version = "0.2", features = ["js"] }
 # in the frontend.
 tracing = "0.1"
 
-# Lean release artifacts for the HA image. Note: no `strip` here —
+# Frontend (wasm, Trunk `--release`): optimized for size — the
+# bundle is downloaded on every first load. Note: no `strip` here —
 # stripping removes the wasm `target_features` section, which makes
 # wasm-bindgen unable to detect enabled features (it then runs its own
-# wasm-opt, which chokes on bulk-memory ops). The backend binary is
-# stripped in the Dockerfile instead (docs/DECISIONS.md D009).
+# wasm-opt, which chokes on bulk-memory ops) — and the server builds
+# with `[profile.server]` below, so this profile is wasm-only
+# (docs/DECISIONS.md D009, D160).
 [profile.release]
 opt-level = "s"   # Optimize for size ('z' for even smaller, but potentially slower)
 lto = true         # Enable Link Time Optimization
 codegen-units = 1  # Reduce code generation units for more aggressive optimization
 debug = false      # Disable debug info for smaller binaries
+
+# Backend (the server in the container, `cargo build --profile server`
+# in leaflog/Dockerfile): maximum optimization — the binary ships
+# inside the image and never pays a download cost, so speed wins over
+# size; `strip` stays in the Dockerfile (D009, D160).
+[profile.server]
+inherits = "release"
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+debug = false

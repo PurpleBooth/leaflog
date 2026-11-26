@@ -4,21 +4,24 @@ One-off choices, in reverse-chronological order. Every `#[allow]` exception
 to the mandatory lint policy (see AGENTS.md / SPEC.md §10) must be logged
 here. Date format: YYYY-MM-DD.
 
-## 2026-11-26 — release profile optimizes for size (D160)
+## 2026-11-26 — two release profiles: size for wasm, speed for the server (D160)
 
-### D160: `opt-level = "s"` in the workspace release profile
+### D160: `[profile.release]` optimizes the wasm bundle for size; `[profile.server]` maximizes the backend
 
-The HA image ships two release artifacts (backend ELF, frontend
-wasm + glue JS). With `lto` + `codegen-units = 1` already set, adding
-`opt-level = "s"` cut the wasm bundle from 4.15 MB to 2.64 MB (−36 %)
-at no measured cost for this workload — Leaflog is a single-household
-diary, not a hot-loop server; the frontend is a UI that pays the
-wasm download on first load, and the backend sits idle between
-requests. `debug = false` is recorded for explicitness (it is the
-release default). `'z'` was not chosen: beyond `s` it also drops
-alignment/semantics that barely matter here but start to nibble at
-panic formatting and unwind tables — not worth the last ~5 %. The
-`strip` ban and wasm-bindgen constraints stay as D009 says.
+The HA image ships two release artifacts with opposite cost models.
+The frontend wasm is downloaded on first load, so `[profile.release]`
+(Trunk builds `--release`) optimizes for size: `opt-level = "s"`, lto,
+`codegen-units = 1`, `debug = false` — measured 4.15 MB → 2.64 MB
+(−36 %). The backend binary ships inside the image and never pays a
+download cost, so the container builds it with `cargo build --profile
+server` (leaflog/Dockerfile): `inherits = "release"` overridden to
+`opt-level = 3`, `lto = "fat"`, `codegen-units = 1`, `debug = false`
+— max optimization, size secondary (the Dockerfile strips it, D009).
+`'z'` was not chosen for wasm: beyond `s` it starts to nibble at panic
+formatting and unwind tables — not worth the last ~5 %. The `strip`
+ban on the wasm profile and the wasm-bindgen constraints stay as
+D009 says. No `panic = "abort"` on the server: unwinding keeps a
+panicking request handler from taking the whole process down.
 
 ---
 
