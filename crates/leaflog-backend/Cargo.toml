@@ -40,7 +40,7 @@ rusqlite = { version = "0.41", features = ["bundled"] }
 # Maintained migration runner (spec §3, D048): auto-discovered SQL
 # files, checksum-verified history, divergent/out-of-order refusal.
 refinery = { version = "0.10", features = ["rusqlite"], default-features = false }
-ulid = "1"
+ulid = "3"
 time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
 thiserror = "2"
 sha2.workspace = true
