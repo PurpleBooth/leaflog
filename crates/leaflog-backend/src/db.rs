@@ -374,7 +374,7 @@ pub fn now_rfc3339() -> String {
 /// A fresh ULID as the canonical entity id.
 #[must_use]
 pub fn new_id() -> String {
-    ulid::Ulid::new().to_string()
+    ulid::Ulid::generate().to_string()
 }
 
 #[cfg(test)]
