@@ -2,6 +2,16 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.22.0 - 2026-11-27
+#### Features
+- **(http)** compress responses, validate caches with ETags, pin h2c - (a9bcf0c) - Billie Thompson
+- **(story)** sum each device's unavailable hours instead of flagging partial days - (f6bf18d) - Billie Thompson
+#### Miscellaneous
+- **(release)** bump version to 0.21.1 - (789a014) - github-actions[bot]
+- **(version)** 0.22.0 - (6e26fe8) - Billie Thompson
+
+- - -
+
 ## v0.21.1 - 2026-11-27
 #### Bug Fixes
 - **(ci)** scan the OCI platform name and keep playwright inside e2e/ - (5db9144) - Billie Thompson

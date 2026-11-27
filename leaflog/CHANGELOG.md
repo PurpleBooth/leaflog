@@ -2,6 +2,19 @@
 All notable changes to the Leaflog Home Assistant app. Version headings are exactly `## <version>` — Home Assistant slices release notes on them. Generated file; never edit by hand.
 
 - - -
+## 0.22.0
+
+_Released 2026-11-27._
+
+#### Features
+- **(http)** compress responses, validate caches with ETags, pin h2c - (a9bcf0c) - Billie Thompson
+- **(story)** sum each device's unavailable hours instead of flagging partial days - (f6bf18d) - Billie Thompson
+#### Miscellaneous
+- **(release)** bump version to 0.21.1 - (789a014) - github-actions[bot]
+- **(version)** 0.22.0 - (6e26fe8) - Billie Thompson
+
+- - -
+
 ## 0.21.1
 
 _Released 2026-11-27._
