@@ -43,20 +43,7 @@ async fn story(
 ) -> Result<Json<StoryPage>, ApiError> {
     let timezone = crate::app::canonical_timezone(&state).await;
     let zone = TimeZone::get(&timezone).unwrap_or(TimeZone::UTC);
-    let query_zone = zone.clone();
-    let query_id = id.clone();
-    let earliest = state
-        .db
-        .with(move |conn| -> Result<Option<Date>, ApiError> {
-            // A seven-day page must know about older records; the
-            // aggregates walk the grow's time indexes, not every row.
-            let action = store::actions::earliest_timestamp(conn, &query_id)?
-                .and_then(|at| local_date(&at, &query_zone));
-            let photo = store::photos::earliest_timestamp(conn, &query_id)?
-                .and_then(|at| local_date(&at, &query_zone));
-            Ok(action.into_iter().chain(photo).min())
-        })
-        .await?;
+    let earliest = earliest_record(&state, &id, &zone).await?;
     let (start, end, now) = page_window(&query, &zone)?;
     let from = midnight(start, &zone)?;
     let to = midnight(end, &zone)?;
@@ -105,7 +92,15 @@ async fn story(
         .map_or(started, |date| date.min(started))
         .min(earliest.unwrap_or(started));
     let from_ha = from.max(midnight(started, &zone)?);
-    let history = fetch_window(&state, &local, from_ha, to.min(now)).await;
+    // The dead-light stance (D159) rides along: set, a dead light is off.
+    let history = fetch_window(
+        &state,
+        &local,
+        from_ha,
+        to.min(now),
+        grow.light_unavailable_as_off,
+    )
+    .await;
     let mut days = Vec::new();
     let mut date = end;
     while date > start.max(earliest) {
@@ -139,7 +134,9 @@ async fn story(
             automatic,
             has_observations: summary.has_observations,
             light_hours: summary.light_hours,
-            light_partial: summary.light_partial,
+            temperature_unavailable_hours: summary.unavailable_hours[0],
+            humidity_unavailable_hours: summary.unavailable_hours[1],
+            light_unavailable_hours: summary.unavailable_hours[2],
             periods: summary.periods,
         });
     }
@@ -185,6 +182,27 @@ fn page_window(query: &StoryQuery, zone: &TimeZone) -> Result<(Date, Date, Times
         .min(tomorrow);
     let start = end.checked_sub(PAGE_DAYS.days()).map_err(invalid_date)?;
     Ok((start, end, now))
+}
+
+/// The local date of the grow's oldest action or photo.
+async fn earliest_record(
+    state: &AppState,
+    id: &str,
+    zone: &TimeZone,
+) -> Result<Option<Date>, ApiError> {
+    let (query_id, query_zone) = (id.to_owned(), zone.clone());
+    state
+        .db
+        .with(move |conn| -> Result<Option<Date>, ApiError> {
+            // A seven-day page must know about older records; the
+            // aggregates walk the grow's time indexes, not every row.
+            let action = store::actions::earliest_timestamp(conn, &query_id)?
+                .and_then(|at| local_date(&at, &query_zone));
+            let photo = store::photos::earliest_timestamp(conn, &query_id)?
+                .and_then(|at| local_date(&at, &query_zone));
+            Ok(action.into_iter().chain(photo).min())
+        })
+        .await
 }
 
 fn invalid_date(_: jiff::Error) -> ApiError {
@@ -257,6 +275,7 @@ async fn fetch_window(
     local: &LocalHistory,
     from: Timestamp,
     to: Timestamp,
+    dead_light_as_off: bool,
 ) -> History {
     let fetch = |role: &'static str| async move {
         let Some(entity) = local.bindings.get(role).filter(|_| from < to) else {
@@ -272,7 +291,9 @@ async fn fetch_window(
         response
             .ok()
             .and_then(Result::ok)
-            .map_or_else(Vec::new, |history| history_readings(role, &history))
+            .map_or_else(Vec::new, |history| {
+                history_readings(role, &history, dead_light_as_off)
+            })
     };
     let (temperature, humidity, light) =
         tokio::join!(fetch(ROLES[0]), fetch(ROLES[1]), fetch(ROLES[2]));
@@ -291,7 +312,7 @@ async fn fetch_window(
                 }
                 Some(Reading {
                     at,
-                    value: reading_value(ROLES[i], &snap.state, unit),
+                    value: reading_value(ROLES[i], &snap.state, unit, dead_light_as_off),
                 })
             })
             .collect()
@@ -302,7 +323,7 @@ async fn fetch_window(
     }
 }
 
-fn history_readings(role: &str, history: &Value) -> Vec<Reading> {
+fn history_readings(role: &str, history: &Value, dead_light_as_off: bool) -> Vec<Reading> {
     let mut readings = Vec::new();
     for states in history
         .as_array()
@@ -333,7 +354,7 @@ fn history_readings(role: &str, history: &Value) -> Vec<Reading> {
                     .get("state")
                     .or_else(|| state.get("s"))
                     .and_then(Value::as_str)
-                    .and_then(|text| reading_value(role, text, unit));
+                    .and_then(|text| reading_value(role, text, unit, dead_light_as_off));
                 readings.push(Reading { at, value });
             }
         }
@@ -342,11 +363,20 @@ fn history_readings(role: &str, history: &Value) -> Vec<Reading> {
     readings
 }
 
-fn reading_value(role: &str, text: &str, unit: Option<&str>) -> Option<f64> {
+fn reading_value(
+    role: &str,
+    text: &str,
+    unit: Option<&str>,
+    dead_light_as_off: bool,
+) -> Option<f64> {
     if role == "light" {
         return match text {
             "on" | "1" => Some(1.0),
             "off" | "0" => Some(0.0),
+            // The states a plug-driven light shows while off; the
+            // grow's stance (D159) decides whether they are dark or
+            // unknown.
+            "unavailable" | "unknown" if dead_light_as_off => Some(0.0),
             _ => None,
         };
     }
@@ -362,9 +392,16 @@ fn reading_value(role: &str, text: &str, unit: Option<&str>) -> Option<f64> {
 struct Summary {
     has_observations: bool,
     light_hours: Option<f64>,
-    light_partial: bool,
+    /// Hours of the span each device reported nothing, in `ROLES`
+    /// order; `None` for a device without a reading in the span or
+    /// without a gap worth the display's resolution.
+    unavailable_hours: [Option<f64>; 3],
     periods: [Period; 2],
 }
+
+/// A gap shorter than this (three minutes) is not shown: it would
+/// round to zero at the one-decimal display anyway.
+const MIN_GAP_SECONDS: i64 = 180;
 
 fn current(readings: &[Reading], at: i64, max_age: i64) -> Option<f64> {
     let index = readings
@@ -423,6 +460,9 @@ impl History {
         let mut weights = [[0; 3]; 2];
         let mut sums = [[0.0; 3]; 2];
         let mut has_observations = false;
+        // Seconds each device observed; whether it reported inside
+        // the span at all is `self.reported_in`.
+        let mut covered = [0; 3];
         for pair in cuts.windows(2) {
             let at = pair[0];
             let duration = pair[1] - at;
@@ -430,6 +470,11 @@ impl History {
             let rh = current(humidity, at, MAX_READING_GAP);
             let light = current(light, at, i64::MAX);
             has_observations |= temp.is_some() || rh.is_some() || light.is_some();
+            for (observed, slot) in [&temp, &rh, &light].into_iter().zip(&mut covered) {
+                if observed.is_some() {
+                    *slot += duration;
+                }
+            }
             if let Some(light) = light {
                 let on = light > 0.5;
                 let period = usize::from(!on);
@@ -486,19 +531,37 @@ impl History {
                 temperature: avg(0),
                 humidity: avg(1),
                 vpd: avg(2),
-                sparse: (0..3).any(|i| {
-                    weights[p][i] < light_time[p] || (weights[p][i] == 0 && spots[p][i].1 > 0)
-                }),
             }
         });
         let observed = light_time.iter().sum::<i64>();
         Summary {
             has_observations,
             light_hours: (observed > 0).then(|| seconds(light_time[0]) / 3600.0),
-            light_partial: observed < hi - lo,
+            unavailable_hours: gap_hours(covered, self.reported_in(lo, hi), hi - lo),
             periods,
         }
     }
+
+    /// Whether each device has a reading inside the span. A reading
+    /// held over from yesterday observes, but does not count as
+    /// reporting.
+    fn reported_in(&self, lo: i64, hi: i64) -> [bool; 3] {
+        std::array::from_fn(|i| {
+            self.recorded[i]
+                .iter()
+                .any(|reading| (lo..hi).contains(&reading.at))
+        })
+    }
+}
+
+/// Each device's gap: the span it did not observe. Only a device
+/// that reported inside the span gets a figure; one with no reading
+/// at all is "not measured", which the card says another way.
+fn gap_hours(covered: [i64; 3], reported: [bool; 3], span: i64) -> [Option<f64>; 3] {
+    std::array::from_fn(|device| {
+        let gap = (span - covered[device]).max(0);
+        (reported[device] && gap >= MIN_GAP_SECONDS).then(|| seconds(gap) / 3600.0)
+    })
 }
 
 #[cfg(test)]
@@ -528,6 +591,7 @@ mod tests {
             }, {
                 "last_updated": "1970-01-01T02:00:00+00:00", "state": "70"
             }]]),
+            false,
         );
         assert_eq!(readings[0].value, Some(20.0));
         assert_eq!(readings[1].value, None);
@@ -536,16 +600,22 @@ mod tests {
 
     #[test]
     fn history_parses_last_changed_and_light_states() {
-        let readings = history_readings(
-            "light",
-            &serde_json::json!([[{
-                "last_changed": "1970-01-01T00:00:00+00:00", "state": "on"
-            }, {
-                "last_changed": "1970-01-01T01:00:00+00:00", "state": "unknown"
-            }]]),
-        );
+        let history = serde_json::json!([[{
+            "last_changed": "1970-01-01T00:00:00+00:00", "state": "on"
+        }, {
+            "last_changed": "1970-01-01T01:00:00+00:00", "state": "unknown"
+        }, {
+            "last_changed": "1970-01-01T02:00:00+00:00", "state": "unavailable"
+        }]]);
+        // Stance off (D159's default): a dead state is unknown.
+        let readings = history_readings("light", &history, false);
         assert_eq!(readings[0].value, Some(1.0));
         assert_eq!(readings[1].value, None);
+        assert_eq!(readings[2].value, None);
+        // Stance on: dead hours read as off, like the charts do.
+        let readings = history_readings("light", &history, true);
+        assert_eq!(readings[1].value, Some(0.0));
+        assert_eq!(readings[2].value, Some(0.0));
     }
 
     #[test]
@@ -554,6 +624,7 @@ mod tests {
             "temperature",
             &serde_json::json!([[{"lu": 3600, "s": "20.0",
                 "attributes": {"unit_of_measurement": "°C"}}]]),
+            false,
         );
         assert_eq!(readings.len(), 1);
         assert_eq!(readings[0].at, 3600);
@@ -574,9 +645,7 @@ mod tests {
         assert!((summary.periods[0].temperature.unwrap_or_default() - 20.0).abs() < 0.001);
         assert!((summary.periods[0].humidity.unwrap_or_default() - 60.0).abs() < 0.001);
         assert_eq!(summary.light_hours, Some(2.0));
-        assert!(!summary.light_partial);
-        assert!(!summary.periods[0].sparse);
-        assert!(!summary.periods[1].sparse);
+        assert_eq!(summary.unavailable_hours, [None, None, None]);
     }
 
     #[test]
@@ -599,7 +668,7 @@ mod tests {
         let summary = history.summary(0, 3600);
         assert_eq!(summary.periods[0].humidity, Some(50.0));
         assert_eq!(summary.periods[0].temperature, Some(20.0));
-        assert!(summary.periods[0].sparse);
+        assert_eq!(summary.unavailable_hours, [Some(0.5), None, None]);
     }
 
     #[test]
@@ -627,8 +696,7 @@ mod tests {
         let summary = history.summary(0, 7200);
         assert_eq!(summary.periods[0].temperature, Some(20.0));
         assert_eq!(summary.periods[0].humidity, Some(50.0));
-        assert!(summary.periods[0].sparse);
-        assert!(!summary.periods[1].sparse);
+        assert_eq!(summary.unavailable_hours, [Some(1.5), Some(1.5), None]);
     }
 
     #[test]
@@ -646,6 +714,8 @@ mod tests {
         assert_eq!(summary.periods[0].humidity, None);
         assert_eq!(summary.light_hours, Some(1.0));
         assert!(summary.has_observations);
+        // Nothing reported inside the day, so no device gets a figure.
+        assert_eq!(summary.unavailable_hours, [None, None, None]);
     }
 
     #[test]
@@ -666,9 +736,9 @@ mod tests {
         };
         let summary = history.summary(0, 3600);
         assert_eq!(summary.periods[0].temperature, Some(20.0));
-        assert!(summary.periods[0].sparse);
         assert!(summary.periods[1].temperature.is_none());
-        assert!(summary.light_partial);
+        // The light went dead at half past; the sensors never reported.
+        assert_eq!(summary.unavailable_hours, [None, None, Some(0.5)]);
     }
 
     #[test]
@@ -687,7 +757,59 @@ mod tests {
         let summary = history.summary(0, 3600);
         assert!(summary.has_observations);
         assert_eq!(summary.periods[0].temperature, None);
-        assert!(!summary.periods[0].sparse);
+        // A light that only ever reported `unavailable` was dark
+        // knowledge for the whole day: one hour unknown.
+        assert_eq!(summary.unavailable_hours, [None, None, Some(1.0)]);
+    }
+
+    #[test]
+    fn each_device_totals_its_own_gaps() {
+        // Five-minute readings over a day; the temperature sensor is
+        // unavailable for 7.5 h after the first hour, the light goes
+        // dead for 2 h after the same hour and turns off at 18:00.
+        let every = |from: i64, to: i64, value: f64| {
+            (from..to)
+                .map(move |i| at(i * 300, value))
+                .collect::<Vec<_>>()
+        };
+        let mut temperature = every(0, 288, 20.0);
+        for reading in &mut temperature[12..102] {
+            reading.value = None;
+        }
+        let history = History {
+            recorded: [
+                temperature,
+                every(0, 288, 50.0),
+                vec![
+                    light(0, true),
+                    Reading {
+                        at: 3600,
+                        value: None,
+                    },
+                    light(10800, true),
+                    light(64800, false),
+                ],
+            ],
+            snapshots: std::array::from_fn(|_| Vec::new()),
+        };
+        let summary = history.summary(0, 86400);
+        assert_eq!(summary.light_hours, Some(16.0));
+        assert_eq!(summary.unavailable_hours, [Some(7.5), None, Some(2.0)]);
+    }
+
+    #[test]
+    fn gaps_below_the_display_resolution_are_not_reported() {
+        // Two minutes without a temperature reading.
+        let history = History {
+            recorded: [
+                vec![at(0, 20.0), at(120, 21.0)],
+                Vec::new(),
+                vec![light(0, true)],
+            ],
+            snapshots: std::array::from_fn(|_| Vec::new()),
+        };
+        let summary = history.summary(0, 3600);
+        assert_eq!(summary.unavailable_hours, [None, None, None]);
     }
 
     #[test]

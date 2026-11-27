@@ -52,7 +52,7 @@ async fn story_renders_a_plant_linked_photo() {
         if method == "GET" && url.contains("/api/grows/g1/story") {
             return (
                 200,
-                r#"{"timezone":"Europe/Berlin","days":[{"date":"2026-11-20","grow_day":50,"phase":"vegetative","actions":[],"photos":[{"id":"photo1","grow_id":"g1","plant_id":"plant-1","plant_ids":["plant-1"],"action_log_id":null,"captured_at":"2026-11-20T08:15:00Z","grow_day":50,"phase":"vegetative","tags":[],"original_name":"photo.jpg","thumbnail_name":"photo.webp","bytes_stored":629,"created_at":"2026-11-20T08:15:00Z","updated_at":"2026-11-20T08:15:00Z"}],"automatic":false,"has_observations":false,"light_hours":null,"light_partial":true,"periods":[{"sparse":false},{"sparse":false}]}],"before":null,"photo_dates":["2026-11-20"]}"#
+                r#"{"timezone":"Europe/Berlin","days":[{"date":"2026-11-20","grow_day":50,"phase":"vegetative","actions":[],"photos":[{"id":"photo1","grow_id":"g1","plant_id":"plant-1","plant_ids":["plant-1"],"action_log_id":null,"captured_at":"2026-11-20T08:15:00Z","grow_day":50,"phase":"vegetative","tags":[],"original_name":"photo.jpg","thumbnail_name":"photo.webp","bytes_stored":629,"created_at":"2026-11-20T08:15:00Z","updated_at":"2026-11-20T08:15:00Z"}],"automatic":false,"has_observations":false,"light_hours":null,"temperature_unavailable_hours":null,"humidity_unavailable_hours":null,"light_unavailable_hours":null,"periods":[{},{}]}],"before":null,"photo_dates":["2026-11-20"]}"#
                     .to_string(),
             );
         }
@@ -102,7 +102,7 @@ async fn story_day_caveats_share_one_quiet_line() {
         if method == "GET" && url.contains("/api/grows/g1/story") {
             return (
                 200,
-                r#"{"timezone":"Europe/Berlin","days":[{"date":"2026-11-20","grow_day":50,"phase":"vegetative","actions":[],"photos":[],"automatic":true,"has_observations":true,"light_hours":18.0,"light_partial":true,"periods":[{"sparse":true},{"sparse":false}]},{"date":"2026-11-19","grow_day":49,"phase":"vegetative","actions":[],"photos":[],"automatic":false,"has_observations":false,"light_hours":null,"light_partial":false,"periods":[{"sparse":false},{"sparse":false}]}],"before":null,"photo_dates":[]}"#
+                r#"{"timezone":"Europe/Berlin","days":[{"date":"2026-11-20","grow_day":50,"phase":"vegetative","actions":[],"photos":[],"automatic":true,"has_observations":true,"light_hours":18.0,"temperature_unavailable_hours":2.0,"humidity_unavailable_hours":null,"light_unavailable_hours":6.0,"periods":[{},{}]},{"date":"2026-11-19","grow_day":49,"phase":"vegetative","actions":[],"photos":[],"automatic":false,"has_observations":false,"light_hours":null,"temperature_unavailable_hours":null,"humidity_unavailable_hours":null,"light_unavailable_hours":null,"periods":[{},{}]}],"before":null,"photo_dates":[]}"#
                     .to_string(),
             );
         }
@@ -127,10 +127,10 @@ async fn story_day_caveats_share_one_quiet_line() {
     });
     assert!(
         try_wait_for(&mut || {
-            // The metric head and its caveat fragments share one line.
-            mount.text().contains("18.0 h of light")
-                && mount.text().contains("partial")
-                && mount.text().contains("sparse readings")
+            // The light line sums the light's unknowable hours next to
+            // its lit hours; each sensor gets its own total.
+            mount.text().contains("18.0 h of light · 6.0 h unavailable")
+                && mount.text().contains("Temperature 2.0 h unavailable")
                 && mount.text().contains("no environment data")
         })
         .await,
@@ -146,7 +146,11 @@ async fn story_day_caveats_share_one_quiet_line() {
         1,
         "auto legend appears exactly once: {text}"
     );
-    // And the stacked sentence caveats are gone.
+    // The stacked sentence caveats are gone, and a sensor that held
+    // out all day gets no figure at all.
     assert!(!text.contains("observed light"), "{text}");
+    assert!(!text.contains("partial"), "{text}");
+    assert!(!text.contains("sparse"), "{text}");
+    assert!(!text.contains("Humidity"), "{text}");
     assert!(!text.contains("Partial observation"), "{text}");
 }

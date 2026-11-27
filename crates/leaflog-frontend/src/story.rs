@@ -318,14 +318,36 @@ fn DayCard(
     // control) can tell them apart.
     let add_photo_label = format!("{} — {}", td_string!(locale, story.add_photo), day_label);
     let add_entry_label = format!("{} — {}", td_string!(locale, story.add_entry), day_label);
-    let light = day
-        .light_hours
-        .map(|hours| leaflog_core::format::format_decimal(hours, 1, crate::decimal_style(locale)));
-    // One caveat per day, not one per half of it — and all caveats
-    // share the light line as lowercase fragments instead of stacking
-    // full sentences under every day. The auto-light legend never
-    // varies per day, so it renders once at story level instead.
-    let sparse = day.periods.iter().any(|period| period.sparse);
+    let hours =
+        |value: f64| leaflog_core::format::format_decimal(value, 1, crate::decimal_style(locale));
+    // One caveat per day, not one per half of it, and every caveat is
+    // a fragment of the light line rather than a sentence of its own.
+    // Each device's unknowable hours are summed for the day like the
+    // light-on hours are (D165): the light's on the light line, the
+    // sensors' on a line of their own when either dropped out. The
+    // auto-light legend never varies per day, so it renders once at
+    // story level instead.
+    let light = day.light_hours.map(hours);
+    let mut light_line = Vec::new();
+    if let Some(hours) = day.light_unavailable_hours.map(hours) {
+        light_line.push(td_string!(locale, story.unavailable_light, hours = hours).into_owned());
+    }
+    if !day.has_observations {
+        light_line.push(td_string!(locale, story.no_data).into_owned());
+    }
+    let light_line = light_line.join(" · ");
+    let sensor_line = [
+        day.temperature_unavailable_hours.map(hours).map(|hours| {
+            td_string!(locale, story.unavailable_temperature, hours = hours).into_owned()
+        }),
+        day.humidity_unavailable_hours.map(hours).map(|hours| {
+            td_string!(locale, story.unavailable_humidity, hours = hours).into_owned()
+        }),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(" · ");
     let periods = day.periods;
     let photos = day.photos.clone();
     view! {
@@ -346,12 +368,13 @@ fn DayCard(
                     <PeriodLine locale period on=index == 0 />
                 }).collect::<Vec<_>>()}
             </div>
-            <p class="my-2 text-sm text-base-content/70">
+            <p class="my-2 text-sm text-base-content/70" data-testid="story-caveats">
                 {light.map_or_else(|| td_string!(locale, story.no_light).into_owned(), |hours| td_string!(locale, story.light_hours, hours = hours).into_owned())}
-                {day.light_partial.then(|| view! { <span>{" · "}{t!(i18n, story.partial)}</span> })}
-                {sparse.then(|| view! { <span>{" · "}{t!(i18n, story.sparse)}</span> })}
-                {(!day.has_observations).then(|| view! { <span>{" · "}{t!(i18n, story.no_data)}</span> })}
+                {(!light_line.is_empty()).then(|| view! { <span>{" · "}{light_line}</span> })}
             </p>
+            {(!sensor_line.is_empty()).then(|| view! {
+                <p class="my-2 text-sm text-base-content/70" data-testid="story-device-gaps">{sensor_line}</p>
+            })}
             <ul class="m-0 grid list-none gap-2 p-0">
                 {day.actions.into_iter().map(|entry| crate::grows::timeline_entry_in_zone(locale, entry, move |entry| on_delete.run(entry), timezone.get_untracked())).collect::<Vec<_>>()}
             </ul>
@@ -661,7 +684,7 @@ mod tests {
     };
 
     fn day() -> StoryDay {
-        serde_json::from_str(r#"{"date":"2026-11-22","grow_day":1,"phase":"vegetative","actions":[],"photos":[],"automatic":false,"has_observations":false,"light_hours":null,"light_partial":false,"periods":[{"sparse":false},{"sparse":false}]}"#).expect("test day")
+        serde_json::from_str(r#"{"date":"2026-11-22","grow_day":1,"phase":"vegetative","actions":[],"photos":[],"automatic":false,"has_observations":false,"light_hours":null,"temperature_unavailable_hours":null,"humidity_unavailable_hours":null,"light_unavailable_hours":null,"periods":[{},{}]}"#).expect("test day")
     }
 
     fn photo(id: &str, plant_ids: &[&str]) -> Photo {

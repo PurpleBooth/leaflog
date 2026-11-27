@@ -4,6 +4,37 @@ One-off choices, in reverse-chronological order. Every `#[allow]` exception
 to the mandatory lint policy (see AGENTS.md / SPEC.md §10) must be logged
 here. Date format: YYYY-MM-DD.
 
+## 2026-11-27 — the story sums each device's unknowable hours (D165)
+
+### D165: a day card names each device's total unavailable hours instead of flagging "partial"
+
+The day card flagged the light line "unvollständig" (partial)
+whenever the light history did not cover the whole day, and "wenige
+Messwerte" (sparse readings) whenever a sensor covered less time
+than the light. Neither said how much was missing, and both were
+booleans for what is really a duration.
+
+The day summary now sums, per device, the hours it did not observe —
+the same way it sums the light-on hours — and the card shows each
+device's total on its own: "18.0 h of light · 6.0 h unavailable",
+then "Temperature 2.0 h unavailable · Humidity 5.0 h unavailable"
+when a sensor dropped out. The rules:
+
+- A device gets a figure only when it reported inside that day. One
+  with no reading at all is not measured, and the card already says
+  so another way ("Kein Licht erfasst", empty period averages).
+- A sensor reading holds for one hour (`MAX_READING_GAP`,
+  unchanged); the light holds until its next state. A gap shorter
+  than three minutes would round to 0.0 h at the display's one
+  decimal and is not reported.
+- The dead-light stance (D159) now reaches the story too. It used
+  to be ignored there, so a grow that reads dead plug hours as off
+  still got a light gap; now a dead hour is dark, not unknown.
+
+The per-period `sparse` flag left the wire with the booleans;
+`Period` is averages only. `api_story` unit tests pin each rule,
+and the story component test pins the rendered lines.
+
 ## 2026-11-27 — HTTP transport: compression, validators, cache policy (D164)
 
 ### D164: responses are compressed, every cache gets a validator, and nothing else is stored

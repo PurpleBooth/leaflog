@@ -15,7 +15,7 @@ The kind of reading a binding provides (temperature, humidity, CO₂, soil moist
 _Avoid_: Sensor type, channel kind
 
 **Dead binding**:
-A binding whose entity Home Assistant currently reports as unavailable or unknown. Dead bindings are the only ones the grow page may call "no data" — except a light under the grow's dead-light stance (D159), where death itself is the reading: lights-off.
+A binding whose entity Home Assistant currently reports as unavailable or unknown. Dead bindings are the only ones the grow page may call "no data" — except a light under the grow's dead-light stance (D159), where death itself is the reading: lights-off. In the story, a device's dead hours are a duration, not a flag: each device sums its own unavailable hours per day (D165).
 _Avoid_: Broken sensor
 
 **Air**:

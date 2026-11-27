@@ -38,8 +38,16 @@ pub struct StoryDay {
     pub has_observations: bool,
     /// Time for which the lights were known to be on, in hours.
     pub light_hours: Option<f64>,
-    /// Light history did not cover the whole day.
-    pub light_partial: bool,
+    /// Hours of the elapsed part of the day in which the temperature
+    /// sensor reported nothing; `None` when it reported all along or
+    /// not at all that day.
+    pub temperature_unavailable_hours: Option<f64>,
+    /// The same for the humidity sensor.
+    pub humidity_unavailable_hours: Option<f64>,
+    /// The same for the light: hours its state is unknown, because the
+    /// device reported `unavailable` while the grow does not read
+    /// dead hours as off (D159), or no observation covers them.
+    pub light_unavailable_hours: Option<f64>,
     /// Measurements classified by light state, on then off.
     pub periods: [Period; 2],
 }
@@ -53,6 +61,4 @@ pub struct Period {
     pub humidity: Option<f64>,
     /// Vapour pressure deficit (kPa).
     pub vpd: Option<f64>,
-    /// Some measurements have gaps or are based only on spot readings.
-    pub sparse: bool,
 }
