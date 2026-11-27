@@ -39,51 +39,51 @@
         }
       }
     },
-    "cocogitto@6.2.0": {
-      "last_modified": "2025-03-11T17:52:14Z",
-      "resolved": "github:NixOS/nixpkgs/0d534853a55b5d02a4ababa1d71921ce8f0aee4c#cocogitto",
+    "cocogitto@7.0.0": {
+      "last_modified": "2026-11-22T18:15:35Z",
+      "resolved": "github:NixOS/nixpkgs/619c39f6eac5d1ed6b8f073a9414baf7034b2356#cocogitto",
       "source": "devbox-search",
-      "version": "6.2.0",
+      "version": "7.0.0",
       "systems": {
         "aarch64-darwin": {
           "outputs": [
             {
               "name": "out",
-              "path": "/nix/store/70jhwhpn84lpx8wb0bw6kfih4l8p4522-cocogitto-6.2.0",
+              "path": "/nix/store/bg3q8w1mh6rqmm4x1qmrrvm8rnr47z27-cocogitto-7.0.0",
               "default": true
             }
           ],
-          "store_path": "/nix/store/70jhwhpn84lpx8wb0bw6kfih4l8p4522-cocogitto-6.2.0"
+          "store_path": "/nix/store/bg3q8w1mh6rqmm4x1qmrrvm8rnr47z27-cocogitto-7.0.0"
         },
         "aarch64-linux": {
           "outputs": [
             {
               "name": "out",
-              "path": "/nix/store/czjwrgv4nkvgssxsz1rxfwvaf4ldmfx3-cocogitto-6.2.0",
+              "path": "/nix/store/v61garigs24gl26fpjfyyvq7j058nidf-cocogitto-7.0.0",
               "default": true
             }
           ],
-          "store_path": "/nix/store/czjwrgv4nkvgssxsz1rxfwvaf4ldmfx3-cocogitto-6.2.0"
+          "store_path": "/nix/store/v61garigs24gl26fpjfyyvq7j058nidf-cocogitto-7.0.0"
         },
         "x86_64-darwin": {
           "outputs": [
             {
               "name": "out",
-              "path": "/nix/store/hzmqaljr4x4ck14654y2hqj20fz7ar11-cocogitto-6.2.0",
+              "path": "/nix/store/cj904jd4wdcsc9dwdjaflvpdzwnbq9va-cocogitto-7.0.0",
               "default": true
             }
           ],
-          "store_path": "/nix/store/hzmqaljr4x4ck14654y2hqj20fz7ar11-cocogitto-6.2.0"
+          "store_path": "/nix/store/cj904jd4wdcsc9dwdjaflvpdzwnbq9va-cocogitto-7.0.0"
         },
         "x86_64-linux": {
           "outputs": [
             {
               "name": "out",
-              "path": "/nix/store/150afqkrsj6g1yrj0p3rlnj5xi94biwj-cocogitto-6.2.0",
+              "path": "/nix/store/drjwx0fc44s3j3rp7lizamz7crh6fs56-cocogitto-7.0.0",
               "default": true
             }
           ],
-          "store_path": "/nix/store/150afqkrsj6g1yrj0p3rlnj5xi94biwj-cocogitto-6.2.0"
+          "store_path": "/nix/store/drjwx0fc44s3j3rp7lizamz7crh6fs56-cocogitto-7.0.0"
         }
       }
     },

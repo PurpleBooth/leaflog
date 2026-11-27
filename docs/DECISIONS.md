@@ -4,6 +4,18 @@ One-off choices, in reverse-chronological order. Every `#[allow]` exception
 to the mandatory lint policy (see AGENTS.md / SPEC.md §10) must be logged
 here. Date format: YYYY-MM-DD.
 
+## 2026-11-27 — one cocogitto everywhere (D166)
+
+### D166: devbox, both workflows and the host run cocogitto 7.0.0
+
+The host's cargo-installed `cog` is 7.0.0 (dotfiles) while devbox,
+`pr-check.yml` and `release.yml` pinned 6.2.0, so `just changelog`
+produced different bytes on each side (D042 worked around the skew).
+Now every side pins 7.0.0; the committed changelogs were regenerated once
+with it (scope styling `(**scope**)`, dates from the tagged commit). The
+musl tarball hash is still trust-on-first-use — upstream publishes no
+checksum file (D162).
+
 ## 2026-11-27 — the story sums each device's unknowable hours (D165)
 
 ### D165: a day card names each device's total unavailable hours instead of flagging "partial"
@@ -3171,8 +3183,9 @@ update. Two stacked causes:
 the root file stays cocogitto output verbatim (D042 unchanged);
 `leaflog/CHANGELOG.md` is the HA-facing artifact with headings
 rewritten (`## X.Y.Z` plus a `_Released date._` line) by a `sed` step
-in the recipe — chosen over a cocogitto custom template because CI
-pins cog 6.2.0 and the transform is verifiable locally. The release
+in the recipe — chosen over a cocogitto custom template because
+CI, devbox and the host all run the same cog (7.0.0 since D166) and the
+transform is verifiable locally. The release
 workflow commits both files with the version sync, and pr-check
 regenerates and diffs both, asserts every version heading is bare
 semver with the top one equal to `config.yaml`'s version, and

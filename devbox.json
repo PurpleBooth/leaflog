@@ -7,7 +7,7 @@
     "sqlite@latest",
     "pkg-config@latest",
     "libiconv@latest",
-    "cocogitto@6.2.0",
+    "cocogitto@7.0.0",
     "gitleaks@latest",
     "cargo-deny@0.20.2",
     "vale@3",
