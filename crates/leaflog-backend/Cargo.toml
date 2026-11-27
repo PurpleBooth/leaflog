@@ -24,7 +24,9 @@ axum = { workspace = true, features = ["multipart"] }
 # Request tracing (D158): TraceLayer wraps every request — method,
 # path, status, latency. Headers stay out (the ingress token rides
 # the Authorization header).
-tower-http = { version = "0.6", features = ["trace"] }
+# Brotli and gzip responses (the wasm bundle shrinks by two thirds on
+# the wire) and the router-wide cache policy.
+tower-http = { version = "0.6", features = ["trace", "compression-br", "compression-gzip", "set-header"] }
 tokio = { workspace = true, features = ["net", "signal", "fs"] }
 serde.workspace = true
 serde_json.workspace = true
@@ -56,7 +58,8 @@ mock-ha = { path = "../mock-ha" }
 axum = { workspace = true, features = ["multipart", "ws"] }
 tokio.workspace = true
 serde_json.workspace = true
-reqwest = { version = "0.12", default-features = false, features = ["json", "multipart"] }
+# `http2` lets tests speak HTTP/2 prior knowledge to the listener.
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "http2"] }
 # tests/migrations.rs drives the migration runner directly.
 rusqlite = { version = "0.41", features = ["bundled"] }
 refinery = { version = "0.10", features = ["rusqlite"], default-features = false }

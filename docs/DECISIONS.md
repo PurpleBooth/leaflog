@@ -4,6 +4,51 @@ One-off choices, in reverse-chronological order. Every `#[allow]` exception
 to the mandatory lint policy (see AGENTS.md / SPEC.md §10) must be logged
 here. Date format: YYYY-MM-DD.
 
+## 2026-11-27 — HTTP transport: compression, validators, cache policy (D164)
+
+### D164: responses are compressed, every cache gets a validator, and nothing else is stored
+
+D142 gave the hashed bundles a year-long `immutable` policy and
+promised that every other file "still gets a 304 when nothing
+changed". Nothing backed that promise: the backend set no `ETag` and
+no `Last-Modified`, so each `no-cache` revalidation was a full
+download (2.6 MB of wasm and 539 KB of ECharts on every cold load),
+and nothing was ever compressed. Three changes close that:
+
+- **Validators.** Every asset carries a strong `ETag` (the hash of
+  its bytes; embedded files are hashed once at startup, disk-backed
+  files on read) and answers a matching `If-None-Match` with `304`,
+  under weak comparison as RFC 9110 prescribes for that header. The
+  rendered shell gets an `ETag` of its own over the *rendered* page,
+  so another ingress path is another page (its injected `<base>` and
+  CSP differ) and revalidates to `200`, not `304`.
+- **Compression.** `CompressionLayer` offers Brotli and gzip for
+  everything above 32 bytes except `image/*` and `text/event-stream`.
+  The wasm bundle goes from 2,635,856 to 829,811 bytes (−69 %),
+  ECharts from 538,922 to 186,665. Deflate and zstd are left out: no
+  browser asks for them that does not also take Brotli or gzip. The
+  default quality is Brotli's (q11): about 0.4 s per fresh wasm
+  response on an M1, nothing on a `304`; each browser pays it once per
+  release thanks to the `immutable` policy.
+- **Storage default.** Responses without their own `Cache-Control`
+  (the whole API, the theme harness) get `no-store`; the photo, asset
+  and index handlers keep their explicit policies. Nothing in the API
+  is cacheable anyway — it is user data behind the ingress token —
+  and the header makes that explicit for every future route.
+
+HTTP versions: the listener is hyper-util's auto builder, which
+accepts HTTP/1.1 and HTTP/2 prior knowledge (h2c). Browsers reach
+the app through the Supervisor's ingress nginx (TLS terminates there,
+  HTTP/1.1 to the add-on), so HTTP/2 to the browser is ingress's
+  choice, not ours; a test pins h2c so a future server change cannot
+  silently drop it. HTTP/3 would need an ingress that speaks it; the
+  add-on only ever sees HTTP/1.1 or h2c from nginx.
+
+Verified against the real bundle: `content-encoding: br`, `vary:
+accept-encoding`, `etag`, and `304` with a `0`-byte body on
+revalidation; `tests/ingress.rs` covers each path with the fixture
+bundle.
+
 ## 2026-11-27 — the binary embeds the time zone database (D163)
 
 ### D163: jiff's bundled IANA database is compiled in — the scratch image ships no tzdata

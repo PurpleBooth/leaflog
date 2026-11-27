@@ -4,17 +4,19 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use axum::extract::{ConnectInfo, Request, State};
-use axum::http::header::HeaderMap;
+use axum::http::header::{self, HeaderMap};
 use axum::http::{HeaderValue, Method, StatusCode, Uri};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use serde::Serialize;
+use tower_http::compression::CompressionLayer;
+use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::Level;
 
-use crate::assets::{Assets, content_type};
+use crate::assets::{Assets, content_type, etag_of};
 use crate::catalog::{self, Message};
 use crate::ingress::{IngressPath, content_security_policy, render_index};
 
@@ -180,6 +182,16 @@ pub fn build_router(state: AppState) -> Router {
         ))
         // Outside the gate so gate rejections (403) are covered too.
         .layer(middleware::from_fn(security_headers))
+        // Brotli and gzip for everything compressible (the wasm bundle
+        // shrinks by two thirds on the wire). Images are left alone:
+        // already compressed, and the predicate skips `image/*`.
+        .layer(CompressionLayer::new())
+        // API and HTML responses default to never being stored; the
+        // asset, photo and index handlers set their own policy.
+        .layer(SetResponseHeaderLayer::if_not_present(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("no-store"),
+        ))
         .layer(axum::extract::DefaultBodyLimit::max(BODY_LIMIT_BYTES))
         // Outermost so the gate's rejections are logged too (D158). One
         // INFO line per request: method, path, status, latency; headers
@@ -293,18 +305,42 @@ async fn fallback(
         return (StatusCode::METHOD_NOT_ALLOWED, "method not allowed").into_response();
     }
     let rel = path.trim_start_matches('/');
-    if let Some(bytes) = state.assets.get(rel).await {
-        let mut response = (
-            [(axum::http::header::CONTENT_TYPE, content_type(rel))],
-            bytes,
+    if let Some(asset) = state.assets.get(rel).await {
+        let cache = asset_cache_control(rel);
+        // Revalidation (the `no-cache` policy sends the validator back):
+        // unchanged files answer 304 and the browser keeps its copy.
+        let [cache, etag] = [(header::CACHE_CONTROL, cache), (header::ETAG, asset.etag)];
+        if if_none_match_matches(headers.get(header::IF_NONE_MATCH), &etag.1) {
+            return (StatusCode::NOT_MODIFIED, [cache, etag]).into_response();
+        }
+        return (
+            [
+                (
+                    header::CONTENT_TYPE,
+                    HeaderValue::from_static(content_type(rel)),
+                ),
+                cache,
+                etag,
+            ],
+            asset.bytes,
         )
             .into_response();
-        response
-            .headers_mut()
-            .insert(axum::http::header::CACHE_CONTROL, asset_cache_control(rel));
-        return response;
     }
     serve_index(&state, &headers).await
+}
+
+/// Whether an `If-None-Match` value (a comma-separated list of tags,
+/// possibly weak or `*`) matches `etag` under the weak comparison
+/// RFC 9110 §8.8.3.2 prescribes for `If-None-Match`.
+fn if_none_match_matches(if_none_match: Option<&HeaderValue>, etag: &HeaderValue) -> bool {
+    let Some(value) = if_none_match.and_then(|value| value.to_str().ok()) else {
+        return false;
+    };
+    let etag = String::from_utf8_lossy(etag.as_bytes());
+    value.split(',').any(|tag| {
+        let tag = tag.trim();
+        tag == "*" || tag.trim_start_matches("W/") == etag.trim_start_matches("W/")
+    })
 }
 
 /// Cache policy for a static asset.
@@ -350,21 +386,35 @@ async fn serve_index(state: &AppState, headers: &HeaderMap) -> Response {
         },
         |template| {
             let base = resolve_base(state, headers);
-            let mut response = Html(render_index(&template, &base)).into_response();
+            let rendered = render_index(&template, &base);
+            // The shell varies with the ingress base, so its validator
+            // covers the rendered page, not the template.
+            let etag = etag_of(rendered.as_bytes());
+            if if_none_match_matches(headers.get(header::IF_NONE_MATCH), &etag) {
+                return (
+                    StatusCode::NOT_MODIFIED,
+                    [
+                        (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
+                        (header::ETAG, etag),
+                    ],
+                )
+                    .into_response();
+            }
+            let mut response = Html(rendered).into_response();
             // The CSP hashes the template's inline scripts (the Trunk
             // bootstrap) as well as the injected base script, so it
             // must be built from the same template that was rendered.
             let csp = HeaderValue::from_str(&content_security_policy(&base, &template))
                 .expect("CSP is ASCII by construction");
-            response
-                .headers_mut()
-                .insert(axum::http::header::CONTENT_SECURITY_POLICY, csp);
+            let out = response.headers_mut();
+            out.insert(axum::http::header::CONTENT_SECURITY_POLICY, csp);
             // The shell names the hashed bundle; a cached copy would
             // keep pointing at the previous release's assets.
-            response.headers_mut().insert(
+            out.insert(
                 axum::http::header::CACHE_CONTROL,
                 HeaderValue::from_static("no-cache"),
             );
+            out.insert(axum::http::header::ETAG, etag);
             response
         },
     )

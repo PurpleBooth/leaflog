@@ -8,8 +8,15 @@
 
 use std::path::PathBuf;
 
+use axum::body::Bytes;
+use axum::http::HeaderValue;
+
 #[cfg(feature = "embed-assets")]
 use include_dir::{Dir, include_dir};
+#[cfg(feature = "embed-assets")]
+use std::collections::HashMap;
+#[cfg(feature = "embed-assets")]
+use std::sync::OnceLock;
 
 /// The embedded frontend bundle (empty until `trunk build` has run; see
 /// `build.rs`).
@@ -24,6 +31,30 @@ pub enum Assets {
     Embedded,
     /// A directory on disk (development and tests).
     Disk(PathBuf),
+}
+
+/// A served frontend file: its bytes and the validator clients
+/// revalidate with (see [`etag_of`]).
+#[derive(Debug, Clone)]
+pub struct Asset {
+    /// The file contents (zero-copy for the embedded bundle).
+    pub bytes: Bytes,
+    /// A strong `ETag` for `bytes`.
+    pub etag: HeaderValue,
+}
+
+/// A strong `ETag` for a byte slice: the hash of length and contents,
+/// so unchanged files keep their validator across restarts (and
+/// changed ones never do).
+#[must_use]
+pub fn etag_of(bytes: &[u8]) -> HeaderValue {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::hash::DefaultHasher::new();
+    bytes.len().hash(&mut hasher);
+    bytes.hash(&mut hasher);
+    // Quotes and hex digits are always valid header bytes.
+    HeaderValue::from_str(&format!("\"{:x}\"", hasher.finish()))
+        .unwrap_or_else(|_| HeaderValue::from_static("\"\""))
 }
 
 impl Assets {
@@ -41,20 +72,48 @@ impl Assets {
     ///
     /// This is an `async fn` for disk-backed sources; missing files are
     /// reported as `None` rather than as errors.
-    pub async fn get(&self, path: &str) -> Option<Vec<u8>> {
+    pub async fn get(&self, path: &str) -> Option<Asset> {
         let clean = sanitize(path)?;
         match self {
             #[cfg(feature = "embed-assets")]
-            Self::Embedded => DIST.get_file(&clean).map(|f| f.contents().to_vec()),
-            Self::Disk(root) => tokio::fs::read(root.join(&clean)).await.ok(),
+            Self::Embedded => DIST.get_file(&clean).map(|file| Asset {
+                // The embedded bytes are `'static`, so this does not copy.
+                bytes: Bytes::from_static(file.contents()),
+                etag: embedded_etags()
+                    .get(clean.as_str())
+                    .cloned()
+                    .unwrap_or_else(|| etag_of(file.contents())),
+            }),
+            Self::Disk(root) => {
+                let bytes = tokio::fs::read(root.join(&clean)).await.ok()?;
+                let etag = etag_of(&bytes);
+                Some(Asset {
+                    bytes: Bytes::from(bytes),
+                    etag,
+                })
+            }
         }
     }
 
     /// The `index.html` template, when the frontend has been built.
     pub async fn index(&self) -> Option<String> {
         let bytes = self.get("index.html").await?;
-        String::from_utf8(bytes).ok()
+        String::from_utf8(bytes.bytes.to_vec()).ok()
     }
+}
+
+/// The `ETag` of every embedded file, hashed once on first use.
+#[cfg(feature = "embed-assets")]
+fn embedded_etags() -> &'static HashMap<&'static str, HeaderValue> {
+    static ETAGS: OnceLock<HashMap<&'static str, HeaderValue>> = OnceLock::new();
+    ETAGS.get_or_init(|| {
+        DIST.files()
+            .map(|file| {
+                let path = file.path().to_str().unwrap_or_default();
+                (path, etag_of(file.contents()))
+            })
+            .collect()
+    })
 }
 
 /// Accepts relative paths of safe characters only (no traversal).
