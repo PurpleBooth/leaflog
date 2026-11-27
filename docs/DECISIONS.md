@@ -4,6 +4,37 @@ One-off choices, in reverse-chronological order. Every `#[allow]` exception
 to the mandatory lint policy (see AGENTS.md / SPEC.md §10) must be logged
 here. Date format: YYYY-MM-DD.
 
+## 2026-11-27 — the binary embeds the time zone database (D163)
+
+### D163: jiff's bundled IANA database is compiled in — the scratch image ships no tzdata
+
+Since D059 the backend has assumed `jiff` carries the IANA database
+inside the binary. It never did: on Linux, jiff's default reads
+`/usr/share/zoneinfo`, and the HA Alpine base shipped tzdata, so the
+assumption held by accident. The `FROM scratch` image (D161) removed
+the system copy, and from v0.21.0 every zone lookup failed closed:
+`chart::phase_spans` served no target bands, the light staircase fell
+back to UTC (two nights instead of eight in a week of 18/6), and story
+days and Light Cycle times moved to UTC. The charts still rendered, so
+nothing crashed — the bands just vanished.
+
+`jiff` now enables `tzdb-bundle-always` (workspace `Cargo.toml`),
+which compiles the full database into the binary (+270 KB on the
+server build). The wasm frontend already used the bundled copy on wasm
+targets, so both sides now resolve zones from the same snapshot.
+
+Alternatives rejected: copying tzdata from the builder stage (another
+moving part in the image, and the two sides could disagree); `TZDIR`
+(nothing to point at). The embedded database is frozen at the jiff
+release, which suits a grow diary; bumping jiff refreshes it.
+
+Verification: the published v0.21.0 binary and the fixed binary ran
+in a bookworm container with `/usr/share/zoneinfo` deleted, against
+the same mock HA. Old: `bands 0`, `nights 2`. New: `bands 2/4/16`
+(temperature/humidity/vpd), `nights 8`, identical to a host with
+tzdata. No automated image test guards this; after an image change,
+open a chart and check the bands.
+
 ## 2026-11-26 — supply-chain gates: pinned tool hashes, scanned and signed images (D162)
 
 ### D162: images are scanned and keyless-signed; tool downloads are hash-verified
@@ -62,10 +93,11 @@ cosign verify \
 ### D161: the final image is `FROM scratch` — a single static binary, no s6 overlay
 
 The HA Alpine base and its s6-overlay longrun service bought a shell,
-bashio, tzdata, and CA certificates that Leaflog never uses: the
+bashio, and CA certificates that Leaflog never uses: the
 backend is a static musl binary with the frontend embedded (D003),
 talks plain HTTP to `http://supervisor` on the internal network
-(reqwest has no TLS feature), and works in UTC by design. The s6 run
+(reqwest has no TLS feature), and reads no system time zone data (D163
+makes that true). The s6 run
 script only re-exported defaults the binary already derives
 (`LEAFLOG_PORT=8099`, production mode from `SUPERVISOR_TOKEN`), and
 `with-contenv` existed to lift the Docker env into s6 — with a plain
@@ -3123,7 +3155,7 @@ Implements the §2 timezone canon (spec §13 "Timezone" criterion):
 
 - **`jiff` 0.2** provides the IANA database embedded in the binary —
   the HA image has no system tzdata to read, and HA reports zones by
-  name (`Europe/Berlin`).
+  name (`Europe/Berlin`). (The embed only became real with D163.)
 - **`leaflog-core::tz`**: `day_number_local` counts whole local
   calendar days between the grow's start date and a UTC instant's
   local date in the zone; unknown zones return `None` rather than

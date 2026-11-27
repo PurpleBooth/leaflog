@@ -89,7 +89,7 @@ RUN --mount=type=cache,target=/build/target \
 # Stage 3: the app image — `FROM scratch` (D161).
 # The backend is a static musl binary with the frontend embedded
 # (embed-assets, D003). It needs none of what a base image ships: no
-# shell, no tzdata (the backend works in UTC by design), and no CA
+# shell, no tzdata (the IANA database is compiled in, D163), and no CA
 # bundle (reqwest has no TLS feature — the Supervisor API is plain
 # HTTP on the internal network). No s6 overlay either: `config.yaml`
 # keeps the default `init: true`, so Docker's init process reaps and

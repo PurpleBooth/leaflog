@@ -30,9 +30,11 @@ serde_json = "1"
 # base script (docs/DECISIONS.md D040).
 sha2 = "0.10"
 base64 = "0.22"
-# Embedded IANA tz database: canonical-timezone day math (spec §2)
-# without system tzdata in the container image.
-jiff = { version = "0.2", features = ["js"] }
+# Time zones: the `tzdb-bundle-always` feature embeds the IANA tz
+# database in the binary, so zone lookups never need /usr/share/zoneinfo
+# (the scratch image ships none; without it every zone lookup fails
+# closed: no chart bands, UTC nights and grow days — D163).
+jiff = { version = "0.2", features = ["js", "tzdb-bundle-always"] }
 # Structured logging (D158): tracing macros on both sides of the wasm
 # boundary — stdout subscriber in the backend, devtools console layer
 # in the frontend.
